@@ -47,6 +47,8 @@ export class TaskQueueManager extends EventEmitter {
     private history: QueuedTask[] = [];
     /** Whether the queue is paused */
     private paused = false;
+    /** Whether autopilot is paused */
+    private autopilotPaused = false;
     /** Whether the queue is in drain mode (no new tasks accepted) */
     private draining = false;
     /** Callbacks waiting for the queue to become idle */
@@ -249,6 +251,7 @@ export class TaskQueueManager extends EventEmitter {
             isPaused: this.paused,
             isDraining: this.draining,
             pausedRepos: Array.from(this.pausedRepos),
+            isAutopilotPaused: this.autopilotPaused,
         };
     }
 
@@ -764,6 +767,40 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     // ========================================================================
+    // Autopilot Pause Control
+    // ========================================================================
+
+    /**
+     * Pause autopilot — prevents new tasks from being enqueued automatically.
+     * Running and already-queued tasks are unaffected.
+     */
+    pauseAutopilot(): void {
+        if (!this.autopilotPaused) {
+            this.autopilotPaused = true;
+            this.emitChange('autopilot-paused');
+            this.emit('autopilot-paused');
+        }
+    }
+
+    /**
+     * Resume autopilot — allows automatic enqueuing to proceed again.
+     */
+    resumeAutopilot(): void {
+        if (this.autopilotPaused) {
+            this.autopilotPaused = false;
+            this.emitChange('autopilot-resumed');
+            this.emit('autopilot-resumed');
+        }
+    }
+
+    /**
+     * Check if autopilot is paused.
+     */
+    isAutopilotPaused(): boolean {
+        return this.autopilotPaused;
+    }
+
+    // ========================================================================
     // Per-Repo Pause Control
     // ========================================================================
 
@@ -979,6 +1016,7 @@ export class TaskQueueManager extends EventEmitter {
         this.running.clear();
         this.history = [];
         this.paused = false;
+        this.autopilotPaused = false;
         this.draining = false;
         this.pausedRepos.clear();
         // Resolve any pending idle waiters since there's nothing left

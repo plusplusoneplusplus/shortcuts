@@ -244,7 +244,7 @@ function aggregateStats(bridge: MultiRepoQueueExecutorBridge): QueueStats {
         if (s.isDraining) { anyDraining = true; }
         any = true;
     }
-    return { queued, running, completed, failed, cancelled, total, isPaused: any && allPaused, isDraining: anyDraining };
+    return { queued, running, completed, failed, cancelled, total, isPaused: any && allPaused, isDraining: anyDraining, isAutopilotPaused: false };
 }
 
 
@@ -538,7 +538,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 } else {
                     queued = [];
                     running = [];
-                    stats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false };
+                    stats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false, isAutopilotPaused: false };
                 }
             } else {
                 const globalPath = globalWorkspaceRootPath ?? process.cwd();

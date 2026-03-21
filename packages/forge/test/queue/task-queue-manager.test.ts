@@ -742,6 +742,69 @@ describe('TaskQueueManager', () => {
         });
     });
 
+    describe('autopilot pause/resume', () => {
+        it('pauseAutopilot sets autopilotPaused state', () => {
+            manager.pauseAutopilot();
+            expect(manager.isAutopilotPaused()).toBe(true);
+        });
+
+        it('resumeAutopilot clears autopilotPaused state', () => {
+            manager.pauseAutopilot();
+            manager.resumeAutopilot();
+            expect(manager.isAutopilotPaused()).toBe(false);
+        });
+
+        it('pauseAutopilot emits autopilot-paused event', () => {
+            const listener = vi.fn();
+            manager.on('autopilot-paused', listener);
+
+            manager.pauseAutopilot();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('resumeAutopilot emits autopilot-resumed event', () => {
+            const listener = vi.fn();
+            manager.on('autopilot-resumed', listener);
+
+            manager.pauseAutopilot();
+            manager.resumeAutopilot();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('double pauseAutopilot does not emit twice', () => {
+            const listener = vi.fn();
+            manager.on('autopilot-paused', listener);
+
+            manager.pauseAutopilot();
+            manager.pauseAutopilot();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('double resumeAutopilot does not emit twice', () => {
+            const listener = vi.fn();
+            manager.on('autopilot-resumed', listener);
+
+            manager.pauseAutopilot();
+            manager.resumeAutopilot();
+            manager.resumeAutopilot();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('pauseAutopilot does not affect isPaused', () => {
+            manager.pauseAutopilot();
+            expect(manager.isPaused()).toBe(false);
+        });
+
+        it('pause does not affect isAutopilotPaused', () => {
+            manager.pause();
+            expect(manager.isAutopilotPaused()).toBe(false);
+        });
+    });
+
     describe('clear', () => {
         it('removes all queued tasks', () => {
             manager.enqueue(createTestTask());
@@ -855,6 +918,15 @@ describe('TaskQueueManager', () => {
         it('includes paused state', () => {
             manager.pause();
             expect(manager.getStats().isPaused).toBe(true);
+        });
+
+        it('includes isAutopilotPaused: false by default', () => {
+            expect(manager.getStats().isAutopilotPaused).toBe(false);
+        });
+
+        it('includes isAutopilotPaused: true when autopilot paused', () => {
+            manager.pauseAutopilot();
+            expect(manager.getStats().isAutopilotPaused).toBe(true);
         });
     });
 

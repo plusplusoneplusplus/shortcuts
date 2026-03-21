@@ -354,7 +354,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         };
 
         const aggregateStats = (): QueueStats => {
-            const totals: QueueStats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: globalPaused, isDraining: false };
+            const totals: QueueStats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: globalPaused, isDraining: false, isAutopilotPaused: false };
             const allPausedRepos = new Set<string>(facadePausedRepos);
             for (const m of allManagers()) {
                 const s = m.getStats();

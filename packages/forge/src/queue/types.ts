@@ -176,7 +176,9 @@ export type QueueChangeType =
     | 'frozen'
     | 'unfrozen'
     | 'pause-marker-added'
-    | 'pause-marker-removed';
+    | 'pause-marker-removed'
+    | 'autopilot-paused'
+    | 'autopilot-resumed';
 
 /**
  * Event emitted when the queue changes
@@ -371,6 +373,8 @@ export interface QueueStats {
     isDraining: boolean;
     /** List of repository IDs that are currently paused (optional, for per-repo pause) */
     pausedRepos?: string[];
+    /** Whether autopilot is paused (new work will not be enqueued automatically) */
+    isAutopilotPaused: boolean;
 }
 
 // ============================================================================
