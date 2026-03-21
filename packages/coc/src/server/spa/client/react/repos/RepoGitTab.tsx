@@ -30,6 +30,7 @@ import { BranchRangeAllComments } from './BranchRangeAllComments';
 import { BranchPickerModal } from './BranchPickerModal';
 import { AmendMessageModal } from './AmendMessageModal';
 import { clearCacheForHash } from './useCommitDiffCache';
+import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from './useBranchRangeCache';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
@@ -116,6 +117,20 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     }, [workspaceId]);
 
     const fetchBranchRange = useCallback((refresh = false) => {
+        if (refresh) {
+            clearBranchRangeCache(workspaceId);
+        } else {
+            const cached = getBranchRangeCache(workspaceId);
+            if (cached) {
+                setBranchRangeData(cached.data);
+                setBranchRangeFiles(cached.files);
+                setBranchName(cached.branchName);
+                setOnDefaultBranch(cached.onDefaultBranch);
+                setAhead(cached.ahead);
+                setBehind(cached.behind);
+                return Promise.resolve(cached.data);
+            }
+        }
         const qs = refresh ? '?refresh=true' : '';
         return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range${qs}`)
             .then(data => {
@@ -126,6 +141,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     setBranchName(data.branchName || data.defaultBranch || 'main');
                     setAhead(0);
                     setBehind(0);
+                    setBranchRangeCache(workspaceId, {
+                        data: null, files: [], ahead: 0, behind: 0,
+                        branchName: data.branchName || data.defaultBranch || 'main',
+                        onDefaultBranch: true,
+                    });
                     return null as BranchRangeInfo | null;
                 } else {
                     setOnDefaultBranch(false);
@@ -139,11 +159,18 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                         branchName: data.branchName,
                         fileCount: Array.isArray(data.files) ? data.files.length : 0,
                     };
+                    const files = Array.isArray(data.files) ? data.files : [];
                     setBranchRangeData(rangeInfo);
-                    setBranchRangeFiles(Array.isArray(data.files) ? data.files : []);
+                    setBranchRangeFiles(files);
                     setBranchName(data.branchName || data.headRef || '');
                     setAhead(data.commitCount || 0);
                     setBehind(data.behindCount || 0);
+                    setBranchRangeCache(workspaceId, {
+                        data: rangeInfo, files, ahead: data.commitCount || 0,
+                        behind: data.behindCount || 0,
+                        branchName: data.branchName || data.headRef || '',
+                        onDefaultBranch: false,
+                    });
                     return rangeInfo;
                 }
             })
@@ -281,7 +308,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 if (gitChangedDebounceRef.current) clearTimeout(gitChangedDebounceRef.current);
                 gitChangedDebounceRef.current = setTimeout(() => {
                     gitChangedDebounceRef.current = null;
-                    refreshAll();
+                    // Re-fetch commits and working tree but NOT branch range (cached)
+                    fetchCommits(true, 0, searchQuery);
+                    setWorkingChangesRefreshKey(k => k + 1);
                 }, 500);
                 // If we're tracking a pull job, re-fetch its status on git-changed
                 if (pullJobRef.current) {
@@ -297,7 +326,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                         .catch(() => {});
                 }
             }
-        }, [workspaceId, refreshAll]),
+        }, [workspaceId, fetchCommits, searchQuery]),
     });
 
     // Pull job polling helpers
