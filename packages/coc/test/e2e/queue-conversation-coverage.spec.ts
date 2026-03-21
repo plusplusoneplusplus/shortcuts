@@ -1025,7 +1025,7 @@ test.describe('Empty Conversation Fallback', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Shift+Tab Mode Cycling', () => {
-    test('Shift+Tab cycles through ask/plan/autopilot modes', async ({ page, serverUrl, mockAI }) => {
+    test('Shift+Tab cycles between autopilot and ask modes', async ({ page, serverUrl, mockAI }) => {
         const task = await seedAndWaitForTask(serverUrl, {
             payload: { prompt: 'Shift+Tab mode test' },
         });
@@ -1044,13 +1044,13 @@ test.describe('Shift+Tab Mode Cycling', () => {
         await textarea.press('Shift+Tab');
         await expect(dropdown).toHaveValue('ask', { timeout: 1_000 });
 
-        // Press Shift+Tab again → 'plan'
-        await textarea.press('Shift+Tab');
-        await expect(dropdown).toHaveValue('plan', { timeout: 1_000 });
-
-        // Press Shift+Tab again → 'autopilot'
+        // Press Shift+Tab again → back to 'autopilot'
         await textarea.press('Shift+Tab');
         await expect(dropdown).toHaveValue('autopilot', { timeout: 1_000 });
+
+        // Press Shift+Tab once more → 'ask' again (verify cycle)
+        await textarea.press('Shift+Tab');
+        await expect(dropdown).toHaveValue('ask', { timeout: 1_000 });
     });
 });
 
