@@ -17,11 +17,17 @@ const INDEX_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
 );
 
+const FILE_TREE_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'FileTree.tsx'
+);
+
 describe('CommitList', () => {
     let source: string;
+    let fileTreeSource: string;
 
     beforeAll(() => {
         source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+        fileTreeSource = fs.readFileSync(FILE_TREE_PATH, 'utf-8');
     });
 
     describe('exports', () => {
@@ -186,37 +192,37 @@ describe('CommitList', () => {
         });
 
         it('has commit-file-list data-testid', () => {
-            expect(source).toContain('data-testid="commit-file-list"');
+            expect(fileTreeSource).toContain("'commit-file-list'");
         });
 
         it('calls onFileSelect when a file is clicked', () => {
-            expect(source).toContain('onFileSelect?.(commit.hash, f.path)');
+            expect(fileTreeSource).toContain('onFileSelect?.(commitHash, node.path)');
         });
 
         it('applies selected highlight when selectedFile matches the commit + file path', () => {
-            expect(source).toContain('selectedFile?.hash === commit.hash');
-            expect(source).toContain('selectedFile?.filePath === f.path');
-            expect(source).toContain("bg-[#0078d4]/10");
+            expect(fileTreeSource).toContain('selectedFile?.hash === commitHash');
+            expect(fileTreeSource).toContain('selectedFile?.filePath === node.path');
+            expect(fileTreeSource).toContain("bg-[#0078d4]/10");
         });
 
         it('shows file status badge (A/M/D)', () => {
-            expect(source).toContain('f.status');
+            expect(fileTreeSource).toContain('node.status');
         });
 
         it('shows file path', () => {
-            expect(source).toContain('f.path');
+            expect(fileTreeSource).toContain('node.path');
         });
 
         it('has status labels for file changes', () => {
-            expect(source).toContain("A: 'Added'");
-            expect(source).toContain("M: 'Modified'");
-            expect(source).toContain("D: 'Deleted'");
+            expect(fileTreeSource).toContain("A: 'Added'");
+            expect(fileTreeSource).toContain("M: 'Modified'");
+            expect(fileTreeSource).toContain("D: 'Deleted'");
         });
 
         it('has status colors for file changes', () => {
-            expect(source).toContain("A: 'text-[#16825d]'");
-            expect(source).toContain("M: 'text-[#0078d4]'");
-            expect(source).toContain("D: 'text-[#d32f2f]'");
+            expect(fileTreeSource).toContain("A: 'text-[#16825d]'");
+            expect(fileTreeSource).toContain("M: 'text-[#0078d4]'");
+            expect(fileTreeSource).toContain("D: 'text-[#d32f2f]'");
         });
 
         it('only fetches files when workspaceId is provided', () => {
