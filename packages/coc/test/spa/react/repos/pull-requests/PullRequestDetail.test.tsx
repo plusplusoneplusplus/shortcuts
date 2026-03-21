@@ -141,6 +141,18 @@ describe('successful render', () => {
         expect(screen.getByTestId('overview-external-link')).toHaveAttribute('href', 'https://example.com/pr/1');
         expect(screen.getByTestId('overview-external-link')).toHaveAttribute('target', '_blank');
     });
+
+    it('renders header external link next to the PR title', async () => {
+        mockFetchBoth(makePr({ url: 'https://example.com/pr/1' }));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('header-external-link')).toBeInTheDocument());
+        expect(screen.getByTestId('header-external-link')).toHaveAttribute('href', 'https://example.com/pr/1');
+        expect(screen.getByTestId('header-external-link')).toHaveAttribute('target', '_blank');
+        // Verify the link is in the same container as the PR title
+        const titleEl = screen.getByTestId('pr-title');
+        const linkEl = screen.getByTestId('header-external-link');
+        expect(titleEl.parentElement).toBe(linkEl.parentElement);
+    });
 });
 
 // ── Back button ────────────────────────────────────────────────────────────────

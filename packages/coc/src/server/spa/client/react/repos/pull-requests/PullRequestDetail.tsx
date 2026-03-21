@@ -136,6 +136,17 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 flex-1" data-testid="pr-title">
                         {pr.title}
                     </h2>
+                    {pr.url && (
+                        <a
+                            href={pr.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 dark:text-blue-400 hover:underline mt-0.5 shrink-0"
+                            data-testid="header-external-link"
+                        >
+                            🔗
+                        </a>
+                    )}
                     <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${badge.className}`}
                         data-testid="pr-status-badge"
@@ -154,17 +165,6 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     {pr.author?.displayName && <span>@{pr.author.displayName}</span>}
                     <span>· Created {formatTimestamp(pr.createdAt)}</span>
                     <span>· Updated {formatTimestamp(pr.updatedAt)}</span>
-                    {pr.url && (
-                        <a
-                            href={pr.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 dark:text-blue-400 hover:underline"
-                            data-testid="header-external-link"
-                        >
-                            🔗
-                        </a>
-                    )}
                 </div>
 
                 {/* Sub-tabs */}
