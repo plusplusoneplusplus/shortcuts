@@ -617,9 +617,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain('c.hash.startsWith(initialCommitHash)');
         });
 
-        it('falls back to first commit on desktop when deep-link hash not found', () => {
-            expect(source).toContain("const isDesktop = window.matchMedia('(min-width: 1024px)').matches");
-            expect(source).toContain('const first = loaded.length > 0 ? loaded[0] : null');
+        it('shows empty right panel when deep-link hash not found (user must click to select)', () => {
+            // No auto-selection on initial load — right panel starts empty
+            expect(source).toContain('setRightPanelView(null)');
+            // isDesktop / matchMedia auto-selection intentionally removed from initial load
+            expect(source).not.toContain("const isDesktop = window.matchMedia('(min-width: 1024px)').matches");
+            expect(source).not.toContain('const first = loaded.length > 0 ? loaded[0] : null');
         });
 
         it('handleSelect updates location.hash with commit URL', () => {
@@ -1093,10 +1096,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain('className="flex-1 min-h-0 overflow-hidden"');
         });
 
-        it('does not auto-select first commit on mobile initial load', () => {
-            // Uses matchMedia to detect mobile and skips auto-select
-            expect(source).toContain("window.matchMedia('(min-width: 1024px)').matches");
-            expect(source).toContain('isDesktop && first');
+        it('does not auto-select first commit on initial load (any platform)', () => {
+            // Auto-selection removed; right panel starts empty regardless of viewport
+            expect(source).not.toContain("const isDesktop = window.matchMedia('(min-width: 1024px)').matches");
+            expect(source).not.toContain('isDesktop && first');
+            // null is always set when no deep-link hash
+            expect(source).toContain('setRightPanelView(null)');
         });
 
         it('preserves null rightPanelView during refresh (mobile back state)', () => {

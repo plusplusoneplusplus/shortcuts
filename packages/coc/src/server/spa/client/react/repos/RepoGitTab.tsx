@@ -204,15 +204,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     } else if (target) {
                         setRightPanelView({ type: 'commit', commit: target });
                     } else {
-                        // On mobile (<lg), start with list visible; on desktop default to branch-range
-                        // overview when ahead-of-base data is available, otherwise auto-select first commit.
-                        const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
-                        if (isDesktop && rangeInfo && rangeInfo.commitCount > 0) {
-                            setRightPanelView({ type: 'branch-range' });
-                        } else {
-                            const first = loaded.length > 0 ? loaded[0] : null;
-                            setRightPanelView(isDesktop && first ? { type: 'commit', commit: first } : null);
-                        }
+                        // Default to empty right panel; user must click to open something.
+                        setRightPanelView(null);
                     }
                 }
             })
