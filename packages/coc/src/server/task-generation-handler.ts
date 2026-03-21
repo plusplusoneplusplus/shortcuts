@@ -33,7 +33,7 @@ import {
     AUTO_FOLDER_SENTINEL,
 } from '@plusplusoneplusplus/forge';
 import type { SelectedContext, CopilotSDKService, AutoFolderContext } from '@plusplusoneplusplus/forge';
-import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError } from './api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
 import type { Route } from './types';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';

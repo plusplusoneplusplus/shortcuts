@@ -14,7 +14,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError } from './api-handler';
 import type { Route } from './types';
 
 // ============================================================================

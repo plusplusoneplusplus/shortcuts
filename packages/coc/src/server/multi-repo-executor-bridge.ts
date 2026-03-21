@@ -18,7 +18,7 @@ import {
     getCopilotSDKService,
 } from '@plusplusoneplusplus/forge';
 import type { ProcessStore, QueueChangeEvent, CreateTaskInput, QueuedTask, QueueStats, Attachment } from '@plusplusoneplusplus/forge';
-import { applyFollowUpToTask } from '@plusplusoneplusplus/coc-server';
+import { applyFollowUpToTask } from './shared/queue-utils';
 import {
     QueueExecutorBridgeOptions,
     QueueExecutorBridge,

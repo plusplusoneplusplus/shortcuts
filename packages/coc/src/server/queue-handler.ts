@@ -11,7 +11,7 @@
 
 import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn, PauseMarker } from '@plusplusoneplusplus/forge';
 import { getActiveModels, modelMetadataStore } from '@plusplusoneplusplus/forge';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBody } from './api-handler';
 import { ImageBlobStore } from './queue/image-blob-store';
 import { truncateDisplayName } from './shared/queue-utils';
 import type { Route } from './types';

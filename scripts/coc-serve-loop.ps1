@@ -4,7 +4,7 @@
     Hit POST /api/admin/restart from any browser/node to trigger a rebuild + restart.
 
 .DESCRIPTION
-    1. Builds all coc packages (pipeline-core → coc-server → coc) and npm-links them.
+    1. Builds all coc packages (forge → coc) and npm-links them.
     2. Starts `coc serve --no-open`.
     3. When the server exits with code 75 (restart requested), loops back to step 1.
     4. Any other exit code (0 = clean shutdown, Ctrl+C, etc.) stops the loop.

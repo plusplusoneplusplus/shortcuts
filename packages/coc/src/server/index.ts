@@ -692,3 +692,22 @@ export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailur
 export { registerScheduleRoutes } from './schedule-handler';
 export { resolveTaskRoot, ensureTaskRoot } from './task-root-resolver';
 export type { TaskRootInfo, TaskRootOptions } from './task-root-resolver';
+
+// Additional exports needed by tests (previously from @plusplusoneplusplus/coc-server)
+export type { ChatPayload } from './task-types';
+export { isChatPayload, hasTaskGenerationContext } from './task-types';
+export type { CoCExportPayload, ImportOptions } from './export-import-types';
+export { EXPORT_SCHEMA_VERSION, validateExportPayload } from './export-import-types';
+export { exportAllData } from './data-exporter';
+export { importData } from './data-importer';
+export { generateImportToken, generateWipeToken, importTokenManager, resetImportToken, wipeTokenManager, validateImportToken, validateWipeToken, TOKEN_EXPIRY_MS, TokenManager } from './admin-handler';
+export { getRepoQueueFilePath, sanitizeTaskForPersistence } from './queue/queue-persistence';
+export { ImageBlobStore } from './queue/image-blob-store';
+export { stripExcludedFields } from './api-handler';
+export type { ServeCommandOptions } from './types';
+export { FileWatcher } from './wiki/file-watcher';
+export { WikiData } from './wiki/wiki-data';
+export type { ComponentAnalysis, ComponentGraph } from './wiki/types';
+export { detectRemoteUrl, normalizeRemoteUrl } from './api-handler';
+export { captureEntry, clearLogBuffer } from './server-log-capture';
+export { getRepoDataPath } from './paths';

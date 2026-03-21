@@ -24,9 +24,6 @@
 
 import type { RunWorkflowPayload, RunScriptPayload, ChatPayload, ChatMode } from './task-types';
 import {
-    cleanupTempDir,
-    createSuggestFollowUpsTool,
-    emitMessageSteering,
     isChatPayload,
     isChatFollowUp,
     isRunWorkflowPayload,
@@ -34,10 +31,12 @@ import {
     hasTaskGenerationContext,
     hasResolveCommentsContext,
     hasReplicationContext,
-    saveImagesToTempFiles,
-    ImageBlobStore,
-    applyFollowUpToTask,
-} from '@plusplusoneplusplus/coc-server';
+} from './task-types';
+import { saveImagesToTempFiles, cleanupTempDir } from './image-utils';
+import { ImageBlobStore } from './queue/image-blob-store';
+import { applyFollowUpToTask } from './shared/queue-utils';
+import { createSuggestFollowUpsTool } from './suggest-follow-ups-tool';
+import { emitMessageSteering } from './sse-handler';
 import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, DeliveryMode, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/forge';
 import {
     approveAllPermissions,

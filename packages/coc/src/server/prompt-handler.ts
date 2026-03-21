@@ -11,7 +11,7 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { findSkills } from '@plusplusoneplusplus/forge';
-import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError } from './api-handler';
 import type { Route } from './types';
 
 // ============================================================================

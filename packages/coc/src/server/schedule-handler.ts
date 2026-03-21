@@ -8,7 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError } from './api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
 import { getErrorMessage } from './shared/fs-utils';
 import type { Route } from './types';

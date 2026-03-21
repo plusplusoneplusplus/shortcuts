@@ -21,7 +21,6 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 | Shared Package | Location | Description |
 |----------------|----------|-------------|
 | **forge** | `packages/forge/` | Core AI/pipeline engine: AI SDK (CopilotSDKService, session-per-request), DAG workflow engine (executeWorkflow, compileToWorkflow), task queue, runtime policies, process store, git CLI, utilities |
-| **coc-server** | `packages/coc-server/` | HTTP/WebSocket server: REST API, SSE streaming, SPA dashboard, wiki serving, process store at `~/.coc/`; per-repo data at `~/.coc/repos/<workspaceId>/` |
 
 **Key architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `packages/vscode-extension/src/shortcuts/`. Example: `forge/src/ai/` = pure AI SDK; `packages/vscode-extension/src/shortcuts/ai-service/` = VS Code UI wrapper. **`packages/vscode-extension/` is frozen — do not read, edit, or reason about its code.**
 
@@ -56,7 +55,7 @@ Entry point: `packages/vscode-extension/src/extension.ts`. Feature modules under
 
 ## CoC CLI (`packages/coc/`)
 
-Standalone CLI for YAML AI workflows. Consumes `forge` and `coc-server`.
+Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HTTP/WebSocket, REST API, SSE streaming, SPA dashboard, wiki serving) is integrated directly into `packages/coc/src/server/`.
 
 **Commands:** `coc run <path>` (execute workflow), `coc validate <path>`, `coc list [dir]`, `coc serve` (AI dashboard + wiki serving), `coc wipe-data`.
 
@@ -104,9 +103,9 @@ Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/f
 
 **Testing:** 61 Vitest test files.
 
-## coc-server (`packages/coc-server/`)
+## Server Layer (`packages/coc/src/server/`)
 
-HTTP/WebSocket server for AI dashboard and wiki serving. Published as `@plusplusoneplusplus/coc-server`.
+HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `coc-server` package, now merged into `coc`.
 
 **Execution layer:** Process CRUD API, queue management, admin (time-limited crypto tokens for destructive ops), WebSocket (workspace-scoped events, file subscriptions), SSE per-process streaming, export/import.
 
@@ -125,15 +124,15 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Published as `@plusplus
 - `tasks/` — task and plan files
 - `processes/` — per-repo process store (`index.json` + one JSON file per process, 500-process cap)
 
-Use `getRepoDataPath(dataDir, workspaceId, filename)`(exported from `@plusplusoneplusplus/coc-server`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
+Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/coc/src/server/`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
 
-**Convention — repo-scoped data:** All runtime data that is specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `@plusplusoneplusplus/coc-server` to resolve the path.
+**Convention — repo-scoped data:** All runtime data that is specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `packages/coc/src/server/` to resolve the path.
 
 **Wiki layer:** `WikiManager` registry, `WikiData` in-memory store, `ContextBuilder` (RAG-style retrieval), `ConversationSessionManager` (multi-turn AI), `FileWatcher`, deep-wiki integration (`dw-*` handlers for generation/exploration/ask).
 
 **Memory layer:** `FileMemoryStore` (entry CRUD with `id`, `tags`, `summary`, `source` fields), `MemoryConfig` (`storageDir`, `backend`, `maxEntries`, `ttlDays`, `autoInject`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, `GET/POST /api/memory/entries`, `GET/PATCH/DELETE /api/memory/entries/:id`, `GET /api/memory/aggregate-tool-calls/stats`, `POST /api/memory/aggregate-tool-calls`, `GET /api/memory/observations/levels` (3-level overview), `GET /api/memory/observations` (list files at a level), `GET /api/memory/observations/:filename` (read observation). Dashboard UI: `MemoryView` → `MemoryEntriesPanel` + `MemoryFilesPanel` (3-level file browser) + `MemoryConfigPanel` + `ExploreCachePanel`.
 
-**Testing:** 7+ Vitest test files.
+**Testing:** 627+ Vitest test files under `packages/coc/test/server/`.
 
 ## Memory System (`packages/forge/src/memory/`)
 
@@ -154,7 +153,7 @@ Opt-in, two-level persistence layer that lets AI pipelines learn from past sessi
 
 **Tool Call Cache** (secondary subsystem in same folder): `ToolCallCapture`, `FileToolCallCacheStore`, `ToolCallCacheAggregator`, `ToolCallCacheRetriever`, `withToolCallCache()` — caches AI tool call Q&A pairs for replay/reuse across runs.
 
-**Integration:** Features opt in by wrapping AI calls with `withMemory()`. Wiki Ask/Explore handlers in coc-server combine TF-IDF context + memory context. Config precedence: CLI flag > pipeline YAML `memory:` field > `~/.coc/config.yaml` > default (disabled).
+**Integration:** Features opt in by wrapping AI calls with `withMemory()`. Wiki Ask/Explore handlers in `packages/coc/src/server/` combine TF-IDF context + memory context. Config precedence: CLI flag > pipeline YAML `memory:` field > `~/.coc/config.yaml` > default (disabled).
 
 **Implementation status:** Core forge modules, server routes, and dashboard UI are complete. CLI `coc memory` subcommands and pipeline YAML `memory:` wiring are not yet implemented.
 

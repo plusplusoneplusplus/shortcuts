@@ -15,7 +15,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError } from './api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
 import { atomicWriteJSON } from './shared/fs-utils';
 import { getRepoDataPath } from './paths';

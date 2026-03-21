@@ -17,7 +17,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 import type { ProcessWebSocketServer } from './websocket';
 import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/forge';

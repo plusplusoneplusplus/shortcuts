@@ -17,9 +17,9 @@ import type { ProcessStore, CopilotSDKService, MCPServerConfig } from '@plusplus
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { RunWorkflowPayload } from './task-types';
 import { denyAllPermissions, isWithinDirectory, loadDefaultMcpConfig } from '@plusplusoneplusplus/forge';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
-import { discoverPipelines } from '@plusplusoneplusplus/coc-server';
+import { discoverPipelines } from './api-handler';
 import { validatePipeline } from '../commands/validate';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 

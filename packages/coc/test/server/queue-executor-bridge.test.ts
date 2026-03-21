@@ -74,8 +74,8 @@ vi.mock('../../src/ai-invoker', () => ({
 }));
 
 const mockLoadImages = vi.fn().mockResolvedValue([]);
-vi.mock('@plusplusoneplusplus/coc-server', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-server')>();
+vi.mock('../../src/server/queue/image-blob-store', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/server/queue/image-blob-store')>();
     return {
         ...actual,
         ImageBlobStore: {

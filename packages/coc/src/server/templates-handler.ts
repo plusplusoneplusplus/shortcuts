@@ -16,7 +16,7 @@ import * as yaml from 'js-yaml';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { GitLogService } from '@plusplusoneplusplus/forge/git';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 
 // ============================================================================

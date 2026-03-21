@@ -9,7 +9,7 @@
  */
 
 import * as http from 'http';
-import { sendJSON } from '@plusplusoneplusplus/coc-server';
+import { sendJSON } from './api-handler';
 import { getServerLogger } from './server-logger';
 
 /**

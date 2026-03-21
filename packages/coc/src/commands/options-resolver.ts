@@ -12,7 +12,7 @@ import type { ResolvedCLIConfig } from '../config';
 import type { RunCommandOptions } from './run';
 import type { WipeDataCommandOptions } from './wipe-data';
 import type { OutputFormat } from '../output-formatter';
-import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';
+import type { ServeCommandOptions } from '../server/types';
 
 /**
  * Resolve options for the run command.

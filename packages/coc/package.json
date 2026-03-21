@@ -13,7 +13,7 @@
   "scripts": {
     "build:client": "node scripts/build-client.mjs",
     "build:copy-client": "node -e \"const fs=require('fs');const p=require('path');function cp(s,d){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s))fs.copyFileSync(p.join(s,f),p.join(d,f));}cp(p.join('src','server','spa','client','dist'),p.join('dist','server','spa','client','dist'));\"",
-    "build": "npm run build:client && tsc && npm run build:copy-client && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
+    "build": "npm run build:client && tsc && npm run build:copy-client && node -e \"require('fs').copyFileSync('src/server/openapi.yaml','dist/server/openapi.yaml')\" && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "npx playwright test --config test/e2e/playwright.config.ts",
@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
-    "@plusplusoneplusplus/coc-server": "1.0.0",
     "@plusplusoneplusplus/forge": "1.0.0",
     "commander": "^12.1.0",
     "js-yaml": "^4.1.0",
