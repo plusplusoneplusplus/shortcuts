@@ -1,0 +1,232 @@
+/**
+ * Prompt Builder
+ *
+ * Pure-function helpers for assembling prompts and system messages used by
+ * CLITaskExecutor.  No class state, no side-effects, no streaming references.
+ *
+ * No VS Code dependencies — uses only Node.js built-in modules.
+ * Cross-platform compatible (Linux/Mac/Windows).
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import type {
+    AutoFolderContext,
+    ConversationTurn,
+    QueuedTask,
+    SystemMessageConfig,
+    Tool,
+} from '@plusplusoneplusplus/forge';
+import {
+    READ_ONLY_SYSTEM_MESSAGE,
+    buildAutoFolderLocationBlock,
+    buildFollowPromptText,
+    loadInstructions,
+    toForwardSlashes,
+    toNativePath,
+} from '@plusplusoneplusplus/forge';
+import type { ChatMode, ChatPayload, RunScriptPayload } from '../task-types';
+import {
+    hasResolveCommentsContext,
+    hasTaskGenerationContext,
+    isChatPayload,
+    isRunScriptPayload,
+    isRunWorkflowPayload,
+} from '../task-types';
+import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
+
+// ============================================================================
+// System Message Builders
+// ============================================================================
+
+/**
+ * Builds the system message config for the given chat mode.
+ * Both `ask` and `plan` modes inject the read-only system message, plus an
+ * optional directive to save plan files in the repo's task folder.
+ * `autopilot` (and any unknown mode) returns `undefined`.
+ */
+export function buildModeSystemMessage(
+    mode: ChatMode | undefined,
+    autoFolderContext?: AutoFolderContext,
+): SystemMessageConfig | undefined {
+    if (mode !== 'ask' && mode !== 'plan') {
+        return undefined;
+    }
+    const planFolderSuffix = autoFolderContext
+        ? `\n\n${buildAutoFolderLocationBlock(toForwardSlashes(autoFolderContext.tasksRoot), autoFolderContext.existingFolders)}`
+        : '';
+    return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE + planFolderSuffix };
+}
+
+/**
+ * Appends per-repo custom instructions (from `.github/coc/`) to an existing
+ * system message config.  If no instructions exist for the repo/mode, the
+ * original config is returned unchanged.
+ */
+export async function withRepoInstructions(
+    systemMessage: SystemMessageConfig | undefined,
+    workingDirectory: string | undefined,
+    mode: ChatMode | undefined,
+): Promise<SystemMessageConfig | undefined> {
+    if (!workingDirectory || !mode) return systemMessage;
+    let instructions: string | undefined;
+    try {
+        instructions = await loadInstructions(workingDirectory, mode);
+    } catch {
+        return systemMessage;
+    }
+    if (!instructions) return systemMessage;
+    const appended = systemMessage
+        ? systemMessage.content + '\n\n' + instructions
+        : instructions;
+    return { mode: 'append' as const, content: appended };
+}
+
+// ============================================================================
+// Context File Suffix
+// ============================================================================
+
+/**
+ * Look for a CONTEXT.md file in the same directory as the plan file.
+ * Returns a prompt suffix like "See context details in /abs/path/CONTEXT.md",
+ * or undefined if no context file exists.
+ */
+export function findContextFileSuffix(planFilePath?: string): string | undefined {
+    if (!planFilePath) return undefined;
+    try {
+        const dir = path.dirname(planFilePath);
+        const contextPath = path.join(dir, 'CONTEXT.md');
+        if (fs.existsSync(contextPath)) {
+            // Use native path for cross-platform consistency in context references
+            const normalizedPath = toNativePath(contextPath);
+            return `See context details in ${normalizedPath}`;
+        }
+    } catch {
+        // Non-fatal
+    }
+    return undefined;
+}
+
+// ============================================================================
+// Prompt Extraction
+// ============================================================================
+
+/**
+ * Extract the user-facing prompt string from a queued task.
+ * Pure function — derives the prompt solely from the task payload.
+ */
+export function extractPrompt(task: QueuedTask): string {
+    if (isRunWorkflowPayload(task.payload)) {
+        return `Run workflow: ${path.basename(task.payload.workflowPath)}`;
+    }
+
+    if (isRunScriptPayload(task.payload)) {
+        const payload = task.payload as unknown as RunScriptPayload;
+        return `Run script: \`${payload.script}\``;
+    }
+
+    if (isChatPayload(task.payload)) {
+        const payload = task.payload as unknown as ChatPayload;
+        const prompt = payload.prompt || task.displayName || 'Chat message';
+
+        // Task generation: the prompt is just the user's input; enrichment happens later
+        if (hasTaskGenerationContext(task.payload)) {
+            return prompt;
+        }
+
+        // Resolve comments: the prompt is the template
+        if (hasResolveCommentsContext(task.payload)) {
+            return prompt;
+        }
+
+        // Context files: resolve file-path-based prompts using shared builder
+        const ctx = payload.context;
+        if (ctx?.files?.length) {
+            const promptFile = ctx.files[0];
+            const planFile = ctx.files.length > 1 ? ctx.files[1] : undefined;
+            const additionalContext = ctx.blocks?.map(b => b.content).join('\n\n');
+            const contextSuffix = findContextFileSuffix(planFile);
+
+            // When promptFile is a real path, use file-path-reference style.
+            // When promptFile is empty/falsy, use the user's typed prompt as direct content.
+            const base = buildFollowPromptText(
+                promptFile
+                    ? { promptFilePath: promptFile, planFilePath: planFile, additionalContext }
+                    : { promptContent: prompt, planFilePath: planFile, additionalContext },
+            );
+
+            return contextSuffix ? `${base}\n\n${contextSuffix}` : base;
+        }
+
+        return prompt;
+    }
+
+    return task.displayName || `Queue task: ${task.type}`;
+}
+
+// ============================================================================
+// Skill Content
+// ============================================================================
+
+/**
+ * If the task payload includes skill directives (skillNames array), emit short
+ * skill reference directives prepended to the prompt.
+ */
+export function applySkillContent(prompt: string, task: QueuedTask): string {
+    const payload = task.payload as { context?: { skills?: string[] } };
+    const names = payload.context?.skills ?? [];
+    if (names.length === 0) return prompt;
+
+    const directives = names.map(n => `Use ${n} skill when available`).join('\n');
+    return `${directives}\n\n[Task]\n${prompt}`;
+}
+
+// ============================================================================
+// Conversation History
+// ============================================================================
+
+/**
+ * Build a conversation history context string from prior turns.
+ * Injected as a system message so a fresh session has context from earlier turns.
+ */
+export function buildConversationHistoryContext(turns?: ConversationTurn[]): string | undefined {
+    if (!turns || turns.length === 0) return undefined;
+
+    const lines: string[] = ['<conversation_history>'];
+    for (const turn of turns) {
+        const role = turn.role === 'user' ? 'User' : 'Assistant';
+        // Trim long assistant responses to avoid blowing up the context window
+        const content =
+            turn.role === 'assistant' && turn.content.length > 2000
+                ? turn.content.slice(0, 2000) + '… (truncated)'
+                : turn.content;
+        lines.push(`[${role}]: ${content}`);
+    }
+    lines.push('</conversation_history>');
+    lines.push("Continue this conversation. The user's next message follows.");
+    return lines.join('\n');
+}
+
+// ============================================================================
+// Follow-Up Suggestions
+// ============================================================================
+
+/**
+ * Builds the tools array and prompt suffix for follow-up suggestions.
+ * Returns empty tools and empty suffix when suggestions are disabled.
+ *
+ * @param enabled  Whether to attach the suggestion tool.
+ * @param count    Number of suggestions to request.
+ */
+export function buildFollowUpSuggestionsAddon(
+    enabled: boolean,
+    count: number,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!enabled) {
+        return { tools: [], suffix: '' };
+    }
+    return {
+        tools: [createSuggestFollowUpsTool()],
+        suffix: `\n\nWhen suggesting follow-ups, provide exactly ${count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`,
+    };
+}

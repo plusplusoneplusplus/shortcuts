@@ -32,23 +32,26 @@ import {
     hasResolveCommentsContext,
     hasReplicationContext,
 } from './task-types';
-import { saveImagesToTempFiles, cleanupTempDir } from './image-utils';
-import { ImageBlobStore } from './queue/image-blob-store';
+import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './executors/image-store';
+import {
+    buildModeSystemMessage,
+    withRepoInstructions,
+    extractPrompt,
+    applySkillContent,
+    buildConversationHistoryContext,
+    buildFollowUpSuggestionsAddon,
+} from './executors/prompt-builder';
 import { applyFollowUpToTask } from './shared/queue-utils';
-import { createSuggestFollowUpsTool } from './suggest-follow-ups-tool';
 import { emitMessageSteering } from './sse-handler';
 import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, DeliveryMode, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/forge';
 import {
     approveAllPermissions,
-    loadInstructions,
     applyDeepModePrefix,
     AUTO_FOLDER_SENTINEL,
-    buildAutoFolderLocationBlock,
     buildCreateFromFeaturePrompt,
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
     buildDeepModePrompt,
-    buildFollowPromptText,
     buildPlanGenerationSystemPrompt,
     createQueueExecutor,
     DEFAULT_AI_TIMEOUT_MS,
@@ -64,13 +67,10 @@ import {
     mergeConsecutiveContentItems,
     QueuedTask,
     QueueExecutor,
-    READ_ONLY_SYSTEM_MESSAGE,
     resolveToolCallCacheOptions,
     TaskExecutionResult,
     TaskExecutor,
     TaskQueueManager,
-    toForwardSlashes,
-    toNativePath,
     ToolCallCapture,
     DEFAULT_SKILLS_SETTINGS,
     modelMetadataStore,
@@ -102,46 +102,6 @@ const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
 
 function toAgentMode(chatMode: ChatMode | undefined): AgentMode | undefined {
     return chatMode ? CHAT_MODE_TO_AGENT_MODE[chatMode] : undefined;
-}
-
-/**
- * Builds the system message config for the given chat mode.
- * Both `ask` and `plan` modes inject the read-only system message, plus an
- * optional directive to save plan files in the repo's task folder.
- * `autopilot` (and any unknown mode) returns `undefined`.
- */
-function buildModeSystemMessage(mode: ChatMode | undefined, autoFolderContext?: AutoFolderContext): SystemMessageConfig | undefined {
-    if (mode !== 'ask' && mode !== 'plan') {
-        return undefined;
-    }
-    const planFolderSuffix = autoFolderContext
-        ? `\n\n${buildAutoFolderLocationBlock(toForwardSlashes(autoFolderContext.tasksRoot), autoFolderContext.existingFolders)}`
-        : '';
-    return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE + planFolderSuffix };
-}
-
-/**
- * Appends per-repo custom instructions (from `.github/coc/`) to an existing
- * system message config.  If no instructions exist for the repo/mode, the
- * original config is returned unchanged.
- */
-async function withRepoInstructions(
-    systemMessage: SystemMessageConfig | undefined,
-    workingDirectory: string | undefined,
-    mode: ChatMode | undefined
-): Promise<SystemMessageConfig | undefined> {
-    if (!workingDirectory || !mode) return systemMessage;
-    let instructions: string | undefined;
-    try {
-        instructions = await loadInstructions(workingDirectory, mode);
-    } catch {
-        return systemMessage;
-    }
-    if (!instructions) return systemMessage;
-    const appended = systemMessage
-        ? systemMessage.content + '\n\n' + instructions
-        : instructions;
-    return { mode: 'append' as const, content: appended };
 }
 
 // ============================================================================
@@ -319,9 +279,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
             // Rehydrate externalized images if needed
             const rawPayload = task.payload as any;
-            if (rawPayload?.imagesFilePath && (!Array.isArray(rawPayload.images) || rawPayload.images.length === 0)) {
-                rawPayload.images = await ImageBlobStore.loadImages(rawPayload.imagesFilePath);
-            }
+            await rehydrateImagesIfNeeded(rawPayload);
 
             try {
                 await this.executeFollowUp(followUpPayload.processId!, followUpPayload.prompt, followUpPayload.attachments, followUpPayload.mode, (followUpPayload as any).deliveryMode);
@@ -345,7 +303,7 @@ export class CLITaskExecutor implements TaskExecutor {
         // Create a process in the store for tracking
         // Format: <type>_<uuid> e.g. queue_1771242852770-g94u3ig
         const processId = `queue_${task.id}`;
-        const prompt = this.applySkillContent(this.extractPrompt(task), task);
+        const prompt = applySkillContent(extractPrompt(task), task);
         const workingDirectory = this.getWorkingDirectory(task);
         const seededTokenLimit = task.config.model !== undefined
             ? modelMetadataStore.getContextWindow(task.config.model)
@@ -374,9 +332,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
         // Rehydrate externalized images from blob store before building conversation turn
         const payload = task.payload as any;
-        if (payload?.imagesFilePath && (!Array.isArray(payload.images) || payload.images.length === 0)) {
-            payload.images = await ImageBlobStore.loadImages(payload.imagesFilePath);
-        }
+        await rehydrateImagesIfNeeded(payload);
 
         // Store initial user turn immediately so it survives page refresh
         const payloadImages = Array.isArray(payload?.images)
@@ -662,7 +618,7 @@ export class CLITaskExecutor implements TaskExecutor {
         // Build conversation history context only when we cannot resume the SDK session
         const historyContext = canResumeSession
             ? undefined
-            : this.buildConversationHistoryContext(process.conversationTurns);
+            : buildConversationHistoryContext(process.conversationTurns);
 
         // Initialize output buffer for this follow-up
         this.getOrCreateSession(processId).outputBuffer = '';
@@ -671,7 +627,7 @@ export class CLITaskExecutor implements TaskExecutor {
         try {
             // Only attach follow-up suggestions tool on the first AI response (no prior assistant turns)
             const isFirstTurn = !(process.conversationTurns?.some(t => t.role === 'assistant'));
-            const { tools: suggestTools, suffix: followUpSuffix } = this.buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled && isFirstTurn);
+            const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled && isFirstTurn, this.followUpSuggestions.count);
             const followUpMessage = followUpSuffix ? `${message}${followUpSuffix}` : message;
             const agentMode = toAgentMode(currentMode);
 
@@ -838,22 +794,8 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     // ========================================================================
-    // Private — Follow-Up Suggestions
+    // Private — Tool Event Handler
     // ========================================================================
-
-    /**
-     * Builds the tools array and prompt suffix for follow-up suggestions.
-     * Returns empty tools and empty suffix when suggestions are disabled.
-     */
-    private buildFollowUpSuggestionsAddon(enabled: boolean): { tools: Tool<any>[]; suffix: string } {
-        if (!enabled) {
-            return { tools: [], suffix: '' };
-        }
-        return {
-            tools: [createSuggestFollowUpsTool()],
-            suffix: `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`,
-        };
-    }
 
     /**
      * Builds the onToolEvent handler for a given process.
@@ -924,97 +866,6 @@ export class CLITaskExecutor implements TaskExecutor {
         };
     }
 
-    // ========================================================================
-    // Private — Conversation History
-    // ========================================================================
-
-    /**
-     * Build a conversation history context string from prior turns.
-     * This is injected as a system message so the fresh session has context
-     * from earlier turns in the conversation.
-     */
-    private buildConversationHistoryContext(turns?: ConversationTurn[]): string | undefined {
-        if (!turns || turns.length === 0) return undefined;
-
-        const lines: string[] = ['<conversation_history>'];
-        for (const turn of turns) {
-            const role = turn.role === 'user' ? 'User' : 'Assistant';
-            // Trim long assistant responses to avoid blowing up the context window
-            const content = turn.role === 'assistant' && turn.content.length > 2000
-                ? turn.content.slice(0, 2000) + '… (truncated)'
-                : turn.content;
-            lines.push(`[${role}]: ${content}`);
-        }
-        lines.push('</conversation_history>');
-        lines.push('Continue this conversation. The user\'s next message follows.');
-        return lines.join('\n');
-    }
-
-    // ========================================================================
-    // Private — Prompt Extraction
-    // ========================================================================
-
-    private extractPrompt(task: QueuedTask): string {
-        if (isRunWorkflowPayload(task.payload)) {
-            return `Run workflow: ${path.basename(task.payload.workflowPath)}`;
-        }
-
-        if (isRunScriptPayload(task.payload)) {
-            const payload = task.payload as unknown as RunScriptPayload;
-            return `Run script: \`${payload.script}\``;
-        }
-
-        if (isChatPayload(task.payload)) {
-            const payload = task.payload as unknown as ChatPayload;
-            const prompt = payload.prompt || task.displayName || 'Chat message';
-
-            // Task generation: the prompt is just the user's input; enrichment happens in executeTaskGeneration
-            if (hasTaskGenerationContext(task.payload)) {
-                return prompt;
-            }
-
-            // Resolve comments: the prompt is the template
-            if (hasResolveCommentsContext(task.payload)) {
-                return prompt;
-            }
-
-            // Context files: resolve file-path-based prompts using shared builder
-            const ctx = payload.context;
-            if (ctx?.files?.length) {
-                const promptFile = ctx.files[0];
-                const planFile = ctx.files.length > 1 ? ctx.files[1] : undefined;
-                const additionalContext = ctx.blocks?.map(b => b.content).join('\n\n');
-                const contextSuffix = this.findContextFileSuffix(planFile);
-
-                // When promptFile is a real path, use file-path-reference style.
-                // When promptFile is empty/falsy, use the user's typed prompt as direct content.
-                const base = buildFollowPromptText(promptFile
-                    ? { promptFilePath: promptFile, planFilePath: planFile, additionalContext }
-                    : { promptContent: prompt, planFilePath: planFile, additionalContext }
-                );
-
-                return contextSuffix ? `${base}\n\n${contextSuffix}` : base;
-            }
-
-            return prompt;
-        }
-
-        return task.displayName || `Queue task: ${task.type}`;
-    }
-
-    /**
-     * If the task payload includes skill directives (skillNames array or legacy
-     * skillName string), emit short skill reference directives.
-     * The AI agent already has access to skills via the skill tool.
-     */
-    private applySkillContent(prompt: string, task: QueuedTask): string {
-        const payload = task.payload as { context?: { skills?: string[] } };
-        const names = payload.context?.skills ?? [];
-        if (names.length === 0) return prompt;
-
-        const directives = names.map(n => `Use ${n} skill when available`).join('\n');
-        return `${directives}\n\n[Task]\n${prompt}`;
-    }
 
     // ========================================================================
     // Private — Execution by Type
@@ -1061,7 +912,7 @@ export class CLITaskExecutor implements TaskExecutor {
             }
 
             // Standard chat: send to AI with optional follow-up suggestions
-            const { tools, suffix: countSuffix } = this.buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled);
+            const { tools, suffix: countSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
             const chatWorkingDir = this.getWorkingDirectory(task);
             let autoFolderContextForChat: AutoFolderContext | undefined;
             if (chatWorkingDir) {
@@ -1092,9 +943,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
         // Rehydrate externalized images from blob store if needed
         const payload = task.payload as any;
-        if (payload?.imagesFilePath && (!Array.isArray(payload.images) || payload.images.length === 0)) {
-            payload.images = await ImageBlobStore.loadImages(payload.imagesFilePath);
-        }
+        await rehydrateImagesIfNeeded(payload);
 
         // Decode optional base64 images from payload
         let attachments: Attachment[] | undefined;
@@ -1592,26 +1441,6 @@ export class CLITaskExecutor implements TaskExecutor {
         const skillDirectories = dirs.length > 0 ? dirs : undefined;
 
         return { skillDirectories, disabledSkills };
-    }
-    /**
-     * Look for a CONTEXT.md file in the same directory as the plan file.
-     * Returns a prompt suffix like "See context details in /abs/path/CONTEXT.md",
-     * or undefined if no context file exists.
-     */
-    private findContextFileSuffix(planFilePath?: string): string | undefined {
-        if (!planFilePath) return undefined;
-        try {
-            const dir = path.dirname(planFilePath);
-            const contextPath = path.join(dir, 'CONTEXT.md');
-            if (fs.existsSync(contextPath)) {
-                // Use forward slashes in prompt for cross-platform consistency (Unix-style paths in context references)
-                const normalizedPath = toNativePath(contextPath);
-                return `See context details in ${normalizedPath}`;
-            }
-        } catch {
-            // Non-fatal
-        }
-        return undefined;
     }
 
     /** Get or create the session state for a process. */
