@@ -75,15 +75,16 @@ import {
     DEFAULT_SKILLS_SETTINGS,
     modelMetadataStore,
 } from '@plusplusoneplusplus/forge';
-import { replicateCommit } from '@plusplusoneplusplus/forge/templates';
-import type { ReplicateResult, ReplicateProgressCallback } from '@plusplusoneplusplus/forge/templates';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { spawn } from 'child_process';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { OutputFileManager } from './output-file-manager';
 import { resolveTaskRoot } from './task-root-resolver';
+import { TaskStrategyRegistry } from './task-strategies';
+import type { ExecutionContext } from './task-strategies';
+import { RunScriptStrategy } from './task-strategies/run-script-strategy';
+import { ReplicateTemplateStrategy } from './task-strategies/replicate-template-strategy';
 
 // ============================================================================
 // Constants
@@ -236,6 +237,8 @@ export class CLITaskExecutor implements TaskExecutor {
     private queueManager?: TaskQueueManager;
     /** Shared store for tool-call Q&A capture (explore cache). */
     private readonly toolCallCacheStore: FileToolCallCacheStore;
+    /** Registry of task strategies for dispatch by type key. */
+    private readonly registry: TaskStrategyRegistry;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         this.store = store;
@@ -252,6 +255,9 @@ export class CLITaskExecutor implements TaskExecutor {
                 this.dataDir ? path.join(this.dataDir, 'memory') : undefined,
             ),
         );
+        this.registry = new TaskStrategyRegistry();
+        this.registry.register('run-script', new RunScriptStrategy());
+        this.registry.register('replicate-template', new ReplicateTemplateStrategy());
     }
 
     /** Inject the queue manager (called by createQueueExecutorBridge after construction). */
@@ -1014,15 +1020,25 @@ export class CLITaskExecutor implements TaskExecutor {
     // Private — Execution by Type
     // ========================================================================
 
+    /** Build an ExecutionContext for the given task. */
+    private buildExecutionContext(task: QueuedTask): ExecutionContext {
+        return {
+            processId: `queue_${task.id}`,
+            store: this.store,
+            approvePermissions: this.approvePermissions,
+            workingDirectory: this.getWorkingDirectory(task),
+        };
+    }
+
     private async executeByType(task: QueuedTask, prompt: string): Promise<unknown> {
         // Run workflow: parse YAML and execute via pipeline-core
         if (isRunWorkflowPayload(task.payload)) {
             return this.executeRunPipeline(task);
         }
 
-        // Run script: spawn child process
+        // Run script: spawn child process via registry
         if (isRunScriptPayload(task.payload)) {
-            return this.executeRunScript(task);
+            return this.registry.get('run-script')!.execute(task, this.buildExecutionContext(task));
         }
 
         // All chat tasks (ask/plan/autopilot with optional context presets)
@@ -1034,9 +1050,9 @@ export class CLITaskExecutor implements TaskExecutor {
                 return this.executeTaskGeneration(task);
             }
 
-            // Replicate template: run commit replication via pipeline-core
+            // Replicate template: run commit replication via registry
             if (hasReplicationContext(task.payload)) {
-                return this.executeReplicateTemplate(task);
+                return this.registry.get('replicate-template')!.execute(task, this.buildExecutionContext(task));
             }
 
             // Resolve comments: build prompt with resolve-comment tool
@@ -1065,177 +1081,6 @@ export class CLITaskExecutor implements TaskExecutor {
 
         // Fallback: no-op
         return { status: 'completed', message: `Task type '${task.type}' executed (no-op in CLI mode)` };
-    }
-
-    private async executeRunScript(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as unknown as RunScriptPayload;
-        const startTime = Date.now();
-        const cwd = this.getWorkingDirectory(task) || undefined;
-
-        return new Promise((resolve, reject) => {
-            const child = spawn(payload.script, [], {
-                shell: true,
-                cwd,
-            });
-
-            let stdout = '';
-            let stderr = '';
-            let timedOut = false;
-
-            const timeoutMs = (task.config as any)?.timeoutMs;
-            let timer: NodeJS.Timeout | undefined;
-            if (timeoutMs != null && timeoutMs > 0) {
-                timer = setTimeout(() => {
-                    timedOut = true;
-                    child.kill();
-                }, timeoutMs);
-            }
-
-            child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-            child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-
-            child.on('error', (err) => {
-                if (timer) clearTimeout(timer);
-                reject(err);
-            });
-
-            child.on('close', (exitCode) => {
-                if (timer) clearTimeout(timer);
-                const durationMs = Date.now() - startTime;
-                const success = !timedOut && exitCode === 0;
-                const response = this.formatScriptResponse(payload.script, cwd, success, stdout, stderr, exitCode, timedOut, durationMs);
-                resolve({
-                    success,
-                    response,
-                    result: { stdout, stderr, exitCode: timedOut ? null : exitCode },
-                    durationMs,
-                    timedOut,
-                });
-            });
-        });
-    }
-
-    private formatScriptResponse(
-        script: string, cwd: string | undefined, success: boolean,
-        stdout: string, stderr: string, exitCode: number | null,
-        timedOut: boolean, durationMs: number,
-    ): string {
-        const parts: string[] = [];
-        const status = timedOut ? '⏱️ Timed out' : success ? '✅ Success' : `❌ Failed (exit code ${exitCode})`;
-        parts.push(`**Script:** \`${script}\``);
-        if (cwd) parts.push(`**Working directory:** \`${cwd}\``);
-        parts.push(`**Status:** ${status}`);
-        parts.push(`**Duration:** ${durationMs}ms`);
-        if (stdout.trim()) parts.push(`\n**stdout:**\n\`\`\`\n${stdout.trim()}\n\`\`\``);
-        if (stderr.trim()) parts.push(`\n**stderr:**\n\`\`\`\n${stderr.trim()}\n\`\`\``);
-        return parts.join('\n');
-    }
-
-    private async executeReplicateTemplate(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as unknown as ChatPayload;
-        const replication = payload.context!.replication!;
-        const processId = `queue_${task.id}`;
-
-        // 1. Resolve workspace root
-        const workingDirectory = payload.workingDirectory
-            ?? this.getWorkingDirectory(task);
-        if (!workingDirectory) {
-            throw new Error('Cannot resolve repository root for replicate-template task');
-        }
-
-        // 2. Update process with enriched prompt preview
-        const preview = `Replicate commit ${replication.commitHash.slice(0, 8)} → "${payload.prompt}"`;
-        this.store.updateProcess(processId, {
-            fullPrompt: payload.prompt,
-            promptPreview: preview,
-        });
-
-        // 3. Create AI invoker (same pattern as executeRunPipeline)
-        const aiInvoker = createCLIAIInvoker({
-            model: replication.model ?? payload.model ?? (task.config as any)?.model,
-            approvePermissions: this.approvePermissions,
-            workingDirectory,
-        });
-
-        // 4. Build progress callback → SSE events
-        const onProgress: ReplicateProgressCallback = (stage, detail) => {
-            try {
-                this.store.emitProcessEvent(processId, {
-                    type: 'pipeline-progress',
-                    pipelineProgress: {
-                        phase: 'job',
-                        totalItems: 1,
-                        completedItems: 0,
-                        failedItems: 0,
-                        percentage: 0,
-                        message: detail ? `[${stage}] ${detail}` : stage,
-                    },
-                });
-            } catch {
-                // Non-fatal: store may be a stub
-            }
-        };
-
-        // 5. Emit phase-start event
-        try {
-            this.store.emitProcessEvent(processId, {
-                type: 'pipeline-phase',
-                pipelinePhase: { phase: 'job', status: 'started', timestamp: new Date().toISOString() },
-            });
-        } catch {
-            // Non-fatal
-        }
-
-        // 6. Execute replication
-        let result: ReplicateResult;
-        try {
-            result = await replicateCommit(
-                {
-                    template: {
-                        name: replication.templateName,
-                        kind: 'commit',
-                        commitHash: replication.commitHash,
-                        hints: replication.hints,
-                    },
-                    repoRoot: workingDirectory,
-                    instruction: payload.prompt,
-                },
-                aiInvoker,
-                onProgress,
-            );
-        } catch (err) {
-            // Emit failure phase event before re-throwing
-            try {
-                this.store.emitProcessEvent(processId, {
-                    type: 'pipeline-phase',
-                    pipelinePhase: { phase: 'job', status: 'failed', timestamp: new Date().toISOString() },
-                });
-            } catch {
-                // Non-fatal
-            }
-            throw err;
-        }
-
-        // 7. Emit phase-complete event
-        try {
-            this.store.emitProcessEvent(processId, {
-                type: 'pipeline-phase',
-                pipelinePhase: { phase: 'job', status: 'completed', timestamp: new Date().toISOString() },
-            });
-        } catch {
-            // Non-fatal
-        }
-
-        // 8. Return structured result for the apply endpoint
-        return {
-            response: result.summary,
-            replicateResult: {
-                summary: result.summary,
-                files: result.files,
-                commitHash: replication.commitHash,
-                templateName: replication.templateName,
-            },
-        };
     }
 
     private async executeWithAI(task: QueuedTask, prompt: string, options?: { tools?: Tool<any>[]; systemMessage?: SystemMessageConfig }): Promise<unknown> {
