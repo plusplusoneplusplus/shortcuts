@@ -64,9 +64,13 @@ export interface SkillInfo {
     references?: string[];
     scripts?: string[];
     relativePath?: string;
-    source?: 'global' | 'repo' | 'bundled' | 'linked-repo';
+    source?: 'global' | 'repo' | 'bundled' | 'linked-repo' | 'extra-folder';
     /** Workspace ID of the repo this skill was loaded from (only set when source = 'linked-repo'). */
     sourceRepoId?: string;
+    /** Absolute path of the directory containing this skill. */
+    folderPath?: string;
+    /** Human-readable label for the folder: 'global' | 'repo' | path-or-repo-name. */
+    folderLabel?: string;
 }
 
 export const VERSION_REGEX = /^version:\s*["']?(.+?)["']?\s*$/m;
@@ -248,7 +252,7 @@ export function extractDescriptionFromMarkdown(content: string): string | undefi
  */
 export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDir?: string): void {
 
-    // GET /api/workspaces/:id/skills — List installed skills (including extra folders)
+    // GET /api/workspaces/:id/skills — List installed skills (including global and extra folders)
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills$/,
@@ -259,7 +263,27 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
 
             const installPath = getSkillsInstallPath(ws.rootPath);
             const localSkills = listInstalledSkills(installPath);
+            // Tag local skills with source and folderPath
+            for (const skill of localSkills) {
+                skill.source = 'repo';
+                skill.folderPath = installPath;
+            }
             const localNames = new Set(localSkills.map(s => s.name));
+
+            // Load global skills from dataDir/skills (always first in precedence after local)
+            const globalSkills: SkillInfo[] = [];
+            if (dataDir) {
+                const globalSkillsPath = path.join(dataDir, 'skills');
+                const globals = listInstalledSkills(globalSkillsPath);
+                for (const skill of globals) {
+                    // Local/extra skills take precedence — suppress global skills with the same name
+                    if (localNames.has(skill.name)) continue;
+                    skill.source = 'global';
+                    skill.folderPath = globalSkillsPath;
+                    globalSkills.push(skill);
+                }
+            }
+            const globalNames = new Set(globalSkills.map(s => s.name));
 
             // Load skills from extra folders, resolving sourceRepoId for linked repos
             let allWorkspaces: WorkspaceInfo[] | null = null;
@@ -279,15 +303,20 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
                     }
                 }
                 for (const skill of folderSkills) {
-                    // Local skills take precedence — skip if already present
-                    if (localNames.has(skill.name)) continue;
-                    skill.source = sourceRepoId ? 'linked-repo' : skill.source;
-                    if (sourceRepoId) skill.sourceRepoId = sourceRepoId;
+                    // Local and global skills take precedence — skip if already present
+                    if (localNames.has(skill.name) || globalNames.has(skill.name)) continue;
+                    skill.folderPath = folder;
+                    if (sourceRepoId) {
+                        skill.source = 'linked-repo';
+                        skill.sourceRepoId = sourceRepoId;
+                    } else {
+                        skill.source = 'extra-folder';
+                    }
                     extraSkills.push(skill);
                 }
             }
 
-            let skills = [...localSkills, ...extraSkills];
+            let skills = [...localSkills, ...globalSkills, ...extraSkills];
             if (dataDir) {
                 try {
                     const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');

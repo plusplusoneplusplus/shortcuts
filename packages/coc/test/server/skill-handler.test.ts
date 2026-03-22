@@ -524,6 +524,105 @@ describe('registerSkillRoutes', () => {
 
         fs.rmSync(linkedWsDir, { recursive: true, force: true });
     });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/skills — folderPath and source tagging
+    // -----------------------------------------------------------------------
+
+    it('GET /api/workspaces/:id/skills tags local skills with source=repo and folderPath', async () => {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        fs.mkdirSync(path.join(skillsDir, 'local-skill'), { recursive: true });
+        fs.writeFileSync(path.join(skillsDir, 'local-skill', 'SKILL.md'), '# local-skill');
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const skill = body.skills.find((s: any) => s.name === 'local-skill');
+        expect(skill).toBeDefined();
+        expect(skill.source).toBe('repo');
+        expect(skill.folderPath).toContain('.github');
+        expect(skill.folderPath).toContain('skills');
+    });
+
+    it('GET /api/workspaces/:id/skills includes global skills from dataDir when provided', async () => {
+        // Create local skill
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        fs.mkdirSync(path.join(skillsDir, 'local-skill'), { recursive: true });
+        fs.writeFileSync(path.join(skillsDir, 'local-skill', 'SKILL.md'), '# local-skill');
+
+        // Create dataDir with global skills
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-data-'));
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        fs.mkdirSync(path.join(globalSkillsDir, 'global-skill'), { recursive: true });
+        fs.writeFileSync(path.join(globalSkillsDir, 'global-skill', 'SKILL.md'), '---\ndescription: A global skill\n---');
+
+        const globalRoutes: Route[] = [];
+        registerSkillRoutes(globalRoutes, store, dataDir);
+
+        const { statusCode, body } = await dispatchRoute(
+            globalRoutes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const names = body.skills.map((s: any) => s.name);
+        expect(names).toContain('local-skill');
+        expect(names).toContain('global-skill');
+
+        const globalSkill = body.skills.find((s: any) => s.name === 'global-skill');
+        expect(globalSkill.source).toBe('global');
+        expect(globalSkill.folderPath).toBe(globalSkillsDir);
+
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('GET /api/workspaces/:id/skills global skill is suppressed when local skill has same name', async () => {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        fs.mkdirSync(path.join(skillsDir, 'shared-skill'), { recursive: true });
+        fs.writeFileSync(path.join(skillsDir, 'shared-skill', 'SKILL.md'), '---\ndescription: local version\n---');
+
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-data-'));
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        fs.mkdirSync(path.join(globalSkillsDir, 'shared-skill'), { recursive: true });
+        fs.writeFileSync(path.join(globalSkillsDir, 'shared-skill', 'SKILL.md'), '---\ndescription: global version\n---');
+
+        const globalRoutes: Route[] = [];
+        registerSkillRoutes(globalRoutes, store, dataDir);
+
+        const { statusCode, body } = await dispatchRoute(
+            globalRoutes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const sharedSkills = body.skills.filter((s: any) => s.name === 'shared-skill');
+        expect(sharedSkills).toHaveLength(1);
+        expect(sharedSkills[0].source).toBe('repo');
+        expect(sharedSkills[0].description).toBe('local version');
+
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('GET /api/workspaces/:id/skills extra-folder skills tagged with source=extra-folder', async () => {
+        const extraDir = fs.mkdtempSync(path.join(os.tmpdir(), 'extra-skills-'));
+        fs.mkdirSync(path.join(extraDir, 'extra-skill'), { recursive: true });
+        fs.writeFileSync(path.join(extraDir, 'extra-skill', 'SKILL.md'), '# extra-skill');
+
+        store.getWorkspaces = vi.fn(async () => [{
+            id: workspaceId,
+            name: 'Test Workspace',
+            rootPath: workspaceDir,
+            extraSkillFolders: [extraDir],
+        } as WorkspaceInfo]);
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const extraSkill = body.skills.find((s: any) => s.name === 'extra-skill');
+        expect(extraSkill).toBeDefined();
+        expect(extraSkill.source).toBe('extra-folder');
+        expect(extraSkill.folderPath).toBe(extraDir);
+
+        fs.rmSync(extraDir, { recursive: true, force: true });
+    });
 });
 
 // ============================================================================

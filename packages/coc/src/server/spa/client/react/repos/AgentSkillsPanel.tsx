@@ -1,47 +1,4 @@
-/**
- * AgentSkillsPanel — Agent Skills section extracted from RepoCopilotTab.
- * Includes SkillDetailPanel and InstallSkillsDialog sub-components.
- */
-
-import { useState, useEffect } from 'react';
-import { Button, SkillListItem } from '../shared';
-import type { SkillInfo } from '../shared';
-import { useGlobalToast } from '../context/ToastContext';
-import { getApiBase } from '../utils/config';
-
-export type Skill = SkillInfo;
-
-export type SkillDetail = Skill;
-
-export interface BundledSkill {
-    name: string;
-    description?: string;
-    path: string;
-    alreadyExists?: boolean;
-}
-
-export type InstallSource = 'bundled' | 'github';
-
-interface AgentSkillsPanelProps {
-    workspaceId: string;
-    skills: Skill[];
-    skillsLoading: boolean;
-    disabledSkills: string[];
-    skillToggleSaving: boolean;
-    expandedSkill: string | null;
-    skillDetail: SkillDetail | null;
-    detailLoading: boolean;
-    deleteConfirm: string | null;
-    onExpandSkill: (name: string) => void;
-    onDeleteSkill: (name: string) => void;
-    onSkillToggle: (name: string, enabled: boolean) => void;
-    onSetDeleteConfirm: (name: string | null) => void;
-    onInstalled: () => void;
-    extraSkillFolders?: string[];
-    onExtraSkillFoldersChange?: (folders: string[]) => void;
-}
-
-/**
+﻿/**
  * AgentSkillsPanel — Agent Skills section extracted from RepoCopilotTab.
  * Includes SkillDetailPanel and InstallSkillsDialog sub-components.
  */
@@ -90,6 +47,189 @@ interface AgentSkillsPanelProps {
     /** All registered repos (from ReposContext) for the picker popover. */
     allRepos?: RepoData[];
 }
+
+// ============================================================================
+// Folder Grouping
+// ============================================================================
+
+export interface SkillFolderGroup {
+    key: string;
+    label: string;
+    folderPath: string;
+    source: 'global' | 'repo' | 'linked-repo' | 'extra-folder';
+    skills: Skill[];
+    repoId?: string;
+    isRemovable: boolean;
+}
+
+export function groupSkillsByFolder(
+    skills: Skill[],
+    repoById: Map<string, any>,
+): SkillFolderGroup[] {
+    const groups: SkillFolderGroup[] = [];
+
+    // 1. Global group
+    const globalSkills = skills.filter(s => s.source === 'global');
+    if (globalSkills.length > 0) {
+        groups.push({
+            key: 'global',
+            label: '🌐 Global',
+            folderPath: globalSkills[0].folderPath ?? '',
+            source: 'global',
+            skills: globalSkills,
+            isRemovable: false,
+        });
+    }
+
+    // 2. Repo group (local .github/skills)
+    const repoSkills = skills.filter(s => s.source === 'repo' || (!s.source && !s.sourceRepoId));
+    if (repoSkills.length > 0) {
+        groups.push({
+            key: 'repo',
+            label: '📁 .github/skills',
+            folderPath: repoSkills[0].folderPath ?? '',
+            source: 'repo',
+            skills: repoSkills,
+            isRemovable: false,
+        });
+    }
+
+    // 3. Extra groups — one per unique folderPath
+    const extraSkills = skills.filter(s => s.source === 'linked-repo' || s.source === 'extra-folder');
+    const seenFolders = new Set<string>();
+    for (const skill of extraSkills) {
+        const folder = skill.folderPath ?? skill.sourceRepoId ?? '';
+        if (seenFolders.has(folder)) continue;
+        seenFolders.add(folder);
+
+        const groupSkills = extraSkills.filter(
+            s => (s.folderPath ?? s.sourceRepoId ?? '') === folder,
+        );
+        const repoId = skill.sourceRepoId;
+        const ws = repoId ? repoById.get(repoId) : undefined;
+
+        let label: string;
+        if (ws) {
+            label = `📂 ${ws.name}`;
+        } else {
+            label = `📂 ${folder}`;
+        }
+
+        groups.push({
+            key: folder,
+            label,
+            folderPath: folder,
+            source: skill.source as 'linked-repo' | 'extra-folder',
+            skills: groupSkills,
+            repoId,
+            isRemovable: true,
+        });
+    }
+
+    return groups;
+}
+
+// ============================================================================
+// SkillFolderSection
+// ============================================================================
+
+interface SkillFolderSectionProps {
+    group: SkillFolderGroup;
+    expandedSkill: string | null;
+    skillDetail: SkillDetail | null;
+    detailLoading: boolean;
+    deleteConfirm: string | null;
+    isSkillEnabled: (name: string) => boolean;
+    skillToggleSaving: boolean;
+    skillsLoading: boolean;
+    onExpandSkill: (name: string) => void;
+    onSkillToggle: (name: string, enabled: boolean) => void;
+    onDeleteSkill: (name: string) => void;
+    onSetDeleteConfirm: (name: string | null) => void;
+    onUnlinkRepo?: () => void;
+    onRemoveFolder?: () => void;
+}
+
+function SkillFolderSection({
+    group,
+    expandedSkill,
+    skillDetail,
+    detailLoading,
+    deleteConfirm,
+    isSkillEnabled,
+    skillToggleSaving,
+    skillsLoading,
+    onExpandSkill,
+    onSkillToggle,
+    onDeleteSkill,
+    onSetDeleteConfirm,
+    onUnlinkRepo,
+    onRemoveFolder,
+}: SkillFolderSectionProps) {
+    const [collapsed, setCollapsed] = useState(false);
+
+    return (
+        <div className="border border-[#e0e0e0] dark:border-[#3c3c3c] rounded" data-testid={`skill-folder-group-${group.key}`}>
+            {/* Section header */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f5f5f5] dark:bg-[#2a2a2a] rounded-t">
+                <button
+                    className="flex-1 flex items-center gap-1.5 text-left min-w-0"
+                    onClick={() => setCollapsed(c => !c)}
+                    data-testid={`skill-folder-toggle-${group.key}`}
+                >
+                    <span className="text-[10px] text-[#848484]">{collapsed ? '▶' : '▼'}</span>
+                    <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate">{group.label}</span>
+                    <span className="text-[10px] text-[#848484] flex-shrink-0">
+                        ({group.skills.length} skill{group.skills.length !== 1 ? 's' : ''})
+                    </span>
+                </button>
+                {group.isRemovable && (
+                    onUnlinkRepo ? (
+                        <button
+                            className="text-[10px] text-[#848484] hover:text-red-600 dark:hover:text-red-400 flex-shrink-0 px-1"
+                            title="Unlink this repo's skills"
+                            onClick={onUnlinkRepo}
+                            data-testid={`skill-folder-unlink-${group.key}`}
+                        >✕ Unlink</button>
+                    ) : onRemoveFolder ? (
+                        <button
+                            className="text-[10px] text-[#848484] hover:text-red-600 dark:hover:text-red-400 flex-shrink-0 px-1"
+                            title="Remove this folder"
+                            onClick={onRemoveFolder}
+                            data-testid={`skill-folder-remove-${group.key}`}
+                        >✕ Remove</button>
+                    ) : null
+                )}
+            </div>
+            {/* Skills list */}
+            {!collapsed && (
+                <ul className="flex flex-col divide-y divide-[#e0e0e0] dark:divide-[#3c3c3c]" data-testid={`skill-folder-list-${group.key}`}>
+                    {group.skills.length === 0 ? (
+                        <li className="px-3 py-2 text-xs text-[#848484] italic">(empty)</li>
+                    ) : group.skills.map(skill => (
+                        <SkillListItem
+                            key={skill.name}
+                            skill={skill}
+                            isExpanded={expandedSkill === skill.name}
+                            isEnabled={isSkillEnabled(skill.name)}
+                            detail={skillDetail}
+                            detailLoading={detailLoading}
+                            deleteConfirm={deleteConfirm === skill.name}
+                            onExpand={() => onExpandSkill(skill.name)}
+                            onToggle={(enabled) => onSkillToggle(skill.name, enabled)}
+                            onDelete={() => onDeleteSkill(skill.name)}
+                            onSetDeleteConfirm={(c) => onSetDeleteConfirm(c ? skill.name : null)}
+                            toggleDisabled={skillToggleSaving || skillsLoading}
+                            testIdPrefix="skill"
+                            hideDelete={skill.source === 'linked-repo' || skill.source === 'global'}
+                        />
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
+
 
 export function AgentSkillsPanel({
     workspaceId,
@@ -183,6 +323,9 @@ export function AgentSkillsPanel({
     // Other repos that can be linked (not current workspace)
     const otherRepos = allRepos.filter(r => r.workspace.id !== workspaceId);
 
+    // Build folder groups from the skills array
+    const skillGroups = groupSkillsByFolder(skills, repoById);
+
     return (
         <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -221,27 +364,29 @@ export function AgentSkillsPanel({
                     )}
                 </div>
             ) : (
-                <ul className="flex flex-col gap-2" data-testid="skills-list">
-                    {skills.map(skill => (
-                        <SkillListItem
-                            key={skill.name}
-                            skill={skill}
-                            isExpanded={expandedSkill === skill.name}
-                            isEnabled={isSkillEnabled(skill.name)}
-                            detail={skillDetail}
+                <div className="flex flex-col gap-3" data-testid="skills-list">
+                    {skillGroups.map(group => (
+                        <SkillFolderSection
+                            key={group.key}
+                            group={group}
+                            expandedSkill={expandedSkill}
+                            skillDetail={skillDetail}
                             detailLoading={detailLoading}
-                            deleteConfirm={deleteConfirm === skill.name}
-                            onExpand={() => onExpandSkill(skill.name)}
-                            onToggle={(enabled) => onSkillToggle(skill.name, enabled)}
-                            onDelete={() => onDeleteSkill(skill.name)}
-                            onSetDeleteConfirm={(c) => onSetDeleteConfirm(c ? skill.name : null)}
-                            toggleDisabled={skillToggleSaving || skillsLoading}
-                            testIdPrefix="skill"
-                            sourceRepoName={getSourceRepoName(skill)}
-                            hideDelete={skill.source === 'linked-repo'}
+                            deleteConfirm={deleteConfirm}
+                            isSkillEnabled={isSkillEnabled}
+                            skillToggleSaving={skillToggleSaving}
+                            skillsLoading={skillsLoading}
+                            onExpandSkill={onExpandSkill}
+                            onSkillToggle={onSkillToggle}
+                            onDeleteSkill={onDeleteSkill}
+                            onSetDeleteConfirm={onSetDeleteConfirm}
+                            onUnlinkRepo={group.repoId ? () => handleUnlinkRepo(group.repoId!) : undefined}
+                            onRemoveFolder={group.isRemovable && !group.repoId ? () => {
+                                onExtraSkillFoldersChange?.(extraSkillFolders.filter(f => f !== group.folderPath));
+                            } : undefined}
                         />
                     ))}
-                </ul>
+                </div>
             )}
 
             {showInstallDialog && (
