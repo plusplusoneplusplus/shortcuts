@@ -16,7 +16,7 @@ import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ActivityListPane } from './ActivityListPane';
 import { ActivityDetailPane } from './ActivityDetailPane';
 import { useUnseenActivity } from '../hooks/useUnseenActivity';
-import { useChatPreferences } from '../hooks/useChatPreferences';
+import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 import { useNotifications } from '../context/NotificationContext';
 
 export interface RepoActivityTabProps {
@@ -151,9 +151,6 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     // Track unseen activity for completed tasks
     const { unseenTaskIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
     const { markReadByProcessId } = useNotifications();
-    // Track pinned and archived chats (persisted server-side via a single GET/preferences)
-    const { pinnedChatIds, pinChat, unpinChat, archivedChatIds, archiveChat, unarchiveChat } = useChatPreferences(workspaceId);
-
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
         if (task?.type === 'run-workflow') {
@@ -233,7 +230,11 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     }, [isRefreshing, fetchQueue]);
 
     if (loading) {
-        return <div className="p-4 text-sm text-[#848484]">Loading queue...</div>;
+        return (
+            <ChatPreferencesProvider workspaceId={workspaceId}>
+                <div className="p-4 text-sm text-[#848484]">Loading queue...</div>
+            </ChatPreferencesProvider>
+        );
     }
 
     const listPane = (
@@ -252,12 +253,6 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             onMarkAllRead={markTasksSeen}
             onMarkRead={markSeen}
             onMarkUnread={markUnseen}
-            pinnedChatIds={pinnedChatIds}
-            onPinChat={pinChat}
-            onUnpinChat={unpinChat}
-            archivedChatIds={archivedChatIds}
-            onArchiveChat={archiveChat}
-            onUnarchiveChat={unarchiveChat}
             onSelectTask={selectTask}
             onPauseResume={handlePauseResume}
             isAutopilotPaused={isAutopilotPaused}
@@ -272,27 +267,30 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
 
     if (isMobile) {
         return (
-            <div className="flex flex-col h-full overflow-hidden" data-testid="activity-split-panel">
-                {mobileShowDetail && selectedTaskId ? (
-                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel">
-                        <ActivityDetailPane
-                            selectedTaskId={selectedTaskId}
-                            selectedTask={selectedTask}
-                            onBack={() => setMobileShowDetail(false)}
-                            workspaceId={workspaceId}
-                        />
-                    </div>
-                ) : (
-                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-mobile-list">
-                        {listPane}
-                    </div>
-                )}
-            </div>
+            <ChatPreferencesProvider workspaceId={workspaceId}>
+                <div className="flex flex-col h-full overflow-hidden" data-testid="activity-split-panel">
+                    {mobileShowDetail && selectedTaskId ? (
+                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel">
+                            <ActivityDetailPane
+                                selectedTaskId={selectedTaskId}
+                                selectedTask={selectedTask}
+                                onBack={() => setMobileShowDetail(false)}
+                                workspaceId={workspaceId}
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-mobile-list">
+                            {listPane}
+                        </div>
+                    )}
+                </div>
+            </ChatPreferencesProvider>
         );
     }
 
     return (
-        <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="activity-split-panel">
+        <ChatPreferencesProvider workspaceId={workspaceId}>
+            <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="activity-split-panel">
             {/* Left panel — task list */}
             <div
                 className="flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden"
@@ -323,5 +321,6 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
                 />
             </div>
         </div>
+        </ChatPreferencesProvider>
     );
 }

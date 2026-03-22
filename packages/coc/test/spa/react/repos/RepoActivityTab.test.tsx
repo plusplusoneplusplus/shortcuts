@@ -816,3 +816,31 @@ describe('ActivityListPane: mark as read context menu', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkRead, onMarkUnread');
     });
 });
+
+// ── ChatPreferencesProvider wiring ────────────────────────────────────
+
+describe('RepoActivityTab: ChatPreferencesProvider wrapping', () => {
+    it('imports ChatPreferencesProvider', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("import { ChatPreferencesProvider } from '../context/ChatPreferencesContext'");
+    });
+
+    it('renders ChatPreferencesProvider with workspaceId', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('<ChatPreferencesProvider workspaceId={workspaceId}>');
+    });
+
+    it('does NOT import usePinnedChats', () => {
+        expect(ACTIVITY_TAB_SOURCE).not.toContain('usePinnedChats');
+    });
+
+    it('does NOT import useArchivedChats', () => {
+        expect(ACTIVITY_TAB_SOURCE).not.toContain('useArchivedChats');
+    });
+
+    it('does NOT pass pinnedChatIds prop to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).not.toContain('pinnedChatIds={');
+    });
+
+    it('does NOT pass onPinChat prop to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).not.toContain('onPinChat={');
+    });
+});

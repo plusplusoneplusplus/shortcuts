@@ -10,9 +10,11 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
+import { useApp } from '../context/AppContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { ActivityListPane } from '../repos/ActivityListPane';
 import { ActivityDetailPane } from '../repos/ActivityDetailPane';
+import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 
 export function ProcessesView() {
     const [running, setRunning] = useState<any[]>([]);
@@ -25,6 +27,8 @@ export function ProcessesView() {
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { state: appState } = useApp();
+    const workspaceId = appState.selectedRepoId ?? '';
     const selectedTaskId = queueState.selectedTaskId;
     const { isMobile, isTablet } = useBreakpoint();
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
@@ -182,7 +186,11 @@ export function ProcessesView() {
         : 'h-[calc(100vh-48px)]';
 
     if (loading) {
-        return <div id="view-processes" className={`${heightClass} p-4 text-sm text-[#848484]`}>Loading queue...</div>;
+        return (
+            <ChatPreferencesProvider workspaceId={workspaceId}>
+                <div id="view-processes" className={`${heightClass} p-4 text-sm text-[#848484]`}>Loading queue...</div>
+            </ChatPreferencesProvider>
+        );
     }
 
     const listPane = (
@@ -206,41 +214,45 @@ export function ProcessesView() {
 
     if (isMobile) {
         return (
-            <div id="view-processes" className={`flex flex-col ${heightClass} overflow-hidden`} data-testid="activity-split-panel">
-                {mobileShowDetail && selectedTaskId ? (
-                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel">
-                        <ActivityDetailPane
-                            selectedTaskId={selectedTaskId}
-                            selectedTask={selectedTask}
-                            onBack={() => setMobileShowDetail(false)}
-                        />
-                    </div>
-                ) : (
-                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-mobile-list">
-                        {listPane}
-                    </div>
-                )}
-            </div>
+            <ChatPreferencesProvider workspaceId={workspaceId}>
+                <div id="view-processes" className={`flex flex-col ${heightClass} overflow-hidden`} data-testid="activity-split-panel">
+                    {mobileShowDetail && selectedTaskId ? (
+                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel">
+                            <ActivityDetailPane
+                                selectedTaskId={selectedTaskId}
+                                selectedTask={selectedTask}
+                                onBack={() => setMobileShowDetail(false)}
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-mobile-list">
+                            {listPane}
+                        </div>
+                    )}
+                </div>
+            </ChatPreferencesProvider>
         );
     }
 
     return (
-        <div id="view-processes" className={`flex ${heightClass} overflow-hidden`} data-testid="activity-split-panel">
-            {/* Left panel — task list */}
-            <div className={cn(
-                'flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden',
-                isTablet ? 'w-64' : 'w-80',
-            )}>
-                {listPane}
-            </div>
+        <ChatPreferencesProvider workspaceId={workspaceId}>
+            <div id="view-processes" className={`flex ${heightClass} overflow-hidden`} data-testid="activity-split-panel">
+                {/* Left panel — task list */}
+                <div className={cn(
+                    'flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden',
+                    isTablet ? 'w-64' : 'w-80',
+                )}>
+                    {listPane}
+                </div>
 
-            {/* Right panel — detail or placeholder */}
-            <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel">
-                <ActivityDetailPane
-                    selectedTaskId={selectedTaskId}
-                    selectedTask={selectedTask}
-                />
+                {/* Right panel — detail or placeholder */}
+                <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel">
+                    <ActivityDetailPane
+                        selectedTaskId={selectedTaskId}
+                        selectedTask={selectedTask}
+                    />
+                </div>
             </div>
-        </div>
+        </ChatPreferencesProvider>
     );
 }

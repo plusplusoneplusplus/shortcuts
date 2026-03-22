@@ -24,16 +24,17 @@ describe('ActivityListPane pinned chats', () => {
     });
 
     describe('props interface', () => {
-        it('declares pinnedChatIds prop', () => {
-            expect(source).toContain('pinnedChatIds?: Set<string>');
+        it('obtains pinnedChatIds from useChatPrefs', () => {
+            expect(source).toContain('useChatPrefs()');
+            expect(source).toContain('pinnedChatIds');
         });
 
-        it('declares onPinChat prop', () => {
-            expect(source).toContain('onPinChat?: (taskId: string) => void');
+        it('obtains onPinChat from useChatPrefs', () => {
+            expect(source).toContain('pinChat');
         });
 
-        it('declares onUnpinChat prop', () => {
-            expect(source).toContain('onUnpinChat?: (taskId: string) => void');
+        it('obtains onUnpinChat from useChatPrefs', () => {
+            expect(source).toContain('unpinChat');
         });
     });
 
@@ -156,16 +157,17 @@ describe('ActivityListPane pinned chats', () => {
 
     describe('archive support', () => {
         describe('props interface', () => {
-            it('declares archivedChatIds prop', () => {
-                expect(source).toContain('archivedChatIds?: Set<string>');
+            it('obtains archivedChatIds from useChatPrefs', () => {
+                expect(source).toContain('useChatPrefs()');
+                expect(source).toContain('archivedChatIds');
             });
 
-            it('declares onArchiveChat prop', () => {
-                expect(source).toContain('onArchiveChat?: (taskId: string) => void');
+            it('obtains onArchiveChat from useChatPrefs', () => {
+                expect(source).toContain('archiveChat');
             });
 
-            it('declares onUnarchiveChat prop', () => {
-                expect(source).toContain('onUnarchiveChat?: (taskId: string) => void');
+            it('obtains onUnarchiveChat from useChatPrefs', () => {
+                expect(source).toContain('unarchiveChat');
             });
         });
 

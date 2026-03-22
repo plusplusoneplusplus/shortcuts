@@ -28,6 +28,26 @@ vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
     }),
 }));
 
+vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
+    useApp: () => ({
+        state: { selectedRepoId: null },
+        dispatch: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    ChatPreferencesProvider: ({ children }: { children: any }) => children,
+    useChatPrefs: () => ({
+        pinnedChatIds: new Set(),
+        archivedChatIds: new Set(),
+        pinChat: vi.fn(),
+        unpinChat: vi.fn(),
+        archiveChat: vi.fn(),
+        unarchiveChat: vi.fn(),
+        loaded: true,
+    }),
+}));
+
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue({ running: [], queued: [], history: [], stats: {} }),
 }));

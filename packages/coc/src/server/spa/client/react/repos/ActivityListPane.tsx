@@ -17,6 +17,7 @@ import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu
 import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 import { getDraft } from '../hooks/useDraftStore';
 import { useLongPress } from '../hooks/useLongPress';
+import { useChatPrefs } from '../context/ChatPreferencesContext';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -93,18 +94,6 @@ export interface ActivityListPaneProps {
     onMarkRead?: (taskId: string) => void;
     /** Mark a single completed task as unread. */
     onMarkUnread?: (taskId: string) => void;
-    /** Set of pinned chat task IDs (persisted server-side). */
-    pinnedChatIds?: Set<string>;
-    /** Pin a chat task by ID. */
-    onPinChat?: (taskId: string) => void;
-    /** Unpin a chat task by ID. */
-    onUnpinChat?: (taskId: string) => void;
-    /** Set of archived chat task IDs (persisted server-side). */
-    archivedChatIds?: Set<string>;
-    /** Archive a chat task by ID. */
-    onArchiveChat?: (taskId: string) => void;
-    /** Unarchive a chat task by ID. */
-    onUnarchiveChat?: (taskId: string) => void;
     onSelectTask: (id: string, task?: any) => void;
     onPauseResume: () => void;
     /** Whether the autopilot scheduler is currently paused. */
@@ -135,12 +124,6 @@ export function ActivityListPane({
     onMarkAllRead,
     onMarkRead,
     onMarkUnread,
-    pinnedChatIds,
-    onPinChat,
-    onUnpinChat,
-    archivedChatIds,
-    onArchiveChat,
-    onUnarchiveChat,
     onSelectTask,
     onPauseResume,
     isAutopilotPaused,
@@ -159,6 +142,8 @@ export function ActivityListPane({
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
+
+    const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat } = useChatPrefs();
 
     useEffect(() => {
         setExcludedTypes(new Set());
