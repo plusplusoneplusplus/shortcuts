@@ -926,8 +926,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (this.dataDir) {
             try {
                 const prefsPath = path.join(this.dataDir, 'preferences.json');
-                if (fs.existsSync(prefsPath)) {
-                    const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
+                const prefsExists = await fs.promises.access(prefsPath).then(() => true).catch(() => false);
+                if (prefsExists) {
+                    const prefs = JSON.parse(await fs.promises.readFile(prefsPath, 'utf-8'));
                     const globalDisabled: string[] = prefs?.globalDisabledSkills;
                     if (Array.isArray(globalDisabled) && globalDisabled.length > 0) {
                         disabledSkills = [...new Set([...(disabledSkills ?? []), ...globalDisabled])];
@@ -946,7 +947,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (root) {
             const skillsDir = path.join(root, DEFAULT_SKILLS_SETTINGS.installPath);
             try {
-                if (fs.existsSync(skillsDir)) {
+                if (await fs.promises.access(skillsDir).then(() => true).catch(() => false)) {
                     dirs.push(skillsDir);
                 }
             } catch {
@@ -958,7 +959,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (this.dataDir) {
             const globalSkillsDir = path.join(this.dataDir, 'skills');
             try {
-                if (fs.existsSync(globalSkillsDir)) {
+                if (await fs.promises.access(globalSkillsDir).then(() => true).catch(() => false)) {
                     dirs.push(globalSkillsDir);
                 }
             } catch {
@@ -974,7 +975,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     : (root ? path.resolve(root, folder) : null);
                 if (resolved) {
                     try {
-                        if (fs.existsSync(resolved)) {
+                        if (await fs.promises.access(resolved).then(() => true).catch(() => false)) {
                             dirs.push(resolved);
                         }
                     } catch {

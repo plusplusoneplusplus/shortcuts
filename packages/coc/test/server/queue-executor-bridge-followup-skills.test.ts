@@ -21,6 +21,11 @@ vi.mock('fs', async (importOriginal) => {
         existsSync: vi.fn(actual.existsSync),
         readFileSync: vi.fn(actual.readFileSync),
         mkdirSync: vi.fn(),
+        promises: {
+            ...actual.promises,
+            access: vi.fn(actual.promises.access),
+            readFile: vi.fn(actual.promises.readFile),
+        },
     };
 });
 
@@ -91,7 +96,7 @@ describe('executeFollowUp — skill configuration', () => {
         sdkMocks.resetAll();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
         // Default: no skill directories exist
-        (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     });
 
     // 1 -----------------------------------------------------------------------
@@ -99,8 +104,8 @@ describe('executeFollowUp — skill configuration', () => {
         const dataDir = path.join(os.homedir(), '.coc');
         const globalSkillsDir = path.join(dataDir, 'skills');
 
-        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
-            p === globalSkillsDir,
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === globalSkillsDir ? Promise.resolve() : Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
         );
 
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service, dataDir });
@@ -119,8 +124,8 @@ describe('executeFollowUp — skill configuration', () => {
         const workDir = '/tmp/my-project';
         const localSkillsDir = path.join(workDir, '.github', 'skills');
 
-        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
-            p === localSkillsDir,
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === localSkillsDir ? Promise.resolve() : Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
         );
 
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
@@ -160,12 +165,12 @@ describe('executeFollowUp — skill configuration', () => {
         const prefsPath = path.join(dataDir, 'preferences.json');
         const prefs = JSON.stringify({ globalDisabledSkills: ['global-skill-x'] });
 
-        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
-            p === prefsPath,
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === prefsPath ? Promise.resolve() : Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
         );
-        (fs.readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) => {
-            if (p === prefsPath) return prefs;
-            return (vi.importActual as any)('fs').readFileSync(p);
+        (fs.promises.readFile as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) => {
+            if (p === prefsPath) return Promise.resolve(prefs);
+            return Promise.reject(new Error('not found'));
         });
 
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service, dataDir });
@@ -214,8 +219,8 @@ describe('executeFollowUp — skill configuration', () => {
         const workDir = '/tmp/my-project';
         const localSkillsDir = path.join(workDir, '.github', 'skills');
 
-        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
-            p === globalSkillsDir || p === localSkillsDir,
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            (p === globalSkillsDir || p === localSkillsDir) ? Promise.resolve() : Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
         );
 
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service, dataDir });
@@ -239,8 +244,8 @@ describe('executeFollowUp — skill configuration', () => {
         (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
             { id: wsId, extraSkillFolders: [extraDir] },
         ]);
-        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
-            p === extraDir,
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === extraDir ? Promise.resolve() : Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
         );
 
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
@@ -264,8 +269,8 @@ describe('executeFollowUp — skill configuration', () => {
         (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
             { id: wsId, extraSkillFolders: [relativeFolder] },
         ]);
-        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
-            p === resolvedDir,
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === resolvedDir ? Promise.resolve() : Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
         );
 
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
