@@ -14,8 +14,8 @@
  * @see https://github.com/github/copilot-sdk
  */
 
-import * as path from 'path';
 import * as fs from 'fs';
+import { findSdkBinaryPath, loadSdk, SdkModule } from './sdk-loader';
 import { ToolCall } from '../ai/process-types';
 import { getAIServiceLogger, createSessionLogger } from '../ai-logger';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
@@ -254,7 +254,7 @@ export { tryConvertImageFileToDataUrl } from './image-converter';
 export class CopilotSDKService {
     private static instance: CopilotSDKService | null = null;
 
-    private sdkModule: { CopilotClient: new (options?: ICopilotClientOptions) => ICopilotClient } | null = null;
+    private sdkModule: SdkModule | null = null;
     private availabilityCache: SDKAvailabilityResult | null = null;
     private disposed = false;
 
@@ -894,57 +894,22 @@ export class CopilotSDKService {
 
     /**
      * Find the SDK package path by checking multiple possible locations.
-     * This handles both development and packaged extension scenarios.
+     * Delegates to the standalone findSdkBinaryPath() from sdk-loader.ts.
      */
     private findSDKPath(): string | undefined {
-        const possiblePaths = [
-            // Development: running from dist/
-            path.join(__dirname, '..', 'node_modules', '@github', 'copilot-sdk'),
-            // Development: running from out/shortcuts/ai-service
-            path.join(__dirname, '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
-            // Packaged extension
-            path.join(__dirname, 'node_modules', '@github', 'copilot-sdk'),
-            // Workspace root (for development)
-            path.join(__dirname, '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
-        ];
-
-        for (const testPath of possiblePaths) {
-            const indexPath = path.join(testPath, 'dist', 'index.js');
-            if (fs.existsSync(indexPath)) {
-                return testPath;
-            }
-        }
-
-        return undefined;
+        return findSdkBinaryPath();
     }
 
     /**
      * Load the SDK module using ESM dynamic import workaround.
-     * This is necessary because webpack transforms import() in ways that break ESM loading.
+     * Delegates to the standalone loadSdk() from sdk-loader.ts.
      */
     private async loadSDKModule(sdkPath: string): Promise<void> {
         if (this.sdkModule) {
             return;
         }
 
-        const sdkIndexPath = path.join(sdkPath, 'dist', 'index.js');
-
-        // Import using file URL for ESM compatibility
-        // Use Function constructor to bypass webpack's import() transformation
-        const { pathToFileURL } = await import('url');
-        const sdkUrl = pathToFileURL(sdkIndexPath).href;
-
-        // Bypass webpack's import transformation using Function constructor
-        // This is necessary because webpack transforms import() in ways that break ESM loading
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval
-        const dynamicImport = new Function('specifier', 'return import(specifier)');
-        const sdk = await dynamicImport(sdkUrl);
-
-        if (!sdk.CopilotClient) {
-            throw new Error('CopilotClient not found in SDK module');
-        }
-
-        this.sdkModule = sdk;
+        this.sdkModule = await loadSdk(sdkPath);
     }
 
     /**
