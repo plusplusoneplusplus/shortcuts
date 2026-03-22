@@ -186,6 +186,29 @@ describe('FloatingDialog', () => {
             expect(panel.style.left).toBe('0px');
         });
 
+        it('overrides class-based size constraints when isMaximized=true (regression)', () => {
+            // MarkdownReviewDialog passes className="max-w-[900px] w-[900px] h-[700px]"; without
+            // explicit style overrides the Tailwind classes would cap the maximized size at 900px.
+            render(
+                <FloatingDialog
+                    open={true}
+                    onClose={vi.fn()}
+                    resizable
+                    isMaximized={true}
+                    className="max-w-[900px] w-[900px] h-[700px]"
+                >
+                    Content
+                </FloatingDialog>
+            );
+            const panel = screen.getByTestId('floating-dialog-panel') as HTMLElement;
+            expect(panel.style.maxWidth).toBe('none');
+            expect(panel.style.minWidth).toBe('unset');
+            expect(panel.style.maxHeight).toBe('none');
+            expect(panel.style.minHeight).toBe('unset');
+            expect(panel.style.width).toBe('100vw');
+            expect(panel.style.height).toBe('100vh');
+        });
+
         it('restores resize handles when isMaximized=false', () => {
             render(
                 <FloatingDialog open={true} onClose={vi.fn()} resizable isMaximized={false}>

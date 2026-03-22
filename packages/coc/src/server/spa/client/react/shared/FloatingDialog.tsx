@@ -184,7 +184,7 @@ export function FloatingDialog({
     const hasMaxWOverride = className ? /\bmax-w-\[/.test(className) : false;
 
     const panelStyle: React.CSSProperties = isMaximized
-        ? { top: 0, left: 0, width: '100vw', height: '100vh', transform: 'none' }
+        ? { top: 0, left: 0, width: '100vw', height: '100vh', maxWidth: 'none', minWidth: 'unset', maxHeight: 'none', minHeight: 'unset', transform: 'none' }
         : {
             ...(pos
                 ? { left: pos.left, top: pos.top, transform: 'none' }
