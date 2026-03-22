@@ -14,13 +14,12 @@
  * @see https://github.com/github/copilot-sdk
  */
 
-import * as fs from 'fs';
 import { findSdkBinaryPath, loadSdk, SdkModule } from './sdk-loader';
 import { ToolCall } from '../ai/process-types';
 import { getAIServiceLogger, createSessionLogger } from '../ai-logger';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
-import { ensureFolderTrusted } from './trusted-folder';
 import { tryConvertImageFileToDataUrl } from './image-converter';
+import { createSdkClient } from './sdk-client-factory';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
 import { DEFAULT_AI_IDLE_TIMEOUT_MS } from '../config/defaults';
 import {
@@ -76,14 +75,6 @@ interface StreamingResult {
     turnCount: number;
     /** Tool calls captured during this streaming session (if any). */
     toolCalls?: ToolCall[];
-}
-
-/**
- * Options for creating a CopilotClient
- */
-interface ICopilotClientOptions {
-    /** Working directory for the CLI process */
-    cwd?: string;
 }
 
 /**
@@ -405,27 +396,7 @@ export class CopilotSDKService {
             throw new Error('Failed to load Copilot SDK module');
         }
 
-        const aiLog = getAIServiceLogger();
-
-        const options: ICopilotClientOptions = {};
-        if (cwd) {
-            if (!fs.existsSync(cwd)) {
-                aiLog.warn({ cwd },
-                    'Working directory does not exist. ' +
-                    'The SDK will fail with ERR_STREAM_DESTROYED because child_process.spawn ' +
-                    'requires an existing cwd. Ensure the caller passes a valid directory.');
-            }
-            options.cwd = cwd;
-            try {
-                ensureFolderTrusted(cwd);
-            } catch {
-                // Non-fatal: trust dialog will appear if this fails
-            }
-        }
-
-        aiLog.debug({ clientOptions: options }, 'Creating new CopilotClient');
-        const client = new this.sdkModule.CopilotClient(options);
-        return client;
+        return createSdkClient(this.sdkModule, { cwd });
     }
 
     /**

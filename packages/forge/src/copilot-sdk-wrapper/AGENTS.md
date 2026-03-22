@@ -7,6 +7,7 @@ Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lif
 | File | Purpose |
 |------|---------|
 | `copilot-sdk-service.ts` | Core service: client/session lifecycle, streaming, error recovery |
+| `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: cwd validation, folder trust, `new CopilotClient()` |
 | `types.ts` | All shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
 | `model-registry.ts` | Single source of truth for supported AI models (add models here only) |
 | `mcp-config-loader.ts` | Loads/merges MCP server config from `~/.copilot/mcp-config.json` |
@@ -161,7 +162,7 @@ Key exports: `AIModel` (union type), `VALID_MODELS` (tuple), `DEFAULT_MODEL_ID`,
 
 ## Trusted Folders
 
-Before creating a client, `createClient(cwd)` calls `ensureFolderTrusted(cwd)` to add the directory to `~/.copilot/config.json`'s `trusted_folders[]` array. This prevents the Copilot CLI from showing an interactive folder trust confirmation dialog. The operation is non-fatal — if it fails, the dialog appears as fallback.
+Before creating a client, `createSdkClient(sdkModule, { cwd })` in `sdk-client-factory.ts` calls `ensureFolderTrusted(cwd)` to add the directory to `~/.copilot/config.json`'s `trusted_folders[]` array.This prevents the Copilot CLI from showing an interactive folder trust confirmation dialog. The operation is non-fatal — if it fails, the dialog appears as fallback.
 
 Config location respects `XDG_CONFIG_HOME` env var, defaulting to `~/.copilot/config.json`.
 
