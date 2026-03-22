@@ -70,6 +70,8 @@ export {
     getModelCount,
     getModelsByTier,
     getModelContextWindow,
+    IModelListClient,
+    fetchModelsFromClient,
 } from './model-registry';
 
 // Copilot SDK Service

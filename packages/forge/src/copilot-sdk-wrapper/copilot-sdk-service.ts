@@ -42,6 +42,7 @@ import {
     ToolEvent,
 } from './types';
 import { ModelInfo } from './model-info';
+import { fetchModelsFromClient } from './model-registry';
 
 // Re-export types that were previously exported from this file
 export {
@@ -430,8 +431,8 @@ export class CopilotSDKService {
     /**
      * List all models available to the authenticated user via the Copilot API.
      *
-     * Creates a short-lived client (no cwd needed) to call the SDK's
-     * `client.listModels()`, then immediately stops the client.
+     * Creates a short-lived client (no cwd needed) and delegates to
+     * `fetchModelsFromClient` from `model-registry`.
      *
      * @returns Array of ModelInfo objects from the SDK.
      * @throws Error if the SDK is unavailable or the API call fails.
@@ -447,12 +448,7 @@ export class CopilotSDKService {
         }
 
         const client = await this.createClient();
-        try {
-            await client.start();
-            return await client.listModels();
-        } finally {
-            client.stop().catch(() => {});
-        }
+        return fetchModelsFromClient(client);
     }
 
     /**

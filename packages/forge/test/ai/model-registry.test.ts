@@ -6,7 +6,7 @@
  * and that all derived constants and helper functions work correctly.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     ModelDefinition,
     MODEL_REGISTRY,
@@ -22,6 +22,8 @@ import {
     getModelCount,
     getModelsByTier,
     getModelContextWindow,
+    IModelListClient,
+    fetchModelsFromClient,
 } from '../../src/copilot-sdk-wrapper/model-registry';
 
 describe('Model Registry', () => {
@@ -402,6 +404,90 @@ describe('Model Registry', () => {
                 expect(model.contextWindow).toBeDefined();
                 expect(model.contextWindow).toBeGreaterThan(0);
             }
+        });
+    });
+
+    // ========================================================================
+    // fetchModelsFromClient
+    // ========================================================================
+
+    describe('fetchModelsFromClient()', () => {
+        const mockModels = [
+            {
+                id: 'claude-sonnet-4.6',
+                name: 'Claude Sonnet 4.6',
+                capabilities: {
+                    supports: { vision: true, reasoningEffort: false },
+                    limits: { max_context_window_tokens: 200_000 },
+                },
+            },
+        ];
+
+        function makeClient(overrides?: Partial<IModelListClient>): IModelListClient {
+            return {
+                start: vi.fn().mockResolvedValue(undefined),
+                stop: vi.fn().mockResolvedValue(undefined),
+                listModels: vi.fn().mockResolvedValue(mockModels),
+                ...overrides,
+            };
+        }
+
+        it('starts the client, calls listModels, and returns results', async () => {
+            const client = makeClient();
+            const result = await fetchModelsFromClient(client);
+
+            expect(client.start).toHaveBeenCalledOnce();
+            expect(client.listModels).toHaveBeenCalledOnce();
+            expect(result).toEqual(mockModels);
+        });
+
+        it('stops the client after successful listModels', async () => {
+            const client = makeClient();
+            await fetchModelsFromClient(client);
+
+            expect(client.stop).toHaveBeenCalledOnce();
+        });
+
+        it('stops the client even when listModels throws', async () => {
+            const client = makeClient({
+                listModels: vi.fn().mockRejectedValue(new Error('API error')),
+            });
+
+            await expect(fetchModelsFromClient(client)).rejects.toThrow('API error');
+            expect(client.stop).toHaveBeenCalledOnce();
+        });
+
+        it('does not throw if stop() fails after listModels error', async () => {
+            const client = makeClient({
+                listModels: vi.fn().mockRejectedValue(new Error('list failed')),
+                stop: vi.fn().mockRejectedValue(new Error('stop failed')),
+            });
+
+            await expect(fetchModelsFromClient(client)).rejects.toThrow('list failed');
+        });
+
+        it('does not throw if stop() fails after successful listModels', async () => {
+            const client = makeClient({
+                stop: vi.fn().mockRejectedValue(new Error('stop failed')),
+            });
+
+            const result = await fetchModelsFromClient(client);
+            expect(result).toEqual(mockModels);
+        });
+
+        it('returns an empty array when listModels returns empty', async () => {
+            const client = makeClient({ listModels: vi.fn().mockResolvedValue([]) });
+            const result = await fetchModelsFromClient(client);
+            expect(result).toEqual([]);
+        });
+
+        it('propagates errors from start()', async () => {
+            const client = makeClient({
+                start: vi.fn().mockRejectedValue(new Error('start failed')),
+            });
+
+            await expect(fetchModelsFromClient(client)).rejects.toThrow('start failed');
+            expect(client.stop).toHaveBeenCalledOnce();
         });
     });
 });

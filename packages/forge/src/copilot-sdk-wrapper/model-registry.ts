@@ -10,7 +10,10 @@
  * - `VALID_MODELS` and `AIModel` are derived from the registry.
  * - Helper functions provide display labels, descriptions, and lookups.
  * - The first model in the registry is considered the default/recommended model.
+ * - `fetchModelsFromClient` handles live model listing via the SDK client.
  */
+
+import { ModelInfo } from './model-info';
 
 // ============================================================================
 // Model Definition Interface
@@ -196,4 +199,36 @@ export function getModelsByTier(tier: ModelDefinition['tier']): readonly ModelDe
  */
 export function getModelContextWindow(modelId: string): number | undefined {
     return MODEL_REGISTRY.get(modelId)?.contextWindow;
+}
+
+// ============================================================================
+// Live Model Listing (SDK Client Integration)
+// ============================================================================
+
+/**
+ * Minimal interface for an SDK client that supports model listing.
+ * Defined here so `model-registry` has no dependency on `CopilotSDKService`.
+ */
+export interface IModelListClient {
+    start(): Promise<void>;
+    stop(): Promise<void>;
+    listModels(): Promise<ModelInfo[]>;
+}
+
+/**
+ * Fetch the list of models available to the authenticated user via the Copilot API.
+ *
+ * Accepts a pre-constructed (but not yet started) SDK client, starts it,
+ * calls `listModels()`, and stops the client in a `finally` block.
+ *
+ * @param client - A fresh, not-yet-started client instance.
+ * @returns Array of ModelInfo objects from the SDK.
+ */
+export async function fetchModelsFromClient(client: IModelListClient): Promise<ModelInfo[]> {
+    try {
+        await client.start();
+        return await client.listModels();
+    } finally {
+        client.stop().catch(() => {});
+    }
 }
