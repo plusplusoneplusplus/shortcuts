@@ -82,6 +82,12 @@ export {
     tryConvertImageFileToDataUrl,
 } from './copilot-sdk-service';
 
+// Session Manager
+export {
+    SessionManager,
+    IAbortableSession,
+} from './session-manager';
+
 // Model Metadata Store
 export {
     modelMetadataStore,

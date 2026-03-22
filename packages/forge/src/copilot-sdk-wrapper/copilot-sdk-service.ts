@@ -43,6 +43,7 @@ import { ModelInfo } from './model-info';
 import { fetchModelsFromClient } from './model-registry';
 import { StreamingSession, ISessionEvent, StreamingResult } from './streaming-session';
 export type { StreamingResult, IStreamableSession, StreamingState, StreamingSessionRunOptions } from './streaming-session';
+import { SessionManager } from './session-manager';
 
 // Re-export types that were previously exported from this file
 export {
@@ -165,8 +166,8 @@ export class CopilotSDKService {
     private availabilityCache: SDKAvailabilityResult | null = null;
     private disposed = false;
 
-    /** Map of active sessions for cancellation support */
-    private activeSessions: Map<string, ICopilotSession> = new Map();
+    /** Manages active sessions for cancellation support */
+    private readonly sessionManager = new SessionManager();
 
     /** Default timeout for SDK requests */
     private static readonly DEFAULT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
@@ -631,27 +632,7 @@ export class CopilotSDKService {
      * @returns True if the session was found and aborted, false otherwise
      */
     public async abortSession(sessionId: string): Promise<boolean> {
-        const sessionLog = createSessionLogger(sessionId);
-        
-        const session = this.activeSessions.get(sessionId);
-        if (!session) {
-            sessionLog.debug('Session not found for abort');
-            return false;
-        }
-
-        sessionLog.debug('Aborting session');
-
-        try {
-            await session.destroy();
-            this.activeSessions.delete(sessionId);
-            sessionLog.debug('Session aborted successfully');
-            return true;
-        } catch (error) {
-            sessionLog.error({ err: error instanceof Error ? error : undefined }, 'Error aborting session');
-            // Still remove from tracking even if destroy failed
-            this.activeSessions.delete(sessionId);
-            return false;
-        }
+        return this.sessionManager.abort(sessionId);
     }
 
     /**
@@ -661,7 +642,7 @@ export class CopilotSDKService {
      * @returns True if the session is active
      */
     public hasActiveSession(sessionId: string): boolean {
-        return this.activeSessions.has(sessionId);
+        return this.sessionManager.has(sessionId);
     }
 
     /**
@@ -670,7 +651,7 @@ export class CopilotSDKService {
      * @returns Number of active sessions
      */
     public getActiveSessionCount(): number {
-        return this.activeSessions.size;
+        return this.sessionManager.count();
     }
 
     /**
@@ -680,7 +661,7 @@ export class CopilotSDKService {
      * @param session The session to track
      */
     private trackSession(session: ICopilotSession): void {
-        this.activeSessions.set(session.sessionId, session);
+        this.sessionManager.track(session);
     }
 
     /**
@@ -689,7 +670,7 @@ export class CopilotSDKService {
      * @param sessionId The session ID to untrack
      */
     private untrackSession(sessionId: string): void {
-        this.activeSessions.delete(sessionId);
+        this.sessionManager.untrack(sessionId);
     }
 
     /**
@@ -716,12 +697,7 @@ export class CopilotSDKService {
         aiLog.debug('Cleaning up SDK service');
 
         // Abort all active sessions first
-        const abortPromises: Promise<void>[] = [];
-        for (const [sessionId] of this.activeSessions) {
-            abortPromises.push(this.abortSession(sessionId).then(() => {}));
-        }
-        await Promise.allSettled(abortPromises);
-        this.activeSessions.clear();
+        await this.sessionManager.abortAll();
 
         this.removeStreamErrorGuard();
         this.sdkModule = null;

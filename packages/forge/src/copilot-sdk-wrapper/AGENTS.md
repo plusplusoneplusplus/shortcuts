@@ -7,6 +7,7 @@ Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lif
 | File | Purpose |
 |------|---------|
 | `copilot-sdk-service.ts` | Core service: client/session lifecycle, streaming, error recovery |
+| `session-manager.ts` | Active session tracking and cancellation (`SessionManager` class) |
 | `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: cwd validation, folder trust, `new CopilotClient()` |
 | `types.ts` | All shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
 | `model-registry.ts` | Single source of truth for supported AI models (add models here only) |
@@ -34,7 +35,7 @@ sendMessage(cwd="/project-b")  →  CopilotClient(cwd="/project-b")  →  Sessio
 |-------|------|---------|
 | `sdkModule` | cached SDK module | ESM-loaded `@github/copilot-sdk` (lazy, loaded once) |
 | `availabilityCache` | `SDKAvailabilityResult` | Cached SDK availability check |
-| `activeSessions` | `Map<string, ICopilotSession>` | In-flight sessions tracked for cancellation |
+| `sessionManager` | `SessionManager` | Delegates active session tracking and cancellation |
 | `streamErrorGuardHandler` | `uncaughtException` listener | Absorbs `ERR_STREAM_DESTROYED` from SDK stdio |
 | `streamErrorGuardRejectionHandler` | `unhandledRejection` listener | Absorbs `ERR_STREAM_DESTROYED` surfacing as promise rejections (vscode-jsonrpc wraps writes in `new Promise`) |
 | `disposed` | boolean | Guard preventing calls after `dispose()` |
@@ -75,9 +76,12 @@ Each `sendMessage()` call creates a fresh client. If `options.sessionId` is prov
 
 ### Active Session Tracking (Cancellation)
 
-- `trackSession(session)` / `untrackSession(sessionId)` — add/remove from `activeSessions` map.
-- `abortSession(sessionId)` — calls `session.destroy()`, returns boolean.
-- `hasActiveSession()` / `getActiveSessionCount()` — read-only inspection.
+Session tracking is delegated to `SessionManager` (`session-manager.ts`).
+
+- `trackSession(session)` / `untrackSession(sessionId)` — delegates to `SessionManager.track()` / `.untrack()`.
+- `abortSession(sessionId)` — delegates to `SessionManager.abort()`, returns boolean.
+- `hasActiveSession()` / `getActiveSessionCount()` — delegates to `SessionManager.has()` / `.count()`.
+- `cleanup()` — calls `SessionManager.abortAll()` to abort all sessions atomically.
 
 ## Streaming Internals (`sendWithStreaming`)
 
@@ -182,7 +186,7 @@ One-shot prompt helper. Calls `sendMessage` with `gpt-4.1` (default). Throws on 
 
 ## Cleanup
 
-`cleanup()` (async): aborts all `activeSessions`, removes stream error guard, nulls sdkModule and availabilityCache.
+`cleanup()` (async): calls `SessionManager.abortAll()` (aborts all tracked sessions), removes stream error guard, nulls sdkModule and availabilityCache.
 
 `dispose()`: sets `disposed = true`, fires `cleanup()` fire-and-forget.
 
@@ -192,3 +196,4 @@ One-shot prompt helper. Calls `sendMessage` with `gpt-4.1` (default). Throws on 
 - Mock helpers in `test/helpers/mock-sdk.ts`: `createMockSession`, `createStreamingMockSession`, `createMockSDKModule`, `createStreamingMockSDKModule`, `setupService`.
 - Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to wire up mocks without real SDK.
 - Tests for: client initialization, streaming events, transform, tools, attachments, session isolation.
+- `SessionManager` is independently unit-tested in `test/copilot-sdk-wrapper/session-manager.test.ts`.
