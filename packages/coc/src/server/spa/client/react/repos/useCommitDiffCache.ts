@@ -4,6 +4,13 @@
  * Module-level Map keyed by API URL. When the full-commit diff is fetched
  * we parse it and pre-populate per-file entries so subsequent file clicks
  * are instant cache hits with no network call.
+ *
+ * IMPORTANT: Per-file diff URLs (those containing `/files/`) MUST bypass
+ * the pre-populated cache entries. Pre-populated slices come from the
+ * full-commit diff which uses default context lines, whereas the server's
+ * per-file endpoint uses `-U99999` (unlimited context) to return the
+ * complete file. Using pre-populated data for per-file detail views would
+ * show only the changed hunks instead of the entire file.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -79,8 +86,12 @@ export function useCachedDiff(
     const [error, setError] = useState<string | null>(null);
 
     const doFetch = useCallback((url: string) => {
-        // Cache hit — skip network
-        const cached = diffCache.get(url);
+        // Per-file diff URLs bypass pre-populated cache entries: pre-populated
+        // slices come from the full-commit diff (standard context lines) but
+        // the server's per-file endpoint uses -U99999 (unlimited context) to
+        // return the complete file. Always fetch fresh so the full file is shown.
+        const isPerFileDiff = url.includes('/files/');
+        const cached = isPerFileDiff ? undefined : diffCache.get(url);
         if (cached !== undefined) {
             setDiff(cached);
             setLoading(false);
