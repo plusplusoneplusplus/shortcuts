@@ -16,8 +16,7 @@ import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ActivityListPane } from './ActivityListPane';
 import { ActivityDetailPane } from './ActivityDetailPane';
 import { useUnseenActivity } from '../hooks/useUnseenActivity';
-import { usePinnedChats } from '../hooks/usePinnedChats';
-import { useArchivedChats } from '../hooks/useArchivedChats';
+import { useChatPreferences } from '../hooks/useChatPreferences';
 import { useNotifications } from '../context/NotificationContext';
 
 export interface RepoActivityTabProps {
@@ -152,10 +151,8 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     // Track unseen activity for completed tasks
     const { unseenTaskIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
     const { markReadByProcessId } = useNotifications();
-    // Track pinned chats (persisted server-side)
-    const { pinnedChatIds, pinChat, unpinChat } = usePinnedChats(workspaceId);
-    // Track archived chats (persisted server-side)
-    const { archivedChatIds, archiveChat, unarchiveChat } = useArchivedChats(workspaceId);
+    // Track pinned and archived chats (persisted server-side via a single GET/preferences)
+    const { pinnedChatIds, pinChat, unpinChat, archivedChatIds, archiveChat, unarchiveChat } = useChatPreferences(workspaceId);
 
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
