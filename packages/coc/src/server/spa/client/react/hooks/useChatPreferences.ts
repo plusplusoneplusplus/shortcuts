@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getApiBase } from '../utils/config';
+import { getWorkspacePreferences, patchWorkspacePreferences, type PerRepoPrefsClient } from './preferencesApi';
 
 const MAX_PINNED = 50;
 const MAX_ARCHIVED = 500;
@@ -42,12 +42,9 @@ export function useChatPreferences(workspaceId: string): UseChatPreferencesResul
         setLoaded(false);
         if (!workspaceId) { setLoaded(true); return; }
         let cancelled = false;
-        const url = getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/preferences';
         (async () => {
             try {
-                const res = await fetch(url);
-                if (!res.ok) return;
-                const prefs = await res.json();
+                const prefs = await getWorkspacePreferences(workspaceId);
                 if (!cancelled) {
                     // pinnedChats
                     const pm = prefs?.pinnedChats;
@@ -79,26 +76,18 @@ export function useChatPreferences(workspaceId: string): UseChatPreferencesResul
 
     const persistPinned = useCallback((ids: string[]) => {
         if (!workspaceId) return;
-        const body = ids.length > 0
+        const body: Partial<PerRepoPrefsClient> = ids.length > 0
             ? { pinnedChats: { [workspaceId]: ids } }
             : { pinnedChats: {} };
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        }).catch(() => {});
+        patchWorkspacePreferences(workspaceId, body).catch(() => {});
     }, [workspaceId]);
 
     const persistArchived = useCallback((ids: string[]) => {
         if (!workspaceId) return;
-        const body = ids.length > 0
+        const body: Partial<PerRepoPrefsClient> = ids.length > 0
             ? { archivedChats: { [workspaceId]: ids } }
             : { archivedChats: {} };
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        }).catch(() => {});
+        patchWorkspacePreferences(workspaceId, body).catch(() => {});
     }, [workspaceId]);
 
     const pinChat = useCallback((taskId: string) => {
