@@ -11,6 +11,14 @@ const RUN_SCRIPT_SOURCE = fs.readFileSync(
     'utf-8',
 );
 
+describe('RunScriptDialog Dialog open prop', () => {
+    it('passes open={true} to Dialog so it renders when showScriptDialog is true', () => {
+        // Regression: previously <Dialog onClose={close}> omitted open prop,
+        // causing Dialog to always return null (Dialog returns null when open is falsy).
+        expect(RUN_SCRIPT_SOURCE).toContain('<Dialog open={true}');
+    });
+});
+
 describe('RunScriptDialog workspace pre-fill', () => {
     it('reads scriptDialogWorkspaceId from queueState', () => {
         expect(RUN_SCRIPT_SOURCE).toContain('queueState.scriptDialogWorkspaceId');

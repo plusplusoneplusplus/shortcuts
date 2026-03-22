@@ -116,7 +116,7 @@ export function RunScriptDialog() {
     if (!open) return null;
 
     return (
-        <Dialog onClose={close}>
+        <Dialog open={true} onClose={close}>
             <div className="w-[480px] max-w-[95vw] max-h-[80vh] overflow-y-auto p-4" data-testid="run-script-dialog">
                 <h2 className="text-sm font-semibold mb-3">⚙ Run Script</h2>
 
