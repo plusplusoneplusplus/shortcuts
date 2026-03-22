@@ -18,7 +18,6 @@ import { findSdkBinaryPath, loadSdk, SdkModule } from './sdk-loader';
 import { ToolCall } from '../ai/process-types';
 import { getAIServiceLogger, createSessionLogger } from '../ai-logger';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
-import { tryConvertImageFileToDataUrl } from './image-converter';
 import { createSdkClient } from './sdk-client-factory';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
 import { DEFAULT_AI_IDLE_TIMEOUT_MS } from '../config/defaults';
@@ -42,6 +41,8 @@ import {
 } from './types';
 import { ModelInfo } from './model-info';
 import { fetchModelsFromClient } from './model-registry';
+import { StreamingSession, ISessionEvent, StreamingResult } from './streaming-session';
+export type { StreamingResult, IStreamableSession, StreamingState, StreamingSessionRunOptions } from './streaming-session';
 
 // Re-export types that were previously exported from this file
 export {
@@ -61,21 +62,6 @@ export {
     approveAllPermissions,
     denyAllPermissions,
 } from './types';
-
-/**
- * Internal result from sendWithStreaming, including token usage.
- */
-interface StreamingResult {
-    response: string;
-    tokenUsage?: TokenUsage;
-    /** Number of assistant turns completed during the session.
-     *  A value > 0 with an empty response indicates the AI performed
-     *  work via tool execution (file edits, shell commands) without
-     *  producing a text summary. */
-    turnCount: number;
-    /** Tool calls captured during this streaming session (if any). */
-    toolCalls?: ToolCall[];
-}
 
 /**
  * Options for creating a session.
@@ -148,78 +134,6 @@ interface ICopilotSession {
         model: {
             switchTo(options: { modelId: string }): Promise<void>;
         };
-    };
-}
-
-/**
- * Interface for session events (streaming)
- * 
- * The Copilot SDK fires events with `type` as a plain string (e.g., "session.idle"),
- * not as an object with a `.value` property.
- * 
- * Known event types:
- * - "session.idle" - Session finished processing (data: {})
- * - "session.error" - Session error (data: { message, stack? })
- * - "session.info" - Informational message (data: { infoType, message })
- * - "assistant.message" - Final assistant message (data: { messageId, content, toolRequests? })
- * - "assistant.message_delta" - Streaming chunk (data: { messageId, deltaContent })
- * - "assistant.intent" - AI's declared intent (data: { intent })
- * - "session.agent_mode_change" - Agent mode changed (data: { previous_mode, new_mode })
- * - "assistant.turn_start" - Turn started (data: { turnId })
- * - "assistant.turn_end" - Turn ended (data: { turnId })
- * - "assistant.usage" - Per-turn token usage (data: { inputTokens, outputTokens, ... })
- * - "session.usage_info" - Session-level quota info (data: { tokenLimit, currentTokens })
- * - "tool.execution_start" - Tool execution began (data: { toolCallId, toolName, arguments? })
- * - "tool.execution_complete" - Tool execution finished (data: { toolCallId, success, result?, error? })
- * - "tool.execution_progress" - Tool execution progress (data: { toolCallId, progressMessage })
- * - "abort" - Session aborted (data: { reason })
- * 
- * Completion detection order:
- * 1. `session.idle` settles immediately
- * 2. `assistant.turn_end` starts a 500ms grace period, then settles if content exists
- */
-interface ISessionEvent {
-    type: string;
-    data?: {
-        content?: string;
-        deltaContent?: string;
-        message?: string;
-        stack?: string;
-        turnId?: string;
-        // Token usage fields (from assistant.usage)
-        inputTokens?: number;
-        outputTokens?: number;
-        cacheReadTokens?: number;
-        cacheWriteTokens?: number;
-        cost?: number;
-        duration?: number;
-        // Session quota fields (from session.usage_info)
-        tokenLimit?: number;
-        currentTokens?: number;
-        // Tool execution fields (from tool.execution_start / tool.execution_complete)
-        toolCallId?: string;
-        toolName?: string;
-        arguments?: unknown;
-        parentToolCallId?: string;
-        success?: boolean;
-        result?: { content?: string };
-        error?: { message?: string; code?: string };
-        toolTelemetry?: Record<string, unknown>;
-        // Tool execution progress (from tool.execution_progress)
-        progressMessage?: string;
-        // Tool execution partial result (from tool.execution_partial_result)
-        partialOutput?: string;
-        // Session info (from session.info)
-        infoType?: string;
-        // Assistant intent (from assistant.intent)
-        intent?: string;
-        // Agent mode change (from session.agent_mode_change)
-        previous_mode?: string;
-        new_mode?: string;
-        // Assistant message tool requests
-        toolRequests?: Array<{ toolCallId: string; name: string; arguments?: unknown }>;
-        // Abort reason
-        reason?: string;
     };
 }
 
@@ -1008,27 +922,9 @@ export class CopilotSDKService {
 
     /**
      * Send a message with streaming support.
-     * Accumulates deltaContent chunks until a completion event fires.
-     * 
-     * The Copilot SDK fires events with `event.type` as a plain string:
-     * - "assistant.message_delta" with `data.deltaContent` for streaming chunks
-     * - "assistant.message" with `data.content` for the final message
-     * - "assistant.turn_end" with `data.turnId` when the turn is complete
-     * - "session.idle" with empty data when the session finishes processing
-     * - "session.error" with `data.message` for errors
-     * 
-     * Completion is detected by:
-     * 1. `session.idle` — the most explicit signal that the session is done
-     * 2. `assistant.turn_end` — indicates the assistant's turn ended; used as a
-     *    fallback completion signal because some SDK versions may not fire
-     *    `session.idle` reliably or may delay it significantly.
-     * 
-     * When `assistant.turn_end` fires and we already have content (from deltas
-     * or a final message), we schedule a short grace period to allow a
-     * `session.idle` or `assistant.message` event to arrive. If nothing else
-     * arrives within the grace period, we settle with the content we have.
+     * Delegates to StreamingSession which encapsulates the full state machine.
      */
-    private async sendWithStreaming(
+    private sendWithStreaming(
         session: ICopilotSession,
         prompt: string,
         timeoutMs: number,
@@ -1040,391 +936,16 @@ export class CopilotSDKService {
         deliveryMode?: DeliveryMode,
         callerSessionId?: string
     ): Promise<StreamingResult> {
-        return new Promise((resolve, reject) => {
-            const sessionLog = createSessionLogger(session.sessionId);
-            const streamingStartTime = Date.now();
-            let response = '';
-            // Accumulate ALL assistant.message content across turns.
-            // With multi-turn MCP tool usage, the AI may produce multiple messages
-            // (e.g., "Let me read the files..." on turn 1, then the actual JSON on turn 2+).
-            // We keep ALL messages so we don't lose the final output.
-            let allMessages: string[] = [];
-            let settled = false;
-            let turnEndGraceTimer: ReturnType<typeof setTimeout> | null = null;
-            let turnCount = 0;
-            // Track active tool executions for debugging stuck sessions
-            const activeToolCalls = new Map<string, { toolName: string; startTime: number }>();
-            // Build ToolCall objects for captured tool events (shared with permission handler via parameter)
-            if (!toolCallsMap) {
-                toolCallsMap = new Map<string, ToolCall>();
-            }
-
-            // Token usage accumulator
-            let usageInputTokens = 0;
-            let usageOutputTokens = 0;
-            let usageCacheReadTokens = 0;
-            let usageCacheWriteTokens = 0;
-            let usageCost: number | undefined;
-            let usageDuration: number | undefined;
-            let usageTurnCount = 0;
-            let usageTokenLimit: number | undefined;
-            let usageCurrentTokens: number | undefined;
-
-            const cleanup = () => {
-                if (unsubscribe) {
-                    unsubscribe();
-                }
-                clearTimeout(timeoutId);
-                if (idleTimerId !== undefined) {
-                    clearTimeout(idleTimerId);
-                }
-                if (turnEndGraceTimer) {
-                    clearTimeout(turnEndGraceTimer);
-                    turnEndGraceTimer = null;
-                }
-            };
-
-            const settle = (resolver: (value: StreamingResult) => void, value: StreamingResult) => {
-                if (!settled) {
-                    settled = true;
-                    cleanup();
-                    resolver(value);
-                }
-            };
-
-            const settleError = (error: Error) => {
-                if (!settled) {
-                    settled = true;
-                    cleanup();
-                    reject(error);
-                }
-            };
-
-            const buildTokenUsage = (): TokenUsage | undefined => {
-                if (usageTurnCount === 0) {
-                    return undefined;
-                }
-                return {
-                    inputTokens: usageInputTokens,
-                    outputTokens: usageOutputTokens,
-                    cacheReadTokens: usageCacheReadTokens,
-                    cacheWriteTokens: usageCacheWriteTokens,
-                    totalTokens: usageInputTokens + usageOutputTokens,
-                    cost: usageCost,
-                    duration: usageDuration,
-                    turnCount: usageTurnCount,
-                    tokenLimit: usageTokenLimit,
-                    currentTokens: usageCurrentTokens,
-                };
-            };
-
-            const settleWithResult = () => {
-                // Join ALL non-empty messages across turns to preserve the full
-                // conversation narrative. For tool-heavy sessions (e.g., impl skill),
-                // intermediate messages like "I'll read the files...", "Making changes
-                // to X...", "All tests pass" provide valuable context for the final
-                // report. Fall back to accumulated delta response if no messages exist.
-                const joinedMessages = allMessages.length > 0
-                    ? allMessages.filter(m => m.trim()).join('\n\n')
-                    : '';
-                const result = joinedMessages || response;
-                const elapsedMs = Date.now() - streamingStartTime;
-                sessionLog.info({ totalChars: result.length, turns: turnCount, messages: allMessages.length, elapsedMs }, 'Streaming completed');
-                if (activeToolCalls.size > 0) {
-                    const staleTools = [...activeToolCalls.entries()].map(([id, t]) => `${t.toolName}(${id}, ${Date.now() - t.startTime}ms)`);
-                    sessionLog.debug({ activeToolCount: activeToolCalls.size, staleTools }, 'WARNING: tool call(s) still active at settle');
-                }
-                const capturedToolCalls = toolCallsMap!.size > 0 ? Array.from(toolCallsMap!.values()) : undefined;
-                settle(resolve, { response: result, tokenUsage: buildTokenUsage(), turnCount, toolCalls: capturedToolCalls });
-            };
-
-            const timeoutId = setTimeout(() => {
-                if (activeToolCalls.size > 0) {
-                    const staleTools = [...activeToolCalls.entries()].map(([id, t]) => `${t.toolName}(${id}, ${Date.now() - t.startTime}ms)`);
-                    sessionLog.error({ activeToolCount: activeToolCalls.size, activeTools: staleTools }, 'Timeout with active tool call(s)');
-                }
-                sessionLog.error({ elapsedMs: timeoutMs, activeTools: [...activeToolCalls.keys()] }, 'Force-destroying session due to timeout');
-                session.destroy().catch(() => {});
-                settleError(new Error(`Request timed out after ${timeoutMs}ms`));
-            }, timeoutMs);
-
-            // Idle timeout: resets on each streaming chunk/message event.
-            // If no activity arrives within the idle window, force-destroy.
-            const effectiveIdleMs = idleTimeoutMs ?? 0;
-            let idleTimerId: ReturnType<typeof setTimeout> | undefined;
-
-            const resetIdleTimer = () => {
-                if (effectiveIdleMs <= 0) { return; }
-                if (idleTimerId !== undefined) { clearTimeout(idleTimerId); }
-                idleTimerId = setTimeout(() => {
-                    sessionLog.error({ elapsedMs: effectiveIdleMs }, 'Force-destroying session due to idle timeout');
-                    session.destroy().catch(() => {});
-                    settleError(new Error(`Request idle-timed out after ${effectiveIdleMs}ms with no activity`));
-                }, effectiveIdleMs);
-            };
-
-            // Start the idle timer
-            resetIdleTimer();
-
-            // Set up event handler for streaming
-            // SDK's session.on() returns an unsubscribe function
-            const unsubscribe = session.on!((event: ISessionEvent) => {
-                const eventType = event.type;
-
-                if (eventType === 'assistant.message_delta') {
-                    // Accumulate streaming chunks
-                    const delta = event.data?.deltaContent || '';
-                    response += delta;
-                    // Reset idle timer — we received content activity
-                    if (delta) { resetIdleTimer(); }
-                    // Invoke the streaming callback if provided
-                    if (onStreamingChunk && delta) {
-                        try {
-                            onStreamingChunk(delta);
-                        } catch (cbError) {
-                            sessionLog.debug({ err: cbError }, 'onStreamingChunk callback error');
-                        }
-                    }
-                } else if (eventType === 'assistant.message') {
-                    // Accumulate messages across turns.
-                    // Each turn may produce an assistant.message event.
-                    // With MCP tools, the first message(s) may be tool-use intent
-                    // while the final message contains the actual output.
-                    const messageContent = event.data?.content || '';
-                    if (messageContent) {
-                        allMessages.push(messageContent);
-                    }
-                    sessionLog.debug({ messageNum: allMessages.length, chars: messageContent.length }, 'Received message');
-                    // Log tool requests if present — shows which tools the AI wants to invoke
-                    if (event.data?.toolRequests?.length) {
-                        const toolNames = event.data.toolRequests.map(t => t.name);
-                        sessionLog.debug({ toolRequestCount: event.data.toolRequests.length, toolNames }, 'Message includes tool requests');
-                    }
-                    // If no delta chunks were received but we have a streaming callback,
-                    // emit the message as a single chunk so SSE consumers get content
-                    if (onStreamingChunk && messageContent && !response) {
-                        // Reset idle timer — content activity via fallback path
-                        resetIdleTimer();
-                        try {
-                            onStreamingChunk(messageContent);
-                        } catch (cbError) {
-                            sessionLog.debug({ err: cbError }, 'onStreamingChunk callback error');
-                        }
-                    }
-                } else if (eventType === 'assistant.turn_start') {
-                    // A new turn is starting — cancel any pending turn_end grace timer.
-                    // This is critical for multi-turn MCP tool conversations:
-                    // after the AI uses tools, the SDK fires turn_end then immediately
-                    // starts a new turn (turn_start) to process tool results. If we
-                    // don't cancel the grace timer, we'd settle with just the intent
-                    // message from the first turn instead of waiting for the full response.
-                    const elapsedMs = Date.now() - streamingStartTime;
-                    sessionLog.debug({ elapsedMs, activeToolCalls: activeToolCalls.size }, 'Turn starting');
-                    if (turnEndGraceTimer) {
-                        clearTimeout(turnEndGraceTimer);
-                        turnEndGraceTimer = null;
-                        sessionLog.debug('Cancelled turn_end grace timer — new turn starting');
-                    }
-                } else if (eventType === 'assistant.turn_end') {
-                    // Turn ended — the assistant finished its current turn.
-                    // In multi-turn conversations (MCP tool usage), there can be many turns:
-                    //   Turn 1: AI expresses intent + tool calls → turn_end → tool execution → turn_start
-                    //   Turn 2: AI processes tool results + more tool calls → turn_end → tool execution → turn_start
-                    //   ...
-                    //   Turn N: AI produces final output → turn_end → session.idle
-                    //
-                    // We prefer settling on session.idle which signals the entire conversation
-                    // is done. The turn_end grace period is only a safety net for sessions
-                    // that don't fire session.idle.
-                    turnCount++;
-                    sessionLog.debug({ turn: turnCount, messages: allMessages.length }, 'Turn ended');
-
-                    // Start a grace timer. If a new turn starts (turn_start), this timer
-                    // will be cancelled. If nothing else happens, we settle after the grace period.
-                    if (!settled && !turnEndGraceTimer) {
-                        turnEndGraceTimer = setTimeout(() => {
-                            turnEndGraceTimer = null;
-                            if (!settled && (allMessages.length > 0 || response)) {
-                                sessionLog.debug({ turn: turnCount }, 'Settling after turn_end grace period');
-                                settleWithResult();
-                            }
-                        }, 2000); // 2 second grace period to allow tool execution + new turn
-                    }
-                } else if (eventType === 'session.idle') {
-                    // Session finished processing — settle immediately
-                    sessionLog.debug({ turns: turnCount }, 'Session idle');
-                    settleWithResult();
-                } else if (eventType === 'session.error') {
-                    // Session error
-                    const errorMessage = event.data?.message || 'Unknown session error';
-                    sessionLog.error({ errorMessage }, 'Session error');
-                    settleError(new Error(`Copilot session error: ${errorMessage}`));
-                } else if (eventType === 'assistant.usage') {
-                    // Per-turn token usage — accumulate across turns
-                    usageTurnCount++;
-                    usageInputTokens += event.data?.inputTokens ?? 0;
-                    usageOutputTokens += event.data?.outputTokens ?? 0;
-                    usageCacheReadTokens += event.data?.cacheReadTokens ?? 0;
-                    usageCacheWriteTokens += event.data?.cacheWriteTokens ?? 0;
-                    if (event.data?.cost != null) {
-                        usageCost = (usageCost ?? 0) + event.data.cost;
-                    }
-                    if (event.data?.duration != null) {
-                        usageDuration = (usageDuration ?? 0) + event.data.duration;
-                    }
-                    sessionLog.debug({ turn: usageTurnCount, inputTokens: event.data?.inputTokens ?? 0, outputTokens: event.data?.outputTokens ?? 0 }, 'Token usage');
-                } else if (eventType === 'session.usage_info') {
-                    // Session-level quota info — store last-seen values
-                    if (event.data?.tokenLimit != null) {
-                        usageTokenLimit = event.data.tokenLimit;
-                    }
-                    if (event.data?.currentTokens != null) {
-                        usageCurrentTokens = event.data.currentTokens;
-                    }
-                    sessionLog.debug({ tokenLimit: usageTokenLimit, currentTokens: usageCurrentTokens }, 'Session usage info');
-                } else if (eventType === 'tool.execution_start') {
-                    // Tool execution is starting — track it for debugging stuck sessions
-                    // Reset idle timer — tool execution is legitimate activity
-                    resetIdleTimer();
-                    const toolCallId = event.data?.toolCallId || '(unknown)';
-                    const toolName = event.data?.toolName || '(unknown)';
-                    const parentToolCallId = event.data?.parentToolCallId;
-                    activeToolCalls.set(toolCallId, { toolName, startTime: Date.now() });
-                    const truncatedArgs = event.data?.arguments
-                        ? JSON.stringify(event.data.arguments).substring(0, 200)
-                        : undefined;
-                    sessionLog.debug({ toolName, toolCallId, args: truncatedArgs }, 'Tool execution started');
-                    // Build a ToolCall object for downstream consumption
-                    const toolCall: ToolCall = {
-                        id: toolCallId !== '(unknown)' ? toolCallId : `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                        name: toolName !== '(unknown)' ? toolName : 'unknown',
-                        status: 'running',
-                        startTime: new Date(),
-                        args: (event.data?.arguments ?? {}) as Record<string, unknown>,
-                        ...(parentToolCallId ? { parentToolCallId } : {}),
-                    };
-                    toolCallsMap!.set(toolCall.id, toolCall);
-                    // Emit tool-start event for real-time UI updates
-                    if (onToolEvent) {
-                        try {
-                            onToolEvent({
-                                type: 'tool-start',
-                                toolCallId: toolCall.id,
-                                toolName: toolCall.name,
-                                parentToolCallId: toolCall.parentToolCallId,
-                                parameters: toolCall.args,
-                            });
-                        } catch { /* non-fatal */ }
-                    }
-                } else if (eventType === 'tool.execution_complete') {
-                    // Tool execution finished — remove from active tracking
-                    // Reset idle timer — tool completion is legitimate activity
-                    resetIdleTimer();
-                    const toolCallId = event.data?.toolCallId || '(unknown)';
-                    const tracked = activeToolCalls.get(toolCallId);
-                    const durationMs = tracked ? Date.now() - tracked.startTime : undefined;
-                    activeToolCalls.delete(toolCallId);
-                    const toolSuccess = event.data?.success;
-                    if (toolSuccess) {
-                        const resultChars = event.data?.result?.content?.length ?? 0;
-                        sessionLog.debug({ toolName: tracked?.toolName, toolCallId, durationMs, resultChars, success: true }, 'Tool execution completed');
-                    } else {
-                        const errorMsg = event.data?.error?.message || '(no error message)';
-                        sessionLog.debug({ toolName: tracked?.toolName, toolCallId, durationMs, success: false, errorMsg }, 'Tool execution failed');
-                    }
-                    // Update the captured ToolCall object
-                    const capturedTool = toolCallsMap!.get(toolCallId);
-                    let resultContent = event.data?.result?.content;
-                    if (capturedTool) {
-                        capturedTool.status = toolSuccess ? 'completed' : 'failed';
-                        capturedTool.endTime = new Date();
-                        if (toolSuccess) {
-                            // If the view tool completed on an image file, replace
-                            // the plain-text result with a base64 data URL so the
-                            // dashboard can render it inline.
-                            if (tracked?.toolName === 'view') {
-                                const filePath = capturedTool.args?.path as string | undefined;
-                                if (filePath) {
-                                    const dataUrl = tryConvertImageFileToDataUrl(filePath);
-                                    if (dataUrl) {
-                                        resultContent = dataUrl;
-                                    }
-                                }
-                            }
-                            capturedTool.result = resultContent;
-                        } else {
-                            capturedTool.error = event.data?.error?.message || 'Unknown error';
-                        }
-                    } else {
-                        // Orphaned complete event — tool started outside observation window
-                        toolCallsMap!.set(toolCallId, {
-                            id: toolCallId,
-                            name: tracked?.toolName || 'unknown',
-                            status: 'failed',
-                            startTime: new Date(tracked?.startTime ?? Date.now()),
-                            endTime: new Date(),
-                            args: {},
-                            ...(event.data?.parentToolCallId ? { parentToolCallId: event.data.parentToolCallId } : {}),
-                            error: 'Started outside observation window',
-                        });
-                    }
-                    // Emit tool-complete or tool-failed event for real-time UI updates
-                    // Prefer event-data parentToolCallId (freshest from SDK) over captured-start value
-                    const completeParentId = event.data?.parentToolCallId || capturedTool?.parentToolCallId;
-                    if (onToolEvent) {
-                        try {
-                            if (toolSuccess) {
-                                onToolEvent({
-                                    type: 'tool-complete',
-                                    toolCallId,
-                                    toolName: tracked?.toolName,
-                                    parentToolCallId: completeParentId,
-                                    result: resultContent,
-                                });
-                            } else {
-                                onToolEvent({
-                                    type: 'tool-failed',
-                                    toolCallId,
-                                    toolName: tracked?.toolName,
-                                    parentToolCallId: completeParentId,
-                                    error: event.data?.error?.message || 'Unknown error',
-                                });
-                            }
-                        } catch { /* non-fatal */ }
-                    }
-                } else if (eventType === 'tool.execution_progress') {
-                    const toolCallId = event.data?.toolCallId || '(unknown)';
-                    const tracked = activeToolCalls.get(toolCallId);
-                    sessionLog.debug({ toolName: tracked?.toolName, toolCallId, progressMessage: event.data?.progressMessage }, 'Tool progress');
-                    // Capture progress message in the ToolCall object (latest wins)
-                    const capturedProgress = toolCallsMap!.get(toolCallId);
-                    if (capturedProgress && event.data?.progressMessage) {
-                        (capturedProgress as any).progressMessage = event.data.progressMessage;
-                    }
-                } else if (eventType === 'assistant.intent') {
-                    sessionLog.debug({ intent: event.data?.intent }, 'Assistant intent');
-                } else if (eventType === 'session.info') {
-                    sessionLog.debug({ infoType: event.data?.infoType, message: event.data?.message }, 'Session info');
-                } else if (eventType === 'abort') {
-                    sessionLog.debug({ reason: event.data?.reason }, 'Session aborted');
-                }
-            });
-
-            // One-shot session guard: deliveryMode has no meaningful effect
-            // without a prior session queue to enqueue into.
-            if (deliveryMode && !callerSessionId) {
-                sessionLog.warn(
-                    'deliveryMode is set but this is a one-shot session — ' +
-                    'delivery mode is only meaningful for resumed sessions ' +
-                    '(pass sessionId to resume). The option will be forwarded ' +
-                    'to session.send() but may have no observable effect.'
-                );
-            }
-
-            // Send the message (without waiting)
-            session.send!({ prompt, attachments, deliveryMode }).catch(error => {
-                settleError(error instanceof Error ? error : new Error(String(error)));
-            });
+        return new StreamingSession().run(session, {
+            prompt,
+            timeoutMs,
+            onStreamingChunk,
+            toolCallsMap,
+            onToolEvent,
+            idleTimeoutMs,
+            attachments,
+            deliveryMode,
+            callerSessionId,
         });
     }
 }
