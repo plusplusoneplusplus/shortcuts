@@ -751,6 +751,29 @@ describe('validatePreferences', () => {
         const result = validatePreferences({ pinnedChats: { ws1: ['p1'] }, archivedChats: { ws1: ['a1'] } });
         expect(result).toEqual({ pinnedChats: { ws1: ['p1'] }, archivedChats: { ws1: ['a1'] } });
     });
+
+    // -- linkedRepoIds field --
+
+    it('accepts valid linkedRepoIds array', () => {
+        const result = validatePerRepoPreferences({ linkedRepoIds: ['ws-abc', 'ws-def'] });
+        expect(result.linkedRepoIds).toEqual(['ws-abc', 'ws-def']);
+    });
+
+    it('accepts empty linkedRepoIds array (explicit clear)', () => {
+        const result = validatePerRepoPreferences({ linkedRepoIds: [] });
+        expect(result.linkedRepoIds).toEqual([]);
+    });
+
+    it('filters non-string and empty entries from linkedRepoIds', () => {
+        const result = validatePerRepoPreferences({ linkedRepoIds: ['ws-1', '', null, 42, 'ws-2'] });
+        expect(result.linkedRepoIds).toEqual(['ws-1', 'ws-2']);
+    });
+
+    it('ignores linkedRepoIds when not an array', () => {
+        expect(validatePerRepoPreferences({ linkedRepoIds: 'ws-abc' }).linkedRepoIds).toBeUndefined();
+        expect(validatePerRepoPreferences({ linkedRepoIds: null }).linkedRepoIds).toBeUndefined();
+        expect(validatePerRepoPreferences({ linkedRepoIds: { a: 'b' } }).linkedRepoIds).toBeUndefined();
+    });
 });
 
 // ============================================================================
@@ -1408,5 +1431,35 @@ describe('Per-Repo Preferences REST API', () => {
         const res = await patchJSON(repoUrl(repoId), { recentFollowPrompts: entries });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body).recentFollowPrompts).toEqual(entries);
+    });
+
+    // -- linkedRepoIds --
+
+    it('PATCH persists linkedRepoIds', async () => {
+        const res = await patchJSON(repoUrl(repoId), { linkedRepoIds: ['ws-abc', 'ws-def'] });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).linkedRepoIds).toEqual(['ws-abc', 'ws-def']);
+
+        const get = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(get.body).linkedRepoIds).toEqual(['ws-abc', 'ws-def']);
+    });
+
+    it('PATCH with linkedRepoIds:[] clears existing linked repos', async () => {
+        await patchJSON(repoUrl(repoId), { linkedRepoIds: ['ws-abc'] });
+        const res = await patchJSON(repoUrl(repoId), { linkedRepoIds: [] });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).linkedRepoIds).toBeUndefined();
+
+        const get = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(get.body).linkedRepoIds).toBeUndefined();
+    });
+
+    it('PATCH with linkedRepoIds does not affect other fields', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4' });
+        const res = await patchJSON(repoUrl(repoId), { linkedRepoIds: ['ws-abc'] });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModel).toBe('gpt-4');
+        expect(body.linkedRepoIds).toEqual(['ws-abc']);
     });
 });

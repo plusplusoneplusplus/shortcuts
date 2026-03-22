@@ -41,6 +41,56 @@ interface AgentSkillsPanelProps {
     onExtraSkillFoldersChange?: (folders: string[]) => void;
 }
 
+/**
+ * AgentSkillsPanel — Agent Skills section extracted from RepoCopilotTab.
+ * Includes SkillDetailPanel and InstallSkillsDialog sub-components.
+ */
+
+import { useState, useEffect, useRef } from 'react';
+import { Button, SkillListItem } from '../shared';
+import type { SkillInfo } from '../shared';
+import { useGlobalToast } from '../context/ToastContext';
+import { getApiBase } from '../utils/config';
+import type { RepoData } from './repoGrouping';
+
+export type Skill = SkillInfo;
+
+export type SkillDetail = Skill;
+
+export interface BundledSkill {
+    name: string;
+    description?: string;
+    path: string;
+    alreadyExists?: boolean;
+}
+
+export type InstallSource = 'bundled' | 'github';
+
+interface AgentSkillsPanelProps {
+    workspaceId: string;
+    skills: Skill[];
+    skillsLoading: boolean;
+    disabledSkills: string[];
+    skillToggleSaving: boolean;
+    expandedSkill: string | null;
+    skillDetail: SkillDetail | null;
+    detailLoading: boolean;
+    deleteConfirm: string | null;
+    onExpandSkill: (name: string) => void;
+    onDeleteSkill: (name: string) => void;
+    onSkillToggle: (name: string, enabled: boolean) => void;
+    onSetDeleteConfirm: (name: string | null) => void;
+    onInstalled: () => void;
+    extraSkillFolders?: string[];
+    onExtraSkillFoldersChange?: (folders: string[]) => void;
+    /** IDs of repos whose skill folders are currently linked. */
+    linkedRepoIds?: string[];
+    /** Called when the linked repo list changes (updates preferences). */
+    onLinkedRepoIdsChange?: (ids: string[]) => void;
+    /** All registered repos (from ReposContext) for the picker popover. */
+    allRepos?: RepoData[];
+}
+
 export function AgentSkillsPanel({
     workspaceId,
     skills,
@@ -58,11 +108,80 @@ export function AgentSkillsPanel({
     onInstalled,
     extraSkillFolders = [],
     onExtraSkillFoldersChange,
+    linkedRepoIds = [],
+    onLinkedRepoIdsChange,
+    allRepos = [],
 }: AgentSkillsPanelProps) {
     const [showInstallDialog, setShowInstallDialog] = useState(false);
     const [newFolderInput, setNewFolderInput] = useState('');
+    const [showRepoPicker, setShowRepoPicker] = useState(false);
 
     const isSkillEnabled = (name: string) => !disabledSkills.includes(name);
+
+    // Build a map: repoId → workspace for quick lookup of name/color
+    const repoById = new Map<string, any>(
+        allRepos.map(r => [r.workspace.id, r.workspace])
+    );
+
+    // Determine if a folder entry is a linked repo and which one
+    function getLinkedRepoForFolder(folder: string): { id: string; ws: any } | null {
+        for (const id of linkedRepoIds) {
+            const ws = repoById.get(id);
+            if (!ws) continue;
+            const expectedPath = `${ws.rootPath}/.github/skills`.replace(/\\/g, '/');
+            const normalizedFolder = folder.replace(/\\/g, '/');
+            if (normalizedFolder === expectedPath || normalizedFolder === expectedPath.replace(/\//g, '\\')) {
+                return { id, ws };
+            }
+        }
+        return null;
+    }
+
+    // Source repo lookup for skills
+    function getSourceRepoName(skill: Skill): string | undefined {
+        if (!skill.sourceRepoId) return undefined;
+        const ws = repoById.get(skill.sourceRepoId);
+        return ws?.name;
+    }
+
+    const handleLinkRepo = async (linkedWs: any) => {
+        // Fetch skills-path for the other repo
+        try {
+            const res = await fetch(
+                getApiBase() + '/workspaces/' + encodeURIComponent(linkedWs.id) + '/skills-path'
+            );
+            if (!res.ok) return;
+            const data = await res.json();
+            const skillsPath: string = data.path;
+
+            // Add to extraSkillFolders if not already there
+            if (!extraSkillFolders.includes(skillsPath)) {
+                onExtraSkillFoldersChange?.([...extraSkillFolders, skillsPath]);
+            }
+            // Add to linkedRepoIds
+            if (!linkedRepoIds.includes(linkedWs.id)) {
+                onLinkedRepoIdsChange?.([...linkedRepoIds, linkedWs.id]);
+            }
+        } catch {
+            // ignore
+        }
+        setShowRepoPicker(false);
+    };
+
+    const handleUnlinkRepo = (repoId: string) => {
+        const ws = repoById.get(repoId);
+        if (!ws) return;
+        const expectedPath = `${ws.rootPath}/.github/skills`;
+        // Remove from extra folders
+        const nextFolders = extraSkillFolders.filter(f =>
+            f.replace(/\\/g, '/') !== expectedPath.replace(/\\/g, '/')
+        );
+        onExtraSkillFoldersChange?.(nextFolders);
+        onLinkedRepoIdsChange?.(linkedRepoIds.filter(id => id !== repoId));
+    };
+
+    // Other repos that can be linked (not current workspace)
+    const otherRepos = allRepos.filter(r => r.workspace.id !== workspaceId);
 
     return (
         <div className="flex flex-col gap-4">
@@ -91,6 +210,15 @@ export function AgentSkillsPanel({
                     <Button variant="secondary" size="sm" onClick={() => setShowInstallDialog(true)}>
                         + Install Skills
                     </Button>
+                    {otherRepos.length > 0 && (
+                        <button
+                            className="text-xs text-[#0078d4] hover:underline mt-1"
+                            onClick={() => setShowRepoPicker(true)}
+                            data-testid="empty-state-link-repo-btn"
+                        >
+                            Have skills in another repo? Link from another repo →
+                        </button>
+                    )}
                 </div>
             ) : (
                 <ul className="flex flex-col gap-2" data-testid="skills-list">
@@ -109,6 +237,8 @@ export function AgentSkillsPanel({
                             onSetDeleteConfirm={(c) => onSetDeleteConfirm(c ? skill.name : null)}
                             toggleDisabled={skillToggleSaving || skillsLoading}
                             testIdPrefix="skill"
+                            sourceRepoName={getSourceRepoName(skill)}
+                            hideDelete={skill.source === 'linked-repo'}
                         />
                     ))}
                 </ul>
@@ -124,51 +254,77 @@ export function AgentSkillsPanel({
 
             {/* ── Extra Skill Folders ── */}
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-4" data-testid="extra-skill-folders-section">
-                <h3 className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Extra Skill Folders</h3>
+                <h3 className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-0.5">Extra Skill Folders</h3>
                 <p className="text-xs text-[#848484] mb-3">
                     Searched after <code className="font-mono bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">.github/skills/</code> and global, in order:
                 </p>
 
                 {extraSkillFolders.length > 0 && (
                     <ul className="flex flex-col gap-1 mb-3" data-testid="extra-skill-folders-list">
-                        {extraSkillFolders.map((folder, idx) => (
-                            <li key={idx} className="flex items-center gap-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                                <span className="w-4 text-right text-[#848484] flex-shrink-0">{idx + 1}</span>
-                                <span
-                                    className="flex-1 font-mono truncate bg-[#f3f3f3] dark:bg-[#2a2a2a] px-2 py-1 rounded"
-                                    title={folder}
-                                    data-testid={`extra-folder-path-${idx}`}
-                                >{folder}</span>
-                                <button
-                                    className="px-1 py-0.5 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-40"
-                                    title="Move up"
-                                    disabled={idx === 0}
-                                    onClick={() => {
-                                        const next = [...extraSkillFolders];
-                                        [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                                        onExtraSkillFoldersChange?.(next);
-                                    }}
-                                    data-testid={`extra-folder-up-${idx}`}
-                                >↑</button>
-                                <button
-                                    className="px-1 py-0.5 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-40"
-                                    title="Move down"
-                                    disabled={idx === extraSkillFolders.length - 1}
-                                    onClick={() => {
-                                        const next = [...extraSkillFolders];
-                                        [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                                        onExtraSkillFoldersChange?.(next);
-                                    }}
-                                    data-testid={`extra-folder-down-${idx}`}
-                                >↓</button>
-                                <button
-                                    className="px-1 py-0.5 text-[#848484] hover:text-red-600 dark:hover:text-red-400"
-                                    title="Remove"
-                                    onClick={() => onExtraSkillFoldersChange?.(extraSkillFolders.filter((_, i) => i !== idx))}
-                                    data-testid={`extra-folder-remove-${idx}`}
-                                >✕</button>
-                            </li>
-                        ))}
+                        {extraSkillFolders.map((folder, idx) => {
+                            const linked = getLinkedRepoForFolder(folder);
+                            return (
+                                <li key={idx} className="flex items-center gap-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <span className="w-4 text-right text-[#848484] flex-shrink-0">{idx + 1}</span>
+                                    {linked ? (
+                                        <span
+                                            className="flex-1 flex items-center gap-1.5 bg-[#f3f3f3] dark:bg-[#2a2a2a] px-2 py-1 rounded overflow-hidden"
+                                            title={folder}
+                                            data-testid={`extra-folder-path-${idx}`}
+                                        >
+                                            {linked.ws.color && (
+                                                <span
+                                                    className="w-2 h-2 rounded-full flex-shrink-0"
+                                                    style={{ backgroundColor: linked.ws.color }}
+                                                />
+                                            )}
+                                            <span className="font-medium truncate">📂 {linked.ws.name}</span>
+                                            <span className="font-mono text-[#848484] text-[10px] truncate hidden sm:inline">{folder}</span>
+                                        </span>
+                                    ) : (
+                                        <span
+                                            className="flex-1 font-mono truncate bg-[#f3f3f3] dark:bg-[#2a2a2a] px-2 py-1 rounded"
+                                            title={folder}
+                                            data-testid={`extra-folder-path-${idx}`}
+                                        >{folder}</span>
+                                    )}
+                                    <button
+                                        className="px-1 py-0.5 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-40"
+                                        title="Move up"
+                                        disabled={idx === 0}
+                                        onClick={() => {
+                                            const next = [...extraSkillFolders];
+                                            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                            onExtraSkillFoldersChange?.(next);
+                                        }}
+                                        data-testid={`extra-folder-up-${idx}`}
+                                    >↑</button>
+                                    <button
+                                        className="px-1 py-0.5 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-40"
+                                        title="Move down"
+                                        disabled={idx === extraSkillFolders.length - 1}
+                                        onClick={() => {
+                                            const next = [...extraSkillFolders];
+                                            [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                            onExtraSkillFoldersChange?.(next);
+                                        }}
+                                        data-testid={`extra-folder-down-${idx}`}
+                                    >↓</button>
+                                    <button
+                                        className="px-1 py-0.5 text-[#848484] hover:text-red-600 dark:hover:text-red-400"
+                                        title="Remove"
+                                        onClick={() => {
+                                            if (linked) {
+                                                handleUnlinkRepo(linked.id);
+                                            } else {
+                                                onExtraSkillFoldersChange?.(extraSkillFolders.filter((_, i) => i !== idx));
+                                            }
+                                        }}
+                                        data-testid={`extra-folder-remove-${idx}`}
+                                    >✕</button>
+                                </li>
+                            );
+                        })}
                     </ul>
                 )}
 
@@ -199,7 +355,167 @@ export function AgentSkillsPanel({
                         }}
                         data-testid="extra-folder-add-btn"
                     >+ Add</Button>
+                    {otherRepos.length > 0 && (
+                        <div className="relative">
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setShowRepoPicker(v => !v)}
+                                data-testid="link-from-repo-btn"
+                            >🔗 Link from repo ▾</Button>
+                            {showRepoPicker && (
+                                <LinkFromRepoPopover
+                                    repos={otherRepos}
+                                    linkedRepoIds={linkedRepoIds}
+                                    onLink={handleLinkRepo}
+                                    onUnlink={handleUnlinkRepo}
+                                    onClose={() => setShowRepoPicker(false)}
+                                />
+                            )}
+                        </div>
+                    )}
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// ============================================================================
+// LinkFromRepoPopover
+// ============================================================================
+
+interface LinkFromRepoPopoverProps {
+    repos: RepoData[];
+    linkedRepoIds: string[];
+    onLink: (ws: any) => void;
+    onUnlink: (repoId: string) => void;
+    onClose: () => void;
+}
+
+interface RepoSkillsInfo {
+    skillCount: number;
+    accessible: boolean;
+    loading: boolean;
+}
+
+function LinkFromRepoPopover({ repos, linkedRepoIds, onLink, onUnlink, onClose }: LinkFromRepoPopoverProps) {
+    const popoverRef = useRef<HTMLDivElement>(null);
+    const [skillsInfo, setSkillsInfo] = useState<Record<string, RepoSkillsInfo>>({});
+    const [filterText, setFilterText] = useState('');
+
+    // Close on outside click
+    useEffect(() => {
+        function handleClick(e: MouseEvent) {
+            if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+                onClose();
+            }
+        }
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [onClose]);
+
+    // Fetch skill counts for all repos when popover opens
+    useEffect(() => {
+        for (const r of repos) {
+            const id = r.workspace.id;
+            fetch(getApiBase() + '/workspaces/' + encodeURIComponent(id) + '/skills-path')
+                .then(res => res.ok ? res.json() : null)
+                .then(data => {
+                    setSkillsInfo(prev => ({
+                        ...prev,
+                        [id]: {
+                            skillCount: data?.skillCount ?? 0,
+                            accessible: data?.accessible ?? false,
+                            loading: false,
+                        },
+                    }));
+                })
+                .catch(() => {
+                    setSkillsInfo(prev => ({
+                        ...prev,
+                        [id]: { skillCount: 0, accessible: false, loading: false },
+                    }));
+                });
+            setSkillsInfo(prev => ({ ...prev, [id]: { skillCount: 0, accessible: false, loading: true } }));
+        }
+    }, [repos]);
+
+    const showFilter = repos.length > 8;
+    const filtered = filterText
+        ? repos.filter(r =>
+            r.workspace.name.toLowerCase().includes(filterText.toLowerCase()) ||
+            (r.workspace.remoteUrl || '').toLowerCase().includes(filterText.toLowerCase())
+        )
+        : repos;
+
+    return (
+        <div
+            ref={popoverRef}
+            className="absolute right-0 bottom-full mb-1 z-50 bg-white dark:bg-[#252526] rounded-lg shadow-xl border border-[#e0e0e0] dark:border-[#3c3c3c] w-72 overflow-hidden"
+            data-testid="link-from-repo-popover"
+        >
+            <div className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Link skills from another repo</div>
+            </div>
+            {showFilter && (
+                <div className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <input
+                        autoFocus
+                        type="text"
+                        className="w-full text-xs px-2 py-1 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] placeholder-[#848484]"
+                        placeholder="Filter repos..."
+                        value={filterText}
+                        onChange={e => setFilterText(e.target.value)}
+                        data-testid="repo-picker-filter"
+                    />
+                </div>
+            )}
+            <div className="max-h-[280px] overflow-y-auto">
+                {filtered.length === 0 ? (
+                    <div className="px-3 py-4 text-xs text-[#848484] text-center">No repos found</div>
+                ) : filtered.map(r => {
+                    const ws = r.workspace;
+                    const isLinked = linkedRepoIds.includes(ws.id);
+                    const info = skillsInfo[ws.id];
+                    const remoteDisplay = ws.remoteUrl || ws.rootPath || '';
+                    const truncatedRemote = remoteDisplay.length > 45
+                        ? '...' + remoteDisplay.slice(-42)
+                        : remoteDisplay;
+
+                    return (
+                        <button
+                            key={ws.id}
+                            className={`w-full text-left px-3 py-2.5 hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] border-b border-[#f0f0f0] dark:border-[#333] last:border-0 flex items-start gap-2 ${isLinked ? 'opacity-70' : ''}`}
+                            onClick={() => isLinked ? onUnlink(ws.id) : onLink(ws)}
+                            data-testid={`repo-picker-item-${ws.id}`}
+                        >
+                            {isLinked ? (
+                                <span className="text-[#0078d4] flex-shrink-0 mt-0.5 text-xs">✓</span>
+                            ) : ws.color ? (
+                                <span
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1"
+                                    style={{ backgroundColor: ws.color }}
+                                />
+                            ) : (
+                                <span className="w-2.5 h-2.5 flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                                        {ws.name}
+                                        {isLinked && <span className="ml-1 text-[10px] text-[#848484]">(linked)</span>}
+                                    </span>
+                                    <span className="text-[10px] text-[#848484] flex-shrink-0">
+                                        {info?.loading ? '...' : `${info?.skillCount ?? 0} skills`}
+                                    </span>
+                                </div>
+                                {truncatedRemote && (
+                                    <div className="text-[10px] text-[#848484] truncate mt-0.5">{truncatedRemote}</div>
+                                )}
+                            </div>
+                        </button>
+                    );
+                })}
             </div>
         </div>
     );

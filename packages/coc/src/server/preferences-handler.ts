@@ -84,6 +84,8 @@ export interface PerRepoPreferences {
     archivedChats?: Record<string, string[]>;
     /** Skill usage timestamps for ordering skill dropdowns (skillName → ISO timestamp). */
     skillUsageMap?: Record<string, string>;
+    /** IDs of workspaces whose skill folders are linked via "Extra Skill Folders". */
+    linkedRepoIds?: string[];
 }
 
 /** backward-compat alias */
@@ -256,6 +258,14 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         if (Object.keys(validated).length > 0) {
             result.skillUsageMap = validated;
         }
+    }
+
+    if (Array.isArray(obj.linkedRepoIds)) {
+        const ids = (obj.linkedRepoIds as unknown[]).filter(
+            (id): id is string => typeof id === 'string' && id.length > 0
+        );
+        // Preserve array even when empty so callers can detect an explicit clear
+        result.linkedRepoIds = ids;
     }
 
     return result;
@@ -494,6 +504,11 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             }
             if (isEmptyObjectBody(body, 'archivedChats')) {
                 delete merged.archivedChats;
+            }
+
+            // Explicitly set linkedRepoIds to empty array when client sends [] to clear
+            if (Array.isArray((body as any).linkedRepoIds) && (body as any).linkedRepoIds.length === 0) {
+                delete merged.linkedRepoIds;
             }
 
             writeRepoPreferences(dataDir, repoId, merged);

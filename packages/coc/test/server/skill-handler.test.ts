@@ -402,6 +402,128 @@ describe('registerSkillRoutes', () => {
 
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/skills-path
+    // -----------------------------------------------------------------------
+
+    it('GET /api/workspaces/:id/skills-path returns path and zero count when folder missing', async () => {
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills-path`
+        );
+        expect(statusCode).toBe(200);
+        expect(body.path).toContain('.github');
+        expect(body.path).toContain('skills');
+        expect(body.skillCount).toBe(0);
+        expect(body.accessible).toBe(false);
+    });
+
+    it('GET /api/workspaces/:id/skills-path returns correct count when skills exist', async () => {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        for (const name of ['skill-a', 'skill-b']) {
+            const dir = path.join(skillsDir, name);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'SKILL.md'), `# ${name}`);
+        }
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills-path`
+        );
+        expect(statusCode).toBe(200);
+        expect(body.skillCount).toBe(2);
+        expect(body.accessible).toBe(true);
+    });
+
+    it('GET /api/workspaces/:id/skills-path returns 404 for unknown workspace', async () => {
+        const { statusCode } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/unknown-id/skills-path`
+        );
+        expect(statusCode).toBe(404);
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/skills — extra folders + linked repo attribution
+    // -----------------------------------------------------------------------
+
+    it('GET /api/workspaces/:id/skills includes skills from extraSkillFolders', async () => {
+        // Create local skill
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        fs.mkdirSync(path.join(skillsDir, 'local-skill'), { recursive: true });
+        fs.writeFileSync(path.join(skillsDir, 'local-skill', 'SKILL.md'), '# local-skill');
+
+        // Create extra folder with a different skill
+        const extraDir = fs.mkdtempSync(path.join(os.tmpdir(), 'extra-skills-'));
+        fs.mkdirSync(path.join(extraDir, 'extra-skill'), { recursive: true });
+        fs.writeFileSync(path.join(extraDir, 'extra-skill', 'SKILL.md'), '# extra-skill');
+
+        store.getWorkspaces = vi.fn(async () => [{
+            id: workspaceId,
+            name: 'Test Workspace',
+            rootPath: workspaceDir,
+            extraSkillFolders: [extraDir],
+        } as WorkspaceInfo]);
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const names = body.skills.map((s: any) => s.name);
+        expect(names).toContain('local-skill');
+        expect(names).toContain('extra-skill');
+
+        fs.rmSync(extraDir, { recursive: true, force: true });
+    });
+
+    it('GET /api/workspaces/:id/skills local skill takes precedence over extra folder skill with same name', async () => {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        fs.mkdirSync(path.join(skillsDir, 'shared-skill'), { recursive: true });
+        fs.writeFileSync(path.join(skillsDir, 'shared-skill', 'SKILL.md'), '---\ndescription: local version\n---\n# shared-skill');
+
+        const extraDir = fs.mkdtempSync(path.join(os.tmpdir(), 'extra-skills-'));
+        fs.mkdirSync(path.join(extraDir, 'shared-skill'), { recursive: true });
+        fs.writeFileSync(path.join(extraDir, 'shared-skill', 'SKILL.md'), '---\ndescription: extra version\n---\n# shared-skill');
+
+        store.getWorkspaces = vi.fn(async () => [{
+            id: workspaceId,
+            name: 'Test Workspace',
+            rootPath: workspaceDir,
+            extraSkillFolders: [extraDir],
+        } as WorkspaceInfo]);
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const sharedSkill = body.skills.find((s: any) => s.name === 'shared-skill');
+        expect(sharedSkill).toBeDefined();
+        expect(sharedSkill.description).toBe('local version');
+
+        fs.rmSync(extraDir, { recursive: true, force: true });
+    });
+
+    it('GET /api/workspaces/:id/skills tags skills from linked workspace with sourceRepoId', async () => {
+        const linkedWsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'linked-ws-'));
+        const linkedSkillsDir = path.join(linkedWsDir, '.github', 'skills');
+        fs.mkdirSync(path.join(linkedSkillsDir, 'linked-skill'), { recursive: true });
+        fs.writeFileSync(path.join(linkedSkillsDir, 'linked-skill', 'SKILL.md'), '# linked-skill');
+
+        const linkedWsId = 'linked-ws-999';
+        store.getWorkspaces = vi.fn(async () => [
+            { id: workspaceId, name: 'Main', rootPath: workspaceDir, extraSkillFolders: [linkedSkillsDir] } as WorkspaceInfo,
+            { id: linkedWsId, name: 'Linked Repo', rootPath: linkedWsDir } as WorkspaceInfo,
+        ]);
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const linkedSkill = body.skills.find((s: any) => s.name === 'linked-skill');
+        expect(linkedSkill).toBeDefined();
+        expect(linkedSkill.source).toBe('linked-repo');
+        expect(linkedSkill.sourceRepoId).toBe(linkedWsId);
+
+        fs.rmSync(linkedWsDir, { recursive: true, force: true });
+    });
 });
 
 // ============================================================================

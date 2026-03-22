@@ -19,6 +19,10 @@ export interface SkillListItemProps {
     onSetDeleteConfirm: (confirming: boolean) => void;
     toggleDisabled?: boolean;
     testIdPrefix?: string;
+    /** Repo name badge shown for skills from a linked repo (e.g. "shared-tooling"). */
+    sourceRepoName?: string;
+    /** When true the delete button is hidden (linked-repo skills cannot be deleted here). */
+    hideDelete?: boolean;
 }
 
 export function SkillListItem({
@@ -34,6 +38,8 @@ export function SkillListItem({
     onSetDeleteConfirm,
     toggleDisabled = false,
     testIdPrefix = 'skill',
+    sourceRepoName,
+    hideDelete = false,
 }: SkillListItemProps) {
     return (
         <li
@@ -46,11 +52,20 @@ export function SkillListItem({
                 data-testid={`${testIdPrefix}-expand-${skill.name}`}
             >
                 <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] flex items-center gap-2">
+                    <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] flex items-center gap-2 flex-wrap">
                         🧩 {skill.name}
                         {skill.version && (
                             <span className="text-[10px] bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#1a73e8] dark:text-[#8ab4f8] px-1.5 py-0.5 rounded">
                                 v{skill.version}
+                            </span>
+                        )}
+                        {sourceRepoName && (
+                            <span
+                                className="text-[10px] bg-[#f3f3f3] dark:bg-[#333] text-[#848484] px-1.5 py-0.5 rounded-full"
+                                data-testid={`${testIdPrefix}-source-badge-${skill.name}`}
+                                title={`From linked repo: ${sourceRepoName}`}
+                            >
+                                {sourceRepoName}
                             </span>
                         )}
                         <span className="text-[10px] text-[#848484]">{isExpanded ? '▾' : '▸'}</span>
@@ -71,7 +86,7 @@ export function SkillListItem({
                         />
                         <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
                     </label>
-                    {deleteConfirm ? (
+                    {!hideDelete && (deleteConfirm ? (
                         <span className="flex items-center gap-1 text-xs">
                             <span className="text-[#616161] dark:text-[#999]">Delete?</span>
                             <button
@@ -93,7 +108,7 @@ export function SkillListItem({
                         >
                             🗑
                         </button>
-                    )}
+                    ))}
                 </div>
             </div>
             {isExpanded && (

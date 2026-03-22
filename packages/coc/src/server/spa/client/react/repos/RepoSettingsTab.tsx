@@ -17,6 +17,7 @@ import { CustomInstructionsPanel } from './CustomInstructionsPanel';
 import type { InstructionMode } from './CustomInstructionsPanel';
 import type { SettingsSection } from '../types/dashboard';
 import type { RepoData } from './repoGrouping';
+import { useRepos } from '../context/ReposContext';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -87,6 +88,7 @@ function MetaRow({ label, value, mono, children, valueClass }: { label: string; 
 export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const { addToast } = useGlobalToast();
     const { state, dispatch } = useApp();
+    const { repos: allRepos } = useRepos();
     const ws = repo.workspace;
 
     // ── MCP state ────────────────────────────────────────────────────────────
@@ -145,6 +147,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const [disabledSkills, setDisabledSkills] = useState<string[]>([]);
     const [skillToggleSaving, setSkillToggleSaving] = useState(false);
     const [extraSkillFolders, setExtraSkillFolders] = useState<string[]>([]);
+    const [linkedRepoIds, setLinkedRepoIds] = useState<string[]>([]);
 
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true);
@@ -168,6 +171,12 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
             .then((data) => {
                 setDisabledSkills(data.disabledSkills ?? []);
                 setExtraSkillFolders(data.extraSkillFolders ?? []);
+            })
+            .catch(() => {});
+        // Fetch linkedRepoIds from per-repo preferences
+        fetchApi(`/workspaces/${workspaceId}/preferences`)
+            .then((data) => {
+                setLinkedRepoIds(data.linkedRepoIds ?? []);
             })
             .catch(() => {});
     }, [workspaceId]);
@@ -242,9 +251,26 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ disabledSkills, extraSkillFolders: nextFolders }),
             });
+            // Re-fetch skills so linked-repo skills appear/disappear immediately
+            fetchSkills();
         } catch (e: any) {
             setExtraSkillFolders(prevFolders);
             addToast(e?.message ?? 'Failed to save skill config', 'error');
+        }
+    };
+
+    const handleLinkedRepoIdsChange = async (nextIds: string[]) => {
+        const prevIds = linkedRepoIds;
+        setLinkedRepoIds(nextIds);
+        try {
+            await fetchApi(`/workspaces/${workspaceId}/preferences`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ linkedRepoIds: nextIds }),
+            });
+        } catch (e: any) {
+            setLinkedRepoIds(prevIds);
+            addToast(e?.message ?? 'Failed to save linked repos', 'error');
         }
     };
 
@@ -557,6 +583,9 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                         onInstalled={fetchSkills}
                         extraSkillFolders={extraSkillFolders}
                         onExtraSkillFoldersChange={handleExtraSkillFoldersChange}
+                        linkedRepoIds={linkedRepoIds}
+                        onLinkedRepoIdsChange={handleLinkedRepoIdsChange}
+                        allRepos={allRepos}
                     />
                 )}
                 {activeSection === 'instructions' && (

@@ -10,7 +10,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import {
     getBundledSkills,
     DEFAULT_SKILLS_SETTINGS,
@@ -64,7 +64,9 @@ export interface SkillInfo {
     references?: string[];
     scripts?: string[];
     relativePath?: string;
-    source?: 'global' | 'repo' | 'bundled';
+    source?: 'global' | 'repo' | 'bundled' | 'linked-repo';
+    /** Workspace ID of the repo this skill was loaded from (only set when source = 'linked-repo'). */
+    sourceRepoId?: string;
 }
 
 export const VERSION_REGEX = /^version:\s*["']?(.+?)["']?\s*$/m;
@@ -246,7 +248,7 @@ export function extractDescriptionFromMarkdown(content: string): string | undefi
  */
 export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDir?: string): void {
 
-    // GET /api/workspaces/:id/skills — List installed skills
+    // GET /api/workspaces/:id/skills — List installed skills (including extra folders)
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills$/,
@@ -256,7 +258,36 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const id = ws.id;
 
             const installPath = getSkillsInstallPath(ws.rootPath);
-            let skills = listInstalledSkills(installPath);
+            const localSkills = listInstalledSkills(installPath);
+            const localNames = new Set(localSkills.map(s => s.name));
+
+            // Load skills from extra folders, resolving sourceRepoId for linked repos
+            let allWorkspaces: WorkspaceInfo[] | null = null;
+            const extraSkillFolders: string[] = ws.extraSkillFolders ?? [];
+            const extraSkills: SkillInfo[] = [];
+            for (const folder of extraSkillFolders) {
+                const folderSkills = listInstalledSkills(folder);
+                // Resolve sourceRepoId: check if this folder is another workspace's skills path
+                let sourceRepoId: string | undefined;
+                if (allWorkspaces === null) {
+                    try { allWorkspaces = await store.getWorkspaces(); } catch { allWorkspaces = []; }
+                }
+                for (const otherWs of allWorkspaces) {
+                    if (otherWs.id !== id && path.resolve(getSkillsInstallPath(otherWs.rootPath)) === path.resolve(folder)) {
+                        sourceRepoId = otherWs.id;
+                        break;
+                    }
+                }
+                for (const skill of folderSkills) {
+                    // Local skills take precedence — skip if already present
+                    if (localNames.has(skill.name)) continue;
+                    skill.source = sourceRepoId ? 'linked-repo' : skill.source;
+                    if (sourceRepoId) skill.sourceRepoId = sourceRepoId;
+                    extraSkills.push(skill);
+                }
+            }
+
+            let skills = [...localSkills, ...extraSkills];
             if (dataDir) {
                 try {
                     const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');
@@ -301,6 +332,21 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const installPath = getSkillsInstallPath(ws.rootPath);
             const { handleScan } = createSkillRouteHandlers({ installPath, sourceRoot: ws.rootPath });
             await handleScan(req, res);
+        },
+    });
+
+    // GET /api/workspaces/:id/skills-path — Resolve skills folder path and skill count for a workspace
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/skills-path$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const skillsPath = getSkillsInstallPath(ws.rootPath);
+            const accessible = fs.existsSync(skillsPath);
+            const skillCount = accessible ? listInstalledSkills(skillsPath).length : 0;
+            sendJSON(res, 200, { path: skillsPath, skillCount, accessible });
         },
     });
 
