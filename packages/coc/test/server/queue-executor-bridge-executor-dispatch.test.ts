@@ -62,6 +62,30 @@ vi.mock('../../src/server/executors/follow-up-executor', () => ({
     })),
 }));
 
+// ChatExecutor mock — records calls for dispatch assertions
+const mockChatExecute = vi.fn();
+vi.mock('../../src/server/executors/chat-executor', () => ({
+    ChatExecutor: vi.fn().mockImplementation(() => ({
+        execute: mockChatExecute,
+    })),
+}));
+
+// PlanExecutor mock — records calls for dispatch assertions
+const mockPlanExecute = vi.fn();
+vi.mock('../../src/server/executors/plan-executor', () => ({
+    PlanExecutor: vi.fn().mockImplementation(() => ({
+        execute: mockPlanExecute,
+    })),
+}));
+
+// AutopilotExecutor mock — records calls for dispatch assertions
+const mockAutopilotExecute = vi.fn();
+vi.mock('../../src/server/executors/autopilot-executor', () => ({
+    AutopilotExecutor: vi.fn().mockImplementation(() => ({
+        execute: mockAutopilotExecute,
+    })),
+}));
+
 // Forge mock — prevent real getCopilotSDKService and other side-effects
 const sdkMocks = createMockSDKService();
 
@@ -149,6 +173,23 @@ function makeFollowUpTask(processId: string, id = 'fu-task-1'): QueuedTask {
     };
 }
 
+function makeChatTask(mode: 'ask' | 'plan' | 'autopilot', id?: string): QueuedTask {
+    return {
+        id: id ?? `chat-${mode}-1`,
+        type: 'chat',
+        priority: 'normal',
+        status: 'running',
+        createdAt: Date.now(),
+        payload: {
+            kind: 'chat',
+            mode,
+            prompt: 'Hello from ' + mode,
+        },
+        config: {},
+        displayName: 'Hello from ' + mode,
+    };
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -162,6 +203,9 @@ describe('CLITaskExecutor executor dispatch', () => {
         mockWorkflowExecute.mockReset();
         mockShellExecute.mockReset();
         mockFollowUpExecuteFollowUp.mockReset();
+        mockChatExecute.mockReset();
+        mockPlanExecute.mockReset();
+        mockAutopilotExecute.mockReset();
     });
 
     // ========================================================================
@@ -368,6 +412,150 @@ describe('CLITaskExecutor executor dispatch', () => {
             // executor2 must NOT see executor1's cancelled task
             // (BaseExecutor.cancelledTasks is an instance-level Set)
             expect((executor2 as any).cancelledTasks.has('task-isolated')).toBe(false);
+        });
+    });
+
+    // ========================================================================
+    // Dispatch — chat modes (ask / plan / autopilot)
+    // ========================================================================
+
+    describe('chat mode dispatch', () => {
+        const chatResult = {
+            response: 'AI response',
+            sessionId: 'sess-1',
+            toolCalls: [],
+            timeline: [],
+            pendingSuggestions: undefined,
+        };
+
+        it('delegates ask-mode chat task to ChatExecutor.execute()', async () => {
+            mockChatExecute.mockResolvedValue(chatResult);
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('ask');
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockChatExecute).toHaveBeenCalledOnce();
+            expect(mockChatExecute).toHaveBeenCalledWith(task, expect.any(String));
+            // Other mode executors must NOT be invoked
+            expect(mockPlanExecute).not.toHaveBeenCalled();
+            expect(mockAutopilotExecute).not.toHaveBeenCalled();
+        });
+
+        it('delegates plan-mode chat task to PlanExecutor.execute()', async () => {
+            mockPlanExecute.mockResolvedValue(chatResult);
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('plan');
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockPlanExecute).toHaveBeenCalledOnce();
+            expect(mockPlanExecute).toHaveBeenCalledWith(task, expect.any(String));
+            expect(mockChatExecute).not.toHaveBeenCalled();
+            expect(mockAutopilotExecute).not.toHaveBeenCalled();
+        });
+
+        it('delegates autopilot-mode chat task to AutopilotExecutor.execute()', async () => {
+            mockAutopilotExecute.mockResolvedValue(chatResult);
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('autopilot');
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockAutopilotExecute).toHaveBeenCalledOnce();
+            expect(mockAutopilotExecute).toHaveBeenCalledWith(task, expect.any(String));
+            expect(mockChatExecute).not.toHaveBeenCalled();
+            expect(mockPlanExecute).not.toHaveBeenCalled();
+        });
+
+        it('marks process as failed when ChatExecutor.execute() throws', async () => {
+            mockChatExecute.mockRejectedValue(new Error('Chat AI error'));
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('ask', 'ask-fail-1');
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(false);
+            expect(result.error?.message).toBe('Chat AI error');
+            expect(store.updateProcess).toHaveBeenCalledWith(
+                'queue_ask-fail-1',
+                expect.objectContaining({ status: 'failed' }),
+            );
+        });
+
+        it('marks process as failed when PlanExecutor.execute() throws', async () => {
+            mockPlanExecute.mockRejectedValue(new Error('Plan AI error'));
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('plan', 'plan-fail-1');
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(false);
+            expect(result.error?.message).toBe('Plan AI error');
+            expect(store.updateProcess).toHaveBeenCalledWith(
+                'queue_plan-fail-1',
+                expect.objectContaining({ status: 'failed' }),
+            );
+        });
+
+        it('marks process as failed when AutopilotExecutor.execute() throws', async () => {
+            mockAutopilotExecute.mockRejectedValue(new Error('Autopilot AI error'));
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('autopilot', 'autopilot-fail-1');
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(false);
+            expect(result.error?.message).toBe('Autopilot AI error');
+            expect(store.updateProcess).toHaveBeenCalledWith(
+                'queue_autopilot-fail-1',
+                expect.objectContaining({ status: 'failed' }),
+            );
+        });
+
+        it('prevents ask-mode execution when task is cancelled', async () => {
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('ask', 'ask-cancel-1');
+            executor.cancel(task.id);
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(false);
+            expect(result.error?.message).toContain('cancelled');
+            expect(mockChatExecute).not.toHaveBeenCalled();
+        });
+
+        it('prevents plan-mode execution when task is cancelled', async () => {
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('plan', 'plan-cancel-1');
+            executor.cancel(task.id);
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(false);
+            expect(result.error?.message).toContain('cancelled');
+            expect(mockPlanExecute).not.toHaveBeenCalled();
+        });
+
+        it('prevents autopilot-mode execution when task is cancelled', async () => {
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('autopilot', 'autopilot-cancel-1');
+            executor.cancel(task.id);
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(false);
+            expect(result.error?.message).toContain('cancelled');
+            expect(mockAutopilotExecute).not.toHaveBeenCalled();
         });
     });
 });

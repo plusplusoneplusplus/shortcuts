@@ -168,10 +168,10 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             expect(result.durationMs).toBeGreaterThanOrEqual(0);
-            expect(result.result).toEqual({
+            expect(result.result).toEqual(expect.objectContaining({
                 response: 'AI response text',
                 sessionId: 'session-123',
-            });
+            }));
 
             // Verify process was created in store
             expect(store.addProcess).toHaveBeenCalledOnce();
@@ -260,10 +260,10 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             expect(result.durationMs).toBeGreaterThanOrEqual(0);
-            expect(result.result).toEqual({
+            expect(result.result).toEqual(expect.objectContaining({
                 response: 'AI response text',
                 sessionId: 'session-123',
-            });
+            }));
 
             // Verify process was created in store
             expect(store.addProcess).toHaveBeenCalled();

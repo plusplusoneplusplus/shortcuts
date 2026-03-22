@@ -34,12 +34,8 @@ import {
 } from './task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './executors/image-store';
 import {
-    buildModeSystemMessage,
-    withRepoInstructions,
     extractPrompt,
     applySkillContent,
-    buildConversationHistoryContext,
-    buildFollowUpSuggestionsAddon,
 } from './executors/prompt-builder';
 import { applyFollowUpToTask } from './shared/queue-utils';
 import { emitMessageSteering } from './sse-handler';
@@ -83,6 +79,9 @@ import { ReplicateTemplateStrategy } from './task-strategies/replicate-template-
 import { ShellExecutor } from './executors/shell-executor';
 import { WorkflowExecutor } from './executors/workflow-executor';
 import { FollowUpExecutor } from './executors/follow-up-executor';
+import { ChatExecutor } from './executors/chat-executor';
+import { PlanExecutor } from './executors/plan-executor';
+import { AutopilotExecutor } from './executors/autopilot-executor';
 
 // ============================================================================
 // Constants
@@ -182,6 +181,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly workflowExecutor: WorkflowExecutor;
     /** Executor for follow-up message dispatching. */
     private readonly followUpExecutor: FollowUpExecutor;
+    /** Executor for ask-mode chat tasks. */
+    private readonly chatExecutor: ChatExecutor;
+    /** Executor for plan-mode chat tasks. */
+    private readonly planExecutor: PlanExecutor;
+    /** Executor for autopilot-mode chat tasks. */
+    private readonly autopilotExecutor: AutopilotExecutor;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -212,6 +217,19 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             resolveSkillConfig: (wsId, workDir) => this.resolveSkillConfig(wsId, workDir),
             onTitleNeeded: (processId, turns) => this.generateTitleIfNeeded(processId, turns),
         }, this.dataDir);
+        const chatModeOptions = {
+            workingDirectory: this.defaultWorkingDirectory,
+            approvePermissions: this.approvePermissions,
+            aiService: this.aiService,
+            defaultTimeoutMs: this.defaultTimeoutMs,
+            followUpSuggestions: this.followUpSuggestions,
+            toolCallCacheStore: this.toolCallCacheStore,
+            resolveSkillConfig: (wsId: string | undefined, workDir?: string) => this.resolveSkillConfig(wsId, workDir),
+            resolveWorkspaceIdForPath: (rootPath: string) => this.resolveWorkspaceIdForPath(rootPath),
+        };
+        this.chatExecutor = new ChatExecutor(store, chatModeOptions, this.dataDir);
+        this.planExecutor = new PlanExecutor(store, chatModeOptions, this.dataDir);
+        this.autopilotExecutor = new AutopilotExecutor(store, chatModeOptions, this.dataDir);
     }
 
     /** Inject the queue manager (called by createQueueExecutorBridge after construction). */
@@ -366,8 +384,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             // Clean up throttle state
             // (cleanupSession in finally handles the actual deletion)
 
-            // Drain accumulated timeline items for the final assistant turn
-            const finalTimeline = mergeConsecutiveContentItems(this.sessions.get(processId)?.timelineBuffer || []);
+            // Drain accumulated timeline items for the final assistant turn.
+            // New mode executors (chat/plan/autopilot) return timeline in the result;
+            // executeWithAI (task generation, resolve comments) keeps it in bridge sessions.
+            const finalTimeline = (result as any)?.timeline
+                ?? mergeConsecutiveContentItems(this.sessions.get(processId)?.timelineBuffer || []);
 
             // Build final conversation turns (re-read from store to include any flushed streaming data)
             const currentProcess = await this.store.getProcess(processId, (task.payload as any)?.workspaceId as string | undefined);
@@ -383,10 +404,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     turnIndex: 1,
                     toolCalls: (result as any)?.toolCalls || undefined,
                     timeline: finalTimeline,
-                    suggestions: this.sessions.get(processId)?.pendingSuggestions,
+                    suggestions: (result as any)?.pendingSuggestions ?? this.sessions.get(processId)?.pendingSuggestions,
                 },
             ];
-            // pendingSuggestions will be cleared by cleanupSession in finally
 
             // Cold resume: prepend historical turns from the original session
             const resumedFrom = (task.payload as any)?.resumedFrom;
@@ -601,23 +621,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 return this.executeResolveComments(task);
             }
 
-            // Standard chat: send to AI with optional follow-up suggestions
-            const { tools, suffix: countSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
-            const chatWorkingDir = this.getWorkingDirectory(task);
-            let autoFolderContextForChat: AutoFolderContext | undefined;
-            if (chatWorkingDir) {
-                const chatWsId = payload.workspaceId || await this.resolveWorkspaceIdForPath(chatWorkingDir);
-                const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: chatWorkingDir, workspaceId: chatWsId }).absolutePath;
-                const entries = await fs.promises.readdir(tasksRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
-                const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
-                autoFolderContextForChat = { tasksRoot, existingFolders };
-            }
-            const systemMessage = await withRepoInstructions(
-                buildModeSystemMessage(payload.mode, autoFolderContextForChat),
-                chatWorkingDir,
-                payload.mode
-            );
-            return this.executeWithAI(task, prompt + countSuffix, { tools: tools.length > 0 ? tools : undefined, systemMessage });
+            // Standard chat: dispatch to mode-specific executor
+            const mode = payload.mode;
+            if (mode === 'plan') return this.planExecutor.execute(task, prompt);
+            if (mode === 'autopilot') return this.autopilotExecutor.execute(task, prompt);
+            // Default: ask mode (also covers undefined/unknown modes)
+            return this.chatExecutor.execute(task, prompt);
         }
 
         // Fallback: no-op
