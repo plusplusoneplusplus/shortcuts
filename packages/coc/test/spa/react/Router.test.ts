@@ -1782,6 +1782,10 @@ describe('parseSettingsSection', () => {
         expect(parseSettingsSection('#repos/r1/settings/instructions')).toBe('instructions');
     });
 
+    it('returns "memory" for #repos/r1/settings/memory', () => {
+        expect(parseSettingsSection('#repos/r1/settings/memory')).toBe('memory');
+    });
+
     it('falls back to "info" for an unknown section', () => {
         expect(parseSettingsSection('#repos/r1/settings/unknown')).toBe('info');
     });
@@ -1820,6 +1824,10 @@ describe('VALID_SETTINGS_SECTIONS', () => {
 
     it('includes "instructions"', () => {
         expect(VALID_SETTINGS_SECTIONS.has('instructions')).toBe(true);
+    });
+
+    it('includes "memory"', () => {
+        expect(VALID_SETTINGS_SECTIONS.has('memory')).toBe(true);
     });
 
     it('does not include unknown values', () => {
