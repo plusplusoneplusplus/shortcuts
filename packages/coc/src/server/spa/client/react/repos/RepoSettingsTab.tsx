@@ -17,6 +17,7 @@ import { CustomInstructionsPanel } from './CustomInstructionsPanel';
 import type { InstructionMode } from './CustomInstructionsPanel';
 import type { SettingsSection } from '../types/dashboard';
 import type { RepoData } from './repoGrouping';
+import { RepoMemorySection } from './memory/RepoMemorySection';
 import { useRepos } from '../context/ReposContext';
 
 interface RepoSettingsTabProps {
@@ -32,6 +33,7 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'mcp', label: 'MCP Servers', icon: '🖥️' },
     { id: 'skills', label: 'Agent Skills', icon: '🧩' },
     { id: 'instructions', label: 'Custom Instructions', icon: '📝' },
+    { id: 'memory', label: 'Memory', icon: '🧠' },
 ];
 
 // ── Info section types ──────────────────────────────────────────────────────
@@ -598,6 +600,9 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                         onSave={handleInstrSave}
                         onDelete={handleInstrDelete}
                     />
+                )}
+                {activeSection === 'memory' && (
+                    <RepoMemorySection repoId={workspaceId} repoPath={ws.rootPath} />
                 )}
             </div>
         </div>
