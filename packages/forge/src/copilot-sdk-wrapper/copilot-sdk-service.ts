@@ -117,6 +117,7 @@ interface ISessionOptions {
  * We define this interface to avoid direct type dependency on the SDK
  */
 interface ICopilotClient {
+    start(): Promise<void>;
     createSession(options?: ISessionOptions): Promise<ICopilotSession>;
     /**
      * Resume an existing server-side session by ID.
@@ -480,6 +481,7 @@ export class CopilotSDKService {
 
         const client = await this.createClient();
         try {
+            await client.start();
             return await client.listModels();
         } finally {
             client.stop().catch(() => {});

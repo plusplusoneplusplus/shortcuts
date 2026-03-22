@@ -2825,6 +2825,35 @@ describe('CopilotSDKService - listModels()', () => {
         await expect(service.listModels()).rejects.toThrow('SDK not found');
     });
 
+    it('listModels() calls client.start() before listModels()', async () => {
+        const { MockCopilotClient, mockClient } = createMockSDKModule();
+        mockClient.listModels.mockResolvedValue([]);
+
+        const callOrder: string[] = [];
+        mockClient.start.mockImplementation(() => { callOrder.push('start'); return Promise.resolve(); });
+        mockClient.listModels.mockImplementation(() => { callOrder.push('listModels'); return Promise.resolve([]); });
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await service.listModels();
+        expect(mockClient.start).toHaveBeenCalledTimes(1);
+        expect(callOrder).toEqual(['start', 'listModels']);
+    });
+
+    it('listModels() stops the client even when start() rejects', async () => {
+        const { MockCopilotClient, mockClient } = createMockSDKModule();
+        mockClient.start.mockRejectedValue(new Error('start failed'));
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await expect(service.listModels()).rejects.toThrow('start failed');
+        expect(mockClient.stop).toHaveBeenCalledTimes(1);
+    });
+
     it('listModels() throws when service is disposed', async () => {
         service.dispose();
         await expect(service.listModels()).rejects.toThrow('CopilotSDKService has been disposed');

@@ -39,6 +39,7 @@ export interface MockSDKModule {
     MockCopilotClient: new (options?: any) => any;
     capturedOptions: any[];
     mockClient: {
+        start: ReturnType<typeof vi.fn>;
         createSession: ReturnType<typeof vi.fn>;
         resumeSession: ReturnType<typeof vi.fn>;
         stop: ReturnType<typeof vi.fn>;
@@ -121,6 +122,7 @@ export function createMockSDKModule(sessionOrFactory?: any): MockSDKModule {
     const capturedOptions: any[] = [];
 
     const mockClient = {
+        start: vi.fn().mockResolvedValue(undefined),
         createSession: sessionOrFactory === undefined
             ? vi.fn().mockResolvedValue({
                 sessionId: 'test-session',
@@ -162,6 +164,7 @@ export function createStreamingMockSDKModule(
     };
 
     const mockClient = {
+        start: vi.fn().mockResolvedValue(undefined),
         createSession: vi.fn().mockImplementation(() => {
             const s = createSession();
             return Promise.resolve(s.session);
