@@ -28,7 +28,8 @@ export function RunScriptDialog() {
 
     const workspaceId = queueState.scriptDialogWorkspaceId || appState.workspaces?.[0]?.id || '';
     const { models: modelInfos } = useModels();
-    const models = modelInfos.map(m => m.id);
+    const enabledModels = modelInfos.filter(m => m.enabled);
+    const models = (enabledModels.length > 0 ? enabledModels : modelInfos).map(m => m.id);
     const { templates, saveTemplate, deleteTemplate, loaded: templatesLoaded } = useScriptTemplates(workspaceId || undefined);
 
     // Pre-fill working directory when opened from a repo action bar

@@ -52,3 +52,13 @@ describe('RunScriptDialog model hint', () => {
         expect(RUN_SCRIPT_SOURCE).toContain('Not used for script execution');
     });
 });
+
+describe('RunScriptDialog model filtering', () => {
+    it('filters model list to enabled models only', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('filter(m => m.enabled)');
+    });
+
+    it('falls back to all models when none are enabled', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('enabledModels.length > 0 ? enabledModels : modelInfos');
+    });
+});

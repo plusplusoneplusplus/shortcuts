@@ -153,5 +153,61 @@ describe('EnqueueDialog', () => {
             }
         }, { timeout: 3000 });
     });
+
+    it('shows only enabled models in the model dropdown', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve([
+                        { id: 'gpt-4', name: 'gpt-4', enabled: true, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
+                        { id: 'gpt-3.5', name: 'gpt-3.5', enabled: false, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
+                    ]),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        renderDialog();
+        await waitFor(() => screen.getByTestId('floating-dialog-panel'));
+
+        await waitFor(() => {
+            const selects = screen.queryAllByRole('combobox');
+            const modelSelect = selects.find(s => Array.from((s as HTMLSelectElement).options).some(o => o.value === 'gpt-4'));
+            if (modelSelect) {
+                const options = Array.from((modelSelect as HTMLSelectElement).options).map(o => o.value);
+                expect(options).toContain('gpt-4');
+                expect(options).not.toContain('gpt-3.5');
+            }
+        });
+    });
+
+    it('falls back to all models when none are enabled', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve([
+                        { id: 'gpt-4', name: 'gpt-4', enabled: false, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
+                        { id: 'gpt-3.5', name: 'gpt-3.5', enabled: false, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
+                    ]),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        renderDialog();
+        await waitFor(() => screen.getByTestId('floating-dialog-panel'));
+
+        await waitFor(() => {
+            const selects = screen.queryAllByRole('combobox');
+            const modelSelect = selects.find(s => Array.from((s as HTMLSelectElement).options).some(o => o.value === 'gpt-4'));
+            if (modelSelect) {
+                const options = Array.from((modelSelect as HTMLSelectElement).options).map(o => o.value);
+                expect(options).toContain('gpt-4');
+                expect(options).toContain('gpt-3.5');
+            }
+        });
+    });
 });
 

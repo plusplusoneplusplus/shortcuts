@@ -52,7 +52,8 @@ export function EnqueueDialog() {
     const { models: savedModels, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
     const { templates, saveTemplate, deleteTemplate, loaded: templatesLoaded } = useSkillTemplates(workspaceId || undefined);
     const { models: modelInfos } = useModels();
-    const models = modelInfos.map(m => m.id);
+    const enabledModels = modelInfos.filter(m => m.enabled);
+    const models = (enabledModels.length > 0 ? enabledModels : modelInfos).map(m => m.id);
     const [folders, setFolders] = useState<FolderOption[]>([]);
     const [folderPath, setFolderPath] = useState<string>('');
     const [skills, setSkills] = useState<SkillOption[]>([]);

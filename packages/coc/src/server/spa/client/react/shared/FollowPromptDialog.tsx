@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingDialog, Button, Spinner } from './index';
+import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/usePreferences';
 import { useRecentSkills } from '../hooks/useRecentSkills';
 import { useApp } from '../context/AppContext';
@@ -44,7 +45,9 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
     const { recentItems, trackUsage } = useRecentSkills(wsId);
     const { addToast } = useGlobalToast();
 
-    const [models, setModels] = useState<string[]>([]);
+    const { models: modelInfos } = useModels();
+    const enabledModels = modelInfos.filter(m => m.enabled);
+    const models = (enabledModels.length > 0 ? enabledModels : modelInfos).map(m => m.id);
     const [selectedWsId, setSelectedWsId] = useState(wsId);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -56,12 +59,8 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         let cancelled = false;
         (async () => {
             try {
-                const [modelsRes, skillRes] = await Promise.all([
-                    fetch(getApiBase() + '/models').then(r => r.ok ? r.json() : []),
-                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null),
-                ]);
+                const skillRes = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null);
                 if (cancelled) return;
-                setModels(Array.isArray(modelsRes) ? modelsRes.map((m: any) => m.id) : []);
                 setSkills(skillRes?.skills ?? []);
             } catch {
                 // ignore
