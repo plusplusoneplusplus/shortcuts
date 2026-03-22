@@ -6,12 +6,41 @@
  * Includes a "pop out" button to open the review in a separate browser window.
  */
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { FloatingDialog } from '../shared/FloatingDialog';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useMarkdownPopOut } from '../context/MarkdownPopOutContext';
 import { mdPopOutKey } from '../layout/PopOutMarkdownShell';
+
+function PopOutIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"
+             aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+            <path d="M7 3h4v4h-1V4.7L6.35 8.35l-.7-.7L9.3 4H7V3z"/>
+            <path d="M3 5h2V4H2v8h8V9H9v2H3V5z"/>
+        </svg>
+    );
+}
+
+function MaximizeIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"
+             aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+            <path d="M2 2h4v1H3v3H2V2zm8 0h2v4h-1V3h-3V2h2zM2 10h1v3h3v1H2v-4zm10 0v4h-4v-1h3v-3h1z"/>
+        </svg>
+    );
+}
+
+function RestoreIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+             aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+            <rect x="4" y="2" width="8" height="8" stroke="currentColor" strokeWidth="1.2"/>
+            <path d="M2 5v7h7v-2H3V5H2z" fill="currentColor"/>
+        </svg>
+    );
+}
 
 export interface MarkdownReviewDialogProps {
     open: boolean;
@@ -46,6 +75,8 @@ export function MarkdownReviewDialog({
     const { isMobile } = useBreakpoint();
     const scrollTopRef = useRef(0);
     const { markPoppedOut } = useMarkdownPopOut();
+    const [isMaximized, setIsMaximized] = useState(false);
+    const handleToggleMaximize = () => setIsMaximized(v => !v);
 
     if (!open || !wsId || !filePath) return null;
 
@@ -77,6 +108,7 @@ export function MarkdownReviewDialog({
             minWidth={600}
             minHeight={400}
             className="max-w-[900px] w-[900px] h-[700px]"
+            isMaximized={isMaximized}
             renderHeader={({ onMouseDown }) => isMobile ? (
                 /* Mobile: compact single-row header */
                 <div
@@ -97,7 +129,17 @@ export function MarkdownReviewDialog({
                             aria-label="Open in new window"
                             title="Open in new window"
                         >
-                            ⤢
+                            <PopOutIcon />
+                        </button>
+                        <button
+                            data-testid="markdown-review-maximize-btn"
+                            onClick={handleToggleMaximize}
+                            onMouseDown={e => e.stopPropagation()}
+                            className={headerBtnClass}
+                            aria-label={isMaximized ? 'Restore' : 'Maximize'}
+                            title={isMaximized ? 'Restore' : 'Maximize'}
+                        >
+                            {isMaximized ? <RestoreIcon /> : <MaximizeIcon />}
                         </button>
                         {handleMinimize && (
                             <button
@@ -147,7 +189,17 @@ export function MarkdownReviewDialog({
                             aria-label="Open in new window"
                             title="Open in new window"
                         >
-                            ⤢
+                            <PopOutIcon />
+                        </button>
+                        <button
+                            data-testid="markdown-review-maximize-btn"
+                            onClick={handleToggleMaximize}
+                            onMouseDown={e => e.stopPropagation()}
+                            className={headerBtnClass}
+                            aria-label={isMaximized ? 'Restore' : 'Maximize'}
+                            title={isMaximized ? 'Restore' : 'Maximize'}
+                        >
+                            {isMaximized ? <RestoreIcon /> : <MaximizeIcon />}
                         </button>
                         {handleMinimize && (
                             <button

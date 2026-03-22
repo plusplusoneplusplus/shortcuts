@@ -403,4 +403,54 @@ describe('MarkdownReviewDialog', () => {
         const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
         expect(panel).not.toBeNull();
     });
+
+    it('renders maximize button', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-maximize-btn"]');
+        expect(btn).not.toBeNull();
+    });
+
+    it('clicking maximize button toggles aria-label from Maximize to Restore', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-maximize-btn"]') as HTMLElement;
+        expect(btn.getAttribute('aria-label')).toBe('Maximize');
+        fireEvent.click(btn);
+        expect(btn.getAttribute('aria-label')).toBe('Restore');
+        fireEvent.click(btn);
+        expect(btn.getAttribute('aria-label')).toBe('Maximize');
+    });
+
+    it('pop-out button has aria-label "Open in new window"', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-popout-btn"]');
+        expect(btn).not.toBeNull();
+        expect(btn!.getAttribute('aria-label')).toBe('Open in new window');
+    });
 });

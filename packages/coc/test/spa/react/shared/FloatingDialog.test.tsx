@@ -161,4 +161,39 @@ describe('FloatingDialog', () => {
         fireEvent.mouseDown(screen.getByTestId('custom-drag-header'), { clientX: 100, clientY: 50 });
         expect(dragHandlerCalled).toHaveLength(1);
     });
+
+    describe('maximize prop', () => {
+        it('renders resize handles hidden when isMaximized=true', () => {
+            render(
+                <FloatingDialog open={true} onClose={vi.fn()} resizable isMaximized={true}>
+                    Content
+                </FloatingDialog>
+            );
+            expect(screen.queryByTestId('resize-handle-n')).toBeNull();
+            expect(screen.queryByTestId('resize-grip')).toBeNull();
+        });
+
+        it('applies full-viewport style when isMaximized=true', () => {
+            render(
+                <FloatingDialog open={true} onClose={vi.fn()} resizable isMaximized={true}>
+                    Content
+                </FloatingDialog>
+            );
+            const panel = screen.getByTestId('floating-dialog-panel') as HTMLElement;
+            expect(panel.style.width).toBe('100vw');
+            expect(panel.style.height).toBe('100vh');
+            expect(panel.style.top).toBe('0px');
+            expect(panel.style.left).toBe('0px');
+        });
+
+        it('restores resize handles when isMaximized=false', () => {
+            render(
+                <FloatingDialog open={true} onClose={vi.fn()} resizable isMaximized={false}>
+                    Content
+                </FloatingDialog>
+            );
+            expect(screen.getByTestId('resize-handle-n')).toBeTruthy();
+            expect(screen.getByTestId('resize-grip')).toBeTruthy();
+        });
+    });
 });

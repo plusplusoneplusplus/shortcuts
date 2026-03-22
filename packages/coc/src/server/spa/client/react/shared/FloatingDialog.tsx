@@ -66,6 +66,8 @@ export interface FloatingDialogProps {
      * no effect on the header (the consumer owns all header UI).
      */
     renderHeader?: (dragProps: { onMouseDown: (e: React.MouseEvent) => void }) => ReactNode;
+    /** When true, the dialog fills the entire viewport and resize handles are hidden. */
+    isMaximized?: boolean;
 }
 
 /**
@@ -93,6 +95,7 @@ export function FloatingDialog({
     noPadding = false,
     closeButtonId,
     renderHeader,
+    isMaximized = false,
 }: FloatingDialogProps) {
     const panelRef = useRef<HTMLDivElement>(null);
     const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
@@ -180,18 +183,20 @@ export function FloatingDialog({
 
     const hasMaxWOverride = className ? /\bmax-w-\[/.test(className) : false;
 
-    const panelStyle: React.CSSProperties = {
-        ...(pos
-            ? { left: pos.left, top: pos.top, transform: 'none' }
-            : { top: '10vh', left: '50%', transform: 'translateX(-50%)' }),
-        ...(size ? { width: size.width, height: size.height, maxWidth: 'none', minWidth: 'unset' } : {}),
-    };
+    const panelStyle: React.CSSProperties = isMaximized
+        ? { top: 0, left: 0, width: '100vw', height: '100vh', transform: 'none' }
+        : {
+            ...(pos
+                ? { left: pos.left, top: pos.top, transform: 'none' }
+                : { top: '10vh', left: '50%', transform: 'translateX(-50%)' }),
+            ...(size ? { width: size.width, height: size.height, maxWidth: 'none', minWidth: 'unset' } : {}),
+        };
 
     const panelClass = cn(
         'fixed z-[10002]',
         hasMaxWOverride
-            ? 'w-full rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col'
-            : 'w-full max-w-[600px] min-w-[480px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col',
+            ? `w-full ${isMaximized ? 'rounded-none' : 'rounded-lg'} bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col`
+            : `w-full max-w-[600px] min-w-[480px] ${isMaximized ? 'rounded-none' : 'rounded-lg'} bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col`,
         noPadding ? '' : 'p-6 gap-4',
         className,
     );
@@ -230,8 +235,8 @@ export function FloatingDialog({
             className={panelClass}
             style={panelStyle}
         >
-            {/* 8-direction resize handles — rendered only when resizable=true */}
-            {resizable && RESIZE_HANDLES.map(({ dir, style }) => (
+            {/* 8-direction resize handles — rendered only when resizable=true and not maximized */}
+            {resizable && !isMaximized && RESIZE_HANDLES.map(({ dir, style }) => (
                 <div
                     key={dir}
                     data-resize={dir}
@@ -241,7 +246,7 @@ export function FloatingDialog({
                 />
             ))}
             {/* Subtle resize-grip icon in bottom-right corner */}
-            {resizable && (
+            {resizable && !isMaximized && (
                 <div
                     data-testid="resize-grip"
                     style={{
