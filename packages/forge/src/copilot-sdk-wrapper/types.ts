@@ -201,6 +201,21 @@ export interface PermissionRequestResult {
 }
 
 /**
+ * Extended permission request that includes additional runtime properties
+ * (`resource` and `operation`) that exist in the SDK's request object at runtime
+ * but are absent from the published SDK types.
+ *
+ * NOTE: This interface must be re-verified if the SDK's published types are updated
+ * to include these fields natively — at that point this local extension becomes redundant.
+ */
+export interface ExtendedSdkRequest extends PermissionRequest {
+    /** The resource being accessed (e.g., a file path or URL). */
+    resource?: string;
+    /** The operation being performed on the resource (e.g., 'read', 'write'). */
+    operation?: string;
+}
+
+/**
  * Handler function for permission requests.
  */
 export type PermissionHandler = (

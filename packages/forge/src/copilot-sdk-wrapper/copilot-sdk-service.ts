@@ -36,6 +36,7 @@ import {
     PermissionRequest,
     PermissionRequestResult,
     PermissionHandler,
+    ExtendedSdkRequest,
     approveAllPermissions,
     denyAllPermissions,
     ToolEvent,
@@ -557,7 +558,7 @@ export class CopilotSDKService {
             const effectiveHandler = options.onPermissionRequest || denyAllPermissions;
             sessionOptions.onPermissionRequest = (request, invocation) => {
                 const sessionLog = createSessionLogger(invocation.sessionId);
-                sessionLog.debug({ kind: request.kind, toolCallId: request.toolCallId || undefined, resource: (request as any).resource, operation: (request as any).operation }, 'Permission request');
+                sessionLog.debug({ kind: request.kind, toolCallId: request.toolCallId || undefined, resource: (request as ExtendedSdkRequest).resource, operation: (request as ExtendedSdkRequest).operation }, 'Permission request');
                 const capturePermission = (permResult: PermissionRequestResult) => {
                     if (request.toolCallId) {
                         const tc = toolCallsMap.get(request.toolCallId);
@@ -565,8 +566,8 @@ export class CopilotSDKService {
                             tc.permissionRequest = {
                                 kind: request.kind,
                                 timestamp: new Date(),
-                                resource: (request as any).resource,
-                                operation: (request as any).operation,
+                                resource: (request as ExtendedSdkRequest).resource,
+                                operation: (request as ExtendedSdkRequest).operation,
                             };
                             tc.permissionResult = {
                                 approved: permResult.kind === 'approved',
