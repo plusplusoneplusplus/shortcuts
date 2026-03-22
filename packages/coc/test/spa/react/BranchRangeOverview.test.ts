@@ -160,9 +160,9 @@ describe('RepoGitTab — CommitDetail range-mode integration', () => {
         expect(source).toContain("| { type: 'branch-range' }");
     });
 
-    it('sets branch-range as default view when branch range has commits on desktop', () => {
-        expect(source).toContain("type: 'branch-range'");
-        expect(source).toContain("rangeInfo && rangeInfo.commitCount > 0");
+    it('defaults to empty right panel (no auto-selection on initial load)', () => {
+        expect(source).toContain("setRightPanelView(null)");
+        expect(source).not.toContain("rangeInfo && rangeInfo.commitCount > 0");
     });
 
     it('passes onBranchRangeSelect to BranchChanges', () => {

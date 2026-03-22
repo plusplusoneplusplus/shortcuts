@@ -29,6 +29,7 @@
     "@octokit/rest": "^22.0.1",
     "azure-devops-node-api": "^14.1.0",
     "commander": "^12.1.0",
+    "diff": "^5.2.0",
     "js-yaml": "^4.1.0",
     "pino": "^9.x",
     "pino-pretty": "^11.x"
