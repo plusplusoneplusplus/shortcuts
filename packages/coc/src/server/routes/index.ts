@@ -25,6 +25,7 @@ import { registerTaskCommentsRoutes } from '../task-comments-handler';
 import { registerDiffCommentsRoutes } from '../diff-comments-handler';
 import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
+import { registerRepoMemoryRoutes } from '../memory/repo-memory-handler';
 import { registerRepoRoutes } from '../repos/repo-routes';
 import { registerInstructionRoutes } from '../instruction-handler';
 import { registerProviderRoutes } from '../providers/provider-routes';
@@ -115,6 +116,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     registerMemoryRoutes(routes, dataDir, {
         aggregateToolCallsAIInvoker: createCLIAIInvoker({ approvePermissions: true }),
+    });
+
+    registerRepoMemoryRoutes(routes, dataDir, {
+        store,
+        aiInvoker: createCLIAIInvoker({ approvePermissions: true }),
     });
 
     registerModelRoutes(routes, modelMetadataStore);
