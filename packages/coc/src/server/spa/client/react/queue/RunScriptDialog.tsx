@@ -190,6 +190,7 @@ export function RunScriptDialog() {
                                 <option value="">Default</option>
                                 {models.map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
+                            <span className="mt-1 block text-[#848484]">Not used for script execution. Saved with templates for future use.</span>
                         </label>
 
                         {/* Pause on Failure toggle */}

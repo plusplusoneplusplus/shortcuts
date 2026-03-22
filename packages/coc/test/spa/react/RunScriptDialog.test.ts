@@ -46,3 +46,9 @@ describe('RunScriptDialog workspace pre-fill', () => {
         expect(RUN_SCRIPT_SOURCE).toMatch(/import\s*\{[^}]*useEffect[^}]*\}\s*from\s*'react'/);
     });
 });
+
+describe('RunScriptDialog model hint', () => {
+    it('shows a hint that the model field is not used for script execution', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('Not used for script execution');
+    });
+});
