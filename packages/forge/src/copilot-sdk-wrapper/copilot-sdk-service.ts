@@ -744,7 +744,11 @@ export class CopilotSDKService {
      */
     public dispose(): void {
         this.disposed = true;
-        // Fire and forget cleanup
+        // Remove the stream-error guard synchronously so that a subsequent
+        // resetInstance() + new getInstance() cycle does not accumulate
+        // stale process-level handlers while async cleanup is still running.
+        this.removeStreamErrorGuard();
+        // Fire and forget the rest of cleanup (session abort, etc.)
         this.cleanup().catch(() => {
             // Ignore cleanup errors during dispose
         });

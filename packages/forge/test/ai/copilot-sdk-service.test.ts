@@ -2677,6 +2677,49 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         expect(() => handler(new Error('some other error'))).not.toThrow();
     });
 
+    it('dispose() removes guard synchronously so resetInstance() N-times does not accumulate handlers (idempotency regression)', () => {
+        // Regression: dispose() previously fired cleanup() fire-and-forget, which
+        // awaited sessionManager.abortAll() before calling removeStreamErrorGuard().
+        // Calling resetInstance() multiple times therefore caused N handlers to
+        // accumulate on process.uncaughtException / process.unhandledRejection.
+
+        const countListeners = () => ({
+            uncaught: process.listenerCount('uncaughtException'),
+            rejection: process.listenerCount('unhandledRejection'),
+        });
+
+        const before = countListeners();
+
+        // Simulate three resetInstance() cycles
+        for (let i = 0; i < 3; i++) {
+            // Get (or reuse) the singleton
+            const svc = CopilotSDKService.getInstance();
+            // Manually install guard (mirrors what ensureSDKModule does)
+            (svc as any).installStreamErrorGuard();
+            // dispose() must remove the guard synchronously
+            svc.dispose();
+            resetCopilotSDKService();
+        }
+
+        const after = countListeners();
+
+        // Net listener count must not grow — each dispose must clean up synchronously.
+        expect(after.uncaught).toBe(before.uncaught);
+        expect(after.rejection).toBe(before.rejection);
+    });
+
+    it('removeStreamErrorGuard is a no-op when no guard is installed', () => {
+        const serviceAny = service as any;
+        // Ensure handlers are null
+        expect(serviceAny.streamErrorGuardHandler).toBeNull();
+        expect(serviceAny.streamErrorGuardRejectionHandler).toBeNull();
+        // Should not throw
+        expect(() => serviceAny.removeStreamErrorGuard()).not.toThrow();
+        // Still null after no-op
+        expect(serviceAny.streamErrorGuardHandler).toBeNull();
+        expect(serviceAny.streamErrorGuardRejectionHandler).toBeNull();
+    });
+
 });
 
 // ============================================================================
