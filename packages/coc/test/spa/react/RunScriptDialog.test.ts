@@ -12,10 +12,72 @@ const RUN_SCRIPT_SOURCE = fs.readFileSync(
 );
 
 describe('RunScriptDialog Dialog open prop', () => {
-    it('passes open={true} to Dialog so it renders when showScriptDialog is true', () => {
-        // Regression: previously <Dialog onClose={close}> omitted open prop,
-        // causing Dialog to always return null (Dialog returns null when open is falsy).
+    it('passes open={true} to Dialog (mobile) so it renders when showScriptDialog is true', () => {
+        // Mobile path still uses <Dialog open={true}>.
         expect(RUN_SCRIPT_SOURCE).toContain('<Dialog open={true}');
+    });
+
+    it('passes open={true} to FloatingDialog (desktop) so it renders when showScriptDialog is true', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('<FloatingDialog');
+        expect(RUN_SCRIPT_SOURCE).toContain('open={true}');
+    });
+});
+
+describe('RunScriptDialog responsive container', () => {
+    it('imports FloatingDialog from shared', () => {
+        expect(RUN_SCRIPT_SOURCE).toMatch(/import\s*\{[^}]*FloatingDialog[^}]*\}\s*from\s*'\.\.\/shared'/);
+    });
+
+    it('imports useBreakpoint for mobile detection', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('useBreakpoint');
+    });
+
+    it('uses isMobile to choose between FloatingDialog and Dialog', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('isMobile');
+        expect(RUN_SCRIPT_SOURCE).toContain('if (!isMobile)');
+    });
+
+    it('sets resizable, minWidth and minHeight on FloatingDialog', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('resizable');
+        expect(RUN_SCRIPT_SOURCE).toContain('minWidth={520}');
+        expect(RUN_SCRIPT_SOURCE).toContain('minHeight={420}');
+    });
+});
+
+describe('RunScriptDialog minimize-to-tray', () => {
+    it('imports useMinimizedDialog', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('useMinimizedDialog');
+    });
+
+    it('has a minimized boolean state', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('minimized');
+        expect(RUN_SCRIPT_SOURCE).toContain('setMinimized');
+    });
+
+    it('returns null when minimized', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('if (minimized) return null');
+    });
+
+    it('calls useMinimizedDialog with minimizedEntry', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('useMinimizedDialog(minimizedEntry)');
+    });
+
+    it('uses script icon and Run Script label for the pill', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain("icon: '⚙'");
+        expect(RUN_SCRIPT_SOURCE).toContain("label: 'Run Script'");
+    });
+
+    it('wires onMinimize to both dialog variants', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('onMinimize={handleMinimize}');
+    });
+
+    it('resets minimized state when dialog closes externally', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('if (!open) setMinimized(false)');
+    });
+
+    it('handleClose dispatches CLOSE_SCRIPT_DIALOG and clears minimized', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('handleClose');
+        expect(RUN_SCRIPT_SOURCE).toContain("type: 'CLOSE_SCRIPT_DIALOG'");
     });
 });
 
