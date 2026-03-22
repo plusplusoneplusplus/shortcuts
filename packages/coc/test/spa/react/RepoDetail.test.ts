@@ -356,6 +356,65 @@ describe('RepoDetail Ask button in header', () => {
     });
 });
 
+describe('RepoDetail Run Script button in header', () => {
+    it('renders Run Script button with data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-run-script-btn"');
+    });
+
+    it('dispatches OPEN_SCRIPT_DIALOG with workspaceId on click', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id })");
+    });
+
+    it('Run Script button appears after Queue Task button', () => {
+        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        const scriptBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
+        expect(queueBtnIdx).toBeGreaterThan(-1);
+        expect(scriptBtnIdx).toBeGreaterThan(-1);
+        expect(scriptBtnIdx).toBeGreaterThan(queueBtnIdx);
+    });
+
+    it('Run Script button appears before Ask button', () => {
+        const scriptBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
+        const askBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
+        expect(scriptBtnIdx).toBeLessThan(askBtnIdx);
+    });
+
+    it('uses primary variant', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('variant="primary"');
+    });
+
+    it('has title "Run a script in this repo"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('title="Run a script in this repo"');
+    });
+
+    it('mobile overflow menu includes Run Script option', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-run-script"');
+    });
+
+    it('mobile Run Script option appears after Queue Task in overflow', () => {
+        const queueIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-queue-task');
+        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
+        expect(queueIdx).toBeGreaterThan(-1);
+        expect(scriptIdx).toBeGreaterThan(-1);
+        expect(scriptIdx).toBeGreaterThan(queueIdx);
+    });
+
+    it('mobile Run Script option appears before Ask in overflow', () => {
+        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
+        const askIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-ask');
+        expect(scriptIdx).toBeLessThan(askIdx);
+    });
+
+    it('mobile Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId', () => {
+        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, scriptIdx - 300), scriptIdx + 200);
+        expect(block).toContain("type: 'OPEN_SCRIPT_DIALOG'");
+        expect(block).toContain('workspaceId: ws.id');
+    });
+});
+
 describe('RepoDetail Git tab wiring', () => {
     it('imports RepoGitTab', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { RepoGitTab } from './RepoGitTab'");

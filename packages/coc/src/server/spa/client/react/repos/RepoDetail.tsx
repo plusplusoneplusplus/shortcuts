@@ -277,6 +277,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                             </button>
                                             <button
                                                 className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                data-testid="repo-more-run-script"
+                                                onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
+                                            >
+                                                ⚙ Run Script
+                                            </button>
+                                            <button
+                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-ask"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }); }}
                                             >
@@ -408,6 +415,15 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 data-testid="repo-queue-task-btn"
                             >
                                 + Queue Task
+                            </Button>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id })}
+                                title="Run a script in this repo"
+                                data-testid="repo-run-script-btn"
+                            >
+                                ⚙ Run Script
                             </Button>
                             <Button
                                 variant="primary"

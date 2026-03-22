@@ -3,7 +3,7 @@
  * Posts to POST /api/queue/tasks with type 'run-script'.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { Dialog, Button } from '../shared';
@@ -26,10 +26,21 @@ export function RunScriptDialog() {
     const [saveName, setSaveName] = useState('');
     const [showSaveInput, setShowSaveInput] = useState(false);
 
-    const workspaceId = appState.workspaces?.[0]?.id || '';
+    const workspaceId = queueState.scriptDialogWorkspaceId || appState.workspaces?.[0]?.id || '';
     const { models: modelInfos } = useModels();
     const models = modelInfos.map(m => m.id);
     const { templates, saveTemplate, deleteTemplate, loaded: templatesLoaded } = useScriptTemplates(workspaceId || undefined);
+
+    // Pre-fill working directory when opened from a repo action bar
+    useEffect(() => {
+        if (!open) return;
+        if (queueState.scriptDialogWorkspaceId) {
+            const ws = appState.workspaces?.find((w: any) => w.id === queueState.scriptDialogWorkspaceId);
+            setWorkingDir(ws?.rootPath ?? '');
+        } else {
+            setWorkingDir('');
+        }
+    }, [open]);
 
     const close = useCallback(() => {
         queueDispatch({ type: 'CLOSE_SCRIPT_DIALOG' });

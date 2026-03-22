@@ -20,6 +20,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         dialogMode: 'task' as const,
         dialogLaunchMode: 'default' as const,
         showScriptDialog: false,
+        scriptDialogWorkspaceId: null,
         showHistory: false,
         isFollowUpStreaming: false,
         currentStreamingTurnIndex: null,
@@ -628,10 +629,27 @@ describe('QueueContext reducer', () => {
             expect(result.showScriptDialog).toBe(true);
         });
 
+        it('OPEN_SCRIPT_DIALOG stores workspaceId when provided', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_SCRIPT_DIALOG', workspaceId: 'ws-123' });
+            expect(result.showScriptDialog).toBe(true);
+            expect(result.scriptDialogWorkspaceId).toBe('ws-123');
+        });
+
+        it('OPEN_SCRIPT_DIALOG defaults scriptDialogWorkspaceId to null when no workspaceId', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_SCRIPT_DIALOG' });
+            expect(result.scriptDialogWorkspaceId).toBeNull();
+        });
+
         it('CLOSE_SCRIPT_DIALOG sets showScriptDialog to false', () => {
-            const state = makeState({ showScriptDialog: true });
+            const state = makeState({ showScriptDialog: true, scriptDialogWorkspaceId: 'ws-123' });
             const result = queueReducer(state, { type: 'CLOSE_SCRIPT_DIALOG' });
             expect(result.showScriptDialog).toBe(false);
+        });
+
+        it('CLOSE_SCRIPT_DIALOG resets scriptDialogWorkspaceId to null', () => {
+            const state = makeState({ showScriptDialog: true, scriptDialogWorkspaceId: 'ws-123' });
+            const result = queueReducer(state, { type: 'CLOSE_SCRIPT_DIALOG' });
+            expect(result.scriptDialogWorkspaceId).toBeNull();
         });
 
         it('OPEN_SCRIPT_DIALOG does not affect other dialog state', () => {

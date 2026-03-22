@@ -1,0 +1,40 @@
+/**
+ * Tests for RunScriptDialog — workspace pre-fill and source-level checks.
+ */
+
+import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const RUN_SCRIPT_SOURCE = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'RunScriptDialog.tsx'),
+    'utf-8',
+);
+
+describe('RunScriptDialog workspace pre-fill', () => {
+    it('reads scriptDialogWorkspaceId from queueState', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('queueState.scriptDialogWorkspaceId');
+    });
+
+    it('uses scriptDialogWorkspaceId as first choice for workspaceId', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain("queueState.scriptDialogWorkspaceId || appState.workspaces?.[0]?.id || ''");
+    });
+
+    it('has a useEffect that pre-fills working directory when opened', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('useEffect');
+        expect(RUN_SCRIPT_SOURCE).toContain('setWorkingDir(ws?.rootPath');
+    });
+
+    it('clears working directory when opened without a specific workspace', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain("setWorkingDir('')");
+    });
+
+    it('looks up workspace from appState.workspaces to get rootPath', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('appState.workspaces?.find');
+    });
+
+    it('imports useEffect from react', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('useEffect');
+        expect(RUN_SCRIPT_SOURCE).toMatch(/import\s*\{[^}]*useEffect[^}]*\}\s*from\s*'react'/);
+    });
+});

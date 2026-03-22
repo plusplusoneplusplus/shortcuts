@@ -42,6 +42,8 @@ export interface QueueContextState {
     dialogLaunchMode: 'default' | 'floating-chat';
     /** Whether the Run Script dialog is shown. */
     showScriptDialog: boolean;
+    /** Pre-selected workspace for the Run Script dialog (null = use default first workspace). */
+    scriptDialogWorkspaceId: string | null;
     showHistory: boolean;
     isFollowUpStreaming: boolean;
     currentStreamingTurnIndex: number | null;
@@ -91,6 +93,7 @@ const initialState: QueueContextState = {
     dialogMode: 'task',
     dialogLaunchMode: 'default',
     showScriptDialog: false,
+    scriptDialogWorkspaceId: null,
     showHistory: false,
     isFollowUpStreaming: false,
     currentStreamingTurnIndex: null,
@@ -125,7 +128,7 @@ export type QueueAction =
     | { type: 'CHAT_STREAMING_STARTED'; workspaceId: string }
     | { type: 'CHAT_STREAMING_STOPPED'; workspaceId: string }
     | { type: 'SET_DIALOG_MODE'; mode: 'task' | 'ask' }
-    | { type: 'OPEN_SCRIPT_DIALOG' }
+    | { type: 'OPEN_SCRIPT_DIALOG'; workspaceId?: string | null }
     | { type: 'CLOSE_SCRIPT_DIALOG' };
 
 // ── Reducer ────────────────────────────────────────────────────────────
@@ -233,9 +236,9 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
         case 'SET_DIALOG_MODE':
             return { ...state, dialogMode: action.mode };
         case 'OPEN_SCRIPT_DIALOG':
-            return { ...state, showScriptDialog: true };
+            return { ...state, showScriptDialog: true, scriptDialogWorkspaceId: action.workspaceId ?? null };
         case 'CLOSE_SCRIPT_DIALOG':
-            return { ...state, showScriptDialog: false };
+            return { ...state, showScriptDialog: false, scriptDialogWorkspaceId: null };
         default:
             return state;
     }
