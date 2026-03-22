@@ -320,3 +320,75 @@ describe('toContentHtml (user prompt renderer)', () => {
         expect(html).not.toContain('&amp;');
     });
 });
+
+describe('chatMarkdownToHtml — image rendering', () => {
+    // --- HTTP images ---
+
+    it('renders external http image with img tag and chat-inline-image class', () => {
+        const html = chatMarkdownToHtml('![alt text](https://example.com/image.png)');
+        expect(html).toContain('<img');
+        expect(html).toContain('src="https://example.com/image.png"');
+        expect(html).toContain('alt="alt text"');
+        expect(html).toContain('class="chat-inline-image"');
+    });
+
+    it('adds loading=lazy to external images', () => {
+        const html = chatMarkdownToHtml('![pic](https://cdn.example.com/photo.jpg)');
+        expect(html).toContain('loading="lazy"');
+    });
+
+    it('includes onerror fallback on external images', () => {
+        const html = chatMarkdownToHtml('![pic](https://cdn.example.com/photo.jpg)');
+        expect(html).toContain('onerror=');
+        expect(html).toContain('chat-inline-image--error');
+    });
+
+    it('preserves title attribute on external images', () => {
+        const html = chatMarkdownToHtml('![alt](https://example.com/img.png "My Title")');
+        expect(html).toContain('title="My Title"');
+    });
+
+    // --- Local path images (no wsId) ---
+
+    it('renders local path image with data-local-path when no wsId provided', () => {
+        const html = chatMarkdownToHtml('![screenshot](/tmp/screenshot.png)');
+        expect(html).toContain('data-local-path="/tmp/screenshot.png"');
+        expect(html).not.toContain('src=');
+    });
+
+    it('renders Windows local path with data-local-path', () => {
+        const html = chatMarkdownToHtml('![img](C:/Users/user/output.png)');
+        expect(html).toContain('data-local-path=');
+        expect(html).not.toContain('src=');
+    });
+
+    // --- Local path images (with wsId) ---
+
+    it('rewrites local path to proxy URL when wsId is provided', () => {
+        const html = chatMarkdownToHtml('![screenshot](/tmp/screenshot.png)', 'my-workspace');
+        expect(html).toContain('src="/api/workspaces/my-workspace/files/image?path=');
+        expect(html).not.toContain('data-local-path=');
+    });
+
+    it('URL-encodes path in proxy URL', () => {
+        const html = chatMarkdownToHtml('![img](/tmp/my-file.png)', 'ws1');
+        expect(html).toContain(encodeURIComponent('/tmp/my-file.png'));
+    });
+
+    it('URL-encodes wsId in proxy URL', () => {
+        const html = chatMarkdownToHtml('![img](/tmp/img.png)', 'my ws/id');
+        expect(html).toContain('/api/workspaces/' + encodeURIComponent('my ws/id') + '/files/image');
+    });
+
+    it('includes onerror fallback on rewritten local image', () => {
+        const html = chatMarkdownToHtml('![img](/tmp/img.png)', 'ws1');
+        expect(html).toContain('onerror=');
+        expect(html).toContain('chat-inline-image--error');
+    });
+
+    it('does not rewrite external https images even when wsId provided', () => {
+        const html = chatMarkdownToHtml('![pic](https://example.com/img.png)', 'ws1');
+        expect(html).toContain('src="https://example.com/img.png"');
+        expect(html).not.toContain('/files/image');
+    });
+});

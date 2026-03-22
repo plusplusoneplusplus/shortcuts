@@ -649,4 +649,124 @@ describe('Tasks Handler', () => {
             expect(fs.readFileSync(filePath, 'utf-8')).toBe('');
         });
     });
+
+    // ========================================================================
+    // GET /api/workspaces/:id/files/image — Local image proxy
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/files/image', () => {
+        it('should return 404 for unknown workspace', async () => {
+            const srv = await startServer();
+            const imgPath = path.join(os.tmpdir(), 'test-img.png');
+            fs.writeFileSync(imgPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+            try {
+                const res = await request(`${srv.url}/api/workspaces/nonexistent/files/image?path=${encodeURIComponent(imgPath)}`);
+                expect(res.status).toBe(404);
+            } finally {
+                fs.unlinkSync(imgPath);
+            }
+        });
+
+        it('should return 400 when path query param is missing', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/image`);
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 415 for unsupported file extension', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            const txtPath = path.join(os.tmpdir(), 'not-an-image.txt');
+            fs.writeFileSync(txtPath, 'hello');
+            try {
+                const res = await request(`${srv.url}/api/workspaces/${wsId}/files/image?path=${encodeURIComponent(txtPath)}`);
+                expect(res.status).toBe(415);
+            } finally {
+                fs.unlinkSync(txtPath);
+            }
+        });
+
+        it('should return 404 when image file does not exist', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            const missing = path.join(os.tmpdir(), 'nonexistent-image.png');
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/image?path=${encodeURIComponent(missing)}`);
+            expect(res.status).toBe(404);
+        });
+
+        it('should serve a PNG image with correct content-type', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            const imgPath = path.join(os.tmpdir(), `test-image-${Date.now()}.png`);
+            const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+            fs.writeFileSync(imgPath, pngBytes);
+            try {
+                const res = await request(`${srv.url}/api/workspaces/${wsId}/files/image?path=${encodeURIComponent(imgPath)}`);
+                expect(res.status).toBe(200);
+                expect(res.headers['content-type']).toBe('image/png');
+                expect(res.headers['cache-control']).toContain('max-age=3600');
+            } finally {
+                fs.unlinkSync(imgPath);
+            }
+        });
+
+        it('should serve a JPEG image with correct content-type', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            const imgPath = path.join(os.tmpdir(), `test-image-${Date.now()}.jpg`);
+            fs.writeFileSync(imgPath, Buffer.from([0xff, 0xd8, 0xff]));
+            try {
+                const res = await request(`${srv.url}/api/workspaces/${wsId}/files/image?path=${encodeURIComponent(imgPath)}`);
+                expect(res.status).toBe(200);
+                expect(res.headers['content-type']).toBe('image/jpeg');
+            } finally {
+                fs.unlinkSync(imgPath);
+            }
+        });
+
+        it('should serve a WebP image with correct content-type', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            const imgPath = path.join(os.tmpdir(), `test-image-${Date.now()}.webp`);
+            fs.writeFileSync(imgPath, Buffer.from([0x52, 0x49, 0x46, 0x46]));
+            try {
+                const res = await request(`${srv.url}/api/workspaces/${wsId}/files/image?path=${encodeURIComponent(imgPath)}`);
+                expect(res.status).toBe(200);
+                expect(res.headers['content-type']).toBe('image/webp');
+            } finally {
+                fs.unlinkSync(imgPath);
+            }
+        });
+
+        it('should serve an SVG with correct content-type', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            const imgPath = path.join(os.tmpdir(), `test-image-${Date.now()}.svg`);
+            fs.writeFileSync(imgPath, '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+            try {
+                const res = await request(`${srv.url}/api/workspaces/${wsId}/files/image?path=${encodeURIComponent(imgPath)}`);
+                expect(res.status).toBe(200);
+                expect(res.headers['content-type']).toBe('image/svg+xml');
+            } finally {
+                fs.unlinkSync(imgPath);
+            }
+        });
+
+        it('should return image bytes matching the file on disk', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            const imgPath = path.join(os.tmpdir(), `test-image-bytes-${Date.now()}.png`);
+            const data = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xde, 0xad, 0xbe, 0xef]);
+            fs.writeFileSync(imgPath, data);
+            try {
+                const res = await request(`${srv.url}/api/workspaces/${wsId}/files/image?path=${encodeURIComponent(imgPath)}`);
+                expect(res.status).toBe(200);
+                // Body is returned as utf-8 string by the test helper, check length via content-length header
+                expect(parseInt(res.headers['content-length'] as string, 10)).toBe(data.length);
+            } finally {
+                fs.unlinkSync(imgPath);
+            }
+        });
+    });
 });

@@ -192,6 +192,49 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
         },
     });
 
+    // GET /api/workspaces/:id/files/image — Serve local image file as raw binary.
+    // Used to proxy local paths from LLM-generated ![alt](path) markdown in chat.
+    // Security: restricted to image extensions only; relies on OS file permissions.
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/files\/image$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const parsed = url.parse(req.url || '/', true);
+            const filePath = typeof parsed.query.path === 'string' ? parsed.query.path : '';
+            if (!filePath) return sendError(res, 400, 'Missing required query parameter: path');
+
+            const IMAGE_TYPES: Record<string, string> = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.gif': 'image/gif',
+                '.webp': 'image/webp',
+                '.svg': 'image/svg+xml',
+                '.bmp': 'image/bmp',
+                '.ico': 'image/x-icon',
+            };
+            const ext = path.extname(filePath).toLowerCase();
+            const contentType = IMAGE_TYPES[ext];
+            if (!contentType) return sendError(res, 415, 'Unsupported image type');
+
+            try {
+                const data = await fs.promises.readFile(filePath);
+                res.writeHead(200, {
+                    'Content-Type': contentType,
+                    'Content-Length': data.length,
+                    'Cache-Control': 'private, max-age=3600',
+                });
+                res.end(data);
+            } catch (err: any) {
+                if (err.code === 'ENOENT') return sendError(res, 404, 'Image not found');
+                return sendError(res, 500, 'Failed to read image: ' + (err.message || 'Unknown error'));
+            }
+        },
+    });
+
     // ------------------------------------------------------------------
     // GET /api/workspaces/:id/tasks/content — Raw markdown content
     // (must be registered before the general /tasks route)

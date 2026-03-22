@@ -1279,6 +1279,28 @@
     margin: 0.8rem 0;
 }
 
+/* Inline images from LLM markdown */
+.chat-message-content .markdown-body img.chat-inline-image {
+    max-width: 100%;
+    max-height: 480px;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    margin: 6px 0;
+    display: block;
+    cursor: zoom-in;
+}
+
+.dark .chat-message-content .markdown-body img.chat-inline-image {
+    border-color: #3c3c3c;
+}
+
+.chat-message-content .markdown-body img.chat-inline-image--error {
+    opacity: 0.4;
+    cursor: default;
+    max-height: 24px;
+}
+
 /* Dark-mode variants for chat semantic HTML */
 .dark .chat-message-content .markdown-body h1,
 .dark .chat-message-content .markdown-body h2,

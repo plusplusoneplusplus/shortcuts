@@ -32,6 +32,19 @@ const chatMarked = new Marked({
             }
             return `<a href="${href}"${titleAttr}>${text}</a>`;
         },
+        image(href: string, title: string | null | undefined, text: string): string {
+            const alt = text || title || 'Image';
+            const escapedAlt = alt.replace(/"/g, '&quot;');
+            const titleAttr = title ? ` title="${title.replace(/"/g, '&quot;')}"` : '';
+            const isExternal = /^https?:\/\//i.test(href ?? '');
+            if (isExternal) {
+                return `<img src="${href}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image" loading="lazy" onerror="this.onerror=null;this.classList.add('chat-inline-image--error');this.alt='⚠\uFE0F Image failed to load';">`;
+            }
+            // Local path: store in data-local-path; rewriteLocalImagePaths() will
+            // convert this to the proxy URL once wsId is known (post-parse step).
+            const escapedHref = href.replace(/"/g, '&quot;');
+            return `<img data-local-path="${escapedHref}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image">`;
+        },
     },
 });
 
@@ -45,14 +58,33 @@ function normalizeWindowsPathsInText(text: string): string {
 }
 
 /**
+ * Rewrites `data-local-path` attributes emitted by the image() renderer into
+ * proxy URLs served by /api/workspaces/:wsId/files/image?path=…
+ * Only runs when wsId is available; local-path images remain invisible otherwise.
+ */
+function rewriteLocalImagePaths(html: string, wsId: string): string {
+    return html.replace(
+        /(<img\b[^>]*?) data-local-path="([^"]*)"([^>]*>)/g,
+        (_match, before, localPath, after) => {
+            const proxyUrl = `/api/workspaces/${encodeURIComponent(wsId)}/files/image?path=${encodeURIComponent(localPath)}`;
+            return `${before} src="${proxyUrl}" onerror="this.onerror=null;this.classList.add('chat-inline-image--error');this.removeAttribute('src');"${after}`;
+        }
+    );
+}
+
+/**
  * Convert markdown to semantic HTML using `marked` for chat messages.
  * Produces proper `<h3>`, `<strong>`, `<ul>`, `<pre><code>`, etc.
  * File paths are linkified for hover previews.
  */
-export function chatMarkdownToHtml(content: string): string {
+export function chatMarkdownToHtml(content: string, wsId?: string): string {
     if (!content || !content.trim()) return '';
     const normalized = normalizeWindowsPathsInText(content);
-    return linkifyFilePaths(chatMarked.parse(normalized) as string);
+    let html = linkifyFilePaths(chatMarked.parse(normalized) as string);
+    if (wsId) {
+        html = rewriteLocalImagePaths(html, wsId);
+    }
+    return html;
 }
 
 interface ConversationTurnBubbleProps {
@@ -102,8 +134,8 @@ type RenderChunk =
         parentToolId?: string;
       };
 
-export function toContentHtml(content: string): string {
-    return chatMarkdownToHtml(content);
+export function toContentHtml(content: string, wsId?: string): string {
+    return chatMarkdownToHtml(content, wsId);
 }
 
 function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
@@ -317,7 +349,7 @@ function buildToolDepthMap(calls: RenderToolCall[]): Map<string, number> {
     return depthMap;
 }
 
-function buildAssistantRender(turn: ClientConversationTurn): {
+function buildAssistantRender(turn: ClientConversationTurn, wsId?: string): {
     chunks: RenderChunk[];
     chunksByParent: Map<string, RenderChunk[]>;
     toolById: Map<string, RenderToolCall>;
@@ -343,7 +375,7 @@ function buildAssistantRender(turn: ClientConversationTurn): {
         if (!item) continue;
 
         if (item.type === 'content') {
-            const html = toContentHtml(item.content || '');
+            const html = toContentHtml(item.content || '', wsId);
             if (html) {
                 const parentToolId = activeTaskStack.length > 0
                     ? activeTaskStack[activeTaskStack.length - 1]
@@ -439,7 +471,7 @@ function buildAssistantRender(turn: ClientConversationTurn): {
     }
 
     if (!hasContent) {
-        const fallbackHtml = toContentHtml(turn.content || '');
+        const fallbackHtml = toContentHtml(turn.content || '', wsId);
         if (fallbackHtml) {
             chunks.unshift({ kind: 'content', key: 'content-fallback', html: fallbackHtml });
         }
@@ -555,8 +587,8 @@ function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
 export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === 'run-script';
-    const assistantRender = !isUser ? buildAssistantRender(turn) : null;
-    const userContentHtml = isUser ? toContentHtml(turn.content || '') : '';
+    const assistantRender = !isUser ? buildAssistantRender(turn, wsId) : null;
+    const userContentHtml = isUser ? toContentHtml(turn.content || '', wsId) : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
