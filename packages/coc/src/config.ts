@@ -271,9 +271,12 @@ export function writeConfigFile(configPath: string, config: CLIConfig): void {
 /**
  * Resolve CLI configuration by merging config file with defaults.
  * Command-line options should be applied on top of the result.
+ *
+ * @param configPath - Optional path to the config file.
+ * @param preloaded  - Optional pre-loaded config (skips file I/O when provided).
  */
-export function resolveConfig(configPath?: string): ResolvedCLIConfig {
-    const fileConfig = loadConfigFile(configPath);
+export function resolveConfig(configPath?: string, preloaded?: CLIConfig): ResolvedCLIConfig {
+    const fileConfig = preloaded ?? loadConfigFile(configPath);
     return mergeConfig(DEFAULT_CONFIG, fileConfig);
 }
 

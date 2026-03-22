@@ -18,7 +18,7 @@ import { registerAllRoutes } from './routes/index';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
-import type { ExecutionServerOptions, ExecutionServer } from './types';
+import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from './types';
 import type { Route } from './types';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
 import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
@@ -29,7 +29,7 @@ import { createScheduleInfrastructure } from './infrastructure/schedule-infrastr
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
-import { resolveConfig, mergeConfig, DEFAULT_CONFIG } from '../config';
+import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
@@ -119,6 +119,64 @@ function createStubStore(): ProcessStore {
 }
 
 // ============================================================================
+// Close Handler Builder
+// ============================================================================
+
+interface CloseHandlerDeps {
+    staleDetector: { dispose(): void };
+    outputPruner: { stopListening(): void };
+    taskWatcher: { closeAll(): void };
+    pipelineWatcher: { closeAll(): void };
+    templateWatcher: { closeAll(): void };
+    wikiManager: { disposeAll(): void } | undefined;
+    scheduleManager: { dispose(): void };
+    bridge: MultiRepoQueueExecutorBridge;
+    queuePersistence: { dispose(): void };
+    wsServer: ProcessWebSocketServer;
+    activeSockets: Set<import('net').Socket>;
+    server: http.Server;
+}
+
+function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) => Promise<{ drainOutcome?: 'completed' | 'timeout' }> {
+    return async (closeOptions) => {
+        const { staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher,
+                wikiManager, scheduleManager, bridge, queuePersistence, wsServer, activeSockets, server } = deps;
+
+        staleDetector.dispose();
+        outputPruner.stopListening();
+        taskWatcher.closeAll();
+        pipelineWatcher.closeAll();
+        templateWatcher.closeAll();
+        wikiManager?.disposeAll();
+        scheduleManager.dispose();
+
+        let drainOutcome: 'completed' | 'timeout' | undefined;
+        if (closeOptions?.drain) {
+            const result = await bridge.drainAll(closeOptions.drainTimeoutMs);
+            drainOutcome = result.outcome;
+        }
+
+        queuePersistence.dispose();
+        if (!closeOptions?.drain) {
+            bridge.dispose();
+        }
+
+        wsServer.closeAll();
+        for (const socket of activeSockets) {
+            socket.destroy();
+        }
+        activeSockets.clear();
+        await new Promise<void>((resolve, reject) => {
+            server.close((err) => {
+                if (err) { reject(err); } else { resolve(); }
+            });
+        });
+
+        return { drainOutcome };
+    };
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -133,152 +191,64 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const host = options.host ?? '0.0.0.0';
     const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const store = options.store ?? createStubStore();
-
-    // Forward reference — assigned by createWebSocketInfrastructure below,
-    // before any request is processed (server not yet listening).
-    let wsServer: ProcessWebSocketServer;
-
-    // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
 
-    // Resolve config to derive default timeout for AI tasks
-    const resolvedConfig = options.fileConfig !== undefined
-        ? mergeConfig(DEFAULT_CONFIG, options.fileConfig)
-        : resolveConfig(options.configPath);
-    const defaultTimeoutMs = resolvedConfig.timeout
-        ? resolvedConfig.timeout * 1000
-        : DEFAULT_AI_TIMEOUT_MS;
+    const resolvedConfig = resolveConfig(options.configPath, options.fileConfig);
+    const defaultTimeoutMs = resolvedConfig.timeout ? resolvedConfig.timeout * 1000 : DEFAULT_AI_TIMEOUT_MS;
 
-    // Create per-repo queue infrastructure
+    // Forward declaration — bridge captures this via closure before wsServer is assigned
+    let wsServer!: ProcessWebSocketServer;
+
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
-        store,
-        dataDir,
-        options,
-        defaultTimeoutMs,
-        resolvedConfig.chat.followUpSuggestions,
-        () => wsServer,
+        store, dataDir, options, defaultTimeoutMs,
+        resolvedConfig.chat.followUpSuggestions, () => wsServer,
     );
-
-    // Initialize schedule manager with persistent storage
     const { scheduleManager } = createScheduleInfrastructure(dataDir, queueFacade);
-
-    // Wire up output pruner and stale task detector
     const { outputPruner, staleDetector } = createCleanupInfrastructure(store, dataDir, queueFacade);
 
-    const spaHtmlFactory = () => generateDashboardHtml({ enableWiki: true });
-
-    const resolvedAiService = options.aiService ?? getCopilotSDKService();
-
-    // Build API routes
-    const routes: Route[] = [];
-
-    // Bootstrap global workspace before queue routes so its rootPath is available
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
 
+    const resolvedAiService = options.aiService ?? getCopilotSDKService();
+    const routes: Route[] = [];
     const { wikiManager } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         dataDir, configPath: options.configPath,
         tokenTtlMs: options.tokenTtlMs,
         globalWorkspaceRootPath: globalWorkspace.rootPath,
-        resolvedAiService,
-        getWsServer: () => wsServer,
-        queuePersistence,
-        wikiOptions: options.wiki,
+        resolvedAiService, getWsServer: () => wsServer,
+        queuePersistence, wikiOptions: options.wiki,
     });
 
-    // Build request handler (health route is prepended automatically)
     const handler = createRequestHandler({
-        routes,
-        spaHtml: spaHtmlFactory,
-        store,
-        spaETag: getBundleETag,
+        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true }),
+        store, spaETag: getBundleETag,
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
     });
     const server = http.createServer(handler);
-
-    // Attach WebSocket server and bridge all event sources
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
-
-    // Set up file watchers (task/workflow/template) and wire workspace hooks
     const { taskWatcher, pipelineWatcher, templateWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
-    // Start listening
-    await new Promise<void>((resolve, reject) => {
-        server.on('error', reject);
-        server.listen(port, host, () => resolve());
-    });
-
-    // Warm up model metadata cache; failure must never block startup.
+    await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
     modelMetadataStore.initialize(resolvedAiService).catch((err: unknown) => {
         process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
     });
 
-    // Resolve actual port (important when port 0 is used for random port)
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
     const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host;
     const url = `http://${displayHost}:${actualPort}`;
 
-    // Track active connections for force-close on shutdown
     const activeSockets = new Set<import('net').Socket>();
-    server.on('connection', (socket) => {
-        activeSockets.add(socket);
-        socket.on('close', () => activeSockets.delete(socket));
-    });
+    server.on('connection', (socket) => { activeSockets.add(socket); socket.on('close', () => activeSockets.delete(socket)); });
 
     return {
-        server,
-        store,
-        wsServer,
-        port: actualPort,
-        host,
-        url,
-        close: async (closeOptions?: import('./types').ServerCloseOptions) => {
-            // Stop stale task detection
-            staleDetector.dispose();
-            // Stop output pruner cleanup
-            outputPruner.stopListening();
-            // Close task file watchers
-            taskWatcher.closeAll();
-            // Close workflow file watchers
-            pipelineWatcher.closeAll();
-            // Close template file watchers
-            templateWatcher.closeAll();
-            // Dispose wiki manager (stop file watchers, destroy sessions)
-            wikiManager?.disposeAll();
-            // Dispose schedule manager (cancel timers)
-            scheduleManager.dispose();
-
-            // Drain queue if requested
-            let drainOutcome: 'completed' | 'timeout' | undefined;
-            if (closeOptions?.drain) {
-                const result = await bridge.drainAll(closeOptions.drainTimeoutMs);
-                drainOutcome = result.outcome;
-            }
-
-            // Flush persisted queue state and dispose bridge
-            queuePersistence.dispose();
-            if (!closeOptions?.drain) {
-                bridge.dispose();
-            }
-
-            wsServer.closeAll();
-            // Destroy remaining keep-alive connections
-            for (const socket of activeSockets) {
-                socket.destroy();
-            }
-            activeSockets.clear();
-            await new Promise<void>((resolve, reject) => {
-                server.close((err) => {
-                    if (err) { reject(err); }
-                    else { resolve(); }
-                });
-            });
-
-            return { drainOutcome };
-        },
+        server, store, wsServer, port: actualPort, host, url,
+        close: buildCloseHandler({
+            staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher,
+            wikiManager, scheduleManager, bridge, queuePersistence, wsServer, activeSockets, server,
+        }),
     };
 }
 
