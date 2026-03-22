@@ -338,7 +338,7 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
         const { session } = sessions[0];
 
         // Test sendWithStreaming directly with a short timeout
-        const streamingPromise = serviceAny.sendWithStreaming(session, 'test', 50);
+        const streamingPromise = serviceAny.requestRunner.sendWithStreaming(session, 'test', 50);
 
         // Wait for the timeout to fire — don't dispatch any events
         await expect(streamingPromise).rejects.toThrow('Request timed out after 50ms');
@@ -936,7 +936,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
         const serviceAny = service as any;
 
         // Call sendWithStreaming directly with short idle timeout
-        const promise = serviceAny.sendWithStreaming(
+        const promise = serviceAny.requestRunner.sendWithStreaming(
             session, 'test', 10000, undefined, undefined, undefined, 80,
         );
 
@@ -960,7 +960,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
         const { session, dispatchEvent } = createStreamingMockSession();
         const serviceAny = service as any;
 
-        const promise = serviceAny.sendWithStreaming(
+        const promise = serviceAny.requestRunner.sendWithStreaming(
             session, 'test', 10000, undefined, undefined, undefined, 80,
         );
 
@@ -985,7 +985,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
         const serviceAny = service as any;
 
         // Total timeout is long, but idle timeout is very short
-        const promise = serviceAny.sendWithStreaming(
+        const promise = serviceAny.requestRunner.sendWithStreaming(
             session, 'test', 60000, undefined, undefined, undefined, 50,
         );
 
@@ -998,7 +998,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
         const { session, dispatchEvent } = createStreamingMockSession();
         const serviceAny = service as any;
 
-        const promise = serviceAny.sendWithStreaming(
+        const promise = serviceAny.requestRunner.sendWithStreaming(
             session, 'test', 10000, undefined, undefined, undefined, 100,
         );
 
@@ -1019,7 +1019,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
         const serviceAny = service as any;
 
         // idleTimeoutMs = 0 means no idle timer
-        const promise = serviceAny.sendWithStreaming(
+        const promise = serviceAny.requestRunner.sendWithStreaming(
             session, 'test', 10000, undefined, undefined, undefined, 0,
         );
 
@@ -1040,7 +1040,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
         const serviceAny = service as any;
         const chunks: string[] = [];
 
-        const promise = serviceAny.sendWithStreaming(
+        const promise = serviceAny.requestRunner.sendWithStreaming(
             session, 'test', 10000,
             (chunk: string) => chunks.push(chunk),
             undefined, undefined, 80,
@@ -2620,36 +2620,36 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         const serviceAny = service as any;
 
         // Before SDK module load — no guard
-        expect(serviceAny.streamErrorGuardHandler).toBeNull();
+        expect(serviceAny.streamErrorGuard.handler).toBeNull();
 
         // Set up sdkModule as if it was loaded fresh (simulates ensureSDKModule)
         serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
-        serviceAny.installStreamErrorGuard();
+        serviceAny.streamErrorGuard.install();
 
         // After loading — guard installed
-        expect(serviceAny.streamErrorGuardHandler).not.toBeNull();
+        expect(serviceAny.streamErrorGuard.handler).not.toBeNull();
     });
 
     it('installs unhandledRejection guard alongside uncaughtException guard', async () => {
         const serviceAny = service as any;
 
-        serviceAny.installStreamErrorGuard();
+        serviceAny.streamErrorGuard.install();
 
         // Both handlers must be registered
-        expect(serviceAny.streamErrorGuardHandler).not.toBeNull();
-        expect(serviceAny.streamErrorGuardRejectionHandler).not.toBeNull();
+        expect(serviceAny.streamErrorGuard.handler).not.toBeNull();
+        expect(serviceAny.streamErrorGuard.rejectionHandler).not.toBeNull();
     });
 
-    it('removes unhandledRejection guard when removeStreamErrorGuard is called', async () => {
+    it('removes unhandledRejection guard when remove() is called', async () => {
         const serviceAny = service as any;
 
-        serviceAny.installStreamErrorGuard();
-        expect(serviceAny.streamErrorGuardRejectionHandler).not.toBeNull();
+        serviceAny.streamErrorGuard.install();
+        expect(serviceAny.streamErrorGuard.rejectionHandler).not.toBeNull();
 
-        serviceAny.removeStreamErrorGuard();
-        expect(serviceAny.streamErrorGuardHandler).toBeNull();
-        expect(serviceAny.streamErrorGuardRejectionHandler).toBeNull();
+        serviceAny.streamErrorGuard.remove();
+        expect(serviceAny.streamErrorGuard.handler).toBeNull();
+        expect(serviceAny.streamErrorGuard.rejectionHandler).toBeNull();
     });
 
     it('unhandledRejection guard absorbs ERR_STREAM_DESTROYED rejections (regression: crash fix)', () => {
@@ -2657,9 +2657,9 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         // ERR_STREAM_DESTROYED surfaces as an unhandledRejection, not uncaughtException.
         // Node.js >= 15 crashes on unhandled rejections, so this guard is essential.
         const serviceAny = service as any;
-        serviceAny.installStreamErrorGuard();
+        serviceAny.streamErrorGuard.install();
 
-        const handler = serviceAny.streamErrorGuardRejectionHandler as (reason: unknown) => void;
+        const handler = serviceAny.streamErrorGuard.rejectionHandler as (reason: unknown) => void;
         expect(handler).not.toBeNull();
 
         // These should NOT throw — the guard absorbs stream-destroyed errors
@@ -2695,7 +2695,7 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
             // Get (or reuse) the singleton
             const svc = CopilotSDKService.getInstance();
             // Manually install guard (mirrors what ensureSDKModule does)
-            (svc as any).installStreamErrorGuard();
+            (svc as any).streamErrorGuard.install();
             // dispose() must remove the guard synchronously
             svc.dispose();
             resetCopilotSDKService();
@@ -2708,16 +2708,16 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         expect(after.rejection).toBe(before.rejection);
     });
 
-    it('removeStreamErrorGuard is a no-op when no guard is installed', () => {
+    it('streamErrorGuard.remove() is a no-op when no guard is installed', () => {
         const serviceAny = service as any;
         // Ensure handlers are null
-        expect(serviceAny.streamErrorGuardHandler).toBeNull();
-        expect(serviceAny.streamErrorGuardRejectionHandler).toBeNull();
+        expect(serviceAny.streamErrorGuard.handler).toBeNull();
+        expect(serviceAny.streamErrorGuard.rejectionHandler).toBeNull();
         // Should not throw
-        expect(() => serviceAny.removeStreamErrorGuard()).not.toThrow();
+        expect(() => serviceAny.streamErrorGuard.remove()).not.toThrow();
         // Still null after no-op
-        expect(serviceAny.streamErrorGuardHandler).toBeNull();
-        expect(serviceAny.streamErrorGuardRejectionHandler).toBeNull();
+        expect(serviceAny.streamErrorGuard.handler).toBeNull();
+        expect(serviceAny.streamErrorGuard.rejectionHandler).toBeNull();
     });
 
 });

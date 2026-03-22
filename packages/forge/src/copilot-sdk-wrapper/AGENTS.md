@@ -6,194 +6,100 @@ Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lif
 
 | File | Purpose |
 |------|---------|
-| `copilot-sdk-service.ts` | Core service: client/session lifecycle, streaming, error recovery |
+| `copilot-sdk-service.ts` | **Facade only** (<=200 lines): singleton lifecycle + single-delegation public stubs |
+| `request-runner.ts` | `sendMessage` / `transform` execution logic; session creation, MCP wiring, permission handler, streaming vs non-streaming routing |
+| `stream-error-guard.ts` | `StreamErrorGuard` class + `isStreamDestroyedError()` / `isConnectionDisposedError()` helpers |
 | `session-manager.ts` | Active session tracking and cancellation (`SessionManager` class) |
+| `streaming-session.ts` | Streaming state machine (`StreamingSession.run()`) |
 | `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: cwd validation, folder trust, `new CopilotClient()` |
+| `sdk-loader.ts` | SDK binary discovery (`findSdkBinaryPath`) and ESM import workaround (`loadSdk`) |
 | `types.ts` | All shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
 | `model-registry.ts` | Single source of truth for supported AI models (add models here only) |
+| `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
 | `mcp-config-loader.ts` | Loads/merges MCP server config from `~/.copilot/mcp-config.json` |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` to skip trust dialog |
+| `image-converter.ts` | Image file -> data-URL conversion for inline dashboard rendering |
 | `index.ts` | Public API surface — all consumer imports go through here |
 
 ## CopilotSDKService — Architecture
 
+`CopilotSDKService` is a **facade singleton**. All business logic lives in collaborators:
+
+| Concern | Collaborator |
+|---------|-------------|
+| SDK binary discovery + loading | `SdkLoader` (`sdk-loader.ts`) |
+| Client spawning | `createSdkClient` (`sdk-client-factory.ts`) |
+| sendMessage / transform logic | `RequestRunner` (`request-runner.ts`) |
+| Session tracking / abort | `SessionManager` (`session-manager.ts`) |
+| Streaming state machine | `StreamingSession` (`streaming-session.ts`) |
+| Stream-error process guard | `StreamErrorGuard` (`stream-error-guard.ts`) |
+| Model listing | `fetchModelsFromClient` (`model-registry.ts`) |
+
 ### Singleton + Per-Session Client Isolation
 
-`CopilotSDKService` is a **singleton** (`getInstance()` / `getCopilotSDKService()`). However, each `sendMessage()` call creates its **own `CopilotClient`** child process — there is no shared client. This ensures concurrent tasks with different working directories cannot interfere with each other.
+Each `sendMessage()` call creates its **own `CopilotClient`** child process — there is no shared client. This ensures concurrent tasks with different working directories cannot interfere with each other.
 
-```
-sendMessage(cwd="/project-a")  →  CopilotClient(cwd="/project-a")  →  Session A
-sendMessage(cwd="/project-b")  →  CopilotClient(cwd="/project-b")  →  Session B
-                                  (fully isolated — A and B cannot affect each other)
-```
-
-**Why per-session?** `CopilotClient` spawns a CLI child process via `connectViaStdio`, and `cwd` is set at process spawn time. Reusing a single client required stop+restart on cwd changes, which killed all other active sessions on that client.
-
-### State Fields
+### State Fields (Facade)
 
 | Field | Type | Purpose |
 |-------|------|---------|
 | `sdkModule` | cached SDK module | ESM-loaded `@github/copilot-sdk` (lazy, loaded once) |
 | `availabilityCache` | `SDKAvailabilityResult` | Cached SDK availability check |
 | `sessionManager` | `SessionManager` | Delegates active session tracking and cancellation |
-| `streamErrorGuardHandler` | `uncaughtException` listener | Absorbs `ERR_STREAM_DESTROYED` from SDK stdio |
-| `streamErrorGuardRejectionHandler` | `unhandledRejection` listener | Absorbs `ERR_STREAM_DESTROYED` surfacing as promise rejections (vscode-jsonrpc wraps writes in `new Promise`) |
+| `streamErrorGuard` | `StreamErrorGuard` | Manages process-level ERR_STREAM_DESTROYED handlers |
+| `requestRunner` | `RequestRunner` | Executes sendMessage / transform |
 | `disposed` | boolean | Guard preventing calls after `dispose()` |
 
-## Session Lifecycle
+## RequestRunner — sendMessage() Flow
 
-### `sendMessage()` Flow (Session-Per-Request or Session-Resume)
-
-Each `sendMessage()` call creates a fresh client. If `options.sessionId` is provided, it resumes the existing server-side session (retaining full conversation history); otherwise it creates a new session. Both paths converge to the same execution and cleanup flow.
+Each `sendMessage()` call in `RequestRunner.send()`:
 
 ```
-1. isAvailable() → check SDK exists
-2. createClient(cwd) → spawn fresh child process
-3. Build ISessionOptions:
-   - model, streaming, tools, availableTools, excludedTools
-   - MCP config: loadDefaultMcpConfig() → merge with explicit config
-   - Wrap onPermissionRequest with logging + ToolCall capture
-4. Session creation:
-   - IF options.sessionId AND client.resumeSession exists
-     → client.resumeSession(sessionId, sessionOptions)
-     → on failure: fall back to client.createSession(sessionOptions) + warn
-   - ELSE
-     → client.createSession(sessionOptions)
-5. onSessionCreated callback fires with session.sessionId
-6. trackSession(session) → register in activeSessions
-7. Route to execution path:
-   - IF streaming || onStreamingChunk || timeoutMs > 120000
-     → sendWithStreaming()
-   - ELSE
-     → sendWithTimeout() → session.sendAndWait (SDK 120s internal cap)
-8. Empty-response handling:
-   - turnCount > 0 + empty text → SUCCESS (tool-based execution, no summary)
-   - turnCount == 0 + empty text → failure
-9. FINALLY (always):
-   - untrackSession
-   - session.destroy() + client.stop()
+1. isAvailable() -> check SDK exists
+2. createClient(cwd) -> spawn fresh child process
+3. Build ISessionOptions (model, streaming, tools, MCP config, permissions)
+4. Session creation or resume (falls back to create on resume failure)
+5. onSessionCreated callback fires
+6. sessionManager.track(session)
+7. Route: streaming (timeoutMs>120s or onStreamingChunk) vs sendAndWait
+8. Empty-response handling (turnCount>0 = success)
+9. FINALLY: sessionManager.untrack + session.destroy + client.stop
 ```
 
-### Active Session Tracking (Cancellation)
+## Streaming Internals (`StreamingSession.run()`)
 
-Session tracking is delegated to `SessionManager` (`session-manager.ts`).
+Dual timeout: `timeoutMs` (wall clock) and `idleTimeoutMs` (inactivity). Whichever fires first kills the session.
 
-- `trackSession(session)` / `untrackSession(sessionId)` — delegates to `SessionManager.track()` / `.untrack()`.
-- `abortSession(sessionId)` — delegates to `SessionManager.abort()`, returns boolean.
-- `hasActiveSession()` / `getActiveSessionCount()` — delegates to `SessionManager.has()` / `.count()`.
-- `cleanup()` — calls `SessionManager.abortAll()` to abort all sessions atomically.
+Completion detection: `session.idle` > `turn_end` 2s grace timer. Multi-turn MCP loops: `turn_start` cancels grace timer.
 
-## Streaming Internals (`sendWithStreaming`)
+## Stream Error Guard (`StreamErrorGuard`)
 
-### Dual Timeout Model
-
-| Timer | Default | Behavior |
-|-------|---------|----------|
-| `timeoutMs` | `DEFAULT_AI_TIMEOUT_MS` (4 hours) | Hard wall-clock limit. Force-destroys session on fire. |
-| `idleTimeoutMs` | `DEFAULT_AI_IDLE_TIMEOUT_MS` (1 hour) | Resets on every chunk/message/tool event. Force-destroys on inactivity. |
-
-Whichever fires first kills the session.
-
-### Completion Detection (priority order)
-
-1. **`session.idle`** → settle immediately (most reliable signal)
-2. **`assistant.turn_end`** → start a **2-second grace timer**
-   - If `assistant.turn_start` fires before grace expires → cancel timer (multi-turn MCP tool loop continues)
-   - If nothing fires within 2s → settle with accumulated content
-
-### Multi-Turn Message Accumulation
-
-`allMessages[]` collects all `assistant.message` content across turns. On settle, joined with `\n\n`. Delta chunks (`response` string) are a fallback if no `assistant.message` events arrive.
-
-### SDK Event Types Handled
-
-| Event | Action |
-|-------|--------|
-| `assistant.message_delta` | Accumulate delta, invoke `onStreamingChunk`, reset idle timer |
-| `assistant.message` | Push to `allMessages[]`, log tool requests if present |
-| `assistant.turn_start` | Cancel turn_end grace timer (new turn starting) |
-| `assistant.turn_end` | Increment `turnCount`, start 2s grace timer |
-| `session.idle` | Settle with result |
-| `session.error` | Settle with error |
-| `assistant.usage` | Accumulate per-turn token usage |
-| `session.usage_info` | Store session-level quota (tokenLimit, currentTokens) |
-| `tool.execution_start` | Track in `activeToolCalls`, build `ToolCall` object, emit `onToolEvent('tool-start')` |
-| `tool.execution_complete` | Remove from active, update `ToolCall` status/result, emit `onToolEvent('tool-complete'/'tool-failed')` |
-| `tool.execution_progress` | Log progress, store latest `progressMessage` on `ToolCall` |
-| `assistant.intent` | Log only |
-| `session.info` | Log only |
-| `abort` | Log only |
-
-### Image Data URL Conversion
-
-When the `view` tool completes on an image file (`png/jpg/gif/webp/svg`, ≤10MB), `tryConvertImageFileToDataUrl()` replaces the text result with a `data:image/<mime>;base64,…` URL for inline rendering in the dashboard.
-
-## Stream Error Guard
-
-Installed once when the SDK module is first loaded. Attaches both `process.on('uncaughtException')` and `process.on('unhandledRejection')` that swallow errors matching `STREAM_DESTROYED_PATTERNS`:
-
-- `'stream was destroyed'`, `'ERR_STREAM_DESTROYED'`, `'cannot call write after a stream was destroyed'`, `'EPIPE'`, `'ECONNRESET'`
-
-**Why needed**: The SDK's `connectViaStdio()` installs a stdin error listener that re-throws `ERR_STREAM_DESTROYED` when the CLI process exits unexpectedly. This can surface as either an uncaught exception (direct throw path) or an unhandled rejection (`vscode-jsonrpc` wraps `stream.write()` inside `new Promise()`, so when Node.js calls the write callback synchronously with the error, the rejection can escape the `vscode-jsonrpc` promise chain). Both forms crash Node.js >= 15. Both guards absorb these errors so the normal error-return path handles them gracefully.
-
-Non-matching exceptions are re-thrown (uncaughtException path) or left for other listeners (unhandledRejection path). Both are removed during `cleanup()`.
+Installed once when SDK module loads. Absorbs `ERR_STREAM_DESTROYED` errors via both `uncaughtException` and `unhandledRejection` process listeners. `dispose()` removes guard **synchronously** to prevent listener accumulation across singleton resets.
 
 ## MCP Configuration
 
-### Load + Merge Strategy
-
 ```
-~/.copilot/mcp-config.json  →  loadDefaultMcpConfig()  →  defaultConfig
-SendMessageOptions.mcpServers  →  explicitConfig
-
-mergeMcpConfigs(defaultConfig, explicitConfig):
-  - explicitConfig undefined → return defaultConfig copy
-  - explicitConfig = {} → return {} (disable all MCP — intentional escape hatch)
-  - otherwise → { ...defaultConfig, ...explicitConfig } (explicit wins per key)
+~/.copilot/mcp-config.json  ->  loadDefaultMcpConfig()
+SendMessageOptions.mcpServers  ->  explicit config
+mergeMcpConfigs: explicit wins; {} disables all MCP
 ```
 
-`loadDefaultMcpConfig: false` in `SendMessageOptions` skips loading `~/.copilot/mcp-config.json` entirely.
-
-Results are cached; use `clearMcpConfigCache()` to force re-read.
-
-## Model Registry
-
-Single source of truth in `model-registry.ts`. First entry is the default/recommended model.
-
-**To add a model**: Add entry to `MODEL_DEFINITIONS` array → all types, constants, and helpers auto-derive.
-
-Key exports: `AIModel` (union type), `VALID_MODELS` (tuple), `DEFAULT_MODEL_ID`, `MODEL_REGISTRY` (Map for O(1) lookup), helper functions (`getModelLabel`, `isValidModelId`, `getModelsByTier`, etc.).
-
-## Trusted Folders
-
-Before creating a client, `createSdkClient(sdkModule, { cwd })` in `sdk-client-factory.ts` calls `ensureFolderTrusted(cwd)` to add the directory to `~/.copilot/config.json`'s `trusted_folders[]` array.This prevents the Copilot CLI from showing an interactive folder trust confirmation dialog. The operation is non-fatal — if it fails, the dialog appears as fallback.
-
-Config location respects `XDG_CONFIG_HOME` env var, defaulting to `~/.copilot/config.json`.
-
-## Key Design Decisions
-
-1. **One client per session** — `cwd` is baked into the child process at spawn time; no client reuse across different working directories. Concurrency is bounded by the queue's limiter (exclusive=1, shared=5), not by the SDK layer.
-2. **Session resume for multi-turn chat** — `sendMessage({ sessionId })` calls `client.resumeSession()`, letting the SDK server provide full conversation history natively. Falls back to `createSession()` if resume fails (session expired). `session.destroy()` is local cleanup only — the server persists the session.
-3. **Streaming is the default path** — any `timeoutMs > 120000` or `onStreamingChunk` callback automatically uses the streaming event API (SDK's `sendAndWait` has a hardcoded 120s `session.idle` timeout).
-3. **Empty text + turns > 0 = success** — tool-heavy agents (e.g., `impl` skill) may produce no text summary but have done work via tool calls (file edits, shell commands).
-4. **Multi-turn grace timer** — `turn_end` → 2s timer → `turn_start` cancels. Correctly handles multi-step MCP tool loops without settling prematurely.
-5. **MCP `{}` escape hatch** — passing `mcpServers: {}` explicitly disables all MCP servers regardless of the user's config file.
-6. **Permission default is deny** — without `onPermissionRequest`, all tool permission requests are denied. Use `approveAllPermissions` only in trusted environments.
+`loadDefaultMcpConfig: false` skips loading the file entirely.
 
 ## `transform<T>()` Utility
 
-One-shot prompt helper. Calls `sendMessage` with `gpt-4.1` (default). Throws on failure. Optional `parse` callback maps raw string to `T`.
+One-shot prompt helper in `RequestRunner.transform()`. Uses injected `sendFn` (service's `sendMessage.bind(this)`) so tests can spy on the public method. Default model: `gpt-4.1`.
 
 ## Cleanup
 
-`cleanup()` (async): calls `SessionManager.abortAll()` (aborts all tracked sessions), removes stream error guard, nulls sdkModule and availabilityCache.
-
-`dispose()`: sets `disposed = true`, fires `cleanup()` fire-and-forget.
+`cleanup()` (async): aborts all sessions, removes stream error guard, nulls sdkModule and availabilityCache.
+`dispose()`: sets `disposed = true`, removes guard synchronously, fires `cleanup()` fire-and-forget.
 
 ## Testing Notes
 
-- `resetCopilotSDKService()` / `CopilotSDKService.resetInstance()` — disposes and nulls the singleton. Call in `afterEach`.
-- Mock helpers in `test/helpers/mock-sdk.ts`: `createMockSession`, `createStreamingMockSession`, `createMockSDKModule`, `createStreamingMockSDKModule`, `setupService`.
-- Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to wire up mocks without real SDK.
-- Tests for: client initialization, streaming events, transform, tools, attachments, session isolation.
-- `SessionManager` is independently unit-tested in `test/copilot-sdk-wrapper/session-manager.test.ts`.
+- `resetCopilotSDKService()` — disposes and nulls the singleton. Call in `afterEach`.
+- Mock helpers in `test/helpers/mock-sdk.ts`.
+- Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to bypass real SDK.
+- Stream error guard: `serviceAny.streamErrorGuard.install()`, `.remove()`, `.handler`, `.rejectionHandler`.
+- Idle-timeout tests: `serviceAny.requestRunner.sendWithStreaming(session, prompt, timeoutMs, ...)`.
+- Unit tests: `session-manager`, `streaming-session`, `sdk-loader`, `sdk-client-factory`, `stream-error-guard`, `request-runner`.

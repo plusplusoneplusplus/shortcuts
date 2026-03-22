@@ -1,0 +1,208 @@
+/**
+ * RequestRunner Tests
+ *
+ * Unit tests for RequestRunner.send() and RequestRunner.transform().
+ * Tests are isolated from CopilotSDKService by injecting mock dependencies.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { setLogger, nullLogger } from '../../src/logger';
+import { RequestRunner } from '../../src/copilot-sdk-wrapper/request-runner';
+import { SessionManager } from '../../src/copilot-sdk-wrapper/session-manager';
+import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
+
+setLogger(nullLogger);
+
+vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
+    loadDefaultMcpConfig: vi.fn().mockReturnValue({ success: false, fileExists: false, mcpServers: {} }),
+    mergeMcpConfigs: vi.fn().mockImplementation(
+        (base: Record<string, unknown>, override?: Record<string, unknown>) => ({ ...base, ...override }),
+    ),
+}));
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function makeRunner(overrides?: {
+    isAvailable?: () => Promise<any>;
+    createClient?: (cwd?: string) => Promise<any>;
+}) {
+    const sessionManager = new SessionManager();
+    const mockSession = createMockSession();
+    const mockClient = {
+        start: vi.fn().mockResolvedValue(undefined),
+        createSession: vi.fn().mockResolvedValue(mockSession),
+        resumeSession: vi.fn().mockResolvedValue(mockSession),
+        stop: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const isAvailable = overrides?.isAvailable ?? vi.fn().mockResolvedValue({ available: true, sdkPath: '/fake/sdk' });
+    const createClient = overrides?.createClient ?? vi.fn().mockResolvedValue(mockClient);
+
+    const runner = new RequestRunner(isAvailable, createClient, sessionManager, 4 * 60 * 60 * 1000, 3_600_000);
+    return { runner, sessionManager, mockClient, mockSession, isAvailable, createClient };
+}
+
+// ============================================================================
+// send() — availability check
+// ============================================================================
+
+describe('RequestRunner.send() — availability', () => {
+    it('returns failure when SDK is not available', async () => {
+        const { runner } = makeRunner({
+            isAvailable: vi.fn().mockResolvedValue({ available: false, error: 'SDK not found' }),
+        });
+
+        const result = await runner.send({ prompt: 'test', loadDefaultMcpConfig: false });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('SDK not found');
+    });
+
+    it('uses default "Copilot SDK is not available" when availability has no error field', async () => {
+        const { runner } = makeRunner({
+            isAvailable: vi.fn().mockResolvedValue({ available: false }),
+        });
+
+        const result = await runner.send({ prompt: 'test', loadDefaultMcpConfig: false });
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('not available');
+    });
+});
+
+// ============================================================================
+// send() — happy path (non-streaming)
+// ============================================================================
+
+describe('RequestRunner.send() — non-streaming path', () => {
+    it('returns successful result with response text', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn(),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const result = await runner.send({ prompt: 'hi', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('hello');
+    });
+
+    it('invokes onSessionCreated with the session ID', async () => {
+        const mockSession = createMockSession({ sessionId: 'my-session' });
+        const mockClient = { createSession: vi.fn().mockResolvedValue(mockSession), stop: vi.fn().mockResolvedValue(undefined) };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const receivedIds: string[] = [];
+        await runner.send({
+            prompt: 'test', timeoutMs: 5000, loadDefaultMcpConfig: false,
+            onSessionCreated: (id) => receivedIds.push(id),
+        });
+
+        expect(receivedIds).toEqual(['my-session']);
+    });
+
+    it('returns failure when no response content', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: {} } });
+        const mockClient = { createSession: vi.fn().mockResolvedValue(mockSession), stop: vi.fn().mockResolvedValue(undefined) };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const result = await runner.send({ prompt: 'test', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('No response received');
+    });
+});
+
+// ============================================================================
+// send() — streaming path
+// ============================================================================
+
+describe('RequestRunner.send() — streaming path', () => {
+    it('uses streaming when timeoutMs > 120000', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession();
+        const mockClient = { createSession: vi.fn().mockResolvedValue(session), stop: vi.fn().mockResolvedValue(undefined) };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const resultPromise = runner.send({
+            prompt: 'stream test',
+            timeoutMs: 200_000,
+            loadDefaultMcpConfig: false,
+        });
+
+        await vi.waitFor(() => expect(session.on).toHaveBeenCalled(), { timeout: 1000 });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'streamed', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('streamed');
+    });
+});
+
+// ============================================================================
+// send() — error handling
+// ============================================================================
+
+describe('RequestRunner.send() — error handling', () => {
+    it('wraps unexpected errors as failure result', async () => {
+        const { runner } = makeRunner({
+            createClient: vi.fn().mockRejectedValue(new Error('spawn failed')),
+        });
+
+        const result = await runner.send({ prompt: 'test', loadDefaultMcpConfig: false });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('spawn failed');
+    });
+});
+
+// ============================================================================
+// transform()
+// ============================================================================
+
+describe('RequestRunner.transform()', () => {
+    it('returns raw string when no parse function given', async () => {
+        const { runner } = makeRunner();
+        const sendSpy = vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: 'raw result' });
+
+        const result = await runner.transform('prompt');
+        expect(result).toBe('raw result');
+        sendSpy.mockRestore();
+    });
+
+    it('applies parse function', async () => {
+        const { runner } = makeRunner();
+        vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: '42' });
+
+        const result = await runner.transform<number>('prompt', (raw) => parseInt(raw, 10));
+        expect(result).toBe(42);
+    });
+
+    it('uses default model gpt-4.1', async () => {
+        const { runner } = makeRunner();
+        const sendSpy = vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: 'ok' });
+
+        await runner.transform('prompt');
+        expect(sendSpy).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-4.1' }));
+    });
+
+    it('uses custom sendFn when provided (allows spy on service.sendMessage)', async () => {
+        const { runner } = makeRunner();
+        const customSend = vi.fn().mockResolvedValue({ success: true, response: 'custom' });
+
+        const result = await runner.transform('prompt', undefined, undefined, customSend);
+        expect(result).toBe('custom');
+        expect(customSend).toHaveBeenCalled();
+    });
+
+    it('throws when sendMessage returns failure', async () => {
+        const { runner } = makeRunner();
+        vi.spyOn(runner, 'send').mockResolvedValue({ success: false, error: 'AI error' });
+
+        await expect(runner.transform('prompt')).rejects.toThrow('AI error');
+    });
+});
