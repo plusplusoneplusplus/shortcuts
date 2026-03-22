@@ -2,7 +2,7 @@
  * ModelsView — card grid of available AI models with search & capability filter.
  */
 import React, { useState, useMemo } from 'react';
-import { useModels, type ModelInfo } from '../../hooks/useModels';
+import { useModelConfig, type ModelInfo } from '../../hooks/useModels';
 
 type CapFilter = 'all' | 'vision' | 'reasoning';
 
@@ -12,7 +12,7 @@ function fmt(n: number): string {
     return String(n);
 }
 
-function ModelCard({ model }: { model: ModelInfo }) {
+function ModelCard({ model, onToggle, saving }: { model: ModelInfo; onToggle: (id: string, enabled: boolean) => void; saving: boolean }) {
     const [copied, setCopied] = useState(false);
 
     const handleClick = () => {
@@ -25,14 +25,23 @@ function ModelCard({ model }: { model: ModelInfo }) {
         }
     };
 
+    const handleToggle = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onToggle(model.id, !model.enabled);
+    };
+
     const vision = model.capabilities?.supports?.vision;
     const reasoning = model.capabilities?.supports?.reasoningEffort;
     const ctx = model.capabilities?.limits?.max_context_window_tokens ?? model.tokenLimit;
 
+    const borderClass = model.enabled
+        ? 'border-[#4caf50] dark:border-[#388e3c]'
+        : 'border-[#e0e0e0] dark:border-[#3c3c3c]';
+
     return (
         <button
             type="button"
-            className="relative text-left rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] p-4 hover:shadow-md transition-shadow cursor-pointer"
+            className={`relative text-left rounded-lg border ${borderClass} bg-white dark:bg-[#1e1e1e] p-4 hover:shadow-md transition-shadow cursor-pointer`}
             data-testid="model-card"
             onClick={handleClick}
         >
@@ -41,7 +50,27 @@ function ModelCard({ model }: { model: ModelInfo }) {
                     Copied!
                 </div>
             )}
-            <div className="font-semibold text-sm text-[#1e1e1e] dark:text-[#cccccc]">{model.name || model.id}</div>
+            {/* Toggle switch in top-right */}
+            <div
+                role="button"
+                tabIndex={0}
+                className="absolute top-2 right-2 flex items-center"
+                onClick={handleToggle}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleToggle(e as unknown as React.MouseEvent); }}
+                aria-label={model.enabled ? 'Disable model' : 'Enable model'}
+                aria-disabled={saving}
+                data-testid="model-toggle"
+            >
+                <span
+                    className={`inline-block w-8 h-4 rounded-full transition-colors relative ${model.enabled ? 'bg-[#4caf50] dark:bg-[#388e3c]' : 'bg-[#ccc] dark:bg-[#555]'}`}
+                    data-testid={model.enabled ? 'toggle-on' : 'toggle-off'}
+                >
+                    <span
+                        className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${model.enabled ? 'translate-x-4' : 'translate-x-0.5'}`}
+                    />
+                </span>
+            </div>
+            <div className="font-semibold text-sm text-[#1e1e1e] dark:text-[#cccccc] pr-10">{model.name || model.id}</div>
             <div className="text-xs text-[#888] mt-0.5 font-mono">{model.id}</div>
             <hr className="my-2 border-[#e0e0e0] dark:border-[#3c3c3c]" />
             {ctx > 0 && <div className="text-xs text-[#666] dark:text-[#999]">Context: {fmt(ctx)}</div>}
@@ -54,7 +83,7 @@ function ModelCard({ model }: { model: ModelInfo }) {
 }
 
 export function ModelsView() {
-    const { models, loading, error, reload } = useModels();
+    const { models, loading, error, saving, reload, toggleModel } = useModelConfig();
     const [search, setSearch] = useState('');
     const [capFilter, setCapFilter] = useState<CapFilter>('all');
 
@@ -68,6 +97,8 @@ export function ModelsView() {
         if (capFilter === 'reasoning') list = list.filter(m => m.capabilities?.supports?.reasoningEffort);
         return list;
     }, [models, search, capFilter]);
+
+    const enabledCount = useMemo(() => models.filter(m => m.enabled).length, [models]);
 
     if (loading) {
         return (
@@ -114,6 +145,7 @@ export function ModelsView() {
                     <option value="reasoning">Reasoning</option>
                 </select>
                 <span className="text-xs text-[#888] whitespace-nowrap" data-testid="models-count">{filtered.length} model{filtered.length !== 1 ? 's' : ''}</span>
+                <span className="text-xs text-[#888] whitespace-nowrap" data-testid="models-enabled-count">{enabledCount} of {models.length} enabled{saving ? ' …' : ''}</span>
             </div>
 
             {filtered.length === 0 ? (
@@ -123,7 +155,7 @@ export function ModelsView() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="models-grid">
-                    {filtered.map(m => <ModelCard key={m.id} model={m} />)}
+                    {filtered.map(m => <ModelCard key={m.id} model={m} onToggle={toggleModel} saving={saving} />)}
                 </div>
             )}
         </div>

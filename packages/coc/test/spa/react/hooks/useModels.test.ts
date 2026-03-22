@@ -42,6 +42,7 @@ describe('useModels', () => {
             {
                 id: 'gpt-4',
                 name: 'GPT-4',
+                enabled: true,
                 capabilities: { limits: { max_context_window_tokens: 8192 } },
             },
         ];
@@ -54,6 +55,7 @@ describe('useModels', () => {
             id: 'gpt-4',
             name: 'GPT-4',
             tokenLimit: 8192,
+            enabled: true,
             capabilities: {
                 supports: { vision: false, reasoningEffort: false },
                 limits: { max_context_window_tokens: 8192, max_prompt_tokens: undefined },
@@ -77,11 +79,12 @@ describe('useModels', () => {
         expect(result.current.error).toBe('network error');
     });
 
-    it('defaults tokenLimit to 0 when capabilities are missing', async () => {
+    it('defaults tokenLimit to 0 and enabled to false when capabilities are missing', async () => {
         fetchMock.mockResolvedValue(makeModelResponse([{ id: 'basic', name: 'Basic' }]));
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].tokenLimit).toBe(0);
+        expect(result.current.models[0].enabled).toBe(false);
         expect(result.current.models[0].capabilities?.supports?.vision).toBe(false);
     });
 

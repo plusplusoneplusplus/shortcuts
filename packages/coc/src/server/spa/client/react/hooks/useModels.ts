@@ -9,6 +9,7 @@ export interface ModelInfo {
     id: string;
     tokenLimit: number;
     name?: string;
+    enabled: boolean;
     capabilities?: {
         supports: { vision: boolean; reasoningEffort: boolean };
         limits: { max_context_window_tokens: number; max_prompt_tokens?: number };
@@ -18,6 +19,7 @@ export interface ModelInfo {
 interface RawModel {
     id: string;
     name?: string;
+    enabled?: boolean;
     capabilities?: {
         supports?: { vision?: boolean; reasoningEffort?: boolean };
         limits?: { max_context_window_tokens?: number; max_prompt_tokens?: number };
@@ -29,6 +31,7 @@ function mapModel(m: RawModel): ModelInfo {
         id: m.id,
         tokenLimit: m.capabilities?.limits?.max_context_window_tokens ?? 0,
         name: m.name,
+        enabled: m.enabled ?? false,
         capabilities: {
             supports: {
                 vision: m.capabilities?.supports?.vision ?? false,
@@ -66,4 +69,45 @@ export function useModels(): { models: ModelInfo[]; loading: boolean; error: str
     useEffect(() => { load(); }, [load]);
 
     return { models, loading, error, reload: load };
+}
+
+export function useModelConfig(): {
+    models: ModelInfo[];
+    loading: boolean;
+    error: string | null;
+    saving: boolean;
+    reload: () => void;
+    toggleModel: (modelId: string, enabled: boolean) => Promise<void>;
+} {
+    const { models, loading, error, reload } = useModels();
+    const [localModels, setLocalModels] = useState<ModelInfo[]>([]);
+    const [saving, setSaving] = useState(false);
+
+    // Keep localModels in sync with fetched models
+    useEffect(() => {
+        setLocalModels(models);
+    }, [models]);
+
+    const toggleModel = useCallback(async (modelId: string, enabled: boolean) => {
+        // Optimistic update
+        setLocalModels(prev => prev.map(m => m.id === modelId ? { ...m, enabled } : m));
+        setSaving(true);
+        try {
+            const updated = localModels.map(m => m.id === modelId ? { ...m, enabled } : m);
+            const enabledModels = updated.filter(m => m.id === modelId ? enabled : m.enabled).map(m => m.id);
+            const res = await fetch(getApiBase() + '/models/enabled', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabledModels }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        } catch {
+            // Revert optimistic update on error
+            setLocalModels(models);
+        } finally {
+            setSaving(false);
+        }
+    }, [localModels, models]);
+
+    return { models: localModels, loading, error, saving, reload, toggleModel };
 }

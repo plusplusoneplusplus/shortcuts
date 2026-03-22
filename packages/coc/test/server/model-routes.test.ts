@@ -6,18 +6,19 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createRouter } from '../../src/server/shared/router';
 import { registerModelRoutes } from '../../src/server/models/model-routes';
-import type { ModelStore } from '../../src/server/models/model-routes';
+import type { ModelStore, ModelRouteOptions } from '../../src/server/models/model-routes';
 import type { Route } from '../../src/server/types';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
+import type { CLIConfig } from '../../src/config';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 let server: http.Server;
 let baseUrl: string;
 
-function makeServer(store: ModelStore): http.Server {
+function makeServer(store: ModelStore, options?: ModelRouteOptions): http.Server {
     const routes: Route[] = [];
-    registerModelRoutes(routes, store);
+    registerModelRoutes(routes, store, options);
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -43,6 +44,16 @@ async function apiGet(path: string): Promise<{ status: number; body: unknown }> 
     return { status: res.status, body };
 }
 
+async function apiPut(path: string, payload: unknown): Promise<{ status: number; body: unknown }> {
+    const res = await fetch(`${baseUrl}${path}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const body = await res.json();
+    return { status: res.status, body };
+}
+
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 function makeModelInfo(id: string, name: string, contextWindow = 128_000): ModelInfo {
@@ -61,6 +72,20 @@ const THREE_MODELS: ModelInfo[] = [
     makeModelInfo('model-b', 'Model B'),
     makeModelInfo('model-c', 'Model C', 200_000),
 ];
+
+function makeOptions(initialConfig?: CLIConfig): ModelRouteOptions & { writtenConfig: CLIConfig | undefined } {
+    let storedConfig: CLIConfig | undefined = initialConfig;
+    const result = {
+        writtenConfig: undefined as CLIConfig | undefined,
+        loadConfigFile: (_p?: string) => storedConfig,
+        writeConfigFile: (_p: string, c: CLIConfig) => {
+            storedConfig = c;
+            result.writtenConfig = c;
+        },
+        getConfigFilePath: () => '/fake/config.yaml',
+    };
+    return result;
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -117,6 +142,119 @@ describe('GET /api/models', () => {
         await startServer();
 
         const res = await fetch(`${baseUrl}/api/models`, { method: 'POST' });
+        expect(res.status).toBe(404);
+    });
+
+    it('includes enabled:false for all models when no config exists', async () => {
+        const opts = makeOptions(undefined);
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/models');
+        expect(status).toBe(200);
+        const models = body as Array<ModelInfo & { enabled: boolean }>;
+        expect(models).toHaveLength(3);
+        expect(models.every(m => m.enabled === false)).toBe(true);
+    });
+
+    it('marks only whitelisted models as enabled', async () => {
+        const opts = makeOptions({ models: { enabled: ['model-a', 'model-c'] } });
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/models');
+        expect(status).toBe(200);
+        const models = body as Array<{ id: string; enabled: boolean }>;
+        const byId = Object.fromEntries(models.map(m => [m.id, m.enabled]));
+        expect(byId['model-a']).toBe(true);
+        expect(byId['model-b']).toBe(false);
+        expect(byId['model-c']).toBe(true);
+    });
+});
+
+describe('GET /api/models/enabled', () => {
+    afterEach(async () => {
+        await stopServer();
+    });
+
+    it('returns empty array when no config', async () => {
+        const opts = makeOptions(undefined);
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/models/enabled');
+        expect(status).toBe(200);
+        expect((body as { enabledModels: string[] }).enabledModels).toEqual([]);
+    });
+
+    it('returns configured enabled models', async () => {
+        const opts = makeOptions({ models: { enabled: ['model-a', 'model-b'] } });
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/models/enabled');
+        expect(status).toBe(200);
+        expect((body as { enabledModels: string[] }).enabledModels).toEqual(['model-a', 'model-b']);
+    });
+
+    it('not registered when no options provided', async () => {
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store); // no options
+        await startServer();
+
+        const res = await fetch(`${baseUrl}/api/models/enabled`);
+        expect(res.status).toBe(404);
+    });
+});
+
+describe('PUT /api/models/enabled', () => {
+    afterEach(async () => {
+        await stopServer();
+    });
+
+    it('writes enabled models to config file', async () => {
+        const opts = makeOptions(undefined);
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiPut('/api/models/enabled', { enabledModels: ['model-a'] });
+        expect(status).toBe(200);
+        expect((body as { enabledModels: string[] }).enabledModels).toEqual(['model-a']);
+        expect(opts.writtenConfig?.models?.enabled).toEqual(['model-a']);
+    });
+
+    it('returns 400 for invalid payload', async () => {
+        const opts = makeOptions(undefined);
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status } = await apiPut('/api/models/enabled', { enabledModels: 'not-an-array' });
+        expect(status).toBe(400);
+    });
+
+    it('preserves other config fields when writing', async () => {
+        const opts = makeOptions({ model: 'gpt-4', models: { enabled: ['model-a'] } });
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        await apiPut('/api/models/enabled', { enabledModels: ['model-b', 'model-c'] });
+        expect(opts.writtenConfig?.model).toBe('gpt-4');
+        expect(opts.writtenConfig?.models?.enabled).toEqual(['model-b', 'model-c']);
+    });
+
+    it('not registered when no options provided', async () => {
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store); // no options
+        await startServer();
+
+        const res = await fetch(`${baseUrl}/api/models/enabled`, { method: 'PUT', body: '{}' });
         expect(res.status).toBe(404);
     });
 });

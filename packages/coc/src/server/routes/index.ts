@@ -123,7 +123,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         aiInvoker: createCLIAIInvoker({ approvePermissions: true }),
     });
 
-    registerModelRoutes(routes, modelMetadataStore);
+    registerModelRoutes(routes, modelMetadataStore, {
+        configPath,
+        loadConfigFile,
+        writeConfigFile,
+        getConfigFilePath,
+    });
     registerLogsRoutes(routes);
     registerInstructionRoutes(routes, store);
     registerStatsRoutes(routes, store);

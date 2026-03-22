@@ -60,6 +60,10 @@ export interface CLIConfig {
         historyLimit?: number;
         restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
     };
+    /** Models whitelist configuration */
+    models?: {
+        enabled?: string[];
+    };
     /** Logging configuration */
     logging?: LoggingConfig;
 }
@@ -129,6 +133,10 @@ export interface ResolvedCLIConfig {
     queue?: {
         historyLimit?: number;
         restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
+    };
+    /** Models whitelist — list of enabled model IDs */
+    models?: {
+        enabled?: string[];
     };
     /** Logging config passed through from file (not fully resolved — use resolveLoggingConfig) */
     logging?: LoggingConfig;
@@ -303,6 +311,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         queue: (override.queue || base.queue) ? {
             historyLimit: override.queue?.historyLimit ?? base.queue?.historyLimit,
             restartPolicy: override.queue?.restartPolicy ?? base.queue?.restartPolicy,
+        } : undefined,
+        models: (override.models || base.models) ? {
+            enabled: override.models?.enabled ?? base.models?.enabled,
         } : undefined,
         logging: override.logging ?? base.logging,
     };

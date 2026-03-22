@@ -58,6 +58,9 @@ export const CLIConfigSchema = z.object({
         historyLimit: z.number().int().positive().optional(),
         restartPolicy: z.enum(['fail', 'requeue', 'requeue-if-retriable']).optional(),
     }).strict().optional(),
+    models: z.object({
+        enabled: z.array(z.string()).optional(),
+    }).strict().optional(),
     logging: loggingConfigSchema.optional(),
 }).strict();
 
