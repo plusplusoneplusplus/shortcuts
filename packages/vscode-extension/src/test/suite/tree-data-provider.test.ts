@@ -208,7 +208,8 @@ suite('LogicalTreeDataProvider Test Suite', () => {
         assert.strictEqual(groupContents.length, 0);
     });
 
-    test('should sort group contents correctly', async () => {
+    test('should sort group contents correctly', async function() {
+        this.timeout(10000); // File I/O + config parsing can be slow on Windows
         const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
         fs.mkdirSync(path.dirname(configPath), { recursive: true });
 

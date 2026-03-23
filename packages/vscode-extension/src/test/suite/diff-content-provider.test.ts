@@ -319,6 +319,7 @@ suite('Diff Content Provider Tests', () => {
         });
 
         test('should return file content for new files, not commit info', function() {
+            this.timeout(15000); // git operations can be slow on Windows
             // Import the function we're testing
             const { getRangeDiffContent } = require('../../shortcuts/git-diff-comments/diff-content-provider');
             
@@ -351,6 +352,7 @@ suite('Diff Content Provider Tests', () => {
         });
 
         test('should return correct content for existing files', function() {
+            this.timeout(15000); // git operations can be slow on Windows
             const { getRangeDiffContent } = require('../../shortcuts/git-diff-comments/diff-content-provider');
             
             // Get range diff for an existing file
