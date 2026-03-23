@@ -1069,4 +1069,22 @@ describe('ActivityListPane mobile long-press context menu', () => {
             expect(source).toContain('historyLongPressFired.current');
         });
     });
+
+    describe('refreshing indicator in empty state', () => {
+        it('renders refreshing indicator with data-testid when empty and isRefreshing', () => {
+            expect(source).toContain('data-testid="queue-refreshing-indicator"');
+        });
+
+        it('shows refreshing indicator only when isRefreshing is true', () => {
+            expect(source).toContain('{isRefreshing && (');
+        });
+
+        it('applies animate-pulse class to the refreshing indicator', () => {
+            expect(source).toContain('animate-pulse');
+        });
+
+        it('displays Refreshing text in the indicator', () => {
+            expect(source).toContain('Refreshing\u2026');
+        });
+    });
 });
