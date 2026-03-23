@@ -320,6 +320,100 @@ describe('useChatPreferences', () => {
         expect(result.current.archivedChatIds.has('task-a')).toBe(false);
     });
 
+    // ---- batch archive tests ----
+
+    it('archiveChats archives multiple IDs with a single PATCH', async () => {
+        fetchMock
+            .mockResolvedValueOnce(makePrefsResponse()) // initial GET
+            .mockResolvedValue(makePatchResponse());
+
+        const { result } = renderHook(() => useChatPreferences('ws1'));
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+
+        act(() => { result.current.archiveChats(['task-a', 'task-b', 'task-c']); });
+        expect(result.current.archivedChatIds.has('task-a')).toBe(true);
+        expect(result.current.archivedChatIds.has('task-b')).toBe(true);
+        expect(result.current.archivedChatIds.has('task-c')).toBe(true);
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+        expect(body.archivedChats).toEqual({ ws1: ['task-a', 'task-b', 'task-c'] });
+    });
+
+    it('archiveChats skips already-archived IDs and sends one PATCH', async () => {
+        fetchMock
+            .mockResolvedValueOnce(makePrefsResponse({}, { ws1: ['task-a'] }))
+            .mockResolvedValue(makePatchResponse());
+
+        const { result } = renderHook(() => useChatPreferences('ws1'));
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+
+        act(() => { result.current.archiveChats(['task-a', 'task-b']); });
+        expect(result.current.archivedChatIds.size).toBe(2);
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+        expect(body.archivedChats.ws1).toEqual(['task-b', 'task-a']);
+    });
+
+    it('archiveChats is a no-op when all IDs are already archived', async () => {
+        fetchMock
+            .mockResolvedValueOnce(makePrefsResponse({}, { ws1: ['task-a', 'task-b'] }))
+            .mockResolvedValue(makePatchResponse());
+
+        const { result } = renderHook(() => useChatPreferences('ws1'));
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+
+        act(() => { result.current.archiveChats(['task-a', 'task-b']); });
+        expect(fetchMock).toHaveBeenCalledTimes(1); // only the initial GET
+    });
+
+    it('unarchiveChats removes multiple IDs with a single PATCH', async () => {
+        fetchMock
+            .mockResolvedValueOnce(makePrefsResponse({}, { ws1: ['task-a', 'task-b', 'task-c'] }))
+            .mockResolvedValue(makePatchResponse());
+
+        const { result } = renderHook(() => useChatPreferences('ws1'));
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+
+        act(() => { result.current.unarchiveChats(['task-a', 'task-c']); });
+        expect(result.current.archivedChatIds.has('task-a')).toBe(false);
+        expect(result.current.archivedChatIds.has('task-b')).toBe(true);
+        expect(result.current.archivedChatIds.has('task-c')).toBe(false);
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+        expect(body.archivedChats).toEqual({ ws1: ['task-b'] });
+    });
+
+    it('unarchiveChats is a no-op when none of the IDs are archived', async () => {
+        fetchMock
+            .mockResolvedValueOnce(makePrefsResponse({}, { ws1: ['task-a'] }))
+            .mockResolvedValue(makePatchResponse());
+
+        const { result } = renderHook(() => useChatPreferences('ws1'));
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+
+        act(() => { result.current.unarchiveChats(['task-x', 'task-y']); });
+        expect(fetchMock).toHaveBeenCalledTimes(1); // only the initial GET
+    });
+
+    it('unarchiveChats sends empty archivedChats when all are removed', async () => {
+        fetchMock
+            .mockResolvedValueOnce(makePrefsResponse({}, { ws1: ['task-a', 'task-b'] }))
+            .mockResolvedValue(makePatchResponse());
+
+        const { result } = renderHook(() => useChatPreferences('ws1'));
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+
+        act(() => { result.current.unarchiveChats(['task-a', 'task-b']); });
+        expect(result.current.archivedChatIds.size).toBe(0);
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+        expect(body.archivedChats).toEqual({});
+    });
+
     // ---- single fetch test ----
 
     it('issues only one GET on mount even with both pinnedChats and archivedChats', async () => {

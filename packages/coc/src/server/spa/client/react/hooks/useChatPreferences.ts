@@ -25,6 +25,10 @@ export interface UseChatPreferencesResult {
     archiveChat: (taskId: string) => void;
     /** Unarchive a chat by task ID. No-op if not archived. */
     unarchiveChat: (taskId: string) => void;
+    /** Archive multiple chats in one request. */
+    archiveChats: (taskIds: string[]) => void;
+    /** Unarchive multiple chats in one request. */
+    unarchiveChats: (taskIds: string[]) => void;
     /** True once the single GET /preferences response has settled (both sets ready). */
     loaded: boolean;
 }
@@ -126,6 +130,26 @@ export function useChatPreferences(workspaceId: string): UseChatPreferencesResul
         persistArchived(next);
     }, [persistArchived]);
 
+    const archiveChats = useCallback((taskIds: string[]) => {
+        const current = archivedIdsRef.current;
+        const toAdd = taskIds.filter(id => !current.includes(id));
+        if (toAdd.length === 0) return;
+        const next = [...toAdd, ...current].slice(0, MAX_ARCHIVED);
+        archivedIdsRef.current = next;
+        setArchivedIds(next);
+        persistArchived(next);
+    }, [persistArchived]);
+
+    const unarchiveChats = useCallback((taskIds: string[]) => {
+        const current = archivedIdsRef.current;
+        const removing = new Set(taskIds);
+        const next = current.filter(id => !removing.has(id));
+        if (next.length === current.length) return;
+        archivedIdsRef.current = next;
+        setArchivedIds(next);
+        persistArchived(next);
+    }, [persistArchived]);
+
     return {
         pinnedChatIds: new Set(pinnedIds),
         pinChat,
@@ -133,6 +157,8 @@ export function useChatPreferences(workspaceId: string): UseChatPreferencesResul
         archivedChatIds: new Set(archivedIds),
         archiveChat,
         unarchiveChat,
+        archiveChats,
+        unarchiveChats,
         loaded,
     };
 }
