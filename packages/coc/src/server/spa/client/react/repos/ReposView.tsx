@@ -38,6 +38,17 @@ export function ReposView() {
         );
     }
 
+    // If a specific repo was requested via deep-link but hasn't appeared in the
+    // list yet (repo data still loading), keep showing the loading indicator
+    // rather than flashing the empty "Select a repository" panel.
+    if (loading && state.selectedRepoId && !repos.find(r => r.workspace.id === state.selectedRepoId)) {
+        return (
+            <div id="view-repos" className={`flex items-center justify-center ${heightClass} text-sm text-[#848484]`}>
+                Loading repositories...
+            </div>
+        );
+    }
+
     const selectedRepo = repos.find(r => r.workspace.id === state.selectedRepoId) || null;
 
     return (

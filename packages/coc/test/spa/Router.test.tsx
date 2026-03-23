@@ -170,6 +170,12 @@ describe('parseSettingsSection', () => {
     it('returns default "info" for unknown section', () => {
         expect(parseSettingsSection('#repos/r1/settings/unknown')).toBe('info');
     });
+
+    // Regression: #repos/:id/settings/memory must resolve to "memory" so that
+    // refreshing the memory settings page does not show a blank panel.
+    it('returns "memory" for #repos/r1/settings/memory', () => {
+        expect(parseSettingsSection('#repos/r1/settings/memory')).toBe('memory');
+    });
 });
 
 // ── VALID_REPO_SUB_TABS ───────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
  * Reads activeTab from AppContext, renders the appropriate view.
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { ProcessesView } from '../processes/ProcessesView';
@@ -196,7 +196,10 @@ export function Router() {
     }, [switchTab]);
 
     // Handle hash changes — parse #repos/:id/:subTab
-    useEffect(() => {
+    // useLayoutEffect fires synchronously before browser paint so the correct
+    // repo/section is already set on the first visible render, preventing a
+    // blank-page flash when navigating directly to a deep-link (e.g. on refresh).
+    useLayoutEffect(() => {
         const handleHash = () => {
             const hash = location.hash.replace(/^#/, '');
             const tab = tabFromHash('#' + hash);
