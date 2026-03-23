@@ -267,6 +267,23 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('&lt;div&gt;');
     });
 
+    it('preserves line breaks inside XML-like tag blocks', () => {
+        const html = chatMarkdownToHtml('<rule>\nBe concise.\nUse clear language.\n</rule>');
+        expect(html).toContain('&lt;rule&gt;');
+        expect(html).toContain('<br>');
+        expect(html).toContain('Be concise.');
+        expect(html).toContain('Use clear language.');
+    });
+
+    it('preserves multiline content inside pasted HTML sections in user messages', () => {
+        const html = toContentHtml('<section>\nLine one\nLine two\n</section>');
+        expect(html).not.toContain('<section>');
+        expect(html).toContain('&lt;section&gt;');
+        expect(html).toContain('<br>');
+        expect(html).toContain('Line one');
+        expect(html).toContain('Line two');
+    });
+
     it('does not double-escape angle brackets in placeholder text', () => {
         const html = chatMarkdownToHtml('Use the <chosen-folder> path');
         expect(html).toContain('&lt;chosen-folder&gt;');

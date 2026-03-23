@@ -22,7 +22,7 @@ const chatMarked = new Marked({
     breaks: true,
     renderer: {
         html(raw: string) {
-            return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
         },
         link(href: string, title: string | null | undefined, text: string): string {
             const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
