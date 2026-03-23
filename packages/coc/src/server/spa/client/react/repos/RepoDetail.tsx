@@ -469,7 +469,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         onNavStateChange={(navState) => dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState })}
                     />
                 ) : (
-                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <WorkflowsTab key={ws.id} repo={repo} />}
                         {activeSubTab === 'activity' && <RepoActivityTab key={ws.id} workspaceId={ws.id} />}
@@ -479,13 +479,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <ExplorerPanel key={ws.id} workspaceId={ws.id} />
                         </div>
-                        {activeSubTab === 'pull-requests' && (
+                        <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <PullRequestsTab
                                 repoId={ws.id}
                                 workspaceId={ws.id}
                                 remoteUrl={ws.remoteUrl ?? undefined}
                             />
-                        )}
+                        </div>
                         {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}
                     </div>
                 )}

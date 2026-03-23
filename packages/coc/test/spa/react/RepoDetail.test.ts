@@ -725,3 +725,26 @@ describe('RepoDetail Git tab ahead/behind badge', () => {
         expect(REPO_DETAIL_SOURCE).toContain('gitAhead > 0');
     });
 });
+
+// ── PullRequestsTab always-mounted (regression: auto-refresh on tab switch) ────
+
+describe('RepoDetail PullRequestsTab always-mounted', () => {
+    it('does NOT conditionally render PullRequestsTab with &&', () => {
+        // If conditionally rendered, the component remounts on every tab switch,
+        // triggering the useEffect fetch automatically. It must stay always-mounted.
+        expect(REPO_DETAIL_SOURCE).not.toContain("activeSubTab === 'pull-requests' && (");
+        expect(REPO_DETAIL_SOURCE).not.toContain("activeSubTab === 'pull-requests' && <PullRequestsTab");
+    });
+
+    it('wraps PullRequestsTab in a div with display:none when inactive', () => {
+        // The always-mounted pattern: display toggled via style prop, not conditional render.
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'pull-requests' ? undefined : 'none'");
+    });
+
+    it('pull-requests tab uses overflow-hidden layout (component manages its own scroll)', () => {
+        const overflowLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
+            l.includes("activeSubTab === 'pull-requests'") && l.includes('overflow-hidden')
+        );
+        expect(overflowLine).toBeDefined();
+    });
+});
