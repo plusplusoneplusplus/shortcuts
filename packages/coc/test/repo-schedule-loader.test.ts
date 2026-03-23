@@ -34,7 +34,7 @@ describe('idFromScheduleFilename', () => {
 describe('getRepoScheduleDir', () => {
     it('returns correct path', () => {
         const result = getRepoScheduleDir('/my/repo');
-        expect(result).toBe(path.join('/my/repo', '.github', 'schedule'));
+        expect(result).toBe(path.join('/my/repo', '.github', 'schedules'));
     });
 });
 
@@ -44,7 +44,7 @@ describe('loadRepoSchedules', () => {
 
     beforeEach(() => {
         tmpDir = makeTmpDir();
-        scheduleDir = path.join(tmpDir, '.github', 'schedule');
+        scheduleDir = path.join(tmpDir, '.github', 'schedules');
     });
 
     afterEach(() => {

@@ -80,7 +80,7 @@ describe('Schedule Handler — repo schedule enforcement', () => {
     });
 
     function writeRepoSchedule(filename: string, content: string): void {
-        const dir = path.join(workspaceRoot, '.github', 'schedule');
+        const dir = path.join(workspaceRoot, '.github', 'schedules');
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, filename), content, 'utf-8');
     }

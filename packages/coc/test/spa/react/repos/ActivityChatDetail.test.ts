@@ -969,9 +969,10 @@ describe('ActivityChatDetail', () => {
     });
 
     describe('mobile responsiveness', () => {
-        it('back button uses min-h-11 min-w-11 for 44px touch target', () => {
-            expect(CHAT_HEADER_SRC).toContain('min-h-11 min-w-11');
+        it('back button uses compact inline-flex styling without fixed min-h/min-w', () => {
+            expect(CHAT_HEADER_SRC).not.toContain('min-h-11 min-w-11');
             expect(CHAT_HEADER_SRC).not.toContain('min-h-7 min-w-7');
+            expect(CHAT_HEADER_SRC).toContain('inline-flex');
         });
 
         it('scroll-to-bottom button is 44px on mobile and 32px on sm+ screens', () => {
