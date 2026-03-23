@@ -18,21 +18,13 @@ describe('AdminPanel responsive layout', () => {
         expect(adminPanelSource).toContain('responsive-container');
     });
 
-    it('config inputs have min-h-[44px] for mobile touch targets', () => {
-        // All config inputs should have the mobile touch target height
-        const inputMatches = adminPanelSource.match(/min-h-\[44px\]/g);
+    it('config inputs use compact py-0.5 styling (admin is always desktop context)', () => {
+        // Admin panel is not a mobile-first form — always compact
+        const inputMatches = adminPanelSource.match(/py-0\.5/g);
         expect(inputMatches).not.toBeNull();
-        // At least 5 inputs (model, parallelism, timeout, output, follow-up count)
-        expect(inputMatches!.length).toBeGreaterThanOrEqual(5);
     });
 
-    it('config inputs have md:min-h-0 for desktop reset', () => {
-        const inputMatches = adminPanelSource.match(/md:min-h-0/g);
-        expect(inputMatches).not.toBeNull();
-        expect(inputMatches!.length).toBeGreaterThanOrEqual(5);
-    });
-
-    it('form groups use flex-col md:flex-row for responsive stacking', () => {
+    it('form groups still stack responsively on narrow screens', () => {
         expect(adminPanelSource).toContain('flex-col md:flex-row');
     });
 });

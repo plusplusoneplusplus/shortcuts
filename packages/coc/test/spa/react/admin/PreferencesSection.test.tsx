@@ -24,10 +24,10 @@ function renderSection() {
 }
 
 describe('PreferencesSection', () => {
-    it('renders the Preferences heading', async () => {
+    it('renders the Preferences section', async () => {
         mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         await act(async () => { renderSection(); });
-        expect(screen.getByText('Preferences')).toBeDefined();
+        expect(screen.getByTestId('preferences-section')).toBeDefined();
     });
 
     it('shows spinner while loading', () => {

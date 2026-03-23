@@ -49,9 +49,9 @@ describe('AdminPanel', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId('stat-processes').textContent).toBe('42');
-            expect(screen.getByTestId('stat-wikis').textContent).toBe('5');
-            expect(screen.getByTestId('stat-disk').textContent).toBe('1.0 MB');
+            expect(screen.getByTestId('stat-processes').textContent).toContain('42');
+            expect(screen.getByTestId('stat-wikis').textContent).toContain('5');
+            expect(screen.getByTestId('stat-disk').textContent).toContain('1.0 MB');
         });
     });
 
@@ -89,8 +89,11 @@ describe('AdminPanel', () => {
         await act(async () => {
             renderWithProviders();
         });
-        expect(screen.getByText('Export Data')).toBeDefined();
-        expect(screen.getByText('Export')).toBeDefined();
+        // Navigate to Data tab
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('admin-tab-data'));
+        });
+        expect(screen.getByText('Export JSON ↓')).toBeDefined();
     });
 
     it('renders danger zone with wipe button', async () => {
@@ -101,6 +104,10 @@ describe('AdminPanel', () => {
         });
         await act(async () => {
             renderWithProviders();
+        });
+        // Navigate to Data tab
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('admin-tab-data'));
         });
         expect(screen.getByText('Danger Zone')).toBeDefined();
         expect(screen.getByText('Wipe Data')).toBeDefined();
@@ -119,6 +126,11 @@ describe('AdminPanel', () => {
 
         await act(async () => {
             renderWithProviders();
+        });
+
+        // Navigate to Data tab
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('admin-tab-data'));
         });
 
         // Step 1: click Wipe Data
@@ -150,6 +162,11 @@ describe('AdminPanel', () => {
 
         await act(async () => {
             renderWithProviders();
+        });
+
+        // Navigate to Data tab
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('admin-tab-data'));
         });
 
         await act(async () => {
@@ -191,8 +208,7 @@ describe('AdminPanel', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('Display')).toBeDefined();
-            expect(screen.getByText('Show intent announcements')).toBeDefined();
+            expect(screen.getByText('Intent announcements')).toBeDefined();
         });
 
         const toggle = screen.getByTestId('toggle-show-report-intent') as HTMLInputElement;

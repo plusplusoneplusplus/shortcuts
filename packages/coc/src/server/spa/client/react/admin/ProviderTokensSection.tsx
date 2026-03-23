@@ -5,7 +5,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Card } from '../shared';
 import { getApiBase } from '../utils/config';
 
 interface ProviderTokensSectionProps {
@@ -103,13 +102,7 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
     const subHeadClass = 'text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2';
 
     return (
-        <Card className="p-4" data-testid="provider-tokens-section">
-            <h3 className="text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]">Provider Tokens</h3>
-            <p className="text-xs text-[#616161] dark:text-[#999] mb-4">
-                Update the GitHub PAT used by the Pull Requests feature. Tokens are stored locally in{' '}
-                <span className="font-mono">~/.coc/providers.json</span>.
-            </p>
-
+        <div data-testid="provider-tokens-section-inner">
             {/* GitHub */}
             <div className="mb-5" data-testid="github-subsection">
                 <p className={subHeadClass}>GitHub</p>
@@ -202,6 +195,9 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
                     </p>
                 )}
             </div>
-        </Card>
+            <p className="text-[10px] text-[#616161] dark:text-[#999] mt-3">
+                Tokens are stored locally in <span className="font-mono">~/.coc/providers.json</span>.
+            </p>
+        </div>
     );
 }

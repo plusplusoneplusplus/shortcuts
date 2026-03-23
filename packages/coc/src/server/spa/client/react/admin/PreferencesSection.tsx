@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Card, Button, Spinner } from '../shared';
+import { Button, Spinner } from '../shared';
 import { getApiBase } from '../utils/config';
 
 interface UserPreferences {
@@ -70,8 +70,7 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
     const labelClass = 'text-xs w-24 shrink-0 text-[#616161] dark:text-[#999]';
 
     return (
-        <Card className="p-4">
-            <h3 className="text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]">Preferences</h3>
+        <div data-testid="preferences-section">
             {loading ? (
                 <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
             ) : prefs === null ? (
@@ -118,6 +117,6 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
                     </div>
                 </div>
             )}
-        </Card>
+        </div>
     );
 }

@@ -6,7 +6,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, Button, Spinner, useToast, ToastContainer } from '../shared';
 import { getApiBase } from '../utils/config';
-import { escapeHtml } from '../utils/format';
 import { invalidateDisplaySettings } from '../hooks/useDisplaySettings';
 import { PreferencesSection } from './PreferencesSection';
 import { ProviderTokensSection } from './ProviderTokensSection';
@@ -26,9 +25,13 @@ interface Stats {
 }
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
+type AdminTab = 'settings' | 'providers' | 'data' | 'server';
+const TAB_LABELS: Record<AdminTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server' };
 
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
+    const [activeTab, setActiveTab] = useState<AdminTab>('settings');
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
     // Storage stats
     const [stats, setStats] = useState<Stats | null>(null);
@@ -49,7 +52,6 @@ export function AdminPanel() {
     // Chat settings
     const [chatFollowUpEnabled, setChatFollowUpEnabled] = useState(true);
     const [chatFollowUpCount, setChatFollowUpCount] = useState('3');
-    const [chatSaving, setChatSaving] = useState(false);
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -119,9 +121,8 @@ export function AdminPanel() {
         loadConfig();
     }, [loadStats, loadConfig]);
 
-    const handleSaveConfig = useCallback(async () => {
+    const handleSaveSettings = useCallback(async () => {
         const errors: string[] = [];
-        // model is optional — only validate if user typed something
         const parallel = Number(configForm.parallel);
         if (isNaN(parallel) || parallel < 1) errors.push('Parallelism must be at least 1');
         const timeoutStr = configForm.timeout.trim();
@@ -137,15 +138,23 @@ export function AdminPanel() {
         if (!(VALID_OUTPUT_OPTIONS as readonly string[]).includes(configForm.output)) {
             errors.push(`Output must be one of: ${VALID_OUTPUT_OPTIONS.join(', ')}`);
         }
+        const count = Number(chatFollowUpCount);
+        if (isNaN(count) || !Number.isInteger(count) || count < 1 || count > 5) {
+            errors.push('Follow-up count must be an integer between 1 and 5');
+        }
         if (errors.length) {
             addToast(errors.join('; '), 'error');
             return;
         }
         setConfigSaving(true);
         try {
-            const payload: Record<string, unknown> = { parallel, output: configForm.output };
+            const payload: Record<string, unknown> = {
+                parallel,
+                output: configForm.output,
+                'chat.followUpSuggestions.enabled': chatFollowUpEnabled,
+                'chat.followUpSuggestions.count': count,
+            };
             if (configForm.model?.trim()) payload.model = configForm.model.trim();
-            // Empty timeout = clear from config (send null); present = send value
             payload.timeout = timeoutValue;
             const res = await fetch(getApiBase() + '/admin/config', {
                 method: 'PUT',
@@ -156,14 +165,14 @@ export function AdminPanel() {
                 const body = await res.json().catch(() => ({}));
                 throw new Error(body.error || 'Save failed');
             }
-            addToast('Configuration saved', 'success');
+            addToast('Settings saved', 'success');
             await loadConfig();
         } catch (err: any) {
             addToast(err.message || 'Save failed', 'error');
         } finally {
             setConfigSaving(false);
         }
-    }, [configForm, addToast, loadConfig]);
+    }, [configForm, chatFollowUpEnabled, chatFollowUpCount, addToast, loadConfig]);
 
     const handleToggleShowReportIntent = useCallback(async (newValue: boolean) => {
         const prevValue = showReportIntent;
@@ -213,36 +222,7 @@ export function AdminPanel() {
         }
     }, [toolCompactness, addToast]);
 
-    const handleSaveChatSettings= useCallback(async () => {
-        const count = Number(chatFollowUpCount);
-        if (isNaN(count) || !Number.isInteger(count) || count < 1 || count > 5) {
-            addToast('Follow-up count must be an integer between 1 and 5', 'error');
-            return;
-        }
-        setChatSaving(true);
-        try {
-            const res = await fetch(getApiBase() + '/admin/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    'chat.followUpSuggestions.enabled': chatFollowUpEnabled,
-                    'chat.followUpSuggestions.count': count,
-                }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.error || 'Save failed');
-            }
-            addToast('Chat settings saved', 'success');
-            await loadConfig();
-        } catch (err: any) {
-            addToast(err.message || 'Save failed', 'error');
-        } finally {
-            setChatSaving(false);
-        }
-    }, [chatFollowUpEnabled, chatFollowUpCount, addToast, loadConfig]);
-
-    const handleExport = useCallback(async () => {
+    const handleExport= useCallback(async () => {
         setExportStatus('Exporting…');
         try {
             const res = await fetch(getApiBase() + '/admin/export');
@@ -417,324 +397,389 @@ export function AdminPanel() {
     const sources: Record<string, string> = config?.sources ?? {};
     const resolved = config?.resolved ?? {};
 
+    const inputClass = 'flex-1 px-2 py-0.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] w-full';
+    const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
+    const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
+    const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
+    const tabs: AdminTab[] = ['settings', 'providers', 'data', 'server'];
+
     return (
         <div id="view-admin">
-            <div id="admin-page-content" className="responsive-container space-y-6">
-            <header>
-                <h1 className="text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Admin</h1>
-                <p className="text-sm text-[#616161] dark:text-[#999]">Server management and data administration</p>
-            </header>
-
-            {/* Storage Stats */}
-            <Card className="p-4">
-                <h3 className="text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]">Storage Stats</h3>
-                {statsLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                        <div id="admin-stat-processes" className="text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]">
-                            <div className="text-2xl font-bold text-[#0078d4]" data-testid="stat-processes">{stats?.processCount ?? '—'}</div>
-                            <div className="text-xs text-[#616161] dark:text-[#999]">Processes</div>
-                        </div>
-                        <div id="admin-stat-wikis" className="text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]">
-                            <div className="text-2xl font-bold text-[#0078d4]" data-testid="stat-wikis">{stats?.wikiCount ?? '—'}</div>
-                            <div className="text-xs text-[#616161] dark:text-[#999]">Wikis</div>
-                        </div>
-                        <div id="admin-stat-disk" className="text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]">
-                            <div className="text-2xl font-bold text-[#0078d4]" data-testid="stat-disk">
-                                {stats?.totalBytes != null ? formatBytes(stats.totalBytes) : '—'}
-                            </div>
-                            <div className="text-xs text-[#616161] dark:text-[#999]">Disk Usage</div>
-                        </div>
-                    </div>
-                )}
-                <Button id="admin-refresh-stats" variant="secondary" size="sm" onClick={loadStats}>Refresh</Button>
-            </Card>
-
-            {/* Configuration */}
-            <Card className="p-4">
-                <h3 className="text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]">Configuration</h3>
-                {configLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
-                ) : configError ? (
-                    <div data-testid="admin-config-error" className="text-sm text-red-500">{configError}</div>
-                ) : (
-                    <>
-                        {config?.configFilePath && (
-                            <div className="text-xs text-[#848484] mb-3">
-                                Config file: <code className="bg-black/5 dark:bg-white/5 px-1 rounded">{config.configFilePath}</code>
-                            </div>
+            <div id="admin-page-content" className="responsive-container space-y-3">
+                {/* Header with inline stats bar */}
+                <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <h1 className="text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Admin</h1>
+                    <div className="flex items-center gap-3">
+                        {statsLoading ? (
+                            <Spinner size="sm" />
+                        ) : (
+                            <>
+                                <span className="text-xs font-mono text-[#616161] dark:text-[#999]" data-testid="stat-processes">
+                                    <span className="inline-block w-2 h-2 rounded-full bg-[#0078d4] mr-1 align-middle" />
+                                    {stats?.processCount ?? '—'} processes
+                                </span>
+                                <span className="text-xs font-mono text-[#616161] dark:text-[#999]" data-testid="stat-wikis">
+                                    <span className="inline-block w-2 h-2 rounded-full bg-[#0078d4] mr-1 align-middle" />
+                                    {stats?.wikiCount ?? '—'} wikis
+                                </span>
+                                <span className="text-xs font-mono text-[#616161] dark:text-[#999]" data-testid="stat-disk">
+                                    <span className="inline-block w-2 h-2 rounded-full bg-[#0078d4] mr-1 align-middle" />
+                                    {stats?.totalBytes != null ? formatBytes(stats.totalBytes) : '—'}
+                                </span>
+                            </>
                         )}
-                        <div className="space-y-2 mb-3">
-                            <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                                <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Model</label>
-                                <input
-                                    id="admin-config-model"
-                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
-                                    value={configForm.model}
-                                    onChange={e => setConfigForm(f => ({ ...f, model: e.target.value }))}
-                                />
-                                <SourceBadge source={sources['model']} />
-                            </div>
-                            <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                                <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Parallelism</label>
-                                <input
-                                    id="admin-config-parallel"
-                                    type="number"
-                                    min={1}
-                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
-                                    value={configForm.parallel}
-                                    onChange={e => setConfigForm(f => ({ ...f, parallel: e.target.value }))}
-                                />
-                                <SourceBadge source={sources['parallel']} />
-                            </div>
-                            <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                                <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Timeout</label>
-                                <input
-                                    id="admin-config-timeout"
-                                    type="number"
-                                    min={1}
-                                    placeholder="3600 (1 h default)"
-                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
-                                    value={configForm.timeout}
-                                    onChange={e => setConfigForm(f => ({ ...f, timeout: e.target.value }))}
-                                />
-                                <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">s</span>
-                                <SourceBadge source={sources['timeout']} />
-                            </div>
-                            <div className="text-[10px] text-[#848484] ml-[6.5rem]">AI task execution timeout. Leave empty to use the system default (1 hour).</div>
-                            <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                                <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Output</label>
-                                <select
-                                    id="admin-config-output"
-                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
-                                    value={configForm.output}
-                                    onChange={e => setConfigForm(f => ({ ...f, output: e.target.value }))}
-                                >
-                                    {VALID_OUTPUT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                                </select>
-                                <SourceBadge source={sources['output']} />
-                            </div>
-                        </div>
+                        <button
+                            id="admin-refresh-stats"
+                            onClick={loadStats}
+                            title="Refresh stats"
+                            className="text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-base leading-none"
+                        >↻</button>
+                    </div>
+                </header>
 
-                        {/* Read-only fields */}
-                        <div className="text-xs space-y-1 mb-3 text-[#616161] dark:text-[#999]">
-                            <div>Approve Permissions: {String(resolved.approvePermissions ?? '—')} <SourceBadge source={sources['approvePermissions']} /></div>
-                            <div>MCP Config: {String(resolved.mcpConfig ?? '—')} <SourceBadge source={sources['mcpConfig']} /></div>
-                            <div>Persist: {String(resolved.persist ?? '—')} <SourceBadge source={sources['persist']} /></div>
-                            <div>Serve Port: {String(resolved.serve?.port ?? '—')} <SourceBadge source={sources['serve.port']} /></div>
-                            <div>Serve Host: {String(resolved.serve?.host ?? '—')} <SourceBadge source={sources['serve.host']} /></div>
-                            <div>Serve Data Dir: {String(resolved.serve?.dataDir ?? '—')} <SourceBadge source={sources['serve.dataDir']} /></div>
-                        </div>
+                {/* Tab bar — desktop: underline tabs; mobile: select */}
+                <div className="hidden md:flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    {tabs.map(tab => (
+                        <button
+                            key={tab}
+                            className={[
+                                'px-4 py-2 text-xs font-medium border-b-2 transition-colors',
+                                activeTab === tab
+                                    ? 'border-[#0078d4] text-[#0078d4]'
+                                    : 'border-transparent text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+                            ].join(' ')}
+                            onClick={() => setActiveTab(tab)}
+                            data-testid={`admin-tab-${tab}`}
+                        >
+                            {TAB_LABELS[tab]}
+                        </button>
+                    ))}
+                </div>
+                <select
+                    className="md:hidden w-full px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                    value={activeTab}
+                    onChange={e => setActiveTab(e.target.value as AdminTab)}
+                    aria-label="Select admin section"
+                >
+                    {tabs.map(tab => (
+                        <option key={tab} value={tab}>{TAB_LABELS[tab]}</option>
+                    ))}
+                </select>
 
-                        <Button id="admin-config-save" size="sm" onClick={handleSaveConfig} loading={configSaving}>Save</Button>
-                    </>
+                {/* ── Settings tab ── */}
+                {activeTab === 'settings' && (
+                    <Card className="p-3">
+                        {configLoading ? (
+                            <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
+                        ) : configError ? (
+                            <div data-testid="admin-config-error" className="text-sm text-red-500">{configError}</div>
+                        ) : (
+                            <>
+                                {/* Config section */}
+                                <div className="space-y-1.5">
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
+                                        <label className={labelClass} title="AI model identifier (leave blank to use server default)">Model</label>
+                                        <input
+                                            id="admin-config-model"
+                                            className={inputClass}
+                                            value={configForm.model}
+                                            onChange={e => setConfigForm(f => ({ ...f, model: e.target.value }))}
+                                        />
+                                        <SourceBadge source={sources['model']} />
+                                    </div>
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
+                                        <label className={labelClass} title="Number of parallel AI tasks">Parallelism</label>
+                                        <input
+                                            id="admin-config-parallel"
+                                            type="number"
+                                            min={1}
+                                            className={inputClass}
+                                            value={configForm.parallel}
+                                            onChange={e => setConfigForm(f => ({ ...f, parallel: e.target.value }))}
+                                        />
+                                        <SourceBadge source={sources['parallel']} />
+                                    </div>
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
+                                        <label className={labelClass} title="AI task execution timeout in seconds. Leave empty for 1-hour default.">Timeout</label>
+                                        <input
+                                            id="admin-config-timeout"
+                                            type="number"
+                                            min={1}
+                                            placeholder="3600 (1 h default)"
+                                            className={inputClass}
+                                            value={configForm.timeout}
+                                            onChange={e => setConfigForm(f => ({ ...f, timeout: e.target.value }))}
+                                        />
+                                        <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">s</span>
+                                        <SourceBadge source={sources['timeout']} />
+                                    </div>
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
+                                        <label className={labelClass} title="Default output format for CLI">Output</label>
+                                        <select
+                                            id="admin-config-output"
+                                            className={inputClass}
+                                            value={configForm.output}
+                                            onChange={e => setConfigForm(f => ({ ...f, output: e.target.value }))}
+                                        >
+                                            {VALID_OUTPUT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                                        </select>
+                                        <SourceBadge source={sources['output']} />
+                                    </div>
+                                </div>
+
+                                {/* Advanced accordion — read-only fields */}
+                                <div className="mt-2">
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-1 text-xs text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                                        onClick={() => setShowAdvanced(v => !v)}
+                                        aria-expanded={showAdvanced}
+                                    >
+                                        <span className={`inline-block transition-transform ${showAdvanced ? 'rotate-90' : ''}`}>▶</span>
+                                        Advanced
+                                    </button>
+                                    {showAdvanced && (
+                                        <div className="mt-2 text-xs space-y-1 text-[#616161] dark:text-[#999]">
+                                            <div>Approve Permissions: {String(resolved.approvePermissions ?? '—')} <SourceBadge source={sources['approvePermissions']} /></div>
+                                            <div>MCP Config: {String(resolved.mcpConfig ?? '—')} <SourceBadge source={sources['mcpConfig']} /></div>
+                                            <div>Persist: {String(resolved.persist ?? '—')} <SourceBadge source={sources['persist']} /></div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <hr className={dividerClass} />
+
+                                {/* Display section */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Show or hide report_intent tool calls in the conversation view">
+                                            Intent announcements
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['showReportIntent']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={showReportIntent}
+                                                    disabled={displaySaving}
+                                                    onChange={e => void handleToggleShowReportIntent(e.target.checked)}
+                                                    data-testid="toggle-show-report-intent"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="How much detail to show for tool calls in the conversation view">
+                                            Tool call verbosity
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['toolCompactness']} />
+                                            <div
+                                                className="flex rounded-md overflow-hidden border border-[#e0e0e0] dark:border-[#3c3c3c]"
+                                                role="group"
+                                                aria-label="Tool call verbosity"
+                                            >
+                                                {([
+                                                    [0, 'Full'],
+                                                    [1, 'Compact'],
+                                                    [2, 'Minimal'],
+                                                ] as const).map(([level, label]) => (
+                                                    <button
+                                                        key={level}
+                                                        type="button"
+                                                        disabled={displaySaving}
+                                                        onClick={() => void handleChangeToolCompactness(level)}
+                                                        data-testid={`tool-compactness-${label.toLowerCase()}`}
+                                                        className={[
+                                                            'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] disabled:opacity-50 disabled:cursor-not-allowed',
+                                                            'border-r last:border-r-0 border-[#e0e0e0] dark:border-[#3c3c3c]',
+                                                            toolCompactness === level
+                                                                ? 'bg-[#0078d4] text-white'
+                                                                : 'bg-transparent text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                                        ].join(' ')}
+                                                        aria-pressed={toolCompactness === level}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <hr className={dividerClass} />
+
+                                {/* Chat section */}
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Generate clickable follow-up suggestions after each response">
+                                            Follow-up suggestions
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['chat.followUpSuggestions.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={chatFollowUpEnabled}
+                                                    disabled={configSaving}
+                                                    onChange={e => setChatFollowUpEnabled(e.target.checked)}
+                                                    data-testid="toggle-chat-followup-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
+                                        <label className={labelClass} title="Number of follow-up suggestions (1–5)">Count</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={5}
+                                            className={inputClass}
+                                            value={chatFollowUpCount}
+                                            disabled={configSaving}
+                                            onChange={e => setChatFollowUpCount(e.target.value)}
+                                            data-testid="input-chat-followup-count"
+                                        />
+                                        <SourceBadge source={sources['chat.followUpSuggestions.count']} />
+                                    </div>
+                                </div>
+
+                                <hr className={dividerClass} />
+
+                                {/* Preferences section (auto-saves on change) */}
+                                <PreferencesSection
+                                    onError={msg => addToast(msg, 'error')}
+                                    onSuccess={msg => addToast(msg, 'success')}
+                                />
+
+                                <div className="flex justify-end mt-3">
+                                    <Button id="admin-config-save" size="sm" onClick={handleSaveSettings} loading={configSaving}>Save</Button>
+                                </div>
+                            </>
+                        )}
+                    </Card>
                 )}
-            </Card>
 
-            {/* Display Settings */}
-            <Card className="p-4">
-                <h3 className="text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]">Display</h3>
-                <div className="flex items-center justify-between">
-                    <div>
-                        <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Show intent announcements</div>
-                        <div className="text-xs text-[#616161] dark:text-[#999]">
-                            Show or hide <code className="bg-black/5 dark:bg-white/5 px-1 rounded">report_intent</code> tool calls in the conversation view.
-                        </div>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer ml-4">
-                        <input
-                            type="checkbox"
-                            className="sr-only peer"
-                            checked={showReportIntent}
-                            disabled={displaySaving}
-                            onChange={e => void handleToggleShowReportIntent(e.target.checked)}
-                            data-testid="toggle-show-report-intent"
+                {/* ── Providers tab ── */}
+                {activeTab === 'providers' && (
+                    <Card className="p-3" data-testid="provider-tokens-section">
+                        <ProviderTokensSection
+                            onError={msg => addToast(msg, 'error')}
+                            onSuccess={msg => addToast(msg, 'success')}
                         />
-                        <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                    </label>
-                </div>
-                <div className="mt-1">
-                    <SourceBadge source={sources['showReportIntent']} />
-                </div>
-                {/* Tool call compactness */}
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    <div>
-                        <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Tool call verbosity</div>
-                        <div className="text-xs text-[#616161] dark:text-[#999]">
-                            How much detail to show for tool calls in the conversation view.
-                        </div>
-                    </div>
-                    <div
-                        className="flex rounded-md overflow-hidden border border-[#e0e0e0] dark:border-[#3c3c3c] ml-4 shrink-0"
-                        role="group"
-                        aria-label="Tool call verbosity"
-                    >
-                        {([
-                            [0, 'Full'],
-                            [1, 'Compact'],
-                            [2, 'Minimal'],
-                        ] as const).map(([level, label]) => (
-                            <button
-                                key={level}
-                                type="button"
-                                disabled={displaySaving}
-                                onClick={() => void handleChangeToolCompactness(level)}
-                                data-testid={`tool-compactness-${label.toLowerCase()}`}
-                                className={[
-                                    'px-3 py-1 text-xs font-medium min-h-[44px] md:min-h-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] disabled:opacity-50 disabled:cursor-not-allowed',
-                                    'border-r last:border-r-0 border-[#e0e0e0] dark:border-[#3c3c3c]',
-                                    toolCompactness === level
-                                        ? 'bg-[#0078d4] text-white'
-                                        : 'bg-transparent text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
-                                ].join(' ')}
-                                aria-pressed={toolCompactness === level}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <div className="mt-1">
-                    <SourceBadge source={sources['toolCompactness']} />
-                </div>
-            </Card>
+                    </Card>
+                )}
 
-            {/* Chat */}
-            <Card className="p-4">
-                <h3 className="text-sm font-semibold mb-1 text-[#1e1e1e] dark:text-[#cccccc]">Chat</h3>
-                <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Follow-up suggestion settings</p>
-                <div className="space-y-2 mb-3">
-                    <div className="flex items-center justify-between">
+                {/* ── Data tab ── */}
+                {activeTab === 'data' && (
+                    <Card className="p-3">
+                        {/* Export */}
                         <div>
-                            <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Enable follow-up suggestions</div>
-                            <div className="text-xs text-[#616161] dark:text-[#999]">Generate clickable follow-up suggestions after each response.</div>
+                            <div className={sectionHeadClass}>Export</div>
+                            <div className="flex items-center gap-3">
+                                <Button id="admin-export-btn" variant="secondary" size="sm" onClick={handleExport}>Export JSON ↓</Button>
+                                {exportStatus && <span id="admin-export-status" className="text-xs text-[#848484]">{exportStatus}</span>}
+                            </div>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer ml-4">
-                            <input
-                                type="checkbox"
-                                className="sr-only peer"
-                                checked={chatFollowUpEnabled}
-                                disabled={chatSaving}
-                                onChange={e => setChatFollowUpEnabled(e.target.checked)}
-                                data-testid="toggle-chat-followup-enabled"
-                            />
-                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                        </label>
-                    </div>
-                    <div className="mt-1">
-                        <SourceBadge source={sources['chat.followUpSuggestions.enabled']} />
-                    </div>
-                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                        <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Count</label>
-                        <input
-                            type="number"
-                            min={1}
-                            max={5}
-                            className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
-                            value={chatFollowUpCount}
-                            disabled={chatSaving}
-                            onChange={e => setChatFollowUpCount(e.target.value)}
-                            data-testid="input-chat-followup-count"
-                        />
-                        <SourceBadge source={sources['chat.followUpSuggestions.count']} />
-                    </div>
-                    <div className="text-[10px] text-[#848484] ml-[6.5rem]">Number of follow-up suggestions (1–5).</div>
-                </div>
-                <Button id="admin-chat-save" size="sm" onClick={handleSaveChatSettings} loading={chatSaving}>Save</Button>
-            </Card>
 
-            {/* Preferences */}
-            <PreferencesSection
-                onError={msg => addToast(msg, 'error')}
-                onSuccess={msg => addToast(msg, 'success')}
-            />
+                        <hr className={dividerClass} />
 
-            {/* Provider Tokens */}
-            <ProviderTokensSection
-                onError={msg => addToast(msg, 'error')}
-                onSuccess={msg => addToast(msg, 'success')}
-            />
+                        {/* Import */}
+                        <div>
+                            <div className={sectionHeadClass}>Import</div>
+                            <div className="flex flex-col gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <input
+                                        id="admin-import-file"
+                                        type="file"
+                                        accept=".json,application/json"
+                                        className="text-xs"
+                                        onChange={e => setImportFile(e.target.files?.[0] ?? null)}
+                                    />
+                                    <div className="flex items-center gap-3 text-xs">
+                                        <label className="flex items-center gap-1">
+                                            <input type="radio" name="import-mode" value="replace" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} /> Replace
+                                        </label>
+                                        <label className="flex items-center gap-1">
+                                            <input type="radio" name="import-mode" value="merge" checked={importMode === 'merge'} onChange={() => setImportMode('merge')} /> Merge
+                                        </label>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button id="admin-import-preview-btn" variant="secondary" size="sm" onClick={handlePreviewImport}>Preview</Button>
+                                    <Button id="admin-import-btn" size="sm" onClick={handleImport}>Import</Button>
+                                    {importStatus && <span id="admin-import-status" className="text-xs text-[#848484]">{importStatus}</span>}
+                                </div>
+                            </div>
+                            {importPreview && (
+                                <pre id="admin-import-preview" className="mt-2 text-xs bg-black/5 dark:bg-white/5 p-2 rounded whitespace-pre-wrap">{importPreview}</pre>
+                            )}
+                        </div>
 
-            {/* Export Data */}
-            <Card className="p-4">
-                <h3 className="text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]">Export Data</h3>
-                <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Download all server data as a JSON file.</p>
-                <Button id="admin-export-btn" variant="secondary" size="sm" onClick={handleExport}>Export</Button>
-                {exportStatus && <div id="admin-export-status" className="text-xs text-[#848484] mt-2">{exportStatus}</div>}
-            </Card>
+                        <hr className={dividerClass} />
 
-            {/* Import Data */}
-            <Card className="p-4">
-                <h3 className="text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]">Import Data</h3>
-                <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Restore data from a previously exported JSON file.</p>
-                <div className="flex flex-col gap-2 mb-3">
-                    <input
-                        id="admin-import-file"
-                        type="file"
-                        accept=".json,application/json"
-                        className="text-xs"
-                        onChange={e => setImportFile(e.target.files?.[0] ?? null)}
-                    />
-                    <div className="flex items-center gap-3 text-xs">
-                        <label className="flex items-center gap-1">
-                            <input type="radio" name="import-mode" value="replace" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} /> Replace
-                        </label>
-                        <label className="flex items-center gap-1">
-                            <input type="radio" name="import-mode" value="merge" checked={importMode === 'merge'} onChange={() => setImportMode('merge')} /> Merge
-                        </label>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button id="admin-import-preview-btn" variant="secondary" size="sm" onClick={handlePreviewImport}>Preview</Button>
-                        <Button id="admin-import-btn" size="sm" onClick={handleImport}>Import</Button>
-                    </div>
-                </div>
-                {importPreview && (
-                    <pre id="admin-import-preview" className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap">{importPreview}</pre>
+                        {/* Danger Zone */}
+                        <div>
+                            <div className={`${sectionHeadClass} text-red-600 dark:text-red-400`}>Danger Zone</div>
+                            <div className="flex flex-wrap items-center gap-3 mb-2">
+                                <label className="flex items-center gap-1 text-xs">
+                                    <input id="admin-include-wikis" type="checkbox" checked={includeWikis} onChange={e => setIncludeWikis(e.target.checked)} className="accent-red-500" />
+                                    Include wikis
+                                </label>
+                                <Button id="admin-preview-wipe" variant="secondary" size="sm" onClick={handlePreviewWipe}>Preview</Button>
+                                {wipeToken === null ? (
+                                    <Button id="admin-wipe-btn" variant="danger" size="sm" onClick={handleWipeStep1}>Wipe Data</Button>
+                                ) : (
+                                    <>
+                                        <Button id="admin-wipe-confirm" variant="danger" size="sm" onClick={handleWipeConfirm}>Confirm Wipe</Button>
+                                        <Button id="admin-wipe-cancel" variant="secondary" size="sm" onClick={handleWipeCancel}>Cancel</Button>
+                                    </>
+                                )}
+                                {wipeStatus && <span id="admin-wipe-status" className="text-xs text-[#848484]">{wipeStatus}</span>}
+                            </div>
+                            {wipePreview && (
+                                <pre id="admin-wipe-preview" className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded whitespace-pre-wrap">{wipePreview}</pre>
+                            )}
+                        </div>
+                    </Card>
                 )}
-                {importStatus && <div id="admin-import-status" className="text-xs text-[#848484]">{importStatus}</div>}
-            </Card>
 
-            {/* Server Restart */}
-            <Card className="p-4">
-                <h3 className="text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]">Server Management</h3>
-                <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Rebuild and restart the server. Useful when code changes need to be reflected without manual CLI access.</p>
-                <div className="flex items-center gap-2">
-                    <Button id="admin-restart-btn" variant="secondary" size="sm" onClick={handleRestart} disabled={restarting}>
-                        {restarting ? <><Spinner size="sm" /> Restarting…</> : 'Rebuild & Restart'}
-                    </Button>
-                </div>
-                {restartStatus && <div id="admin-restart-status" className="text-xs text-[#848484] mt-2">{restartStatus}</div>}
-            </Card>
+                {/* ── Server tab ── */}
+                {activeTab === 'server' && (
+                    <Card className="p-3">
+                        {/* Server info */}
+                        <div className="space-y-1 text-xs text-[#616161] dark:text-[#999]">
+                            {config?.configFilePath && (
+                                <div>Config file: <code className="bg-black/5 dark:bg-white/5 px-1 rounded">{config.configFilePath}</code></div>
+                            )}
+                            <div>
+                                Serve{' '}
+                                <span className="font-mono">{resolved.serve?.host ?? '0.0.0.0'}:{resolved.serve?.port ?? '4000'}</span>
+                                {resolved.serve?.dataDir && <span className="ml-2 font-mono">{resolved.serve.dataDir}</span>}
+                            </div>
+                        </div>
 
-            {/* Danger Zone */}
-            <Card className="p-4 border-red-300 dark:border-red-800">
-                <h3 className="text-sm font-semibold mb-2 text-red-600 dark:text-red-400">Danger Zone</h3>
-                <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Permanently delete all stored data. This cannot be undone.</p>
-                <div className="flex items-center gap-2 mb-3">
-                    <label className="flex items-center gap-1 text-xs">
-                        <input id="admin-include-wikis" type="checkbox" checked={includeWikis} onChange={e => setIncludeWikis(e.target.checked)} className="accent-red-500" />
-                        Include wikis
-                    </label>
-                </div>
-                <div className="flex gap-2 mb-2">
-                    <Button id="admin-preview-wipe" variant="secondary" size="sm" onClick={handlePreviewWipe}>Preview</Button>
-                    {wipeToken === null ? (
-                        <Button id="admin-wipe-btn" variant="danger" size="sm" onClick={handleWipeStep1}>Wipe Data</Button>
-                    ) : (
-                        <>
-                            <Button id="admin-wipe-confirm" variant="danger" size="sm" onClick={handleWipeConfirm}>Confirm Wipe</Button>
-                            <Button id="admin-wipe-cancel" variant="secondary" size="sm" onClick={handleWipeCancel}>Cancel</Button>
-                        </>
-                    )}
-                </div>
-                {wipePreview && (
-                    <pre id="admin-wipe-preview" className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap">{wipePreview}</pre>
+                        <hr className={dividerClass} />
+
+                        {/* Restart */}
+                        <div>
+                            <div className={sectionHeadClass}>Restart</div>
+                            <p className="text-xs text-[#616161] dark:text-[#999] mb-2">Rebuild and restart the CoC server process.</p>
+                            <div className="flex items-center gap-3">
+                                <Button id="admin-restart-btn" variant="secondary" size="sm" onClick={handleRestart} disabled={restarting}>
+                                    {restarting ? <><Spinner size="sm" /> Restarting…</> : 'Rebuild & Restart'}
+                                </Button>
+                                {restartStatus && <span id="admin-restart-status" className="text-xs text-[#848484]">{restartStatus}</span>}
+                            </div>
+                        </div>
+                    </Card>
                 )}
-                {wipeStatus && <div id="admin-wipe-status" className="text-xs text-[#848484]">{wipeStatus}</div>}
-            </Card>
 
-            <ToastContainer toasts={toasts} removeToast={removeToast} />
+                <ToastContainer toasts={toasts} removeToast={removeToast} />
             </div>
         </div>
     );
