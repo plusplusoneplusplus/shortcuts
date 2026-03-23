@@ -1939,19 +1939,6 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
             }
 
-            // Append user turn to conversationTurns
-            const existingTurns = process.conversationTurns || [];
-            const turnIndex = existingTurns.length;
-            const userTurn: ConversationTurn = {
-                role: 'user',
-                content: body.content,
-                timestamp: new Date(),
-                turnIndex,
-                timeline: [],
-                images: validatedImages,
-            };
-            const updatedTurns = [...existingTurns, userTurn];
-
             // Validate optional mode override (ask | plan | autopilot)
             const VALID_MODES = ['ask', 'plan', 'autopilot'];
             const modeOverride: string | undefined = typeof body.mode === 'string' && VALID_MODES.includes(body.mode) ? body.mode : undefined;
@@ -1965,11 +1952,40 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
             const deliveryMode: 'immediate' | 'enqueue' = (body.deliveryMode === 'immediate') ? 'immediate' : 'enqueue';
 
-            const processUpdate: Record<string, unknown> = {
-                conversationTurns: updatedTurns,
-                status: 'running',
-            };
-            await store.updateProcess(id, processUpdate);
+            // Atomically append user turn to conversationTurns, preventing race conditions
+            // with concurrent assistant turn writes from the follow-up executor.
+            let turnIndex: number;
+            if (store.appendConversationTurn) {
+                const appendResult = await store.appendConversationTurn(
+                    id,
+                    (idx) => ({
+                        role: 'user' as const,
+                        content: body.content,
+                        timestamp: new Date(),
+                        turnIndex: idx,
+                        timeline: [],
+                        images: validatedImages,
+                    }),
+                    { additionalUpdates: { status: 'running' } }
+                );
+                turnIndex = appendResult?.turn.turnIndex ?? 0;
+            } else {
+                // Fallback for stores without appendConversationTurn
+                const existingTurns = process.conversationTurns || [];
+                turnIndex = existingTurns.length;
+                const userTurn: ConversationTurn = {
+                    role: 'user',
+                    content: body.content,
+                    timestamp: new Date(),
+                    turnIndex,
+                    timeline: [],
+                    images: validatedImages,
+                };
+                await store.updateProcess(id, {
+                    conversationTurns: [...existingTurns, userTurn],
+                    status: 'running',
+                });
+            }
 
             // Delegate AI execution to the queue executor bridge
             // Prefer enqueueing as a chat-followup task so the follow-up is visible

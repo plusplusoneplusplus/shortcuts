@@ -7,7 +7,7 @@
  * No VS Code dependencies - can be used in CLI tools and other environments.
  */
 
-import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent } from './ai/process-types';
+import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn } from './ai/process-types';
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline/types';
 import type { TokenUsage } from './copilot-sdk-wrapper/types';
 
@@ -260,4 +260,27 @@ export interface ProcessStore {
 
     /** Resolve a process ID to its on-disk file path. Optional — only file-backed stores support this. */
     getProcessFilePath?(workspaceId: string, processId: string): string;
+
+    /**
+     * Atomically append a conversation turn inside the write queue, preventing race conditions
+     * when multiple writers (user-turn from api-handler, assistant-turn from executor) update
+     * conversationTurns concurrently.
+     *
+     * @param processId - Target process ID.
+     * @param makeTurn - Factory called with the computed turn index (after optional streaming filter).
+     * @param options.filterStreaming - If true, removes assistant streaming turns before appending.
+     * @param options.additionalUpdates - Extra field updates applied atomically with the turn append.
+     *   May be a plain object or a function receiving the current process for dynamic computation.
+     * @returns The new turn and the full updated turns array, or undefined if process not found.
+     */
+    appendConversationTurn?(
+        processId: string,
+        makeTurn: (turnIndex: number) => ConversationTurn,
+        options?: {
+            filterStreaming?: boolean;
+            additionalUpdates?:
+                | Partial<Omit<AIProcess, 'conversationTurns'>>
+                | ((current: AIProcess) => Partial<Omit<AIProcess, 'conversationTurns'>>);
+        }
+    ): Promise<{ turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined>;
 }

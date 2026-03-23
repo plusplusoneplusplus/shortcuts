@@ -18,6 +18,7 @@ import { ProcessStore, ProcessFilter, ProcessIndexEntry, WorkspaceInfo, WikiInfo
 import {
     AIProcess,
     AIProcessStatus,
+    ConversationTurn,
     SerializedAIProcess,
     serializeProcess,
     deserializeProcess,
@@ -312,6 +313,73 @@ export class FileProcessStore implements ProcessStore {
         if (updated) {
             this.onProcessChange?.({ type: 'process-updated', process: updated });
         }
+    }
+
+    /**
+     * Atomically append a conversation turn inside the write queue.
+     *
+     * Reads the current process, optionally filters out streaming assistant turns,
+     * calls makeTurn with the computed index, appends the turn, and writes back —
+     * all inside a single enqueueWrite slot. This prevents lost-update races between
+     * the api-handler (user turns) and the follow-up executor (assistant turns).
+     */
+    async appendConversationTurn(
+        processId: string,
+        makeTurn: (turnIndex: number) => ConversationTurn,
+        options?: {
+            filterStreaming?: boolean;
+            additionalUpdates?:
+                | Partial<Omit<AIProcess, 'conversationTurns'>>
+                | ((current: AIProcess) => Partial<Omit<AIProcess, 'conversationTurns'>>);
+        }
+    ): Promise<{ turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined> {
+        let appendResult: { turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined;
+        let updatedProcess: AIProcess | undefined;
+
+        await this.enqueueWrite(async () => {
+            const workspaceId = await this.findWorkspaceIdForProcess(processId);
+            if (workspaceId === undefined) { return; }
+
+            const entry = await this.readProcessFile(workspaceId, processId);
+            if (!entry) { return; }
+
+            const existing = deserializeProcess(entry.process);
+
+            let turns = existing.conversationTurns ?? [];
+            if (options?.filterStreaming) {
+                turns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
+            }
+
+            const turn = makeTurn(turns.length);
+            const allTurns = [...turns, turn];
+
+            const extraUpdates = typeof options?.additionalUpdates === 'function'
+                ? options.additionalUpdates(existing)
+                : (options?.additionalUpdates ?? {});
+
+            const merged: AIProcess = { ...existing, ...extraUpdates, conversationTurns: allTurns };
+            const newEntry: StoredProcessEntry = {
+                workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
+                process: serializeProcess(merged),
+            };
+            await this.writeProcessFile(workspaceId, processId, newEntry);
+
+            const index = await this.readIndex(workspaceId);
+            const idx = index.findIndex(e => e.id === processId);
+            if (idx !== -1) {
+                index[idx] = this.toIndexEntry(newEntry);
+                await this.writeIndex(workspaceId, index);
+            }
+
+            appendResult = { turn, allTurns };
+            updatedProcess = merged;
+        });
+
+        if (updatedProcess) {
+            this.onProcessChange?.({ type: 'process-updated', process: updatedProcess });
+        }
+
+        return appendResult;
     }
 
     async removeProcess(id: string): Promise<void> {

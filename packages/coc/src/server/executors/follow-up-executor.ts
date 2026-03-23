@@ -225,48 +225,99 @@ export class FollowUpExecutor extends BaseExecutor {
                 throw new Error(result.error || 'Follow-up execution failed');
             }
 
-            const refreshed = await this.store.getProcess(processId, process.metadata?.workspaceId as string | undefined);
-            const turns = refreshed?.conversationTurns || [];
+            const pendingSuggestions = this.sessions.get(processId)?.pendingSuggestions;
+            let assistantTurn: ConversationTurn;
+            let allTurns: ConversationTurn[];
 
-            const cleanTurns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
-            const assistantTurn: ConversationTurn = {
-                role: 'assistant',
-                content: result.response || '(No text response)',
-                timestamp: new Date(),
-                turnIndex: cleanTurns.length,
-                toolCalls: result.toolCalls || undefined,
-                timeline: followUpTimeline,
-                suggestions: this.sessions.get(processId)?.pendingSuggestions,
-                tokenUsage: result.tokenUsage,
-            };
-
-            const tokenLimit = result.tokenUsage?.tokenLimit ?? refreshed?.tokenLimit;
-            const currentTokens = result.tokenUsage?.currentTokens ?? refreshed?.currentTokens;
-            const prevCumulative = refreshed?.cumulativeTokenUsage;
-            const cumulativeTokenUsage = result.tokenUsage ? {
-                inputTokens: (prevCumulative?.inputTokens ?? 0) + result.tokenUsage.inputTokens,
-                outputTokens: (prevCumulative?.outputTokens ?? 0) + result.tokenUsage.outputTokens,
-                cacheReadTokens: (prevCumulative?.cacheReadTokens ?? 0) + result.tokenUsage.cacheReadTokens,
-                cacheWriteTokens: (prevCumulative?.cacheWriteTokens ?? 0) + result.tokenUsage.cacheWriteTokens,
-                totalTokens: (prevCumulative?.totalTokens ?? 0) + result.tokenUsage.totalTokens,
-                turnCount: (prevCumulative?.turnCount ?? 0) + result.tokenUsage.turnCount,
-                cost: result.tokenUsage.cost !== undefined
-                    ? (prevCumulative?.cost ?? 0) + result.tokenUsage.cost
-                    : prevCumulative?.cost,
-                duration: result.tokenUsage.duration !== undefined
-                    ? (prevCumulative?.duration ?? 0) + result.tokenUsage.duration
-                    : prevCumulative?.duration,
-            } : prevCumulative;
-
-            await this.store.updateProcess(processId, {
-                conversationTurns: [...cleanTurns, assistantTurn],
-                status: 'completed',
-                endTime: new Date(),
-                result: result.response || undefined,
-                ...(tokenLimit !== undefined ? { tokenLimit } : {}),
-                ...(currentTokens !== undefined ? { currentTokens } : {}),
-                ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
-            });
+            if (this.store.appendConversationTurn) {
+                const appendResult = await this.store.appendConversationTurn(
+                    processId,
+                    (turnIndex) => ({
+                        role: 'assistant' as const,
+                        content: result.response || '(No text response)',
+                        timestamp: new Date(),
+                        turnIndex,
+                        toolCalls: result.toolCalls || undefined,
+                        timeline: followUpTimeline,
+                        suggestions: pendingSuggestions,
+                        tokenUsage: result.tokenUsage,
+                    }),
+                    {
+                        filterStreaming: true,
+                        additionalUpdates: (current) => {
+                            const tokenLimit = result.tokenUsage?.tokenLimit ?? current.tokenLimit;
+                            const currentTokens = result.tokenUsage?.currentTokens ?? current.currentTokens;
+                            const prevCumulative = current.cumulativeTokenUsage;
+                            const cumulativeTokenUsage = result.tokenUsage ? {
+                                inputTokens: (prevCumulative?.inputTokens ?? 0) + result.tokenUsage.inputTokens,
+                                outputTokens: (prevCumulative?.outputTokens ?? 0) + result.tokenUsage.outputTokens,
+                                cacheReadTokens: (prevCumulative?.cacheReadTokens ?? 0) + result.tokenUsage.cacheReadTokens,
+                                cacheWriteTokens: (prevCumulative?.cacheWriteTokens ?? 0) + result.tokenUsage.cacheWriteTokens,
+                                totalTokens: (prevCumulative?.totalTokens ?? 0) + result.tokenUsage.totalTokens,
+                                turnCount: (prevCumulative?.turnCount ?? 0) + result.tokenUsage.turnCount,
+                                cost: result.tokenUsage.cost !== undefined
+                                    ? (prevCumulative?.cost ?? 0) + result.tokenUsage.cost
+                                    : prevCumulative?.cost,
+                                duration: result.tokenUsage.duration !== undefined
+                                    ? (prevCumulative?.duration ?? 0) + result.tokenUsage.duration
+                                    : prevCumulative?.duration,
+                            } : prevCumulative;
+                            return {
+                                status: 'completed' as const,
+                                endTime: new Date(),
+                                result: result.response || undefined,
+                                ...(tokenLimit !== undefined ? { tokenLimit } : {}),
+                                ...(currentTokens !== undefined ? { currentTokens } : {}),
+                                ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
+                            };
+                        },
+                    }
+                );
+                assistantTurn = appendResult!.turn;
+                allTurns = appendResult!.allTurns;
+            } else {
+                // Fallback: non-atomic read-modify-write for stores without appendConversationTurn
+                const refreshed = await this.store.getProcess(processId, process.metadata?.workspaceId as string | undefined);
+                const turns = refreshed?.conversationTurns || [];
+                const cleanTurns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
+                assistantTurn = {
+                    role: 'assistant',
+                    content: result.response || '(No text response)',
+                    timestamp: new Date(),
+                    turnIndex: cleanTurns.length,
+                    toolCalls: result.toolCalls || undefined,
+                    timeline: followUpTimeline,
+                    suggestions: pendingSuggestions,
+                    tokenUsage: result.tokenUsage,
+                };
+                const tokenLimit = result.tokenUsage?.tokenLimit ?? refreshed?.tokenLimit;
+                const currentTokens = result.tokenUsage?.currentTokens ?? refreshed?.currentTokens;
+                const prevCumulative = refreshed?.cumulativeTokenUsage;
+                const cumulativeTokenUsage = result.tokenUsage ? {
+                    inputTokens: (prevCumulative?.inputTokens ?? 0) + result.tokenUsage.inputTokens,
+                    outputTokens: (prevCumulative?.outputTokens ?? 0) + result.tokenUsage.outputTokens,
+                    cacheReadTokens: (prevCumulative?.cacheReadTokens ?? 0) + result.tokenUsage.cacheReadTokens,
+                    cacheWriteTokens: (prevCumulative?.cacheWriteTokens ?? 0) + result.tokenUsage.cacheWriteTokens,
+                    totalTokens: (prevCumulative?.totalTokens ?? 0) + result.tokenUsage.totalTokens,
+                    turnCount: (prevCumulative?.turnCount ?? 0) + result.tokenUsage.turnCount,
+                    cost: result.tokenUsage.cost !== undefined
+                        ? (prevCumulative?.cost ?? 0) + result.tokenUsage.cost
+                        : prevCumulative?.cost,
+                    duration: result.tokenUsage.duration !== undefined
+                        ? (prevCumulative?.duration ?? 0) + result.tokenUsage.duration
+                        : prevCumulative?.duration,
+                } : prevCumulative;
+                allTurns = [...cleanTurns, assistantTurn];
+                await this.store.updateProcess(processId, {
+                    conversationTurns: allTurns,
+                    status: 'completed',
+                    endTime: new Date(),
+                    result: result.response || undefined,
+                    ...(tokenLimit !== undefined ? { tokenLimit } : {}),
+                    ...(currentTokens !== undefined ? { currentTokens } : {}),
+                    ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
+                });
+            }
 
             if (result.tokenUsage) {
                 try {
@@ -274,8 +325,8 @@ export class FollowUpExecutor extends BaseExecutor {
                         type: 'token-usage',
                         turnIndex: assistantTurn.turnIndex,
                         tokenUsage: result.tokenUsage,
-                        sessionTokenLimit: tokenLimit,
-                        sessionCurrentTokens: currentTokens,
+                        sessionTokenLimit: result.tokenUsage.tokenLimit,
+                        sessionCurrentTokens: result.tokenUsage.currentTokens,
                     });
                 } catch {
                     // Non-fatal
@@ -284,30 +335,51 @@ export class FollowUpExecutor extends BaseExecutor {
 
             this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
 
-            this.onTitleNeeded?.(processId, [...cleanTurns, assistantTurn]);
+            this.onTitleNeeded?.(processId, allTurns);
 
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
 
-            const refreshed = await this.store.getProcess(processId, process.metadata?.workspaceId as string | undefined);
-            const turns = refreshed?.conversationTurns || [];
-            const cleanTurns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
-            const errorTurn: ConversationTurn = {
-                role: 'assistant',
-                content: `Error: ${errorMsg}`,
-                timestamp: new Date(),
-                turnIndex: cleanTurns.length,
-                timeline: [],
-            };
-
-            await this.store.updateProcess(processId, {
-                conversationTurns: [...cleanTurns, errorTurn],
-                status: 'failed',
-                endTime: new Date(),
-                error: errorMsg,
-            });
+            if (this.store.appendConversationTurn) {
+                await this.store.appendConversationTurn(
+                    processId,
+                    (turnIndex) => ({
+                        role: 'assistant' as const,
+                        content: `Error: ${errorMsg}`,
+                        timestamp: new Date(),
+                        turnIndex,
+                        timeline: [],
+                    }),
+                    {
+                        filterStreaming: true,
+                        additionalUpdates: {
+                            status: 'failed',
+                            endTime: new Date(),
+                            error: errorMsg,
+                        },
+                    }
+                );
+            } else {
+                // Fallback for stores without appendConversationTurn
+                const refreshed = await this.store.getProcess(processId, process.metadata?.workspaceId as string | undefined);
+                const turns = refreshed?.conversationTurns || [];
+                const cleanTurns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
+                const errorTurn: ConversationTurn = {
+                    role: 'assistant',
+                    content: `Error: ${errorMsg}`,
+                    timestamp: new Date(),
+                    turnIndex: cleanTurns.length,
+                    timeline: [],
+                };
+                await this.store.updateProcess(processId, {
+                    conversationTurns: [...cleanTurns, errorTurn],
+                    status: 'failed',
+                    endTime: new Date(),
+                    error: errorMsg,
+                });
+            }
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
         } finally {
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
