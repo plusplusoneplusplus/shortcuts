@@ -39,6 +39,8 @@ export type ChatPrefsAction =
     | { type: 'UNPIN'; taskId: string }
     | { type: 'ARCHIVE'; taskId: string }
     | { type: 'UNARCHIVE'; taskId: string }
+    | { type: 'ARCHIVE_MANY'; taskIds: string[] }
+    | { type: 'UNARCHIVE_MANY'; taskIds: string[] }
     | { type: 'RESET' };
 
 // ── Reducer ────────────────────────────────────────────────────────────────
@@ -70,6 +72,17 @@ export function chatPrefsReducer(
         case 'UNARCHIVE':
             if (!state.archivedIds.includes(action.taskId)) return state;
             return { ...state, archivedIds: state.archivedIds.filter(id => id !== action.taskId) };
+        case 'ARCHIVE_MANY': {
+            const toAdd = action.taskIds.filter(id => !state.archivedIds.includes(id));
+            if (toAdd.length === 0) return state;
+            return { ...state, archivedIds: [...toAdd, ...state.archivedIds].slice(0, MAX_ARCHIVED) };
+        }
+        case 'UNARCHIVE_MANY': {
+            const removing = new Set(action.taskIds);
+            const next = state.archivedIds.filter(id => !removing.has(id));
+            if (next.length === state.archivedIds.length) return state;
+            return { ...state, archivedIds: next };
+        }
         default:
             return state;
     }
@@ -133,6 +146,8 @@ export interface ChatPrefsAPI {
     unpinChat: (taskId: string) => void;
     archiveChat: (taskId: string) => void;
     unarchiveChat: (taskId: string) => void;
+    archiveChats: (taskIds: string[]) => void;
+    unarchiveChats: (taskIds: string[]) => void;
     loaded: boolean;
 }
 
@@ -178,6 +193,26 @@ export function useChatPrefs(): ChatPrefsAPI {
         }).catch(() => {});
     }, [dispatch, state.archivedIds, state.workspaceId]);
 
+    const archiveChats = useCallback((taskIds: string[]) => {
+        const toAdd = taskIds.filter(id => !state.archivedIds.includes(id));
+        if (toAdd.length === 0) return;
+        const nextIds = [...toAdd, ...state.archivedIds].slice(0, MAX_ARCHIVED);
+        dispatch({ type: 'ARCHIVE_MANY', taskIds });
+        patchWorkspacePreferences(state.workspaceId, {
+            archivedChats: { [state.workspaceId]: nextIds },
+        }).catch(() => {});
+    }, [dispatch, state.archivedIds, state.workspaceId]);
+
+    const unarchiveChats = useCallback((taskIds: string[]) => {
+        const removing = new Set(taskIds);
+        const nextIds = state.archivedIds.filter(id => !removing.has(id));
+        if (nextIds.length === state.archivedIds.length) return;
+        dispatch({ type: 'UNARCHIVE_MANY', taskIds });
+        patchWorkspacePreferences(state.workspaceId, {
+            archivedChats: { [state.workspaceId]: nextIds },
+        }).catch(() => {});
+    }, [dispatch, state.archivedIds, state.workspaceId]);
+
     return {
         pinnedChatIds: new Set(state.pinnedIds),
         archivedChatIds: new Set(state.archivedIds),
@@ -185,6 +220,8 @@ export function useChatPrefs(): ChatPrefsAPI {
         unpinChat,
         archiveChat,
         unarchiveChat,
+        archiveChats,
+        unarchiveChats,
         loaded: state.loaded,
     };
 }

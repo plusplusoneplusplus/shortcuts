@@ -117,6 +117,30 @@ describe('chatPrefsReducer', () => {
         const result = chatPrefsReducer(state, { type: 'UNARCHIVE', taskId: 'x' });
         expect(result).toBe(state);
     });
+
+    it('ARCHIVE_MANY prepends new ids and deduplicates', () => {
+        const state: ChatPrefsState = { ...initial, archivedIds: ['a'] };
+        const result = chatPrefsReducer(state, { type: 'ARCHIVE_MANY', taskIds: ['b', 'c', 'a'] });
+        expect(result.archivedIds).toEqual(['b', 'c', 'a']);
+    });
+
+    it('ARCHIVE_MANY is a no-op when all ids already present', () => {
+        const state: ChatPrefsState = { ...initial, archivedIds: ['a', 'b'] };
+        const result = chatPrefsReducer(state, { type: 'ARCHIVE_MANY', taskIds: ['a', 'b'] });
+        expect(result).toBe(state);
+    });
+
+    it('UNARCHIVE_MANY removes all specified ids', () => {
+        const state: ChatPrefsState = { ...initial, archivedIds: ['a', 'b', 'c'] };
+        const result = chatPrefsReducer(state, { type: 'UNARCHIVE_MANY', taskIds: ['a', 'c'] });
+        expect(result.archivedIds).toEqual(['b']);
+    });
+
+    it('UNARCHIVE_MANY is a no-op when none are present', () => {
+        const state: ChatPrefsState = { ...initial, archivedIds: ['a'] };
+        const result = chatPrefsReducer(state, { type: 'UNARCHIVE_MANY', taskIds: ['x', 'y'] });
+        expect(result).toBe(state);
+    });
 });
 
 // ── Provider + hook integration tests ─────────────────────────────────────
