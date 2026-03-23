@@ -134,3 +134,49 @@ test.describe('Pull Requests — hash navigation', () => {
         ).toBeVisible({ timeout: 10000 });
     });
 });
+
+// ---------------------------------------------------------------------------
+// Cache edge cases
+// ---------------------------------------------------------------------------
+
+test.describe('Pull Requests — cache edge cases', () => {
+    test('error responses are not cached (re-fetch on return)', async ({ page, serverUrl }) => {
+        const repoId = 'ws-pr-cache-err';
+        await seedWorkspace(serverUrl, repoId, 'cache-err-repo', '/tmp/cache-err-repo');
+        let fetchCount = 0;
+        const prApiBase = `${serverUrl}/api/repos/${repoId}/pull-requests`;
+
+        // Return an error for PR list requests
+        await page.route(`${prApiBase}?*`, (route) => {
+            fetchCount++;
+            route.fulfill({
+                status: 500,
+                contentType: 'application/json',
+                body: JSON.stringify({ message: 'Internal server error' }),
+            });
+        });
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
+        await page.click('button[data-subtab="pull-requests"]');
+
+        await expect(page.locator('[data-testid="error-message"]')).toBeVisible({ timeout: 10000 });
+        expect(fetchCount).toBe(1);
+
+        // Navigate away
+        await page.click('[data-tab="processes"]');
+        await expect(page.locator('[data-testid="pr-list"]')).not.toBeVisible({ timeout: 5000 });
+
+        // Navigate back — should fetch again (error was not cached)
+        await page.click('[data-tab="repos"]');
+        await page.locator('[data-testid="repo-tab"]').first().click();
+        await page.click('button[data-subtab="pull-requests"]');
+
+        await expect(page.locator('[data-testid="error-message"]')).toBeVisible({ timeout: 10000 });
+        expect(fetchCount).toBe(2);
+
+        await page.unroute(`${prApiBase}?*`);
+    });
+});

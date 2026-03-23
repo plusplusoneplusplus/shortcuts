@@ -30,6 +30,25 @@ type StatusFilter = PrStatus | 'all';
 
 const PAGE_SIZE = 25;
 
+interface PrListCacheEntry {
+    prs: PullRequest[];
+    skip: number;
+    hasMore: boolean;
+    fetchedAt: number | null;
+}
+
+/** Keyed by `${repoId}|${statusFilter}` — persists across mounts. */
+const prListCache = new Map<string, PrListCacheEntry>();
+
+function formatFetchedAt(ts: number): string {
+    const diffMs = Date.now() - ts;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Updated just now';
+    if (diffMin < 60) return `Updated ${diffMin} min ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    return `Updated ${diffHr} hr ago`;
+}
+
 export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
     const [prs, setPrs] = useState<PullRequest[]>([]);
@@ -40,6 +59,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     const [authorFilter, setAuthorFilter] = useState('');
     const [searchText, setSearchText] = useState('');
     const [hasMore, setHasMore] = useState(false);
+    const [fetchedAt, setFetchedAt] = useState<number | null>(null);
     const { isMobile } = useBreakpoint();
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 288,
@@ -53,6 +73,27 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     const skipRef = useRef(0);
 
     const fetchPrs = useCallback((reset = false, force = false) => {
+        const cacheKey = `${repoId}|${statusFilter}`;
+
+        if (force) {
+            prListCache.delete(cacheKey);
+        }
+
+        // Cache hit: restore state and skip the network request
+        if (reset && !force) {
+            const cached = prListCache.get(cacheKey);
+            if (cached) {
+                setPrs(cached.prs);
+                skipRef.current = cached.skip;
+                setHasMore(cached.hasMore);
+                setFetchedAt(cached.fetchedAt);
+                setError(null);
+                setUnconfigured(null);
+                setLoading(false);
+                return;
+            }
+        }
+
         const offset = reset ? 0 : skipRef.current;
         setLoading(true);
         if (reset) {
@@ -72,17 +113,27 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                     err.body = body;
                     throw err;
                 }
-                return body as { pullRequests?: PullRequest[] };
+                return body as { pullRequests?: PullRequest[]; fetchedAt?: number };
             })
             .then(data => {
                 const newPrs = data.pullRequests ?? [];
+                const nextSkip = offset + newPrs.length;
+                const nextHasMore = newPrs.length === PAGE_SIZE;
+                const ts = data.fetchedAt ?? null;
+
                 if (reset) {
                     setPrs(newPrs);
+                    prListCache.set(cacheKey, { prs: newPrs, skip: nextSkip, hasMore: nextHasMore, fetchedAt: ts });
                 } else {
-                    setPrs(prev => [...prev, ...newPrs]);
+                    setPrs(prev => {
+                        const accumulated = [...prev, ...newPrs];
+                        prListCache.set(cacheKey, { prs: accumulated, skip: nextSkip, hasMore: nextHasMore, fetchedAt: ts });
+                        return accumulated;
+                    });
                 }
-                skipRef.current = offset + newPrs.length;
-                setHasMore(newPrs.length === PAGE_SIZE);
+                skipRef.current = nextSkip;
+                setHasMore(nextHasMore);
+                setFetchedAt(ts);
             })
             .catch(err => {
                 if (err.status === 401 && err.body?.error === 'unconfigured') {
@@ -146,6 +197,11 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                     onChange={e => setAuthorFilter(e.target.value)}
                     data-testid="author-filter"
                 />
+                {fetchedAt != null && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap" data-testid="fetched-at">
+                        {formatFetchedAt(fetchedAt)}
+                    </span>
+                )}
                 <button
                     onClick={() => fetchPrs(true, true)}
                     disabled={loading}

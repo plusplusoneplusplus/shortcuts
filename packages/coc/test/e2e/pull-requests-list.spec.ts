@@ -201,4 +201,63 @@ test.describe('Pull Requests tab — list', () => {
 
         await cleanup();
     });
+
+    test('uses cached data when navigating away and back (no second fetch)', async ({ page, serverUrl }) => {
+        const { id: repoId } = await seedWorkspace(serverUrl, 'ws-cache-1', 'My Repo', '/tmp/repo');
+        let fetchCount = 0;
+        const prApiBase = `${serverUrl}/api/repos/${repoId}/pull-requests`;
+
+        await page.route(`${prApiBase}?*`, (route) => {
+            fetchCount++;
+            route.fulfill({
+                status: 200,
+                json: { pullRequests: MOCK_PR_LIST, fetchedAt: Date.now() },
+            });
+        });
+
+        await openPrTab(page, serverUrl, repoId);
+        await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
+        expect(fetchCount).toBe(1);
+
+        // Navigate away to a different main tab
+        await page.click('[data-tab="processes"]');
+        await expect(page.locator('[data-testid="pr-list"]')).not.toBeVisible({ timeout: 5000 });
+
+        // Navigate back to the PR tab (without full page reload)
+        await page.click('[data-tab="repos"]');
+        await page.locator('[data-testid="repo-tab"]').first().click();
+        await page.click('button[data-subtab="pull-requests"]');
+        await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
+
+        // No additional fetch — cache was used
+        expect(fetchCount).toBe(1);
+
+        await page.unroute(`${prApiBase}?*`);
+    });
+
+    test('refresh button triggers a fetch even with cached data', async ({ page, serverUrl }) => {
+        const { id: repoId } = await seedWorkspace(serverUrl, 'ws-cache-2', 'My Repo', '/tmp/repo');
+        let fetchCount = 0;
+        const prApiBase = `${serverUrl}/api/repos/${repoId}/pull-requests`;
+
+        await page.route(`${prApiBase}?*`, (route) => {
+            fetchCount++;
+            route.fulfill({
+                status: 200,
+                json: { pullRequests: MOCK_PR_LIST, fetchedAt: Date.now() },
+            });
+        });
+
+        await openPrTab(page, serverUrl, repoId);
+        await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
+        expect(fetchCount).toBe(1);
+
+        // Click refresh — should bypass cache
+        await page.click('[data-testid="refresh-button"]');
+        await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
+
+        expect(fetchCount).toBe(2);
+
+        await page.unroute(`${prApiBase}?*`);
+    });
 });
