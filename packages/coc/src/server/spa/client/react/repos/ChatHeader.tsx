@@ -65,13 +65,13 @@ export function ChatHeader({
         <div className={cn(
             'flex items-center justify-between',
             variant === 'floating'
-                ? 'px-2 py-2'
-                : 'px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
+                ? 'px-2 py-1'
+                : 'px-4 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
         )}>
             <div className="flex items-center gap-2 min-w-0">
                 {onBack && variant !== 'floating' && (
                     <button
-                        className="inline-flex items-center justify-center min-h-11 min-w-11 px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
+                        className="inline-flex items-center justify-center px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
                         onClick={onBack}
                         data-testid="activity-chat-back-btn"
                     >
@@ -112,7 +112,7 @@ export function ChatHeader({
                         title="Float in current window"
                         data-testid="activity-chat-float-btn"
                         onClick={onFloat}
-                        className="inline-flex items-center justify-center min-h-11 min-w-11 p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                        className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
                     >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                             <rect x="2" y="3" width="12" height="10" rx="1" stroke="currentColor" strokeWidth="1.5"/>
@@ -125,7 +125,7 @@ export function ChatHeader({
                         title="Pop out to new window"
                         data-testid="activity-chat-popout-btn"
                         onClick={onPopOut}
-                        className="inline-flex items-center justify-center min-h-11 min-w-11 p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                        className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
                     >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                             <path d="M7 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -144,7 +144,7 @@ export function ChatHeader({
                             setTimeout(() => setCopied(false), 2000);
                         });
                     }}
-                    className="inline-flex items-center justify-center min-h-11 min-w-11 p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                 >
                     {copied ? (
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
