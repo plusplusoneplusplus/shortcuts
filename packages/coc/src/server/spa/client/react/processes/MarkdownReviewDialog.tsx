@@ -117,7 +117,8 @@ export function MarkdownReviewDialog({
                     onMouseDown={onMouseDown}
                     data-testid="floating-dialog-drag-handle"
                 >
-                    <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate mr-2" title={displayPath || filePath}>
+                    <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate mr-2 select-text cursor-text" title={displayPath || filePath}
+                        onMouseDown={e => e.stopPropagation()}>
                         {title}
                     </span>
                     <div className="flex items-center gap-0.5 shrink-0">
@@ -170,12 +171,14 @@ export function MarkdownReviewDialog({
                     data-testid="floating-dialog-drag-handle"
                 >
                     <div className="min-w-0">
-                        <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                        <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] select-text cursor-text"
+                            onMouseDown={e => e.stopPropagation()}>
                             {title}
                         </div>
                         <div
-                            className="text-xs text-[#848484] truncate mt-0.5"
+                            className="text-xs text-[#848484] truncate mt-0.5 select-text cursor-text"
                             title={displayPath || filePath}
+                            onMouseDown={e => e.stopPropagation()}
                         >
                             {displayPath || filePath}
                         </div>

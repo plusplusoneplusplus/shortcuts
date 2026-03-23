@@ -275,7 +275,8 @@ export function FloatingDialog({
                     data-testid="floating-dialog-drag-handle"
                 >
                     {title && (
-                        <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                        <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] select-text cursor-text"
+                            onMouseDown={e => e.stopPropagation()}>
                             {title}
                         </h2>
                     )}

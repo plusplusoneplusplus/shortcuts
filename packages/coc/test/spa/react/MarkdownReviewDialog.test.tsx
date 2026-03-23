@@ -438,6 +438,77 @@ describe('MarkdownReviewDialog', () => {
         expect(btn.getAttribute('aria-label')).toBe('Maximize');
     });
 
+    describe('selectable title and path text', () => {
+        it('desktop title element has select-text and cursor-text classes', () => {
+            render(
+                <MarkdownReviewDialog
+                    open={true}
+                    onClose={vi.fn()}
+                    wsId="ws1"
+                    filePath="plan.md"
+                    displayPath="/workspace/plan.md"
+                    fetchMode="tasks"
+                />
+            );
+            // title is basename: "plan.md"
+            const titleEl = document.querySelector('.text-sm.font-semibold.select-text.cursor-text');
+            expect(titleEl).not.toBeNull();
+            expect(titleEl!.textContent).toBe('plan.md');
+        });
+
+        it('desktop path element has select-text and cursor-text classes', () => {
+            render(
+                <MarkdownReviewDialog
+                    open={true}
+                    onClose={vi.fn()}
+                    wsId="ws1"
+                    filePath="plan.md"
+                    displayPath="/workspace/plan.md"
+                    fetchMode="tasks"
+                />
+            );
+            const pathEl = document.querySelector('.text-xs.select-text.cursor-text');
+            expect(pathEl).not.toBeNull();
+            expect(pathEl!.textContent).toBe('/workspace/plan.md');
+        });
+
+        it('mouseDown on desktop title calls stopPropagation to prevent drag', () => {
+            render(
+                <MarkdownReviewDialog
+                    open={true}
+                    onClose={vi.fn()}
+                    wsId="ws1"
+                    filePath="plan.md"
+                    displayPath="/workspace/plan.md"
+                    fetchMode="tasks"
+                />
+            );
+            const titleEl = document.querySelector('.text-sm.font-semibold.select-text.cursor-text')!;
+            const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+            const stopSpy = vi.spyOn(event, 'stopPropagation');
+            titleEl.dispatchEvent(event);
+            expect(stopSpy).toHaveBeenCalled();
+        });
+
+        it('mouseDown on desktop path calls stopPropagation to prevent drag', () => {
+            render(
+                <MarkdownReviewDialog
+                    open={true}
+                    onClose={vi.fn()}
+                    wsId="ws1"
+                    filePath="plan.md"
+                    displayPath="/workspace/plan.md"
+                    fetchMode="tasks"
+                />
+            );
+            const pathEl = document.querySelector('.text-xs.select-text.cursor-text')!;
+            const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+            const stopSpy = vi.spyOn(event, 'stopPropagation');
+            pathEl.dispatchEvent(event);
+            expect(stopSpy).toHaveBeenCalled();
+        });
+    });
+
     it('pop-out button has aria-label "Open in new window"', () => {
         render(
             <MarkdownReviewDialog

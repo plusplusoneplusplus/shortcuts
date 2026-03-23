@@ -162,6 +162,32 @@ describe('FloatingDialog', () => {
         expect(dragHandlerCalled).toHaveLength(1);
     });
 
+    describe('selectable title text', () => {
+        it('title element has select-text and cursor-text classes', () => {
+            render(
+                <FloatingDialog open={true} onClose={vi.fn()} title="My Title">
+                    Content
+                </FloatingDialog>
+            );
+            const titleEl = screen.getByText('My Title');
+            expect(titleEl.className).toContain('select-text');
+            expect(titleEl.className).toContain('cursor-text');
+        });
+
+        it('mouseDown on title calls stopPropagation to prevent drag', () => {
+            render(
+                <FloatingDialog open={true} onClose={vi.fn()} title="My Title">
+                    Content
+                </FloatingDialog>
+            );
+            const titleEl = screen.getByText('My Title');
+            const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+            const stopSpy = vi.spyOn(event, 'stopPropagation');
+            titleEl.dispatchEvent(event);
+            expect(stopSpy).toHaveBeenCalled();
+        });
+    });
+
     describe('maximize prop', () => {
         it('renders resize handles hidden when isMaximized=true', () => {
             render(
