@@ -93,7 +93,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     // Skills + context menu state
     const [skills, setSkills] = useState<Array<{ name: string; description?: string }>>([]);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'commit' | 'branch-range'; commit?: GitCommitItem } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'commit' | 'branch-range' | 'multi-commit'; commit?: GitCommitItem; commits?: GitCommitItem[] } | null>(null);
     const [enqueueToast, setEnqueueToast] = useState<string | null>(null);
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
@@ -599,10 +599,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     }, [amendingCommit, workspaceId, refreshAll]);
 
     const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
+        if (
+            rightPanelView?.type === 'multi-commit' &&
+            rightPanelView.commits.some(c => c.hash === commitHash)
+        ) {
+            setContextMenu({ x: e.clientX, y: e.clientY, type: 'multi-commit', commits: rightPanelView.commits });
+            return;
+        }
         const commit = commits.find(c => c.hash === commitHash);
         if (!commit) return;
         setContextMenu({ x: e.clientX, y: e.clientY, type: 'commit', commit });
-    }, [commits]);
+    }, [commits, rightPanelView]);
 
     const handleBranchContextMenu = useCallback((e: React.MouseEvent) => {
         setContextMenu({ x: e.clientX, y: e.clientY, type: 'branch-range' });
@@ -661,6 +668,18 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 const diffData = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${commit.hash}/diff`);
                 const diff = truncateDiff(diffData.diff || '');
                 promptContent = `Review the following git changes.\n\nCommit: ${commit.hash} — ${commit.subject}\nAuthor: ${commit.author}\n\n<diff>\n${diff}\n</diff>`;
+            } else if (snapshot.type === 'multi-commit' && snapshot.commits?.length) {
+                const selectedCommits = snapshot.commits;
+                const diffs = await Promise.all(
+                    selectedCommits.map(c =>
+                        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${c.hash}/diff`)
+                            .then((d: any) => ({ commit: c, diff: d.diff || '' }))
+                    )
+                );
+                const sections = diffs.map(({ commit: c, diff }) =>
+                    `Commit: ${c.hash} — ${c.subject}\nAuthor: ${c.author}\n\n<diff>\n${truncateDiff(diff)}\n</diff>`
+                );
+                promptContent = `Review the following git changes.\n\n${selectedCommits.length} commits selected:\n${sections.join('\n\n---\n\n')}`;
             } else {
                 const diffData = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/diff`);
                 const diff = truncateDiff(diffData.diff || '');
@@ -670,9 +689,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             }
 
             const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-            const shortId = snapshot.type === 'commit' && snapshot.commit
-                ? snapshot.commit.shortHash
-                : branchName || 'branch';
+            const shortId =
+                snapshot.type === 'commit' && snapshot.commit
+                    ? snapshot.commit.shortHash
+                    : snapshot.type === 'multi-commit' && snapshot.commits?.length
+                        ? `${snapshot.commits.length} commits`
+                        : branchName || 'branch';
 
             await fetch(getApiBase() + '/queue/tasks', {
                 method: 'POST',
@@ -751,6 +773,25 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 icon: '📋',
                 onClick: () => {
                     const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
+                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
+                },
+            });
+        }
+
+        if (contextMenu.type === 'multi-commit' && contextMenu.commits?.length) {
+            const selectedCommits = contextMenu.commits;
+            const commitList = selectedCommits
+                .map(c => `- ${c.shortHash} — ${c.subject}`)
+                .join('\n');
+            const initialPrompt = `${selectedCommits.length} commits selected:\n${commitList}`;
+
+            items.push({
+                label: 'Ask AI', icon: '🤖', onClick: () => {
+                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
+                },
+            });
+            items.push({
+                label: 'Queue Task', icon: '📋', onClick: () => {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
                 },
             });

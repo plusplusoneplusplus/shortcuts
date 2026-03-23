@@ -737,7 +737,7 @@ describe('RepoGitTab', () => {
         });
 
         it('tracks contextMenu state with type discriminator', () => {
-            expect(source).toContain("type: 'commit' | 'branch-range'");
+            expect(source).toContain("type: 'commit' | 'branch-range' | 'multi-commit'");
         });
 
         it('tracks enqueueToast state', () => {
@@ -941,6 +941,75 @@ describe('RepoGitTab', () => {
 
         it('passes onQueueTask callback to CommitDetail in branch-range view', () => {
             expect(source).toContain('onQueueTask={');
+        });
+    });
+
+    describe('multi-commit context menu', () => {
+        it('contextMenu state type union includes multi-commit', () => {
+            expect(source).toContain("'multi-commit'");
+            expect(source).toContain("commits?: GitCommitItem[]");
+        });
+
+        it('handleCommitContextMenu opens multi-commit menu when rightPanelView is multi-commit', () => {
+            expect(source).toContain("rightPanelView?.type === 'multi-commit'");
+            expect(source).toContain("type: 'multi-commit', commits: rightPanelView.commits");
+        });
+
+        it('handleCommitContextMenu depends on rightPanelView', () => {
+            expect(source).toContain('[commits, rightPanelView]');
+        });
+
+        it('handleCommitContextMenu falls back to single commit when not in multi-commit view', () => {
+            // The fallback path still creates a single-commit context menu
+            const block = source.match(/const handleCommitContextMenu = useCallback[\s\S]*?\[commits, rightPanelView\]/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain("type: 'commit', commit");
+        });
+
+        it('contextMenuItems includes Ask AI and Queue Task for multi-commit type', () => {
+            const re = new RegExp("if \\(contextMenu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(contextMenu\\.type === 'branch-range'\\))");
+            const multiBlock = source.match(re);
+            expect(multiBlock).toBeTruthy();
+            expect(multiBlock![0]).toContain("label: 'Ask AI'");
+            expect(multiBlock![0]).toContain("label: 'Queue Task'");
+        });
+
+        it('multi-commit context menu builds initialPrompt with commit list', () => {
+            const re = new RegExp("if \\(contextMenu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(contextMenu\\.type === 'branch-range'\\))");
+            const multiBlock = source.match(re);
+            expect(multiBlock).toBeTruthy();
+            expect(multiBlock![0]).toContain('commits selected:');
+            expect(multiBlock![0]).toContain('c.shortHash');
+            expect(multiBlock![0]).toContain('c.subject');
+        });
+
+        it('multi-commit context menu dispatches OPEN_DIALOG with ask and task modes', () => {
+            const re = new RegExp("if \\(contextMenu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(contextMenu\\.type === 'branch-range'\\))");
+            const multiBlock = source.match(re);
+            expect(multiBlock).toBeTruthy();
+            expect(multiBlock![0]).toContain("mode: 'ask'");
+            expect(multiBlock![0]).toContain("mode: 'task'");
+            expect(multiBlock![0]).toContain("launchMode: 'floating-chat'");
+        });
+
+        it('handleEnqueueSkill fetches diffs in parallel for multi-commit type', () => {
+            const block = source.match(/else if \(snapshot\.type === 'multi-commit'[\s\S]*?} else \{/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('Promise.all');
+            expect(block![0]).toContain('/git/commits/');
+            expect(block![0]).toContain('/diff');
+        });
+
+        it('handleEnqueueSkill builds sectioned prompt for multi-commit', () => {
+            const block = source.match(/else if \(snapshot\.type === 'multi-commit'[\s\S]*?} else \{/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('commits selected:');
+            expect(block![0]).toContain('truncateDiff');
+        });
+
+        it('handleEnqueueSkill shortId shows commit count for multi-commit', () => {
+            expect(source).toContain("snapshot.type === 'multi-commit' && snapshot.commits?.length");
+            expect(source).toContain('commits`');
         });
     });
 
