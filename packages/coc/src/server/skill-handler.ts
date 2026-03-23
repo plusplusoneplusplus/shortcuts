@@ -73,6 +73,22 @@ export interface SkillInfo {
     folderLabel?: string;
 }
 
+// ============================================================================
+// Cache
+// ============================================================================
+
+interface SkillCacheEntry {
+    skills: SkillInfo[];
+    refreshing: boolean;
+}
+
+/** Per-workspace skill list cache. Keyed by workspace id. Exported for testing and global invalidation. */
+export const skillCache = new Map<string, SkillCacheEntry>();
+
+// ============================================================================
+// Parsing helpers
+// ============================================================================
+
 export const VERSION_REGEX = /^version:\s*["']?(.+?)["']?\s*$/m;
 export const VARIABLES_REGEX = /^variables:\s*\[([^\]]+)\]/m;
 export const OUTPUT_REGEX = /^output:\s*\[([^\]]+)\]/m;
@@ -243,6 +259,84 @@ export function extractDescriptionFromMarkdown(content: string): string | undefi
 }
 
 // ============================================================================
+// Skill loading helper (used by GET handler and background refresh)
+// ============================================================================
+
+async function loadSkillsForWorkspace(
+    ws: WorkspaceInfo,
+    dataDir: string | undefined,
+    store: ProcessStore,
+): Promise<SkillInfo[]> {
+    const id = ws.id;
+    const installPath = getSkillsInstallPath(ws.rootPath);
+    const localSkills = listInstalledSkills(installPath);
+    for (const skill of localSkills) {
+        skill.source = 'repo';
+        skill.folderPath = installPath;
+    }
+    const localNames = new Set(localSkills.map(s => s.name));
+
+    const globalSkills: SkillInfo[] = [];
+    if (dataDir) {
+        const globalSkillsPath = path.join(dataDir, 'skills');
+        const globals = listInstalledSkills(globalSkillsPath);
+        for (const skill of globals) {
+            if (localNames.has(skill.name)) continue;
+            skill.source = 'global';
+            skill.folderPath = globalSkillsPath;
+            globalSkills.push(skill);
+        }
+    }
+    const globalNames = new Set(globalSkills.map(s => s.name));
+
+    let allWorkspaces: WorkspaceInfo[] | null = null;
+    const extraSkillFolders: string[] = ws.extraSkillFolders ?? [];
+    const extraSkills: SkillInfo[] = [];
+    for (const folder of extraSkillFolders) {
+        const folderSkills = listInstalledSkills(folder);
+        let sourceRepoId: string | undefined;
+        if (allWorkspaces === null) {
+            try { allWorkspaces = await store.getWorkspaces(); } catch { allWorkspaces = []; }
+        }
+        for (const otherWs of allWorkspaces) {
+            if (otherWs.id !== id && path.resolve(getSkillsInstallPath(otherWs.rootPath)) === path.resolve(folder)) {
+                sourceRepoId = otherWs.id;
+                break;
+            }
+        }
+        for (const skill of folderSkills) {
+            if (localNames.has(skill.name) || globalNames.has(skill.name)) continue;
+            skill.folderPath = folder;
+            if (sourceRepoId) {
+                skill.source = 'linked-repo';
+                skill.sourceRepoId = sourceRepoId;
+            } else {
+                skill.source = 'extra-folder';
+            }
+            extraSkills.push(skill);
+        }
+    }
+
+    let skills = [...localSkills, ...globalSkills, ...extraSkills];
+    if (dataDir) {
+        try {
+            const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');
+            if (fs.existsSync(repoPrefsPath)) {
+                const raw = JSON.parse(fs.readFileSync(repoPrefsPath, 'utf-8'));
+                const usageMap = raw?.skillUsageMap;
+                if (usageMap && typeof usageMap === 'object') {
+                    skills = sortSkillsByUsage(skills, usageMap);
+                }
+            }
+        } catch {
+            // ignore — fall back to unsorted
+        }
+    }
+
+    return skills;
+}
+
+// ============================================================================
 // Route Registration
 // ============================================================================
 
@@ -259,79 +353,24 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
         handler: async (_req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
-            const id = ws.id;
+            const wsId = ws.id;
 
-            const installPath = getSkillsInstallPath(ws.rootPath);
-            const localSkills = listInstalledSkills(installPath);
-            // Tag local skills with source and folderPath
-            for (const skill of localSkills) {
-                skill.source = 'repo';
-                skill.folderPath = installPath;
-            }
-            const localNames = new Set(localSkills.map(s => s.name));
-
-            // Load global skills from dataDir/skills (always first in precedence after local)
-            const globalSkills: SkillInfo[] = [];
-            if (dataDir) {
-                const globalSkillsPath = path.join(dataDir, 'skills');
-                const globals = listInstalledSkills(globalSkillsPath);
-                for (const skill of globals) {
-                    // Local/extra skills take precedence — suppress global skills with the same name
-                    if (localNames.has(skill.name)) continue;
-                    skill.source = 'global';
-                    skill.folderPath = globalSkillsPath;
-                    globalSkills.push(skill);
+            const cached = skillCache.get(wsId);
+            if (cached) {
+                // Cache hit: serve immediately, trigger async background refresh
+                sendJSON(res, 200, { skills: cached.skills });
+                if (!cached.refreshing) {
+                    cached.refreshing = true;
+                    loadSkillsForWorkspace(ws, dataDir, store)
+                        .then(skills => skillCache.set(wsId, { skills, refreshing: false }))
+                        .catch(() => { cached.refreshing = false; });
                 }
-            }
-            const globalNames = new Set(globalSkills.map(s => s.name));
-
-            // Load skills from extra folders, resolving sourceRepoId for linked repos
-            let allWorkspaces: WorkspaceInfo[] | null = null;
-            const extraSkillFolders: string[] = ws.extraSkillFolders ?? [];
-            const extraSkills: SkillInfo[] = [];
-            for (const folder of extraSkillFolders) {
-                const folderSkills = listInstalledSkills(folder);
-                // Resolve sourceRepoId: check if this folder is another workspace's skills path
-                let sourceRepoId: string | undefined;
-                if (allWorkspaces === null) {
-                    try { allWorkspaces = await store.getWorkspaces(); } catch { allWorkspaces = []; }
-                }
-                for (const otherWs of allWorkspaces) {
-                    if (otherWs.id !== id && path.resolve(getSkillsInstallPath(otherWs.rootPath)) === path.resolve(folder)) {
-                        sourceRepoId = otherWs.id;
-                        break;
-                    }
-                }
-                for (const skill of folderSkills) {
-                    // Local and global skills take precedence — skip if already present
-                    if (localNames.has(skill.name) || globalNames.has(skill.name)) continue;
-                    skill.folderPath = folder;
-                    if (sourceRepoId) {
-                        skill.source = 'linked-repo';
-                        skill.sourceRepoId = sourceRepoId;
-                    } else {
-                        skill.source = 'extra-folder';
-                    }
-                    extraSkills.push(skill);
-                }
+                return;
             }
 
-            let skills = [...localSkills, ...globalSkills, ...extraSkills];
-            if (dataDir) {
-                try {
-                    const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');
-                    if (fs.existsSync(repoPrefsPath)) {
-                        const raw = JSON.parse(fs.readFileSync(repoPrefsPath, 'utf-8'));
-                        const usageMap = raw?.skillUsageMap;
-                        if (usageMap && typeof usageMap === 'object') {
-                            skills = sortSkillsByUsage(skills, usageMap);
-                        }
-                    }
-                } catch {
-                    // ignore — fall back to unsorted
-                }
-            }
-
+            // Cache miss: load synchronously, populate cache, then respond
+            const skills = await loadSkillsForWorkspace(ws, dataDir, store);
+            skillCache.set(wsId, { skills, refreshing: false });
             sendJSON(res, 200, { skills });
         },
     });
@@ -361,6 +400,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const installPath = getSkillsInstallPath(ws.rootPath);
             const { handleScan } = createSkillRouteHandlers({ installPath, sourceRoot: ws.rootPath });
             await handleScan(req, res);
+            skillCache.delete(ws.id);
         },
     });
 
@@ -390,6 +430,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const installPath = getSkillsInstallPath(ws.rootPath);
             const { handleInstall } = createSkillRouteHandlers({ installPath, sourceRoot: ws.rootPath });
             await handleInstall(req, res);
+            skillCache.delete(ws.id);
         },
     });
 
@@ -440,6 +481,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const installPath = getSkillsInstallPath(ws.rootPath);
             const { handleDelete } = createSkillRouteHandlers({ installPath, sourceRoot: ws.rootPath });
             await handleDelete(res, skillName);
+            skillCache.delete(ws.id);
         },
     });
 }

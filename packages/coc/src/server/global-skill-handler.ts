@@ -19,7 +19,7 @@ import {
 import { sendJSON } from './api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
 import { handleAPIError, notFound, badRequest } from './errors';
-import { sortSkillsByUsage, listInstalledSkills, getSkillDetail } from './skill-handler';
+import { sortSkillsByUsage, listInstalledSkills, getSkillDetail, skillCache } from './skill-handler';
 import { createSkillRouteHandlers } from './skill-route-handlers';
 import type { Route } from './types';
 
@@ -101,6 +101,7 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
         handler: async (req, res) => {
             const { handleScan } = createSkillRouteHandlers({ installPath: globalDir, sourceRoot: dataDir });
             await handleScan(req, res);
+            skillCache.clear();
         },
     });
 
@@ -115,6 +116,7 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
                 ensureInstallDir: true,
             });
             await handleInstall(req, res);
+            skillCache.clear();
         },
     });
 
@@ -196,6 +198,7 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
 
             const { handleDelete } = createSkillRouteHandlers({ installPath: globalDir, sourceRoot: dataDir });
             await handleDelete(res, skillName);
+            skillCache.clear();
         },
     });
 
