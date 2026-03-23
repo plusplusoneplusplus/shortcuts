@@ -1,7 +1,7 @@
 /**
  * RepoScheduleOverrideStore
  *
- * Persists runtime status overrides for repo-sourced schedules (from .github/schedule/).
+ * Persists runtime status overrides for repo-sourced schedules (from .github/schedules/).
  * Since repo schedules are git-managed, only the status (active/paused) can be overridden
  * at runtime without touching the checked-in YAML.
  *

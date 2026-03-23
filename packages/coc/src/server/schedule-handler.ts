@@ -85,7 +85,7 @@ function serializeSchedule(entry: ScheduleEntry, manager: ScheduleManager): Reco
  * Register all schedule API routes on the given route table.
  *
  * @param getWorkspacePath - Optional callback to resolve a workspace root path
- *   from a repoId. Used to load repo-defined schedules from .github/schedule/.
+ *   from a repoId. Used to load repo-defined schedules from .github/schedules/.
  */
 export function registerScheduleRoutes(
     routes: Route[],
@@ -229,7 +229,7 @@ export function registerScheduleRoutes(
             // Repo schedules cannot be deleted via the API
             const existing = manager.getSchedule(repoId, scheduleId);
             if (existing?.source === 'repo') {
-                return sendError(res, 403, 'Repo schedules cannot be deleted via the API. Remove the file from .github/schedule/ in your repository.');
+                return sendError(res, 403, 'Repo schedules cannot be deleted via the API. Remove the file from .github/schedules/ in your repository.');
             }
 
             const removed = manager.removeSchedule(repoId, scheduleId);

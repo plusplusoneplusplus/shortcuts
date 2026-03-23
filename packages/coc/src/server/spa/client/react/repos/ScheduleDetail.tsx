@@ -63,7 +63,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                                     )}
                                     {schedule.source === 'repo' && (
                                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 font-medium" data-testid="repo-source-badge">
-                                            Defined in <code className="font-mono">.github/schedule/</code>
+                                            Defined in <code className="font-mono">.github/schedules/</code>
                                         </span>
                                     )}
                                 </div>

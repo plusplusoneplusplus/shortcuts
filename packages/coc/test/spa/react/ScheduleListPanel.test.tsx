@@ -77,9 +77,9 @@ describe('ScheduleListPanel — two-section UI', () => {
         expect(screen.getByTestId('repo-schedules-header').textContent).toContain('REPO SCHEDULES');
     });
 
-    it('shows .github/schedule/ path label in repo section', () => {
+    it('shows .github/schedules/ path label in repo section', () => {
         renderPanel([]);
-        expect(screen.getByTestId('repo-schedules-path').textContent).toContain('.github/schedule/');
+        expect(screen.getByTestId('repo-schedules-path').textContent).toContain('.github/schedules/');
     });
 
     it('user schedules appear under MY SCHEDULES list', () => {

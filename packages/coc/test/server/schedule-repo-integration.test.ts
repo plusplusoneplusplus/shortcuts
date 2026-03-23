@@ -33,7 +33,7 @@ describe('ScheduleManager — repo schedules', () => {
     beforeEach(() => {
         dataDir = makeTmpDir();
         workspaceRoot = makeTmpDir();
-        scheduleDir = path.join(workspaceRoot, '.github', 'schedule');
+        scheduleDir = path.join(workspaceRoot, '.github', 'schedules');
 
         const persistence = new ScheduleYamlPersistence(dataDir);
         const overrideStore = new RepoScheduleOverrideStore(dataDir);

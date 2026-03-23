@@ -126,7 +126,7 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
             {!repoCollapsed && (
                 <>
                     <div className="px-4 pb-1 text-[10px] text-[#848484] font-mono" data-testid="repo-schedules-path">
-                        .github/schedule/
+                        .github/schedules/
                     </div>
                     {repoSchedules.length === 0 ? (
                         <div className="px-4 pb-3 text-xs text-[#848484]">

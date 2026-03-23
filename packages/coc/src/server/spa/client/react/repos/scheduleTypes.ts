@@ -16,7 +16,7 @@ export interface Schedule {
     outputFolder?: string;
     model?: string;
     mode?: 'ask' | 'plan' | 'autopilot';
-    /** 'user' = stored in schedules.json; 'repo' = loaded from .github/schedule/ */
+    /** 'user' = stored in schedules.json; 'repo' = loaded from .github/schedules/ */
     source?: 'user' | 'repo';
 }
 

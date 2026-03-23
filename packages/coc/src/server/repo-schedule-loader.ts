@@ -1,7 +1,7 @@
 /**
  * RepoScheduleLoader
  *
- * Scans <workspaceRoot>/.github/schedule/*.yaml (and *.yml) and parses each
+ * Scans <workspaceRoot>/.github/schedules/*.yaml (and *.yml) and parses each
  * file into a ScheduleEntry with source: 'repo'.
  *
  * IDs are prefixed with 'repo:' + filename stem (without extension) so they
@@ -22,10 +22,10 @@ import type { RepoScheduleOverrides } from './repo-schedule-overrides';
 // ============================================================================
 
 /**
- * Returns the absolute path to the .github/schedule/ directory for a workspace.
+ * Returns the absolute path to the .github/schedules/ directory for a workspace.
  */
 export function getRepoScheduleDir(workspaceRoot: string): string {
-    return path.join(workspaceRoot, '.github', 'schedule');
+    return path.join(workspaceRoot, '.github', 'schedules');
 }
 
 /**
@@ -37,7 +37,7 @@ export function idFromScheduleFilename(filename: string): string {
 }
 
 /**
- * Load all repo-defined schedules from <workspaceRoot>/.github/schedule/.
+ * Load all repo-defined schedules from <workspaceRoot>/.github/schedules/.
  * Applies runtime status overrides (pause/resume state) on top of the file defaults.
  * Returns an empty array if the directory does not exist or is unreadable.
  */

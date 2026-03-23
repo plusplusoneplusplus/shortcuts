@@ -39,7 +39,7 @@ export interface ScheduleEntry {
     outputFolder?: string;     // output folder path prepended to prompt for prompt-type schedules
     model?: string;            // optional model override for prompt-type schedules
     mode?: ChatMode;           // chat mode for prompt-type schedules; defaults to 'autopilot'
-    /** 'user' = stored in schedules.json; 'repo' = loaded from .github/schedule/ */
+    /** 'user' = stored in schedules.json; 'repo' = loaded from .github/schedules/ */
     source?: 'user' | 'repo';
 }
 
@@ -231,7 +231,7 @@ function finaliseRun(
 export class ScheduleManager extends EventEmitter {
     // repoId → scheduleId → ScheduleEntry (user-managed)
     private readonly schedules = new Map<string, Map<string, ScheduleEntry>>();
-    // repoId → scheduleId → ScheduleEntry (repo-managed, from .github/schedule/)
+    // repoId → scheduleId → ScheduleEntry (repo-managed, from .github/schedules/)
     private readonly repoSchedules = new Map<string, Map<string, ScheduleEntry>>();
     // repoId → workspace rootPath
     private readonly workspacePaths = new Map<string, string>();
@@ -689,7 +689,7 @@ export class ScheduleManager extends EventEmitter {
 
     /**
      * Register a workspace root path for a repo and load repo-defined schedules
-     * from <rootPath>/.github/schedule/.  Sets up a file watcher for live reload.
+     * from <rootPath>/.github/schedules/.  Sets up a file watcher for live reload.
      * Safe to call multiple times (idempotent — re-registers path and refreshes).
      */
     registerWorkspacePath(repoId: string, rootPath: string): void {

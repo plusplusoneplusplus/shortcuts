@@ -96,7 +96,7 @@ describe('ScheduleDetail — repo schedule read-only', () => {
     it('shows "defined in repo" badge for repo schedule', () => {
         renderDetail(REPO_SCHEDULE);
         expect(screen.getByTestId('repo-source-badge')).toBeTruthy();
-        expect(screen.getByTestId('repo-source-badge').textContent).toContain('.github/schedule/');
+        expect(screen.getByTestId('repo-source-badge').textContent).toContain('.github/schedules/');
     });
 
     it('does NOT show "defined in repo" badge for user schedule', () => {
