@@ -114,6 +114,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         unresolveComment: unresolveCommitComment,
         deleteComment: deleteCommitComment,
         updateComment: updateCommitComment,
+        copyAllCommentsAsPrompt: copyAllCommitCommentsAsPrompt,
     } = useAllCommitComments((!isRangeMode && !filePath) ? workspaceId : '', (!isRangeMode && !filePath && hash) ? hash : '');
 
     const handleAddComment = useCallback(
@@ -534,6 +535,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                         }}
                         onAskAI={() => undefined}
                         onCommentClick={handleSidebarCommentClick}
+                        onCopyPrompt={copyAllCommitCommentsAsPrompt}
                         data-testid="diff-comment-sidebar"
                     />
                 )}

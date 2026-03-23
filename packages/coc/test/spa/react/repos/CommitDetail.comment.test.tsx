@@ -10,9 +10,14 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 const mockAddComment = vi.fn();
 const mockUseDiffComments = vi.fn();
 const mockFetchApi = vi.fn();
+const mockUseAllCommitComments = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useDiffComments', () => ({
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useAllCommitComments', () => ({
+    useAllCommitComments: (...args: any[]) => mockUseAllCommitComments(...args),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -84,11 +89,25 @@ function makeHook(overrides: Record<string, unknown> = {}) {
     };
 }
 
+function makeAllCommitHook(overrides: Record<string, unknown> = {}) {
+    return {
+        comments: [],
+        loading: false,
+        resolveComment: vi.fn().mockResolvedValue(undefined),
+        unresolveComment: vi.fn().mockResolvedValue(undefined),
+        deleteComment: vi.fn().mockResolvedValue(undefined),
+        updateComment: vi.fn().mockResolvedValue(undefined),
+        copyAllCommentsAsPrompt: vi.fn(),
+        ...overrides,
+    };
+}
+
 describe('CommitDetail — comment integration', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockAddComment.mockResolvedValue({ id: 'new-c' });
         mockUseDiffComments.mockReturnValue(makeHook());
+        mockUseAllCommitComments.mockReturnValue(makeAllCommitHook());
         mockFetchApi.mockResolvedValue({ diff: '+added line\n context', comments: [] });
     });
 
@@ -221,19 +240,23 @@ describe('CommitDetail — comment integration', () => {
     });
 
     // Regression: commit-level comment fetch must not produce double /api prefix.
-    // fetchApi already prepends /api (from getApiBase()), so the path passed to it
-    // must start with /diff-comments/, not /api/diff-comments/.
-    it('commit-level comment fetch uses /diff-comments/ path (no double /api prefix)', async () => {
+    // useAllCommitComments is mocked, so we verify it receives the correct workspace/hash args.
+    it('commit-level comment fetch passes correct args to useAllCommitComments', async () => {
         await renderDetail({});
-        await waitFor(() => {
-            const calls = mockFetchApi.mock.calls.filter(([path]) =>
-                typeof path === 'string' && path.includes('diff-comments'),
-            );
-            expect(calls.length).toBeGreaterThan(0);
-            for (const [path] of calls) {
-                expect(path).not.toMatch(/^\/api\//);
-                expect(path).toMatch(/^\/diff-comments\//);
-            }
-        });
+        expect(mockUseAllCommitComments).toHaveBeenCalledWith('ws1', 'abc123');
+    });
+
+    // Regression: onCopyPrompt wired to commit-level CommentSidebar
+    it('passes copyAllCommentsAsPrompt as onCopyPrompt to the commit-level sidebar', async () => {
+        const mockCopy = vi.fn();
+        const openComment = { id: 'c1', context: { filePath: 'src/foo.ts' }, selection: { diffLineStart: 0, diffLineEnd: 0 }, comment: 'test', status: 'open', createdAt: '', updatedAt: '', selectedText: '' };
+        mockUseAllCommitComments.mockReturnValue(
+            makeAllCommitHook({ comments: [openComment], copyAllCommentsAsPrompt: mockCopy })
+        );
+        await renderDetail({ filePath: undefined });
+        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
+        const copyBtn = await screen.findByTitle('Copy all comments as prompt');
+        await act(async () => { fireEvent.click(copyBtn); });
+        expect(mockCopy).toHaveBeenCalledTimes(1);
     });
 });

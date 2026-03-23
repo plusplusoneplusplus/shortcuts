@@ -28,6 +28,7 @@ export interface UseAllCommitCommentsReturn {
     unresolveComment: (comment: DiffComment) => Promise<void>;
     deleteComment: (comment: DiffComment) => Promise<void>;
     updateComment: (comment: DiffComment, updates: UpdateDiffCommentRequest) => Promise<void>;
+    copyAllCommentsAsPrompt: () => void;
 }
 
 // ============================================================================
@@ -100,6 +101,40 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
     }, [wsId]);
 
     // ------------------------------------------------------------------
+    // Copy all comments as prompt
+    // ------------------------------------------------------------------
+
+    const copyAllCommentsAsPrompt = useCallback((): void => {
+        if (!comments.length) return;
+
+        const byFile = new Map<string, DiffComment[]>();
+        for (const c of comments) {
+            const fp = c.context.filePath;
+            if (!byFile.has(fp)) byFile.set(fp, []);
+            byFile.get(fp)!.push(c);
+        }
+
+        const sections = [...byFile.entries()].map(([filePath, cs]) => {
+            const block = cs
+                .map((c, i) =>
+                    `### Comment ${i + 1} (id: ${c.id}, status: ${c.status})\n` +
+                    `Lines ${c.selection.diffLineStart}–${c.selection.diffLineEnd} (${c.selection.side})\n` +
+                    `Selected code:\n\`\`\`\n${c.selectedText}\n\`\`\`\n` +
+                    `Comment: ${c.comment}`
+                )
+                .join('\n\n');
+            return `## File: ${filePath} (${cs.length} comment(s))\n\n${block}`;
+        }).join('\n\n');
+
+        const prompt =
+            `You are reviewing commit ${hash} with comments across ${byFile.size} file(s).\n\n` +
+            `${sections}\n\n` +
+            `Please address these comments.`;
+
+        void navigator.clipboard.writeText(prompt);
+    }, [comments, hash]);
+
+    // ------------------------------------------------------------------
     // WebSocket subscription — refresh on diff-comment-updated for this commit
     // ------------------------------------------------------------------
 
@@ -126,5 +161,5 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
         return () => { ws.close(); };
     }, [wsId, hash, fetchComments]);
 
-    return { comments, loading, resolveComment, unresolveComment, deleteComment, updateComment };
+    return { comments, loading, resolveComment, unresolveComment, deleteComment, updateComment, copyAllCommentsAsPrompt };
 }

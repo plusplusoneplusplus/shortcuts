@@ -299,6 +299,58 @@ describe('useAllCommitComments', () => {
         expect(fetchMock.mock.calls.length).toBe(fetchCountAfterMount);
     });
 
+    it('copyAllCommentsAsPrompt groups comments by file and writes prompt to clipboard', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText } });
+
+        const c1 = makeComment({ id: 'c1', context: { ...mockCtx, filePath: 'src/a.ts' }, comment: 'fix this' });
+        const c2 = makeComment({ id: 'c2', context: { ...mockCtx, filePath: 'src/b.ts' }, comment: 'rename' });
+        fetchMock.mockResolvedValueOnce(listResponse([c1, c2]));
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => result.current.copyAllCommentsAsPrompt());
+
+        expect(writeText).toHaveBeenCalledOnce();
+        const written: string = writeText.mock.calls[0][0];
+        expect(written).toContain('commit abc123');
+        expect(written).toContain('src/a.ts');
+        expect(written).toContain('src/b.ts');
+        expect(written).toContain('fix this');
+        expect(written).toContain('rename');
+    });
+
+    it('copyAllCommentsAsPrompt does nothing when there are no comments', async () => {
+        const writeText = vi.fn();
+        Object.assign(navigator, { clipboard: { writeText } });
+
+        fetchMock.mockResolvedValueOnce(listResponse([]));
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => result.current.copyAllCommentsAsPrompt());
+
+        expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('copyAllCommentsAsPrompt prompt header references the commit hash', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText } });
+
+        const c1 = makeComment({ id: 'c1', context: { ...mockCtx, oldRef: 'deadbeef^', newRef: 'deadbeef', filePath: 'src/x.ts' } });
+        fetchMock.mockResolvedValueOnce(listResponse([c1]));
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'deadbeef'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => result.current.copyAllCommentsAsPrompt());
+
+        const written: string = writeText.mock.calls[0][0];
+        expect(written).toContain('deadbeef');
+    });
+
     it('closes WebSocket on unmount', async () => {
         fetchMock.mockResolvedValue(listResponse([]));
 
