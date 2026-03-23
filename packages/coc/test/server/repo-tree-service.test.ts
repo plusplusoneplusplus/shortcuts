@@ -201,7 +201,8 @@ describe('RepoTreeService.listRepos', () => {
         if (isGitAvailable()) {
             initGitRepo(repoDir);
             fs.writeFileSync(path.join(repoDir, 'init.txt'), 'init');
-            childProcess.execSync('git add . && git commit -m "init"', { cwd: repoDir, stdio: 'pipe' });
+            childProcess.execSync('git add .', { cwd: repoDir, stdio: 'pipe' });
+            childProcess.execSync('git commit -m "init"', { cwd: repoDir, stdio: 'pipe' });
         }
         seedWorkspacesJson([{ id: REPO_ID, name: REPO_NAME, rootPath: repoDir }]);
 
@@ -459,7 +460,8 @@ describe('RepoTreeService.toRepoInfo', () => {
         fs.mkdirSync(gitDir, { recursive: true });
         initGitRepo(gitDir);
         fs.writeFileSync(path.join(gitDir, 'file.txt'), 'init');
-        childProcess.execSync('git add . && git commit -m "init"', { cwd: gitDir, stdio: 'pipe' });
+        childProcess.execSync('git add .', { cwd: gitDir, stdio: 'pipe' });
+        childProcess.execSync('git commit -m "init"', { cwd: gitDir, stdio: 'pipe' });
 
         const info = RepoTreeService.toRepoInfo({
             id: 'git-id',
