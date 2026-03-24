@@ -133,6 +133,15 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
         fetchSchedules();
     };
 
+    const handleMove = async (scheduleId: string, destination: 'user' | 'repo') => {
+        await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination }),
+        });
+        fetchSchedules();
+    };
+
     if (loading) {
         return <div className="p-4 text-sm text-[#848484]">Loading schedules...</div>;
     }
@@ -146,6 +155,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             onSelect={handleSelect}
             onNew={() => { setShowCreate(true); if (isMobile) setMobileShowDetail(true); }}
             loading={loading}
+            onMove={handleMove}
         />
     );
 

@@ -242,6 +242,33 @@ export function registerScheduleRoutes(
     });
 
     // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/schedules/:scheduleId/move — Move between user/repo
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/schedules\/([^/]+)\/move$/,
+        handler: async (req, res, match) => {
+            const repoId = decodeURIComponent(match![1]);
+            const scheduleId = decodeURIComponent(match![2]);
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const destination = body.destination;
+            if (destination !== 'user' && destination !== 'repo') {
+                return sendError(res, 400, 'Invalid destination. Must be "user" or "repo".');
+            }
+
+            try {
+                const schedule = await manager.moveSchedule(repoId, scheduleId, destination);
+                sendJSON(res, 200, { schedule: serializeSchedule(schedule, manager) });
+            } catch (err) {
+                return sendError(res, 400, getErrorMessage(err, 'Failed to move schedule'));
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // POST /api/workspaces/:id/schedules/:scheduleId/run — Trigger
     // ------------------------------------------------------------------
     routes.push({

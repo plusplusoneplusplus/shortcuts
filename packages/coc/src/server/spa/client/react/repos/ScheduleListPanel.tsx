@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Button } from '../shared';
 import { formatRelativeTime } from '../utils/format';
 import { StatusDot } from './ScheduleStatusBadge';
@@ -10,9 +10,10 @@ interface ScheduleListPanelProps {
     onSelect: (scheduleId: string) => void;
     onNew: () => void;
     loading: boolean;
+    onMove?: (scheduleId: string, destination: 'user' | 'repo') => Promise<void>;
 }
 
-function ScheduleItem({ schedule, isActive, onSelect }: { schedule: Schedule; isActive: boolean; onSelect: (id: string) => void }) {
+function ScheduleItem({ schedule, isActive, onSelect, onDragStart }: { schedule: Schedule; isActive: boolean; onSelect: (id: string) => void; onDragStart?: (e: React.DragEvent, schedule: Schedule) => void }) {
     return (
         <li
             className={
@@ -25,6 +26,8 @@ function ScheduleItem({ schedule, isActive, onSelect }: { schedule: Schedule; is
             role="option"
             aria-selected={isActive}
             onClick={() => onSelect(schedule.id)}
+            draggable={!!onDragStart}
+            onDragStart={onDragStart ? (e) => onDragStart(e, schedule) : undefined}
         >
             <span className="flex-shrink-0">
                 <StatusDot status={schedule.status} isRunning={schedule.isRunning} />
@@ -63,12 +66,53 @@ function ScheduleItem({ schedule, isActive, onSelect }: { schedule: Schedule; is
     );
 }
 
-export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, loading: _loading }: ScheduleListPanelProps) {
+export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, loading: _loading, onMove }: ScheduleListPanelProps) {
     const [userCollapsed, setUserCollapsed] = useState(false);
     const [repoCollapsed, setRepoCollapsed] = useState(false);
+    const [dropTarget, setDropTarget] = useState<'user' | 'repo' | null>(null);
 
     const userSchedules = schedules.filter(s => s.source !== 'repo');
     const repoSchedules = schedules.filter(s => s.source === 'repo');
+
+    const handleDragStart = useCallback((e: React.DragEvent, schedule: Schedule) => {
+        e.dataTransfer.setData('text/plain', JSON.stringify({
+            scheduleId: schedule.id,
+            source: schedule.source ?? 'user',
+        }));
+        e.dataTransfer.effectAllowed = 'move';
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent, section: 'user' | 'repo') => {
+        e.preventDefault();
+        setDropTarget(null);
+        if (!onMove) return;
+        try {
+            const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+            const fromSource = data.source ?? 'user';
+            // Only allow drops from the opposite section
+            if ((section === 'repo' && fromSource !== 'repo') || (section === 'user' && fromSource === 'repo')) {
+                onMove(data.scheduleId, section);
+            }
+        } catch { /* ignore invalid drag data */ }
+    }, [onMove]);
+
+    const handleDragEnter = useCallback((e: React.DragEvent, section: 'user' | 'repo') => {
+        e.preventDefault();
+        setDropTarget(section);
+    }, []);
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        // Only clear if leaving the drop zone (not entering a child)
+        const relatedTarget = e.relatedTarget as Node | null;
+        if (!e.currentTarget.contains(relatedTarget)) {
+            setDropTarget(null);
+        }
+    }, []);
 
     return (
         <>
@@ -91,18 +135,35 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
             {!userCollapsed && (
                 <>
                     {userSchedules.length === 0 ? (
-                        <div className="px-4 pb-2 text-center text-sm text-[#848484]">
+                        <div
+                            className={'px-4 pb-2 text-center text-sm text-[#848484] rounded transition-colors ' +
+                                (dropTarget === 'user' ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400/50' : '')}
+                            onDragOver={handleDragOver}
+                            onDragEnter={(e) => handleDragEnter(e, 'user')}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, 'user')}
+                            data-testid="user-schedules-dropzone"
+                        >
                             <div className="text-2xl mb-1">🕐</div>
                             <div className="text-xs">No schedules yet. Click &quot;+ New&quot; to create one.</div>
                         </div>
                     ) : (
-                        <ul className="repo-schedule-list px-2 pb-1 flex flex-col gap-0.5 overflow-y-auto" data-testid="user-schedules-list">
+                        <ul
+                            className={'repo-schedule-list px-2 pb-1 flex flex-col gap-0.5 overflow-y-auto rounded transition-colors ' +
+                                (dropTarget === 'user' ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400/50' : '')}
+                            data-testid="user-schedules-list"
+                            onDragOver={handleDragOver}
+                            onDragEnter={(e) => handleDragEnter(e, 'user')}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, 'user')}
+                        >
                             {userSchedules.map(schedule => (
                                 <ScheduleItem
                                     key={schedule.id}
                                     schedule={schedule}
                                     isActive={schedule.id === selectedId}
                                     onSelect={onSelect}
+                                    onDragStart={onMove ? handleDragStart : undefined}
                                 />
                             ))}
                         </ul>
@@ -129,17 +190,34 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
                         .github/schedules/
                     </div>
                     {repoSchedules.length === 0 ? (
-                        <div className="px-4 pb-3 text-xs text-[#848484]">
+                        <div
+                            className={'px-4 pb-3 text-xs text-[#848484] rounded transition-colors ' +
+                                (dropTarget === 'repo' ? 'bg-teal-50 dark:bg-teal-900/20 ring-2 ring-teal-400/50' : '')}
+                            onDragOver={handleDragOver}
+                            onDragEnter={(e) => handleDragEnter(e, 'repo')}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, 'repo')}
+                            data-testid="repo-schedules-dropzone"
+                        >
                             No repo schedules found.
                         </div>
                     ) : (
-                        <ul className="repo-schedule-list px-2 pb-4 flex flex-col gap-0.5 overflow-y-auto" data-testid="repo-schedules-list">
+                        <ul
+                            className={'repo-schedule-list px-2 pb-4 flex flex-col gap-0.5 overflow-y-auto rounded transition-colors ' +
+                                (dropTarget === 'repo' ? 'bg-teal-50 dark:bg-teal-900/20 ring-2 ring-teal-400/50' : '')}
+                            data-testid="repo-schedules-list"
+                            onDragOver={handleDragOver}
+                            onDragEnter={(e) => handleDragEnter(e, 'repo')}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, 'repo')}
+                        >
                             {repoSchedules.map(schedule => (
                                 <ScheduleItem
                                     key={schedule.id}
                                     schedule={schedule}
                                     isActive={schedule.id === selectedId}
                                     onSelect={onSelect}
+                                    onDragStart={onMove ? handleDragStart : undefined}
                                 />
                             ))}
                         </ul>

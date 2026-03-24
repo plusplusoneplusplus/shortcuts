@@ -10,7 +10,9 @@
 
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as crypto from 'crypto';
+import * as yaml from 'js-yaml';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { TargetType, ChatMode } from './task-types';
 import { getErrorMessage } from './shared/fs-utils';
@@ -206,6 +208,18 @@ export function describeCron(expr: string): string {
     } catch {
         return expr;
     }
+}
+
+/**
+ * Convert a schedule name to a filesystem-safe slug.
+ * Lowercase, non-alphanumeric chars become hyphens, trimmed and collapsed.
+ */
+export function slugifyName(name: string): string {
+    return name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        || 'schedule';
 }
 
 // ============================================================================
@@ -480,6 +494,147 @@ export class ScheduleManager extends EventEmitter {
         }
         this.repoWatchers.clear();
         this.removeAllListeners();
+    }
+
+    // ========================================================================
+    // Public — move schedule between user and repo sections
+    // ========================================================================
+
+    /**
+     * Expose the workspace root path for a given repoId.
+     */
+    getWorkspacePath(repoId: string): string | undefined {
+        return this.workspacePaths.get(repoId);
+    }
+
+    /**
+     * Move a schedule between user and repo sections.
+     *
+     * user→repo: writes YAML to .github/schedules/<slug>.yaml, removes from user schedules.
+     * repo→user: creates a user schedule via addSchedule, deletes the YAML file.
+     */
+    async moveSchedule(repoId: string, scheduleId: string, destination: 'user' | 'repo'): Promise<ScheduleEntry> {
+        const rootPath = this.workspacePaths.get(repoId);
+        if (!rootPath) {
+            throw new Error('Workspace path not available for this repo');
+        }
+
+        const entry = this.getSchedule(repoId, scheduleId);
+        if (!entry) {
+            throw new Error('Schedule not found');
+        }
+
+        if (destination === 'repo') {
+            if (entry.source === 'repo') {
+                throw new Error('Schedule is already a repo schedule');
+            }
+            return this.moveUserToRepo(repoId, entry, rootPath);
+        } else {
+            if (entry.source !== 'repo') {
+                throw new Error('Schedule is already a user schedule');
+            }
+            return this.moveRepoToUser(repoId, entry, rootPath);
+        }
+    }
+
+    private moveUserToRepo(repoId: string, entry: ScheduleEntry, rootPath: string): ScheduleEntry {
+        const slug = slugifyName(entry.name);
+        const scheduleDir = getRepoScheduleDir(rootPath);
+        fs.mkdirSync(scheduleDir, { recursive: true });
+
+        // De-duplicate filename if it already exists
+        let finalSlug = slug;
+        let counter = 1;
+        while (fs.existsSync(path.join(scheduleDir, `${finalSlug}.yaml`))) {
+            finalSlug = `${slug}-${counter}`;
+            counter++;
+        }
+
+        // Build YAML content (strip internal fields)
+        const yamlObj: Record<string, unknown> = {
+            name: entry.name,
+            cron: entry.cron,
+            target: entry.target,
+            params: entry.params,
+            onFailure: entry.onFailure,
+            status: entry.status,
+        };
+        if (entry.targetType && entry.targetType !== 'prompt') yamlObj.targetType = entry.targetType;
+        if (entry.outputFolder) yamlObj.outputFolder = entry.outputFolder;
+        if (entry.model) yamlObj.model = entry.model;
+        if (entry.mode && entry.mode !== 'autopilot') yamlObj.mode = entry.mode;
+
+        const yamlContent = yaml.dump(yamlObj, { lineWidth: 120 });
+        fs.writeFileSync(path.join(scheduleDir, `${finalSlug}.yaml`), yamlContent, 'utf-8');
+
+        // Remove from user schedules
+        this.cancelTimer(entry.id);
+        const map = this.schedules.get(repoId);
+        if (map) {
+            map.delete(entry.id);
+            if (map.size === 0) {
+                this.schedules.delete(repoId);
+                this.persistence.deleteRepo(repoId);
+            } else {
+                this.persist(repoId);
+            }
+        }
+
+        // Reload repo schedules so the new file is picked up
+        this.reloadRepoSchedules(repoId);
+
+        const newEntry = this.repoSchedules.get(repoId)?.get(`repo:${finalSlug}`);
+        if (!newEntry) {
+            throw new Error('Failed to load moved schedule from repo');
+        }
+
+        this.emit('change', {
+            type: 'schedule-removed',
+            repoId,
+            scheduleId: entry.id,
+        } as ScheduleChangeEvent);
+        this.emit('change', {
+            type: 'schedule-added',
+            repoId,
+            scheduleId: newEntry.id,
+            schedule: newEntry,
+        } as ScheduleChangeEvent);
+
+        return newEntry;
+    }
+
+    private moveRepoToUser(repoId: string, entry: ScheduleEntry, rootPath: string): ScheduleEntry {
+        // Create a new user schedule (addSchedule strips source)
+        const newEntry = this.addSchedule(repoId, {
+            name: entry.name,
+            target: entry.target,
+            cron: entry.cron,
+            params: { ...entry.params },
+            onFailure: entry.onFailure,
+            status: entry.status,
+            targetType: entry.targetType,
+            outputFolder: entry.outputFolder,
+            model: entry.model,
+            mode: entry.mode,
+        });
+
+        // Delete the YAML file from .github/schedules/
+        const stem = entry.id.replace(/^repo:/, '');
+        const scheduleDir = getRepoScheduleDir(rootPath);
+        for (const ext of ['.yaml', '.yml']) {
+            const filePath = path.join(scheduleDir, `${stem}${ext}`);
+            try {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            } catch { /* non-fatal */ }
+        }
+
+        // Cancel timer for old repo schedule and reload
+        this.cancelTimer(entry.id);
+        this.reloadRepoSchedules(repoId);
+
+        return newEntry;
     }
 
     // ========================================================================
