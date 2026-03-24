@@ -79,6 +79,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const pullJobRef = useRef<string | null>(null);
     const pullPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [rightPanelView, setRightPanelView] = useState<RightPanelView | null>(null);
+    const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>();
     const [workingChangesRefreshKey, setWorkingChangesRefreshKey] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
     const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -498,6 +499,15 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     }, [rightPanelView]);
 
     const handleFileSelect = useCallback((filePath: string) => {
+        setHunkTarget(undefined);
+        setRightPanelView({ type: 'branch-file', filePath });
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range/' + encodeURIComponent(filePath);
+        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
+        dispatch({ type: 'SET_GIT_FILE_PATH', filePath });
+    }, [workspaceId, dispatch]);
+
+    const handleNavigateToBranchFile = useCallback((filePath: string, target: 'first' | 'last') => {
+        setHunkTarget(target);
         setRightPanelView({ type: 'branch-file', filePath });
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range/' + encodeURIComponent(filePath);
         dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
@@ -512,14 +522,30 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     }, [workspaceId, dispatch]);
 
     const handleCommitFileSelect = useCallback((hash: string, filePath: string) => {
+        setHunkTarget(undefined);
+        setRightPanelView({ type: 'commit-file', hash, filePath });
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash + '/' + encodeURIComponent(filePath);
+        dispatch({ type: 'SET_GIT_FILE_PATH', filePath });
+    }, [workspaceId, dispatch]);
+
+    const handleNavigateToCommitFile = useCallback((hash: string, filePath: string, target: 'first' | 'last') => {
+        setHunkTarget(target);
         setRightPanelView({ type: 'commit-file', hash, filePath });
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash + '/' + encodeURIComponent(filePath);
         dispatch({ type: 'SET_GIT_FILE_PATH', filePath });
     }, [workspaceId, dispatch]);
 
     const handleWorkingTreeFileSelect = useCallback((filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => {
+        setHunkTarget(undefined);
         setRightPanelView({ type: 'working-tree-file', filePath, stage });
     }, []);
+
+    const handleNavigateToWorkingTreeFile = useCallback((filePath: string, target: 'first' | 'last') => {
+        // Working tree navigation keeps the current stage
+        const currentStage = rightPanelView?.type === 'working-tree-file' ? rightPanelView.stage : 'unstaged';
+        setHunkTarget(target);
+        setRightPanelView({ type: 'working-tree-file', filePath, stage: currentStage });
+    }, [rightPanelView]);
 
     const handleAllWorkingCommentsClick = useCallback(() => {
         setRightPanelView({ type: 'working-tree-comments' });
@@ -917,6 +943,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             hash={rightPanelView.hash}
             filePath={rightPanelView.filePath}
             commit={commits.find(c => c.hash === rightPanelView.hash)}
+            onNavigateToFile={(fp, target) => handleNavigateToCommitFile(rightPanelView.hash, fp, target)}
+            initialHunkTarget={hunkTarget}
         />
     ) : rightPanelView?.type === 'branch-range' ? (
         <CommitDetail
@@ -935,6 +963,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             key={rightPanelView.filePath}
             workspaceId={workspaceId}
             filePath={rightPanelView.filePath}
+            branchFiles={(branchRangeFiles ?? []).map((f: { path: string }) => f.path).sort()}
+            onNavigateToFile={handleNavigateToBranchFile}
+            initialHunkTarget={hunkTarget}
         />
     ) : rightPanelView?.type === 'working-tree-file' ? (
         <WorkingTreeFileDiff
@@ -942,6 +973,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             workspaceId={workspaceId}
             filePath={rightPanelView.filePath}
             stage={rightPanelView.stage}
+            onNavigateToFile={handleNavigateToWorkingTreeFile}
+            initialHunkTarget={hunkTarget}
         />
     ) : rightPanelView?.type === 'working-tree-comments' ? (
         <WorkingTreeAllComments workspaceId={workspaceId} />

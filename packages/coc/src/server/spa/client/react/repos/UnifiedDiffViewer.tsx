@@ -324,6 +324,10 @@ export interface UnifiedDiffViewerHandle {
     scrollToNextHunk: () => void;
     scrollToPrevHunk: () => void;
     getHunkCount: () => number;
+    /** Returns the 0-based index of the currently active hunk, or -1 if none. */
+    getCurrentHunkIndex: () => number;
+    /** Scrolls to the hunk at the given 0-based index and updates the internal cursor. */
+    scrollToHunk: (index: number) => void;
 }
 
 /** Reusable up/down buttons for navigating between diff hunks. */
@@ -468,6 +472,21 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         },
         getHunkCount: () => {
             return containerRef.current?.querySelectorAll('[data-edit-start]').length ?? 0;
+        },
+        getCurrentHunkIndex: () => currentHunkIndexRef.current,
+        scrollToHunk: (index: number) => {
+            const container = containerRef.current;
+            if (!container) return;
+            const edits = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
+            if (edits.length === 0 || index < 0 || index >= edits.length) return;
+            currentHunkIndexRef.current = index;
+            const scrollParent = getScrollableAncestor(container);
+            const parentTop = scrollParent.getBoundingClientRect().top;
+            const centerOffset = scrollParent.clientHeight / 3;
+            scrollParent.scrollTo({
+                top: scrollParent.scrollTop + edits[index].getBoundingClientRect().top - parentTop - centerOffset,
+                behavior: 'smooth',
+            });
         },
     }));
 

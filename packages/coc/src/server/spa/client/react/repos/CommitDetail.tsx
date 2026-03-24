@@ -4,12 +4,13 @@
  * Shows only the unified diff for the full commit or a single file.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { copyToClipboard } from '../utils/format';
 import { useCachedDiff } from './useCommitDiffCache';
 import { Spinner, Button } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
+import { useCrossFileNav } from './useCrossFileNav';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
@@ -65,9 +66,16 @@ export interface CommitDetailProps {
     onAllCommentsClick?: () => void;
     onAskAI?: () => void;
     onQueueTask?: () => void;
+    // Cross-file navigation
+    /** Ordered file paths for the current commit (enables cross-file hunk nav). */
+    commitFiles?: string[];
+    /** Called when cross-file navigation requests switching to a different file. */
+    onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
+    /** When set, auto-scrolls to the first or last hunk after the diff loads. */
+    initialHunkTarget?: 'first' | 'last';
 }
 
-export function CommitDetail({ workspaceId, hash, filePath, commit, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, hash, filePath, commit, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask, commitFiles: commitFilesProp, onNavigateToFile, initialHunkTarget }: CommitDetailProps) {
     const isRangeMode = !!range;
     const { dispatch: queueDispatch } = useQueue();
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -81,6 +89,37 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
     const [viewMode, setViewMode] = useDiffViewMode();
     const [headerCollapsed, setHeaderCollapsed] = useState(false);
     const [manualOverride, setManualOverride] = useState(false);
+
+    // Cross-file navigation: fetch commit file list if not provided via props
+    const [fetchedFiles, setFetchedFiles] = useState<string[]>([]);
+    const [filesLoading, setFilesLoading] = useState(false);
+
+    useEffect(() => {
+        if (commitFilesProp || !hash || !filePath || isRangeMode) return;
+        setFilesLoading(true);
+        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files`)
+            .then((data: { path: string }[] | { files?: { path: string }[] }) => {
+                const arr = Array.isArray(data) ? data : (data.files ?? []);
+                setFetchedFiles(arr.map(f => f.path).sort());
+            })
+            .catch(() => setFetchedFiles([]))
+            .finally(() => setFilesLoading(false));
+    }, [workspaceId, hash, filePath, isRangeMode, commitFilesProp]);
+
+    const commitFiles = useMemo(
+        () => commitFilesProp ?? fetchedFiles,
+        [commitFilesProp, fetchedFiles],
+    );
+
+    const { handleNext, handlePrev } = useCrossFileNav({
+        filePath,
+        files: commitFiles,
+        viewerRef,
+        onNavigateToFile,
+    });
+
+    // Auto-scroll to target hunk after diff loads — placed after useCachedDiff (see below)
+    const hasScrolledRef = useRef(false);
 
     // Range-mode state (draggable split panel + branch comment count)
     const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
@@ -97,6 +136,24 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         : null;
 
     const { diff, loading: diffLoading, error: diffError, retry: handleRetryDiff } = useCachedDiff(diffUrl, workspaceId, hash);
+
+    // Auto-scroll to target hunk after diff loads (for cross-file navigation)
+    useEffect(() => {
+        if (!initialHunkTarget || !diff || diffLoading || hasScrolledRef.current) return;
+        hasScrolledRef.current = true;
+        const timer = setTimeout(() => {
+            const viewer = viewerRef.current;
+            if (!viewer) return;
+            const count = viewer.getHunkCount();
+            if (count === 0) return;
+            if (initialHunkTarget === 'first') {
+                viewer.scrollToHunk(0);
+            } else {
+                viewer.scrollToHunk(count - 1);
+            }
+        }, 50);
+        return () => clearTimeout(timer);
+    }, [initialHunkTarget, diff, diffLoading]);
 
     const diffContext = (!isRangeMode && filePath && hash)
         ? { repositoryId: workspaceId, filePath, oldRef: `${hash}^`, newRef: hash }
@@ -411,9 +468,16 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
             {/* Diff label with comment toggle */}
             {filePath && (
                 <div className="sticky top-0 z-10 px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-between" data-testid="diff-file-path">
-                    <span className="text-xs font-mono text-[#616161] dark:text-[#999]">{filePath}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-mono text-[#616161] dark:text-[#999] truncate">{filePath}</span>
+                        {commitFiles.length > 1 && (
+                            <span className="text-[10px] text-[#848484] flex-shrink-0" data-testid="file-position-indicator">
+                                {commitFiles.indexOf(filePath) + 1}/{commitFiles.length}
+                            </span>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2">
-                        <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                        <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
                         <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                         <button
                             onClick={() => setSidebarOpen(o => !o)}

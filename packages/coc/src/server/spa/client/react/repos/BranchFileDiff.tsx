@@ -20,6 +20,7 @@ import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../context/QueueContext';
+import { useCrossFileNav } from './useCrossFileNav';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
 import type { TaskCommentCategory } from '../../task-comments-types';
@@ -27,6 +28,12 @@ import type { TaskCommentCategory } from '../../task-comments-types';
 export interface BranchFileDiffProps {
     workspaceId: string;
     filePath: string;
+    /** Ordered file paths for the branch range (enables cross-file hunk nav). */
+    branchFiles?: string[];
+    /** Called when cross-file navigation requests switching to a different file. */
+    onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
+    /** When set, auto-scrolls to the first or last hunk after the diff loads. */
+    initialHunkTarget?: 'first' | 'last';
 }
 
 type PopupState = {
@@ -35,7 +42,7 @@ type PopupState = {
     selectedText: string;
 } | null;
 
-export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
+export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateToFile, initialHunkTarget }: BranchFileDiffProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -48,6 +55,32 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [viewMode, setViewMode] = useDiffViewMode();
+
+    const { handleNext, handlePrev } = useCrossFileNav({
+        filePath,
+        files: branchFiles ?? [],
+        viewerRef,
+        onNavigateToFile,
+    });
+
+    // Auto-scroll to target hunk after diff loads (for cross-file navigation)
+    const hasScrolledRef = useRef(false);
+    useEffect(() => {
+        if (!initialHunkTarget || !diff || loading || hasScrolledRef.current) return;
+        hasScrolledRef.current = true;
+        const timer = setTimeout(() => {
+            const viewer = viewerRef.current;
+            if (!viewer) return;
+            const count = viewer.getHunkCount();
+            if (count === 0) return;
+            if (initialHunkTarget === 'first') {
+                viewer.scrollToHunk(0);
+            } else {
+                viewer.scrollToHunk(count - 1);
+            }
+        }, 50);
+        return () => clearTimeout(timer);
+    }, [initialHunkTarget, diff, loading]);
 
     const diffContext = { repositoryId: workspaceId, filePath, oldRef: 'branch-base', newRef: 'branch-head' };
 
@@ -141,7 +174,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="branch-file-diff-header">
                 <div className="flex items-center gap-2">
                     <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
-                    <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                    <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">Branch diff</span>
                     <button

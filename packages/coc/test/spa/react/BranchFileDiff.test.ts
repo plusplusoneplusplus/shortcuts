@@ -59,8 +59,8 @@ describe('BranchFileDiff', () => {
             expect(source).toContain('filePath: string');
         });
 
-        it('destructures both props', () => {
-            expect(source).toContain('{ workspaceId, filePath }');
+        it('destructures props including cross-file navigation', () => {
+            expect(source).toContain('{ workspaceId, filePath, branchFiles, onNavigateToFile, initialHunkTarget }');
         });
     });
 

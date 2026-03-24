@@ -144,6 +144,21 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                 });
             },
             getHunkCount: () => containerRef.current?.querySelectorAll('[data-edit-start]').length ?? 0,
+            getCurrentHunkIndex: () => currentHunkIndexRef.current,
+            scrollToHunk: (index: number) => {
+                const container = containerRef.current;
+                if (!container) return;
+                const edits = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
+                if (edits.length === 0 || index < 0 || index >= edits.length) return;
+                currentHunkIndexRef.current = index;
+                const scrollParent = getScrollableAncestor(container);
+                const parentTop = scrollParent.getBoundingClientRect().top;
+                const centerOffset = scrollParent.clientHeight / 3;
+                scrollParent.scrollTo({
+                    top: scrollParent.scrollTop + edits[index].getBoundingClientRect().top - parentTop - centerOffset,
+                    behavior: 'smooth',
+                });
+            },
         }));
 
         const handleMouseUp = useCallback((e: React.MouseEvent) => {
