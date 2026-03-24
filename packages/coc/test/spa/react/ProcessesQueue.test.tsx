@@ -1350,8 +1350,9 @@ describe('ActivityChatDetail follow-up input', () => {
 
         await screen.findByText('First answer');
 
-        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
-        fireEvent.change(input, { target: { value: 'Follow-up question' } });
+        const input = screen.getByTestId('activity-chat-input');
+        input.innerText = 'Follow-up question';
+        fireEvent.input(input);
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
         await waitFor(() => {
@@ -1433,8 +1434,9 @@ describe('ActivityChatDetail follow-up input', () => {
 
         await screen.findByText('Done');
 
-        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
-        fireEvent.change(input, { target: { value: 'Need more' } });
+        const input = screen.getByTestId('activity-chat-input');
+        input.innerText = 'Need more';
+        fireEvent.input(input);
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
         await waitFor(() => {
@@ -1442,7 +1444,8 @@ describe('ActivityChatDetail follow-up input', () => {
         });
 
         expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
-        expect((screen.getByPlaceholderText('Session expired.') as HTMLTextAreaElement).disabled).toBe(true);
+        const expiredInput = screen.getByTestId('activity-chat-input');
+        expect(expiredInput.getAttribute('contenteditable')).toBe('false');
     });
 });
 
@@ -1546,8 +1549,9 @@ describe('ActivityChatDetail semantic hooks', () => {
         );
 
         await screen.findByText('A');
-        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
-        fireEvent.change(input, { target: { value: 'follow up' } });
+        const input = screen.getByTestId('activity-chat-input');
+        input.innerText = 'follow up';
+        fireEvent.input(input);
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
         await waitFor(() => {
@@ -1603,8 +1607,9 @@ describe('ActivityChatDetail semantic hooks', () => {
         );
 
         await screen.findByText('A');
-        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
-        fireEvent.change(input, { target: { value: 'retry me' } });
+        const input = screen.getByTestId('activity-chat-input');
+        input.innerText = 'retry me';
+        fireEvent.input(input);
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
         await waitFor(() => {
@@ -1809,8 +1814,9 @@ describe('ActivityChatDetail semantic hooks', () => {
         );
 
         await screen.findByText('A');
-        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
-        fireEvent.change(input, { target: { value: 'More' } });
+        const input = screen.getByTestId('activity-chat-input');
+        input.innerText = 'More';
+        fireEvent.input(input);
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
         await waitFor(() => {
