@@ -15,6 +15,7 @@ export interface RichTextInputProps {
     disabled?: boolean;
     placeholder?: string;
     className?: string;
+    id?: string;
     'data-testid'?: string;
 }
 
@@ -61,6 +62,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                     props.disabled && 'opacity-60 cursor-not-allowed',
                     props.className,
                 )}
+                id={props.id}
                 data-testid={props['data-testid']}
             />
         );

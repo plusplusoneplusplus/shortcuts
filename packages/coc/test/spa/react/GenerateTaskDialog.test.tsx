@@ -141,9 +141,9 @@ describe('GenerateTaskDialog', () => {
     it('renders idle state', async () => {
         await act(async () => { renderDialog(); });
         expect(screen.getByText('Generate Plan')).toBeDefined();
-        const prompt = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        const prompt = document.getElementById('gen-task-prompt') as HTMLElement;
         expect(prompt).toBeDefined();
-        expect(prompt.value).toBe('');
+        expect(prompt.textContent).toBe('');
         expect(screen.getByText('Generate')).toBeDefined();
         // no streaming output panel in queue mode
         expect(document.getElementById('gen-task-output')).toBeNull();
@@ -157,8 +157,9 @@ describe('GenerateTaskDialog', () => {
 
     it('Generate button enabled when prompt has text', async () => {
         await act(async () => { renderDialog(); });
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'hello';
+        fireEvent.input(textarea);
         const btn = document.getElementById('gen-task-generate') as HTMLButtonElement;
         expect(btn.disabled).toBe(false);
     });
@@ -169,8 +170,9 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'hello';
+        fireEvent.input(textarea);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -298,8 +300,9 @@ describe('GenerateTaskDialog', () => {
         await act(async () => { renderDialog(); });
         switchToAdvanced();
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'test' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'test';
+        fireEvent.input(textarea);
 
         const prioritySelect = document.getElementById('gen-task-priority') as HTMLSelectElement;
         fireEvent.change(prioritySelect, { target: { value: 'high' } });
@@ -635,8 +638,9 @@ describe('GenerateTaskDialog', () => {
             expect(select.value).toBe('claude-3');
         });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'test prompt' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'test prompt';
+        fireEvent.input(textarea);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -744,10 +748,11 @@ describe('GenerateTaskDialog', () => {
         await act(async () => { renderDialog(); });
         switchToAdvanced();
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'hello';
+        fireEvent.input(textarea);
 
-        const depthSelect = document.getElementById('gen-task-depth') as HTMLSelectElement;
+        const depthSelect= document.getElementById('gen-task-depth') as HTMLSelectElement;
         fireEvent.change(depthSelect, { target: { value: 'normal' } });
 
         await act(async () => {
@@ -765,8 +770,9 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'hello';
+        fireEvent.input(textarea);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -827,8 +833,9 @@ describe('GenerateTaskDialog', () => {
         await act(async () => { renderDialog(); });
         switchToAdvanced();
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'test' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'test';
+        fireEvent.input(textarea);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -892,8 +899,9 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'test' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'test';
+        fireEvent.input(textarea);
 
         fireEvent.click(screen.getByTestId('effort-low'));
 
@@ -912,8 +920,9 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'test' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'test';
+        fireEvent.input(textarea);
 
         fireEvent.click(screen.getByTestId('effort-medium'));
 
@@ -932,8 +941,9 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'test' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'test';
+        fireEvent.input(textarea);
 
         fireEvent.click(screen.getByTestId('effort-high'));
 
@@ -985,8 +995,9 @@ describe('GenerateTaskDialog', () => {
         fireEvent.click(screen.getByTestId('tab-effort'));
         fireEvent.click(screen.getByTestId('effort-low'));
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'test' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'test';
+        fireEvent.input(textarea);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -1003,8 +1014,9 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'test' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'test';
+        fireEvent.input(textarea);
         fireEvent.click(screen.getByTestId('effort-low'));
 
         await act(async () => {
@@ -1061,8 +1073,9 @@ describe('GenerateTaskDialog', () => {
         const depthSelect = document.getElementById('gen-task-depth') as HTMLSelectElement;
         fireEvent.change(depthSelect, { target: { value: 'normal' } });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'test' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'test';
+        fireEvent.input(textarea);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -1214,8 +1227,9 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'hello';
+        fireEvent.input(textarea);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -1234,8 +1248,9 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'hello';
+        fireEvent.input(textarea);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -1316,15 +1331,16 @@ describe('GenerateTaskDialog', () => {
 
     // ── Ctrl+Enter keyboard shortcut tests ──────────────────────────────────
 
-    it('Ctrl+Enter on textarea submits when prompt is non-empty', async () => {
+    it('Ctrl+Enter on prompt input submits when prompt is non-empty', async () => {
         const enqueueSpy = vi.fn();
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'Build a REST API' } });
-        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+        const el = document.getElementById('gen-task-prompt') as HTMLElement;
+        el.innerText = 'Build a REST API';
+        fireEvent.input(el);
+        fireEvent.keyDown(el, { key: 'Enter', ctrlKey: true });
 
         expect(enqueueSpy).toHaveBeenCalledTimes(1);
         expect(enqueueSpy).toHaveBeenCalledWith(
@@ -1332,15 +1348,16 @@ describe('GenerateTaskDialog', () => {
         );
     });
 
-    it('Cmd+Enter (metaKey) on textarea submits when prompt is non-empty', async () => {
+    it('Cmd+Enter (metaKey) on prompt input submits when prompt is non-empty', async () => {
         const enqueueSpy = vi.fn();
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'Build a REST API' } });
-        fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true });
+        const el = document.getElementById('gen-task-prompt') as HTMLElement;
+        el.innerText = 'Build a REST API';
+        fireEvent.input(el);
+        fireEvent.keyDown(el, { key: 'Enter', metaKey: true });
 
         expect(enqueueSpy).toHaveBeenCalledTimes(1);
     });
@@ -1351,15 +1368,16 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        const el = document.getElementById('gen-task-prompt') as HTMLElement;
 
         // empty
-        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+        fireEvent.keyDown(el, { key: 'Enter', ctrlKey: true });
         expect(enqueueSpy).not.toHaveBeenCalled();
 
         // whitespace only
-        fireEvent.change(textarea, { target: { value: '   ' } });
-        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+        el.innerText = '   ';
+        fireEvent.input(el);
+        fireEvent.keyDown(el, { key: 'Enter', ctrlKey: true });
         expect(enqueueSpy).not.toHaveBeenCalled();
     });
 
@@ -1371,9 +1389,10 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
-        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+        const el = document.getElementById('gen-task-prompt') as HTMLElement;
+        el.innerText = 'hello';
+        fireEvent.input(el);
+        fireEvent.keyDown(el, { key: 'Enter', ctrlKey: true });
 
         expect(enqueueSpy).not.toHaveBeenCalled();
     });
@@ -1386,9 +1405,10 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog({ onSuccess: vi.fn() }); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
-        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+        const el = document.getElementById('gen-task-prompt') as HTMLElement;
+        el.innerText = 'hello';
+        fireEvent.input(el);
+        fireEvent.keyDown(el, { key: 'Enter', ctrlKey: true });
 
         expect(enqueueSpy).not.toHaveBeenCalled();
     });
@@ -1399,9 +1419,10 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
-        fireEvent.keyDown(textarea, { key: 'Enter' });
+        const el = document.getElementById('gen-task-prompt') as HTMLElement;
+        el.innerText = 'hello';
+        fireEvent.input(el);
+        fireEvent.keyDown(el, { key: 'Enter' });
 
         expect(enqueueSpy).not.toHaveBeenCalled();
     });
@@ -1432,8 +1453,9 @@ describe('GenerateTaskDialog', () => {
 
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
+        const el = document.getElementById('gen-task-prompt') as HTMLElement;
+        el.innerText = 'hello';
+        fireEvent.input(el);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -1454,8 +1476,9 @@ describe('GenerateTaskDialog', () => {
         fireEvent.click(checkbox);
         expect(checkbox.checked).toBe(true);
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'hello' } });
+        const el = document.getElementById('gen-task-prompt') as HTMLElement;
+        el.innerText = 'hello';
+        fireEvent.input(el);
 
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
@@ -1509,8 +1532,9 @@ describe('GenerateTaskDialog', () => {
     it('minimized pill shows prompt preview when prompt has text', async () => {
         await act(async () => { renderDialog(); });
 
-        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
-        fireEvent.change(textarea, { target: { value: 'Build a REST API for users' } });
+        const el = document.getElementById('gen-task-prompt') as HTMLElement;
+        el.innerText = 'Build a REST API for users';
+        fireEvent.input(el);
 
         // Re-render with minimized=true to see the pill
         await act(async () => {

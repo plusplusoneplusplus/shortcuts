@@ -5,8 +5,10 @@
  * The user can track progress in the Queue tab.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Dialog, FloatingDialog, Button, ImageLightbox } from '../shared';
+import { RichTextInput } from '../shared/RichTextInput';
+import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
@@ -102,6 +104,7 @@ export function GenerateTaskDialog({
 }: GenerateTaskDialogProps) {
     // --- breakpoint ---
     const { isMobile } = useBreakpoint();
+    const richTextRef = useRef<RichTextInputHandle>(null);
 
     // --- preferences (persisted model + depth + effort) ---
     const { models: savedModels, setModel: persistModel, depth: savedDepth, setDepth: persistDepth, effort: savedEffort, setEffort: persistEffort } = usePreferences(wsId);
@@ -250,12 +253,11 @@ export function GenerateTaskDialog({
         <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-[#616161] dark:text-[#999]">Prompt</label>
-                    <textarea
+                    <RichTextInput
+                        ref={richTextRef}
                         id="gen-task-prompt"
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] resize-y min-h-[80px]"
-                        rows={4}
-                        value={prompt}
-                        onChange={e => setPrompt(e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[80px]"
+                        onChange={value => setPrompt(value)}
                         onKeyDown={e => {
                             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && prompt.trim() && !isSubmitting && !isQueued) {
                                 e.preventDefault();
@@ -265,6 +267,7 @@ export function GenerateTaskDialog({
                         onPaste={isSubmitting || isQueued ? undefined : addFromPaste}
                         disabled={isSubmitting || isQueued}
                         placeholder="Describe the task to generate…"
+                        data-testid="gen-task-prompt-input"
                     />
                     {/* Image preview strip */}
                     {images.length > 0 && (
