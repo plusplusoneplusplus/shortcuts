@@ -22,6 +22,8 @@ import { useSkillTemplates } from '../hooks/useSkillTemplates';
 import { TemplatesTab } from './TemplatesTab';
 import { useFloatingChats } from '../context/FloatingChatsContext';
 import { SkillPicker } from './SkillPicker';
+import { RichTextInput } from '../shared/RichTextInput';
+import type { RichTextInputHandle } from '../shared/RichTextInput';
 
 interface FolderOption { label: string; value: string; }
 interface SkillOption { name: string; description?: string; }
@@ -62,7 +64,7 @@ export function EnqueueDialog() {
     const [submitting, setSubmitting] = useState(false);
     const [minimized, setMinimized] = useState(false);
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const richTextRef = useRef<RichTextInputHandle>(null);
     const slashCommands = useSlashCommands(skills);
 
     // Track previous dialog mode to detect mode switches
@@ -88,6 +90,7 @@ export function EnqueueDialog() {
         }
         if (queueState.dialogInitialPrompt) {
             setPrompt(queueState.dialogInitialPrompt);
+            richTextRef.current?.setValue(queueState.dialogInitialPrompt);
         }
     }, [queueState.showDialog]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -169,9 +172,10 @@ export function EnqueueDialog() {
 
     const handleSubmit = useCallback(async () => {
         // Parse /skill tokens from prompt text
-        const { skills: slashSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(prompt);
+        const rawText = richTextRef.current?.getValue() ?? prompt;
+        const { skills: slashSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(rawText);
         const effectiveSkills = [...new Set([...selectedSkills, ...slashSkills])];
-        const effectivePrompt = effectiveSkills.length > 0 ? cleanedPrompt : prompt.trim();
+        const effectivePrompt = effectiveSkills.length > 0 ? cleanedPrompt : rawText.trim();
 
         if (effectiveSkills.length === 0 && !effectivePrompt) return;
         setSubmitting(true);
@@ -250,6 +254,7 @@ export function EnqueueDialog() {
                 }
             }
             setPrompt('');
+            richTextRef.current?.setValue('');
             setSelectedSkills([]);
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
             // Record skill usage for ordering
@@ -269,11 +274,11 @@ export function EnqueueDialog() {
     }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode]);
 
     const handleSlashSelect = useCallback((name: string) => {
-        slashCommands.selectSkill(name, prompt, setPrompt);
+        slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
         setSelectedSkills(prev => prev.includes(name) ? prev : [...prev, name]);
     }, [slashCommands, prompt]);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         if (slashCommands.handleKeyDown(e)) {
             if (e.key === 'Enter' || e.key === 'Tab') {
                 const selected = slashCommands.filteredSkills[slashCommands.highlightIndex];
@@ -325,18 +330,19 @@ export function EnqueueDialog() {
             <div>
                 <label className="block text-xs font-medium text-[#848484] mb-1">Prompt</label>
                 <div className="relative">
-                    <textarea
-                        ref={textareaRef}
+                    <RichTextInput
+                        ref={richTextRef}
                         value={prompt}
-                        onChange={e => {
-                            setPrompt(e.target.value);
-                            slashCommands.handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                        onChange={(text) => {
+                            setPrompt(text);
+                            slashCommands.handleInputChange(text, text.length);
                         }}
                         onPaste={submitting ? undefined : addFromPaste}
                         onKeyDown={handleKeyDown}
+                        disabled={submitting}
                         placeholder={selectedSkills.length > 0 ? `Additional context for ${selectedSkills.join(', ')} (optional)` : 'Enter your prompt… Type / for skills'}
-                        rows={4}
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-y"
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] min-h-[6rem]"
+                        data-testid="prompt-input"
                     />
                     <SlashCommandMenu
                         skills={skills}

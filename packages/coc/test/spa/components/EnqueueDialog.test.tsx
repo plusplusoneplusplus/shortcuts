@@ -101,9 +101,12 @@ describe('EnqueueDialog', () => {
     it('Enqueue button becomes enabled when prompt has content', async () => {
         renderDialog();
         await waitFor(() => screen.getByTestId('floating-dialog-panel'));
-        const textarea = screen.queryByRole('textbox');
+        const textarea = screen.queryByTestId('prompt-input');
         if (textarea) {
-            act(() => { fireEvent.change(textarea, { target: { value: 'my prompt' } }); });
+            act(() => {
+                textarea.innerText = 'my prompt';
+                fireEvent.input(textarea);
+            });
             await waitFor(() => {
                 const enqueueBtn = screen.queryByRole('button', { name: /enqueue/i });
                 if (enqueueBtn) {
@@ -134,10 +137,13 @@ describe('EnqueueDialog', () => {
         renderDialog();
         await waitFor(() => screen.getByTestId('floating-dialog-panel'));
 
-        const textarea = screen.queryByRole('textbox');
-        if (!textarea) return; // Guard — dialog may not render textarea in some environments
+        const textarea = screen.queryByTestId('prompt-input');
+        if (!textarea) return; // Guard — dialog may not render in some environments
 
-        act(() => { fireEvent.change(textarea, { target: { value: 'test prompt content' } }); });
+        act(() => {
+            textarea.innerText = 'test prompt content';
+            fireEvent.input(textarea);
+        });
         await waitFor(() => {
             const enqueueBtn = screen.queryByRole('button', { name: /enqueue/i });
             if (enqueueBtn && !enqueueBtn.hasAttribute('disabled')) {
