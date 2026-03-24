@@ -455,3 +455,44 @@ describe('GET /api/repos/:repoId/search', () => {
         expect(pathsShown).toContain('dist/bundle.js');
     });
 });
+
+describe('GET /api/repos/:repoId/reveal', () => {
+    it('returns 204 for a valid file path', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'README.md'), '# Hello');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/reveal?path=README.md`);
+        expect(res.status).toBe(204);
+    });
+
+    it('returns 204 for a valid directory path', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/reveal?path=src`);
+        expect(res.status).toBe(204);
+    });
+
+    it('returns 400 when path is missing', async () => {
+        seedDefaultRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/reveal`);
+        expect(res.status).toBe(400);
+        const body = await res.json() as any;
+        expect(body.error).toMatch(/path/i);
+    });
+
+    it('returns 400 for directory traversal', async () => {
+        seedDefaultRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/reveal?path=../../etc/passwd`);
+        expect(res.status).toBe(400);
+        const body = await res.json() as any;
+        expect(body.error).toMatch(/directory traversal/i);
+    });
+
+    it('returns 404 for unknown repo', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/nonexistent/reveal?path=README.md`);
+        expect(res.status).toBe(404);
+        const body = await res.json() as any;
+        expect(body.error).toBeDefined();
+    });
+});

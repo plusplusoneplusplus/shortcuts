@@ -10,11 +10,14 @@
  * GET  /api/repos/:repoId/search       — fuzzy file-path search
  * GET  /api/repos/:repoId/blob         — read file content
  * PUT  /api/repos/:repoId/blob         — write file content
+ * GET  /api/repos/:repoId/reveal       — reveal file/folder in OS file manager
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';
+import * as path from 'path';
+import * as child_process from 'child_process';
 import type { Route } from '../types';
 import { sendJson, send400, send404, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
@@ -269,6 +272,51 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
+            }
+        },
+    });
+
+    // -- Reveal in OS file manager --------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/reveal$/,
+        handler: async (req, res, match) => {
+            try {
+                const parsedUrl = url.parse(req.url ?? '', true);
+                const parsed = parseRepoRequest(res, match, parsedUrl.query, {
+                    pathRequired: true,
+                });
+                if (!parsed) return;
+
+                const repo = await svc.resolveRepo(parsed.repoId);
+                if (!repo) {
+                    send404(res, `Unknown repo: ${parsed.repoId}`);
+                    return;
+                }
+
+                const absPath = path.resolve(repo.localPath, parsed.path);
+                const normalizedRepo = path.resolve(repo.localPath);
+                if (!absPath.startsWith(normalizedRepo + path.sep) && absPath !== normalizedRepo) {
+                    send400(res, 'Invalid path: directory traversal not allowed');
+                    return;
+                }
+
+                const platform = process.platform;
+                if (platform === 'win32') {
+                    child_process.spawn('explorer.exe', ['/select,', absPath], { detached: true, stdio: 'ignore' });
+                } else if (platform === 'darwin') {
+                    child_process.spawn('open', ['-R', absPath], { detached: true, stdio: 'ignore' });
+                } else {
+                    // Linux: open parent directory (best-effort)
+                    const parentDir = path.dirname(absPath);
+                    child_process.spawn('xdg-open', [parentDir], { detached: true, stdio: 'ignore' });
+                }
+
+                res.writeHead(204);
+                res.end();
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
             }
         },
     });

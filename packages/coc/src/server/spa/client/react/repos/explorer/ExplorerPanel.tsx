@@ -248,6 +248,22 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
             onClick: () => { navigator.clipboard.writeText(entry.name); },
         });
 
+        items.push({
+            label: '',
+            separator: true,
+            onClick: () => {},
+        });
+
+        items.push({
+            label: 'Reveal in File Explorer',
+            icon: '🗂️',
+            onClick: async () => {
+                await fetch(
+                    `/api/repos/${encodeURIComponent(workspaceId)}/reveal?path=${encodeURIComponent(entry.path)}`
+                );
+            },
+        });
+
         return items;
     }, [expandedPaths, handleToggle]);
 
