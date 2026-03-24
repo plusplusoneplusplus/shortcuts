@@ -9,6 +9,7 @@ import { computeLineDiff, type DiffLine } from '../../diff-utils';
 import { ToolResultPopover } from './ToolResultPopover';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { renderMarkdownToHtml } from '../../markdown-renderer';
+import { copyToClipboard } from '../utils/format';
 
 interface ToolCallData {
     id?: string;
@@ -68,6 +69,40 @@ function shortenPath(p: string): string {
 
 function isImageDataUrl(s: string): boolean {
     return /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.test(s.trim());
+}
+
+/** Small inline copy button for the Command section header. */
+function CopyCommandBtn({ command }: { command: string }) {
+    const [copied, setCopied] = React.useState(false);
+
+    const handleCopy = React.useCallback(async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        try {
+            await copyToClipboard(command);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch (err) {
+            console.error('Command copy failed:', err);
+        }
+    }, [command]);
+
+    return (
+        <button
+            className="ml-1.5 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover/cmd:opacity-100 transition-opacity text-[10px]"
+            title="Copy command"
+            onClick={handleCopy}
+            data-testid="command-copy-btn"
+            style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '0 2px',
+                lineHeight: 1,
+            }}
+        >
+            {copied ? '✓' : '📋'}
+        </button>
+    );
 }
 
 function getToolSummary(toolName: string, args: any): string {
@@ -529,7 +564,10 @@ export function ToolCallView({
                     )}
                     {isShellLike && bashCommand && (
                         <div>
-                            <div className="text-[10px] uppercase text-[#848484] mb-0.5">Command</div>
+                            <div className="relative group/cmd flex items-center">
+                                <div className="text-[10px] uppercase text-[#848484] mb-0.5">Command</div>
+                                <CopyCommandBtn command={bashCommand} />
+                            </div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
                                 <code>{`$ ${bashCommand}`}</code>
                             </pre>

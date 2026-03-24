@@ -264,7 +264,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
             return (
                 <div data-testid="popover-terminal" className="rounded border border-[#2d2d2d] dark:border-[#3c3c3c] overflow-hidden font-mono text-[11px] leading-[1.55] bg-[#1e1e1e] text-[#cccccc] p-2">
                     {bashCommand && (
-                        <div className="text-[#4ec9b0] mb-1 select-none">$ {bashCommand}</div>
+                        <div className="text-[#4ec9b0] mb-1 select-text">$ {bashCommand}</div>
                     )}
                     <pre className="whitespace-pre-wrap break-words m-0">
                         <code>{cleaned}</code>
