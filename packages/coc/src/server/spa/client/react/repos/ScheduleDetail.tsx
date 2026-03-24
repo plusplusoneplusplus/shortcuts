@@ -140,14 +140,14 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">Target</dt>
                             <dd className="text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
                                 <span
-                                    className="font-medium truncate block"
+                                    className="font-medium block"
                                     title={schedule.target}
                                     data-testid="target-basename"
                                 >
                                     {targetBasename}
                                 </span>
                                 {schedule.target !== targetBasename && (
-                                    <span className="text-[10px] text-[#848484] dark:text-[#666] font-mono truncate block" title={schedule.target}>
+                                    <span className="text-[10px] text-[#848484] dark:text-[#666] font-mono break-all block" title={schedule.target}>
                                         {schedule.target}
                                     </span>
                                 )}
@@ -190,7 +190,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             {schedule.outputFolder && (
                                 <>
                                     <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">Output</dt>
-                                    <dd className="text-[10px] font-mono text-[#1e1e1e] dark:text-[#cccccc] truncate" title={schedule.outputFolder} data-testid="output-folder">
+                                    <dd className="text-[10px] font-mono text-[#1e1e1e] dark:text-[#cccccc] break-all" title={schedule.outputFolder} data-testid="output-folder">
                                         {schedule.outputFolder}
                                     </dd>
                                 </>

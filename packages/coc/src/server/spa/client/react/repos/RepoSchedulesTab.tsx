@@ -256,7 +256,9 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
 
             {/* Right panel */}
             <div className="flex-1 min-w-0 overflow-y-auto" data-testid="schedules-detail-panel">
-                {detailContent}
+                <div className="max-w-3xl">
+                    {detailContent}
+                </div>
             </div>
         </div>
     );

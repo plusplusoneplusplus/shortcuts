@@ -96,9 +96,9 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
                         const hasOutput = !!(run.stdout || run.stderr);
                         return (
                             <div key={run.id} className="text-[11px] text-[#616161] dark:text-[#999] py-0.5" data-testid={`run-row-${run.id}`}>
-                                <div className="grid items-center gap-2" style={{ gridTemplateColumns: '16px 1fr 44px 44px 16px' }}>
+                                <div className="flex items-start gap-2">
                                     {/* Status icon */}
-                                    <span className="flex-shrink-0 text-center" aria-label={`Run status: ${run.status}`}>
+                                    <span className="flex-shrink-0 text-center w-4" aria-label={`Run status: ${run.status}`}>
                                         {run.status === 'completed'
                                             ? <span className="text-green-600">✅</span>
                                             : run.status === 'failed'
@@ -108,13 +108,16 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
                                                     : <span className="text-yellow-500">⚠️</span>}
                                     </span>
                                     {/* Start time */}
-                                    <span className="truncate" title={run.startedAt}>{formatRelativeTime(run.startedAt)}</span>
+                                    <span className="min-w-0 flex-1" title={run.startedAt}>
+                                        <span className="block">{formatRelativeTime(run.startedAt)}</span>
+                                        <span className="block text-[10px] font-mono text-[#848484]" data-testid={`iso-date-${run.id}`}>{run.startedAt.replace('T', ' ').replace(/\.\d+Z$/, '')}</span>
+                                    </span>
                                     {/* Duration */}
-                                    <span className="text-right font-mono text-[10px] text-[#848484]">
+                                    <span className="text-right font-mono text-[10px] text-[#848484] flex-shrink-0">
                                         {run.durationMs != null ? formatDuration(run.durationMs) : '—'}
                                     </span>
                                     {/* Exit code */}
-                                    <span className="text-right">
+                                    <span className="text-right flex-shrink-0">
                                         {run.exitCode != null ? (
                                             <span className={cn(
                                                 'text-[10px] px-1 py-0.5 rounded font-mono',
@@ -127,7 +130,7 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
                                         ) : null}
                                     </span>
                                     {/* Activity link */}
-                                    <span className="flex justify-center">
+                                    <span className="flex justify-center flex-shrink-0 w-4">
                                         {run.processId ? (
                                             <button
                                                 className="text-[#0078d4] hover:text-[#005fa3] leading-none"
