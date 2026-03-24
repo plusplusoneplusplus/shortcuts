@@ -38,3 +38,5 @@ export { SkillDetailPanel } from './SkillDetailPanel';
 export type { SkillDetailPanelProps, SkillInfo } from './SkillDetailPanel';
 export { SkillListItem } from './SkillListItem';
 export type { SkillListItemProps } from './SkillListItem';
+export { RichTextInput } from './RichTextInput';
+export type { RichTextInputProps, RichTextInputHandle } from './RichTextInput';
