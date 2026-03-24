@@ -73,8 +73,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const countFilter: ProcessFilter = { ...filter };
             delete countFilter.limit;
             delete countFilter.offset;
-            const allMatching = await store.getAllProcesses(countFilter);
-            const total = allMatching.length;
+            const total = store.getProcessSummaries
+                ? (await store.getProcessSummaries(countFilter)).total
+                : (await store.getAllProcesses(countFilter)).length;
 
             const limit = filter.limit ?? 50;
             const offset = filter.offset ?? 0;
@@ -488,7 +489,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         method: 'GET',
         pattern: '/api/stats',
         handler: async (_req, res) => {
-            const allProcesses = await store.getAllProcesses();
+            const allProcesses = store.getProcessSummaries
+                ? (await store.getProcessSummaries()).entries
+                : await store.getAllProcesses();
             const workspaces = await store.getWorkspaces();
 
             const byStatus: Record<string, number> = {
@@ -502,7 +505,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             for (const proc of allProcesses) {
                 byStatus[proc.status] = (byStatus[proc.status] || 0) + 1;
-                const wsId = proc.metadata?.workspaceId || '';
+                const wsId = ('workspaceId' in proc ? (proc as any).workspaceId : proc.metadata?.workspaceId) || '';
                 workspaceCounts[wsId] = (workspaceCounts[wsId] || 0) + 1;
             }
 
