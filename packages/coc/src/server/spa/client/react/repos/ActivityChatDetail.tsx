@@ -31,6 +31,7 @@ import type { ModelInfo } from '../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
 import { FollowUpInputArea } from './FollowUpInputArea';
+import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { ConversationMiniMap } from '../processes/ConversationMiniMap';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -86,6 +87,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const lastFailedMessageRef = useRef<string>('');
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
+    const richTextRef = useRef<RichTextInputHandle>(null);
     const selectedModeRef = useRef<'ask' | 'plan' | 'autopilot'>('autopilot');
 
     const loadCounterRef = useRef(0);
@@ -494,6 +496,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             )}
             {!isPending && !noSessionForFollowUp && (
                 <FollowUpInputArea
+                    richTextRef={richTextRef}
                     inputDisabled={inputDisabled}
                     sending={sending}
                     error={error}

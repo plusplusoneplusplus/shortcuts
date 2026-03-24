@@ -218,7 +218,7 @@ describe('ActivityChatDetail', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('highlightIndex={slashCommands.highlightIndex}');
         });
 
-        it('calls handleInputChange on textarea change', () => {
+        it('calls handleInputChange on input change', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('slashCommands.handleInputChange(');
         });
 
@@ -257,7 +257,7 @@ describe('ActivityChatDetail', () => {
             expect(source).toContain('const { images, addFromPaste, removeImage, clearImages } = useImagePaste()');
         });
 
-        it('attaches onPaste to follow-up textarea', () => {
+        it('attaches onPaste handler to follow-up input', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('onPaste={onImagePaste}');
         });
 
@@ -613,17 +613,17 @@ describe('ActivityChatDetail', () => {
             expect(MODE_CONFIG_SOURCE).toContain("plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus:ring-blue-500/50' }");
         });
 
-        it('applies dynamic border class from MODE_BORDER_COLORS to textarea', () => {
+        it('applies dynamic border class from MODE_BORDER_COLORS to rich text input', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_BORDER_COLORS[selectedMode].border');
         });
 
-        it('applies dynamic focus ring class from MODE_BORDER_COLORS to textarea', () => {
+        it('applies dynamic focus ring class from MODE_BORDER_COLORS to rich text input', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_BORDER_COLORS[selectedMode].ring');
         });
 
-        it('uses cn() utility to compose textarea classes with mode border', () => {
+        it('uses cn() utility to compose RichTextInput classes with mode border', () => {
             const textareaBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('<textarea') - 50,
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('<RichTextInput') - 50,
                 FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('data-testid="activity-chat-input"') + 50,
             );
             expect(textareaBlock).toContain('cn(');

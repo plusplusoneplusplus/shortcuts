@@ -1,13 +1,16 @@
-import { useRef } from 'react';
+import { useEffect } from 'react';
 import { Button, SuggestionChips } from '../shared';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { cn } from '../shared/cn';
+import { RichTextInput } from '../shared/RichTextInput';
+import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { MODE_BORDER_COLORS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 
 export interface FollowUpInputAreaProps {
+    richTextRef: React.RefObject<RichTextInputHandle>;
     inputDisabled: boolean;
     sending: boolean;
     error: string | null;
@@ -27,7 +30,12 @@ export interface FollowUpInputAreaProps {
     slashCommands: {
         handleInputChange: (val: string, cursor: number) => void;
         handleKeyDown: (e: React.KeyboardEvent) => boolean;
-        selectSkill: (name: string, input: string, setInput: (v: string) => void) => void;
+        selectSkill: (
+            name: string,
+            input: string,
+            setInput: (v: string) => void,
+            ref?: React.RefObject<RichTextInputHandle>,
+        ) => void;
         dismissMenu: () => void;
         menuVisible: boolean;
         menuFilter: string;
@@ -37,6 +45,7 @@ export interface FollowUpInputAreaProps {
 }
 
 export function FollowUpInputArea({
+    richTextRef,
     inputDisabled,
     sending,
     error,
@@ -55,7 +64,13 @@ export function FollowUpInputArea({
     task,
     slashCommands,
 }: FollowUpInputAreaProps) {
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    // Sync programmatic followUpInput changes (draft restore, clear after send) to the editor.
+    // Guard prevents re-setting when the change originated from the user typing.
+    useEffect(() => {
+        if (richTextRef.current && richTextRef.current.getValue() !== followUpInput) {
+            richTextRef.current.setValue(followUpInput);
+        }
+    }, [followUpInput]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
@@ -104,24 +119,25 @@ export function FollowUpInputArea({
                     </select>
                 </div>
                 <div className="relative flex-1 w-full sm:w-auto">
-                    <textarea
-                        ref={textareaRef}
-                        rows={1}
-                        value={followUpInput}
+                    <RichTextInput
+                        ref={richTextRef}
                         disabled={inputDisabled}
                         placeholder={inputDisabled && !sending ? 'Session expired.' : 'Send a message... (type / for skills)'}
-                        className={cn('w-full min-h-[34px] max-h-28 resize-y rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60', MODE_BORDER_COLORS[selectedMode].border, MODE_BORDER_COLORS[selectedMode].ring)}
-                        onChange={e => {
-                            const val = e.target.value;
+                        className={cn(
+                            'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
+                            MODE_BORDER_COLORS[selectedMode].border,
+                            MODE_BORDER_COLORS[selectedMode].ring,
+                        )}
+                        onChange={(val) => {
                             setFollowUpInput(val);
-                            slashCommands.handleInputChange(val, e.target.selectionStart ?? val.length);
+                            slashCommands.handleInputChange(val, val.length);
                         }}
-                        onKeyDown={e => {
+                        onKeyDown={(e) => {
                             if (slashCommands.handleKeyDown(e)) {
                                 if (e.key === 'Enter' || e.key === 'Tab') {
                                     const skill = slashCommands.filteredSkills[slashCommands.highlightIndex];
                                     if (skill) {
-                                        slashCommands.selectSkill(skill.name, followUpInput, setFollowUpInput);
+                                        slashCommands.selectSkill(skill.name, followUpInput, setFollowUpInput, richTextRef);
                                     }
                                 }
                                 return;
@@ -148,8 +164,8 @@ export function FollowUpInputArea({
                         skills={skills}
                         filter={slashCommands.menuFilter}
                         onSelect={(name) => {
-                            slashCommands.selectSkill(name, followUpInput, setFollowUpInput);
-                            textareaRef.current?.focus();
+                            slashCommands.selectSkill(name, followUpInput, setFollowUpInput, richTextRef);
+                            richTextRef.current?.focus();
                         }}
                         onDismiss={slashCommands.dismissMenu}
                         visible={slashCommands.menuVisible}
