@@ -480,6 +480,17 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
     });
 
     // ------------------------------------------------------------------
+    // GET /api/admin/prompts — Return built-in prompt default texts
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/admin/prompts',
+        handler: async (_req, res) => {
+            sendJSON(res, 200, getBuiltInPrompts());
+        },
+    });
+
+    // ------------------------------------------------------------------
     // POST /api/admin/restart — Rebuild & restart the server
     // ------------------------------------------------------------------
     routes.push({
@@ -495,4 +506,147 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }, 200);
         },
     });
+}
+
+// ============================================================================
+// Built-in Prompt Defaults
+// ============================================================================
+
+export interface BuiltInPrompt {
+    id: string;
+    title: string;
+    group: string;
+    source: string;
+    description: string;
+    text: string;
+}
+
+/** Return all built-in prompts as a record keyed by prompt id. */
+export function getBuiltInPrompts(): Record<string, BuiltInPrompt> {
+    return {
+        'read-only-mode': {
+            id: 'read-only-mode',
+            title: 'Read-only Mode',
+            group: 'Pipeline',
+            source: 'forge/copilot-sdk-wrapper/types.ts',
+            description: 'System message injected in ask/plan modes blocking file edits',
+            text: 'You are in read-only mode. You MUST NOT use any tools that create, edit, delete, or modify files in the repository, with the sole exception of the plan file. You may only read files, search code, and answer questions. If the user asks you to make changes, explain that you are in read-only/ask mode and suggest they switch to autopilot or plan mode. Do not use tools such as: edit_file, create_file, delete_file, write_file, insert_edit, or any tool that modifies the filesystem (except when writing to the plan file).',
+        },
+        'task-creation': {
+            id: 'task-creation',
+            title: 'Task Creation',
+            group: 'Pipeline',
+            source: 'forge/tasks/task-prompt-builder.ts',
+            description: 'Instructions for creating .plan.md files — naming, structure',
+            text: `Can you draft a plan given user's ask: \${description}
+
+**IMPORTANT: Output Location Requirement**
+1. You MUST save the file to this EXACT directory: \${targetPath}
+- Create a single .plan.md file
+- Do NOT save to any other location
+- Do NOT use your session state or any other directory
+2. You MUST NOT implement the task, you are only responsible for creating the plan file.`,
+        },
+        'plan-generation': {
+            id: 'plan-generation',
+            title: 'Plan Generation',
+            group: 'Pipeline',
+            source: 'forge/tasks/task-prompt-builder.ts',
+            description: 'System message governing plan document structure and output location',
+            text: `You are a plan generator. Your sole responsibility is to produce a single .plan.md file.
+
+## Output Rules
+\${locationBlock}
+- File names MUST be kebab-case and end with \`.plan.md\` (e.g. \`oauth2-authentication.plan.md\`).
+- You MUST NOT implement the plan. Only create the plan document.
+- Do NOT save files to your session state or any directory other than the specified target.
+
+## Plan Document Structure
+The plan file should include:
+- A clear title (H1)
+- Problem statement and proposed approach
+- Acceptance criteria
+- Subtasks broken into actionable items
+- Notes or open questions (if any)`,
+        },
+        'skill-prompt-wrapper': {
+            id: 'skill-prompt-wrapper',
+            title: 'Skill Prompt Wrapper',
+            group: 'Pipeline',
+            source: 'forge/pipeline/phases/prompt-resolution.ts',
+            description: 'Section headers [Skill Guidance] / [Task] wrapping skill + main prompt',
+            text: `[Skill Guidance: \${skillName}]
+\${skillContent}
+
+[Task]
+\${mainPrompt}`,
+        },
+        'memory-consolidation': {
+            id: 'memory-consolidation',
+            title: 'Memory Consolidation',
+            group: 'Memory',
+            source: 'forge/memory/memory-aggregator.ts',
+            description: 'Rules for deduplication, conflict resolution, pruning (<100 facts)',
+            text: `## Existing Memory
+\${existingMemory}
+
+## New Observations (\${count} sessions)
+\${rawSection}
+
+Produce an updated memory document following these rules:
+- Deduplicate: merge similar or redundant facts
+- Resolve conflicts: newer observations override older ones
+- Prune: drop facts that appear no longer relevant
+- Categorize: group by topic (conventions, architecture, patterns, tools, gotchas)
+- Keep it concise: target <100 facts total
+- Use markdown with clear section headers`,
+        },
+        'tool-call-cache': {
+            id: 'tool-call-cache',
+            title: 'Tool-call Cache',
+            group: 'Memory',
+            source: 'forge/memory/tool-call-cache-aggregator.ts',
+            description: '7-step clustering/dedup instructions, output JSON schema',
+            text: `You are a tool-call cache consolidator. Your job is to merge raw Q&A pairs into a deduplicated, clustered, normalized index.
+
+## Existing Consolidated Entries
+\${existingSection}
+
+## New Raw Entries (\${count} entries)
+\${rawSection}
+
+## Instructions
+1. **Deduplicate**: Merge entries with near-identical questions (e.g. "list files in src" vs "list files in the src directory"). Keep the best answer.
+2. **Cluster by topic**: Assign 1-3 topic tags per entry (e.g. ["file-structure", "git"], ["testing", "vitest"]).
+3. **Normalize questions**: Rewrite questions to be generic and reusable. Remove repo-specific paths where possible, but preserve the semantic intent.
+4. **Preserve tool sources**: Union all toolSources from merged entries.
+5. **Set confidence**: 1.0 for entries with consistent answers, lower for entries with conflicting answers.
+6. **Merge with existing**: If an existing consolidated entry covers the same question, update its answer and increment hitCount.
+7. **Prune**: Drop entries that appear trivial or overly specific to a single context.
+
+## Output Format
+Respond with ONLY a JSON array of consolidated entries. No markdown fences, no explanation.
+Each entry must have this exact shape:
+\`\`\`
+{
+  "id": "<unique-kebab-case-id>",
+  "question": "<normalized question>",
+  "answer": "<best answer>",
+  "topics": ["<topic1>", "<topic2>"],
+  "gitHash": "<most-recent-git-hash-or-null>",
+  "toolSources": ["<tool1>", "<tool2>"],
+  "createdAt": "<ISO-8601>",
+  "hitCount": <number>
+}
+\`\`\``,
+        },
+        'follow-up-suggestions': {
+            id: 'follow-up-suggestions',
+            title: 'Follow-up Suggestions',
+            group: 'UI',
+            source: 'coc/server/suggest-follow-ups-tool.ts',
+            description: 'Tool description controlling when/how AI calls suggest_follow_ups',
+            text: 'After completing your response, call this tool to suggest 2-3 brief follow-up actions the user might want to take next. Each suggestion should be a short, direct action phrase (imperative, not a question) that continues the conversation — e.g., "Show an example", "Explain the config options", "Generate the fix". IMPORTANT: Never list follow-up suggestions in your response text. Always call this tool instead.',
+        },
+    };
 }

@@ -295,8 +295,8 @@ export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments
 export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';
 export { registerDiffCommentsRoutes, DiffCommentsManager } from './diff-comments-handler';
 export type { DiffCommentsStorage } from './diff-comments-handler';
-export { registerAdminRoutes, resetWipeToken } from './admin-handler';
-export type { AdminRouteOptions } from './admin-handler';
+export { registerAdminRoutes, resetWipeToken, getBuiltInPrompts } from './admin-handler';
+export type { AdminRouteOptions, BuiltInPrompt } from './admin-handler';
 export { DataWiper } from './data-wiper';
 export type { WipeOptions, WipeResult } from './data-wiper';
 export { ScheduleYamlPersistence } from './schedule-yaml-persistence';

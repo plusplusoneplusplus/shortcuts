@@ -9,6 +9,7 @@ import { getApiBase } from '../utils/config';
 import { invalidateDisplaySettings } from '../hooks/useDisplaySettings';
 import { PreferencesSection } from './PreferencesSection';
 import { ProviderTokensSection } from './ProviderTokensSection';
+import { PromptsPanel } from './PromptsPanel';
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -25,8 +26,8 @@ interface Stats {
 }
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
-type AdminTab = 'settings' | 'providers' | 'data' | 'server';
-const TAB_LABELS: Record<AdminTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server' };
+type AdminTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts';
+const TAB_LABELS: Record<AdminTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts' };
 
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
@@ -401,7 +402,7 @@ export function AdminPanel() {
     const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
     const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
     const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
-    const tabs: AdminTab[] = ['settings', 'providers', 'data', 'server'];
+    const tabs: AdminTab[] = ['settings', 'providers', 'data', 'server', 'prompts'];
 
     return (
         <div id="view-admin">
@@ -776,6 +777,13 @@ export function AdminPanel() {
                                 {restartStatus && <span id="admin-restart-status" className="text-xs text-[#848484]">{restartStatus}</span>}
                             </div>
                         </div>
+                    </Card>
+                )}
+
+                {/* ── Prompts tab ── */}
+                {activeTab === 'prompts' && (
+                    <Card className="p-3">
+                        <PromptsPanel onError={msg => addToast(msg, 'error')} />
                     </Card>
                 )}
 

@@ -380,6 +380,25 @@ describe('Admin Handler', () => {
     });
 
     // ========================================================================
+    // GET /api/admin/prompts
+    // ========================================================================
+
+    describe('GET /api/admin/prompts', () => {
+        it('should return all built-in prompts with 200', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/prompts`);
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(Object.keys(body)).toHaveLength(7);
+            expect(body['read-only-mode']).toBeDefined();
+            expect(body['read-only-mode'].title).toBe('Read-only Mode');
+            expect(body['read-only-mode'].group).toBe('Pipeline');
+            expect(typeof body['read-only-mode'].text).toBe('string');
+        });
+    });
+
+    // ========================================================================
     // GET /api/admin/config
     // ========================================================================
 
