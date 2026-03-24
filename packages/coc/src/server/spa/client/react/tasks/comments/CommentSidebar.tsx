@@ -3,7 +3,7 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
-import { cn, Spinner } from '../../shared';
+import { cn } from '../../shared';
 import { CommentCard } from './CommentCard';
 import type { AnyComment } from '../../../shared-comment-types';
 
@@ -33,10 +33,8 @@ export interface CommentSidebarProps {
     aiErrors?: Map<string, string>;
     onClearAiError?: (id: string) => void;
     onFixWithAI?: (id: string) => void;
-    resolvingCommentId?: string | null;
     onResolveAllWithAI?: () => void;
     onCopyPrompt?: () => void;
-    resolving?: boolean;
 }
 
 export function CommentSidebar({
@@ -59,10 +57,8 @@ export function CommentSidebar({
     aiErrors,
     onClearAiError,
     onFixWithAI,
-    resolvingCommentId,
     onResolveAllWithAI,
     onCopyPrompt,
-    resolving = false,
 }: CommentSidebarProps) {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
@@ -136,18 +132,12 @@ export function CommentSidebar({
                             {openCount > 0 && onResolveAllWithAI && (
                                 <button
                                     onClick={onResolveAllWithAI}
-                                    disabled={resolving}
                                     title="Resolve all open comments with AI"
                                     aria-label="Resolve all with AI"
                                     data-testid="resolve-all-ai-btn"
-                                    className={cn(
-                                        'inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded transition-colors',
-                                        resolving
-                                            ? 'opacity-50 cursor-not-allowed text-[#848484]'
-                                            : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]',
-                                    )}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
                                 >
-                                    {resolving ? <Spinner size="sm" /> : '🤖'} Resolve All
+                                    🤖 Resolve All
                                 </button>
                             )}
                         </div>
@@ -247,8 +237,6 @@ export function CommentSidebar({
                         aiError={aiErrors?.get(comment.id) ?? null}
                         onClearAiError={onClearAiError ? () => onClearAiError(comment.id) : undefined}
                         onFixWithAI={onFixWithAI ? () => onFixWithAI(comment.id) : undefined}
-                        fixLoading={resolvingCommentId === comment.id}
-                        disabled={resolving}
                         showFilePath={showFilePath}
                     />
                     </div>

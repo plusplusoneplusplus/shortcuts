@@ -26,8 +26,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useDiffComments', () => (
         aiLoadingIds: new Set(),
         aiErrors: new Map(),
         clearAiError: vi.fn(),
-        resolving: false,
-        resolvingCommentId: null,
+
         refresh: vi.fn(),
         runRelocation: vi.fn(),
     }),

@@ -42,14 +42,10 @@ export interface DocumentContext {
 }
 
 export interface ResolveWithAIResult {
-    revisedContent: string;
-    resolvedCount: number;
     totalCount: number;
 }
 
 export interface FixWithAIResult {
-    revisedContent: string;
-    resolved: boolean;
 }
 
 export interface AskAIOptions {
@@ -83,26 +79,6 @@ function commentUrl(wsId: string, taskPath: string, commentId: string): string {
     return commentsUrl(wsId, taskPath) + '/' + encodeURIComponent(commentId);
 }
 
-/** Poll a queued task until it completes or fails. Returns the task result. */
-async function pollTaskResult<T>(taskId: string, timeoutMs = 180_000): Promise<T> {
-    const start = Date.now();
-    let delay = 1000;
-    while (Date.now() - start < timeoutMs) {
-        await new Promise(r => setTimeout(r, delay));
-        const res = await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId));
-        if (!res.ok) throw new Error('Failed to fetch task status');
-        const { task } = await res.json();
-        if (task.status === 'completed') {
-            return task.result as T;
-        }
-        if (task.status === 'failed' || task.status === 'cancelled') {
-            throw new Error(task.error || `Task ${task.status}`);
-        }
-        delay = Math.min(delay * 1.5, 5000);
-    }
-    throw new Error('Task timed out');
-}
-
 // ============================================================================
 // Hook
 // ============================================================================
@@ -124,8 +100,6 @@ export interface UseTaskCommentsReturn {
     resolveWithAI: (documentContent: string, filePath: string) => Promise<ResolveWithAIResult>;
     fixWithAI: (id: string, documentContent: string, filePath: string) => Promise<FixWithAIResult>;
     copyResolvePrompt: (documentContent: string, filePath: string) => void;
-    resolving: boolean;
-    resolvingCommentId: string | null;
     refresh: () => Promise<void>;
 }
 
@@ -136,8 +110,6 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     const [error, setError] = useState<string | null>(null);
     const [aiLoadingIds, setAiLoadingIds] = useState<Set<string>>(new Set());
     const [aiErrors, setAiErrors] = useState<Map<string, string>>(new Map());
-    const [resolving, setResolving] = useState(false);
-    const [resolvingCommentId, setResolvingCommentId] = useState<string | null>(null);
     const mountedRef = useRef(true);
 
     useEffect(() => {
@@ -286,90 +258,31 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
 
     const resolveWithAI = useCallback(
         async (documentContent: string, filePath: string): Promise<ResolveWithAIResult> => {
-            if (mountedRef.current) setResolving(true);
             const totalCount = comments.filter(c => c.status === 'open').length;
-            try {
-                // Step 1 — call batch resolve endpoint
-                const aiRes = await fetch(commentsUrl(wsId, taskPath) + '/batch-resolve', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ documentContent }),
-                });
-                if (!aiRes.ok) throw new Error('Batch resolve failed');
-
-                // Async queue path: poll for result
-                const { taskId } = await aiRes.json();
-                const result = await pollTaskResult<{ revisedContent: string; commentIds: string[] }>(taskId);
-                const revisedContent: string = result.revisedContent;
-                const commentIds: string[] = result.commentIds;
-
-                // Step 2 — write revised file only if the server returned content
-                // (the queue path uses AI tools to edit the file directly,
-                //  so revisedContent may be absent)
-                if (revisedContent) {
-                    const patchRes = await fetch(
-                        getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
-                        {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ path: filePath, content: revisedContent }),
-                        }
-                    );
-                    if (!patchRes.ok) throw new Error('Failed to write revised content');
-                }
-
-                // Step 3 — server handles comment resolution; refresh local state
-                await refresh();
-
-                return { revisedContent: revisedContent ?? '', resolvedCount: commentIds.length, totalCount };
-            } finally {
-                if (mountedRef.current) setResolving(false);
-            }
+            const aiRes = await fetch(commentsUrl(wsId, taskPath) + '/batch-resolve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ documentContent }),
+            });
+            if (!aiRes.ok) throw new Error('Batch resolve failed');
+            await aiRes.json(); // consume response (contains taskId)
+            return { totalCount };
         },
-        [wsId, taskPath, comments, refresh]
+        [wsId, taskPath, comments]
     );
 
     const fixWithAI = useCallback(
         async (id: string, documentContent: string, filePath: string): Promise<FixWithAIResult> => {
-            if (mountedRef.current) setResolvingCommentId(id);
-            try {
-                // Step 1 — per-comment ask-ai with commandId: 'resolve'
-                const aiRes = await fetch(commentUrl(wsId, taskPath, id) + '/ask-ai', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ commandId: 'resolve', documentContent }),
-                });
-                if (!aiRes.ok) throw new Error('AI resolve failed');
-
-                // Async queue path: poll for result
-                const { taskId } = await aiRes.json();
-                const result = await pollTaskResult<{ revisedContent: string; commentIds: string[] }>(taskId);
-                const revisedContent: string = result.revisedContent;
-                const commentIds: string[] = result.commentIds ?? [];
-
-                // Step 2 — write revised file only if content was returned
-                if (revisedContent) {
-                    const patchRes = await fetch(
-                        getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
-                        {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ path: filePath, content: revisedContent }),
-                        }
-                    );
-                    if (!patchRes.ok) throw new Error('Failed to write revised content');
-                }
-
-                // Step 3 — server handles comment resolution; check if AI resolved this comment
-                const wasResolved = commentIds.includes(id);
-                await refresh();
-
-                return { revisedContent, resolved: wasResolved };
-            } finally {
-                if (mountedRef.current) setResolvingCommentId(null);
-            }
+            const aiRes = await fetch(commentUrl(wsId, taskPath, id) + '/ask-ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ commandId: 'resolve', documentContent }),
+            });
+            if (!aiRes.ok) throw new Error('AI resolve failed');
+            await aiRes.json(); // consume response (contains taskId)
+            return {};
         },
-        [wsId, taskPath, refresh]
+        [wsId, taskPath]
     );
 
     const copyResolvePrompt = useCallback(
@@ -416,8 +329,6 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         resolveWithAI,
         fixWithAI,
         copyResolvePrompt,
-        resolving,
-        resolvingCommentId,
         refresh,
     };
 }

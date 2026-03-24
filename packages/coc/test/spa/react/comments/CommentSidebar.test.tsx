@@ -174,23 +174,6 @@ describe('CommentSidebar', () => {
             fireEvent.click(screen.getByTestId('resolve-all-ai-btn'));
             expect(onResolveAllWithAI).toHaveBeenCalledOnce();
         });
-
-        it('shows spinner and is disabled when resolving=true', () => {
-            const comments = [makeComment({ id: 'c1', status: 'open' })];
-            render(
-                <CommentSidebar
-                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
-                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
-                    onAskAI={noop} onCommentClick={noop}
-                    onResolveAllWithAI={vi.fn()}
-                    resolving={true}
-                />
-            );
-            const btn = screen.getByTestId('resolve-all-ai-btn');
-            expect(btn).toHaveProperty('disabled', true);
-            // Spinner renders with role="status"
-            expect(btn.querySelector('[role="status"]') ?? btn.querySelector('.animate-spin')).toBeTruthy();
-        });
     });
 
     describe('Copy Prompt button', () => {
@@ -252,28 +235,6 @@ describe('CommentSidebar', () => {
             act(() => { vi.advanceTimersByTime(2000); });
             expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('📋');
             vi.useRealTimers();
-        });
-    });
-
-    describe('disabled prop propagation', () => {
-        it('disables individual comment actions when resolving=true', () => {
-            const comments = [makeComment({ id: 'c1', status: 'open' })];
-            render(
-                <CommentSidebar
-                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
-                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
-                    onAskAI={noop} onCommentClick={noop}
-                    onResolveAllWithAI={vi.fn()}
-                    resolving={true}
-                />
-            );
-            const card = screen.getByTestId('comment-card-c1');
-            const resolveBtn = card.querySelector('button[aria-label="Resolve"]') as HTMLButtonElement;
-            const editBtn = card.querySelector('button[aria-label="Edit"]') as HTMLButtonElement;
-            const deleteBtn = card.querySelector('button[aria-label="Delete"]') as HTMLButtonElement;
-            expect(resolveBtn?.disabled).toBe(true);
-            expect(editBtn?.disabled).toBe(true);
-            expect(deleteBtn?.disabled).toBe(true);
         });
     });
 });

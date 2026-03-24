@@ -157,8 +157,6 @@ export function MarkdownReviewEditor({
         resolveWithAI,
         fixWithAI,
         copyResolvePrompt,
-        resolving,
-        resolvingCommentId,
         refresh,
     } = useTaskComments(wsId, filePath);
 
@@ -509,14 +507,7 @@ export function MarkdownReviewEditor({
     const handleResolveAllWithAI = useCallback(async () => {
         try {
             const result = await resolveWithAI(rawContent, filePath);
-            setRawContent(result.revisedContent);
-            if (result.resolvedCount === result.totalCount) {
-                addToast(`All ${result.resolvedCount} comments resolved. Document updated.`, 'success');
-            } else if (result.resolvedCount === 0) {
-                addToast(`AI could not resolve any of the ${result.totalCount} comments. Document may still have been updated.`, 'warning');
-            } else {
-                addToast(`${result.resolvedCount} of ${result.totalCount} comments resolved. Document updated.`, 'success');
-            }
+            addToast(`Batch resolve queued for ${result.totalCount} open comment(s).`, 'info');
         } catch (err) {
             addToast(`Batch resolve failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
         }
@@ -524,13 +515,8 @@ export function MarkdownReviewEditor({
 
     const handleFixWithAI = useCallback(async (id: string) => {
         try {
-            const result = await fixWithAI(id, rawContent, filePath);
-            setRawContent(result.revisedContent);
-            if (result.resolved) {
-                addToast('Comment fixed and resolved. Document updated.', 'success');
-            } else {
-                addToast('AI updated the document but did not resolve the comment (it may need clarification).', 'info');
-            }
+            await fixWithAI(id, rawContent, filePath);
+            addToast('Fix with AI queued.', 'info');
         } catch (err) {
             addToast(`Fix failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
         }
@@ -608,9 +594,7 @@ export function MarkdownReviewEditor({
         onClearAiError: clearAiError,
         onResolveAllWithAI: handleResolveAllWithAI,
         onCopyPrompt: handleCopyPrompt,
-        resolving,
         onFixWithAI: handleFixWithAI,
-        resolvingCommentId,
     };
 
     return (
@@ -809,7 +793,6 @@ export function MarkdownReviewEditor({
                     aiError={aiErrors.get(activePopoverComment.id) ?? null}
                     onClearAiError={(id) => clearAiError(id)}
                     onFixWithAI={handleFixWithAI}
-                    fixLoading={resolvingCommentId === activePopoverComment.id}
                 />
             )}
             {showAiButtons && aiDialogType === 'follow-prompt' && (

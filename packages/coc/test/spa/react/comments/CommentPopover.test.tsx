@@ -532,41 +532,4 @@ describe('CommentPopover', () => {
         expect(onFixWithAI).toHaveBeenCalledWith('fix-me');
     });
 
-    it('Fix with AI button is disabled when fixLoading is true', () => {
-        render(
-            <CommentPopover
-                comment={makeComment()}
-                position={{ top: 100, left: 200 }}
-                onClose={noop}
-                onResolve={noop}
-                onUnresolve={noop}
-                onDelete={noop}
-                onEdit={noop}
-                onFixWithAI={vi.fn()}
-                fixLoading={true}
-            />,
-        );
-        const btn = screen.getByTestId('popover-fix-with-ai');
-        expect(btn).toBeTruthy();
-        expect((btn as HTMLButtonElement).disabled).toBe(true);
-    });
-
-    it('fixLoading=true shows spinner instead of icon', () => {
-        render(
-            <CommentPopover
-                comment={makeComment()}
-                position={{ top: 100, left: 200 }}
-                onClose={noop}
-                onResolve={noop}
-                onUnresolve={noop}
-                onDelete={noop}
-                onEdit={noop}
-                onFixWithAI={vi.fn()}
-                fixLoading={true}
-            />,
-        );
-        const btn = screen.getByTestId('popover-fix-with-ai');
-        // Should contain a spinner, not the 🔧 emoji
-        expect(btn.textContent).not.toContain('🔧');
-    });
 });

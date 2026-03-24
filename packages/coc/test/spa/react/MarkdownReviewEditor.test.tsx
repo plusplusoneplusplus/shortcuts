@@ -41,8 +41,6 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
         resolveWithAI: mockResolveWithAI,
         fixWithAI: mockFixWithAI,
         copyResolvePrompt: mockCopyResolvePrompt,
-        resolving: false,
-        resolvingCommentId: null,
         refresh: mockRefresh,
         ...hookOverrides,
     }),
@@ -752,8 +750,8 @@ describe('MarkdownReviewEditor', () => {
             return result;
         }
 
-        it('handleResolveAllWithAI calls resolveWithAI with rawContent and filePath, updates content on success', async () => {
-            mockResolveWithAI.mockResolvedValue({ revisedContent: '# Updated', resolvedCount: 3 });
+        it('handleResolveAllWithAI calls resolveWithAI with rawContent and filePath, shows queued toast', async () => {
+            mockResolveWithAI.mockResolvedValue({ totalCount: 3 });
             await renderAndWaitForContent();
 
             // The handler is wired as onResolveAllWithAI on CommentSidebar.
@@ -814,14 +812,14 @@ describe('MarkdownReviewEditor', () => {
             return result;
         }
 
-        it('CommentSidebar receives onFixWithAI and resolvingCommentId props', async () => {
+        it('CommentSidebar receives onFixWithAI prop', async () => {
             await renderWithComments();
             // Sidebar should render since comments.length > 0
             expect(screen.getByTestId('comment-sidebar')).toBeTruthy();
         });
 
         it('handleResolveAllWithAI calls resolveWithAI and shows success toast', async () => {
-            mockResolveWithAI.mockResolvedValue({ revisedContent: '# Updated content', resolvedCount: 2 });
+            mockResolveWithAI.mockResolvedValue({ totalCount: 2 });
             await renderWithComments();
 
             const resolveAllBtn = screen.queryByTestId('resolve-all-with-ai-btn');
@@ -835,8 +833,8 @@ describe('MarkdownReviewEditor', () => {
                     'test.md'
                 );
                 expect(mockAddToast).toHaveBeenCalledWith(
-                    '2 comments resolved. Document updated.',
-                    'success'
+                    'Batch resolve queued for 2 open comment(s).',
+                    'info'
                 );
             }
         });
@@ -879,7 +877,7 @@ describe('MarkdownReviewEditor', () => {
         });
 
         it('handleFixWithAI calls fixWithAI and shows success toast', async () => {
-            mockFixWithAI.mockResolvedValue({ revisedContent: '# Fixed content' });
+            mockFixWithAI.mockResolvedValue({});
             await renderWithComments();
 
             const fixBtn = screen.queryByTestId('fix-with-ai-btn-c1');
@@ -890,8 +888,8 @@ describe('MarkdownReviewEditor', () => {
 
                 expect(mockFixWithAI).toHaveBeenCalledWith('c1', expect.any(String), 'test.md');
                 expect(mockAddToast).toHaveBeenCalledWith(
-                    'Comment fixed. Document updated.',
-                    'success'
+                    'Fix with AI queued.',
+                    'info'
                 );
             }
         });

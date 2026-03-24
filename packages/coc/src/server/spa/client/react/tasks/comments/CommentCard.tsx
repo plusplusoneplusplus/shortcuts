@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { cn, Button, Spinner } from '../../shared';
+import { cn, Button } from '../../shared';
 import { CommentReply } from './CommentReply';
 import { MarkdownView } from '../../processes/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
@@ -29,8 +29,6 @@ export interface CommentCardProps {
     aiError?: string | null;
     onClearAiError?: () => void;
     onFixWithAI?: () => void;
-    fixLoading?: boolean;
-    disabled?: boolean;
     showFilePath?: boolean;
 }
 
@@ -46,8 +44,6 @@ export function CommentCard({
     aiError,
     onClearAiError,
     onFixWithAI,
-    fixLoading,
-    disabled = false,
     showFilePath = false,
 }: CommentCardProps) {
     const [editing, setEditing] = useState(false);
@@ -175,35 +171,33 @@ export function CommentCard({
             <div className="flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" onClick={e => e.stopPropagation()}>
                 {!isResolved && onFixWithAI && (
                     <button
-                        className={cn(ACTION_BTN, disabled && 'opacity-40 cursor-not-allowed pointer-events-none')}
+                        className={ACTION_BTN}
                         onClick={onFixWithAI}
-                        disabled={disabled || fixLoading}
                         title="Fix with AI"
                         aria-label="Fix with AI"
                         data-testid="fix-with-ai"
                     >
-                        {fixLoading ? <Spinner size="xs" /> : '🔧'}
+                        🔧
                     </button>
                 )}
                 <AICommandMenu
                     onCommand={(cmdId, q) => q !== undefined ? onAskAI(cmdId, q) : onAskAI(cmdId)}
                     loading={aiLoading}
-                    disabled={disabled}
                     triggerClassName={ACTION_BTN}
                 />
                 {isResolved ? (
-                    <button className={cn(ACTION_BTN, disabled && 'opacity-40 cursor-not-allowed pointer-events-none')} onClick={onUnresolve} disabled={disabled} title="Reopen" aria-label="Reopen">🔓</button>
+                    <button className={ACTION_BTN} onClick={onUnresolve} title="Reopen" aria-label="Reopen">🔓</button>
                 ) : (
-                    <button className={cn(ACTION_BTN, disabled && 'opacity-40 cursor-not-allowed pointer-events-none')} onClick={onResolve} disabled={disabled || fixLoading} title="Resolve" aria-label="Resolve">✅</button>
+                    <button className={ACTION_BTN} onClick={onResolve} title="Resolve" aria-label="Resolve">✅</button>
                 )}
-                <button className={cn(ACTION_BTN, disabled && 'opacity-40 cursor-not-allowed pointer-events-none')} onClick={() => { setEditing(true); setEditText(comment.comment); }} disabled={disabled} title="Edit" aria-label="Edit">✏️</button>
+                <button className={ACTION_BTN} onClick={() => { setEditing(true); setEditText(comment.comment); }} title="Edit" aria-label="Edit">✏️</button>
                 {confirmDelete ? (
                     <>
-                        <Button size="sm" variant="danger" onClick={onDelete} disabled={disabled} className="!px-1.5 !py-0.5 !text-[10px]">Confirm</Button>
-                        <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(false)} disabled={disabled} className="!px-1.5 !py-0.5 !text-[10px]">Cancel</Button>
+                        <Button size="sm" variant="danger" onClick={onDelete} className="!px-1.5 !py-0.5 !text-[10px]">Confirm</Button>
+                        <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(false)} className="!px-1.5 !py-0.5 !text-[10px]">Cancel</Button>
                     </>
                 ) : (
-                    <button className={cn(ACTION_BTN, disabled && 'opacity-40 cursor-not-allowed pointer-events-none')} onClick={() => setConfirmDelete(true)} disabled={disabled} title="Delete" aria-label="Delete">🗑️</button>
+                    <button className={ACTION_BTN} onClick={() => setConfirmDelete(true)} title="Delete" aria-label="Delete">🗑️</button>
                 )}
             </div>
 

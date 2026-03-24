@@ -25,8 +25,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
         resolveWithAI: vi.fn(),
         fixWithAI: vi.fn(),
         copyResolvePrompt: vi.fn(),
-        resolving: false,
-        resolvingCommentId: null,
+
         refresh: vi.fn(),
     }),
 }));

@@ -30,7 +30,6 @@ export interface CommentPopoverProps {
     aiError?: string | null;
     onClearAiError?: (id: string) => void;
     onFixWithAI?: (id: string) => Promise<void>;
-    fixLoading?: boolean;
 }
 
 export function CommentPopover({
@@ -46,7 +45,6 @@ export function CommentPopover({
     aiError,
     onClearAiError,
     onFixWithAI,
-    fixLoading,
 }: CommentPopoverProps) {
     const popoverRef = useRef<HTMLDivElement>(null);
     const [clampedPos, setClampedPos] = useState(position);
@@ -201,12 +199,11 @@ export function CommentPopover({
                         <button
                             className={cn(ACTION_BTN, isMobile && 'touch-target')}
                             onClick={() => onFixWithAI(comment.id)}
-                            disabled={fixLoading}
                             title="Fix with AI"
                             aria-label="Fix with AI"
                             data-testid="popover-fix-with-ai"
                         >
-                            {fixLoading ? <Spinner size="sm" /> : '🔧'}
+                            🔧
                         </button>
                     )}
                 </div>
