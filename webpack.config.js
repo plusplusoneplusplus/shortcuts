@@ -3,7 +3,27 @@
 'use strict';
 
 const path = require('path');
+const webpack = require('webpack');
 const CopyPlugin = require('copy-webpack-plugin');
+
+// Node.js built-in modules that cannot be bundled for web targets.
+// Set to false to suppress "Module not found" errors for dead-code imports.
+const NODE_FALLBACKS = {
+  assert: false,
+  child_process: false,
+  crypto: false,
+  fs: false,
+  http: false,
+  https: false,
+  net: false,
+  os: false,
+  path: false,
+  stream: false,
+  tls: false,
+  url: false,
+  util: false,
+  zlib: false,
+};
 
 //@ts-check
 /** @typedef {import('webpack').Configuration} WebpackConfig **/
@@ -83,8 +103,16 @@ const webviewConfig = {
     // IIFE format - script runs immediately without needing exports
     iife: true
   },
+  // vscode module is imported by dead-code paths pulled in via shared/index.ts;
+  // it is never called at runtime inside the webview bundle.
+  externals: {
+    vscode: 'commonjs vscode'
+  },
   resolve: {
-    extensions: ['.ts', '.js']
+    extensions: ['.ts', '.js'],
+    // Suppress "Module not found" errors for Node.js built-ins that are
+    // transitively imported but never executed in the webview context.
+    fallback: NODE_FALLBACKS
   },
   module: {
     rules: [
@@ -105,6 +133,13 @@ const webviewConfig = {
       }
     ]
   },
+  plugins: [
+    // Replace node: scheme imports (e.g. 'node:path') with their plain names
+    // so that the NODE_FALLBACKS resolve.fallback entries can handle them.
+    new webpack.NormalModuleReplacementPlugin(/^node:(.*)/, (resource) => {
+      resource.request = resource.request.replace(/^node:/, '');
+    })
+  ],
   devtool: 'source-map', // Full source maps for webview debugging
   // Don't split chunks for webview - we want a single file
   optimization: {
