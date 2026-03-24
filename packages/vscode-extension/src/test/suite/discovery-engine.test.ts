@@ -300,7 +300,10 @@ suite('Discovery Engine Tests', () => {
         });
     });
 
-    suite('Event Handling', () => {
+    suite('Event Handling', function() {
+        // Increased timeout: vscode.workspace.findFiles can be slow under Windows parallel load
+        this.timeout(15000);
+
         test('should emit process-updated events during discovery', async () => {
             let updateCount = 0;
             

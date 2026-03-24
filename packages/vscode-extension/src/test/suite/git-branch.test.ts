@@ -881,7 +881,10 @@ suite('Git Branch Tests', () => {
     // ============================================
     // Search Pattern Edge Cases
     // ============================================
-    suite('Search Pattern Edge Cases', () => {
+    suite('Search Pattern Edge Cases', function() {
+        // Increased timeout: git branch + findstr pipe commands are slow under Windows parallel load
+        this.timeout(15000);
+
         let branchService: BranchService;
 
         setup(() => {
