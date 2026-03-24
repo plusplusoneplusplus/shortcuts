@@ -665,7 +665,7 @@ export function ActivityListPane({
                                             : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
                                     )}
                                 >
-                                    🤖 Auto
+                                    {isAutopilotPaused ? '▶' : '⏸'} AP
                                 </button>
                             </>
                         )}

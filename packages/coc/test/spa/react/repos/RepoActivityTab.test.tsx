@@ -462,11 +462,12 @@ describe('ActivityListPane: shared list component', () => {
         expect(section).toContain('All');
     });
 
-    it('segmented group has Auto segment for autopilot-only pause', () => {
+    it('segmented group has AP segment for autopilot-only pause', () => {
         const groupIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="pause-toggle-group"');
-        const section = ACTIVITY_LIST_PANE_SOURCE.slice(groupIndex, groupIndex + 1600);
+        const section = ACTIVITY_LIST_PANE_SOURCE.slice(groupIndex, groupIndex + 2200);
         expect(section).toContain('data-testid="autopilot-pause-resume-btn"');
-        expect(section).toContain('Auto');
+        expect(section).toContain('} AP');
+        expect(section).not.toContain('🤖 Auto');
     });
 
     it('autopilot segment is conditionally rendered via onPauseResumeAutopilot prop', () => {
