@@ -11,7 +11,7 @@ import * as http from 'http';
 import type { WikiData } from './wiki-data';
 import { sendJson, send404, send400, getErrorMessage } from './router';
 import type { ContextBuilder } from './context-builder';
-import type { AskAIFunction } from './dw-ask-handler';
+import type { AskAIFunction } from './types';
 import { handleAskRequest } from './dw-ask-handler';
 import { handleExploreRequest } from './dw-explore-handler';
 import { handleAdminRequest } from './dw-admin-handlers';

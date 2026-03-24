@@ -4,12 +4,16 @@
  * POST /api/wikis/:wikiId/ask — AI Q&A endpoint with SSE streaming.
  * Adapted from deep-wiki's ask-handler for multi-wiki CoC server.
  *
+ * The shared core logic lives in `handleAskCore()`, which is also used by
+ * the deep-wiki standalone handler (`dw-ask-handler.ts`).
+ *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
+import type { ResolvedAskContext } from './wiki-backend';
 import { send400, readJsonBody } from '../shared/router';
 
 // ============================================================================
@@ -80,7 +84,44 @@ export async function handleWikiAskRequest(
         return;
     }
 
-    // Set SSE headers (no redundant CORS — router handles it)
+    const resolvedContext: ResolvedAskContext = {
+        contextBuilder: options.wikiManager.ensureContextBuilder(wikiId),
+        sendMessage,
+        model: options.aiModel ?? wiki.registration.aiModel,
+        workingDirectory: options.aiWorkingDirectory ?? wiki.registration.repoPath,
+        sessionManager: wiki.sessionManager ?? undefined,
+    };
+
+    await handleAskCore(res, askReq, resolvedContext);
+}
+
+// ============================================================================
+// Core Ask Logic (shared by native and dw handlers)
+// ============================================================================
+
+/**
+ * Core ask handler logic — shared between the multi-wiki handler
+ * (`handleWikiAskRequest`) and the standalone deep-wiki handler
+ * (`handleAskRequest` in `dw-ask-handler.ts`).
+ *
+ * The caller is responsible for:
+ *   - Resolving the context (WikiManager lookup or flat injection)
+ *   - Parsing and validating the request body
+ *
+ * This function handles:
+ *   - SSE header setup
+ *   - Context retrieval via ContextBuilder
+ *   - Session management (create/reuse/fallback)
+ *   - Prompt building and AI invocation
+ *   - SSE streaming (context, chunks, done, error events)
+ *   - `res.end()`
+ */
+export async function handleAskCore(
+    res: ServerResponse,
+    askReq: AskRequest,
+    context: ResolvedAskContext,
+): Promise<void> {
+    // Set SSE headers (CORS is handled by the router/middleware layer)
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -88,21 +129,18 @@ export async function handleWikiAskRequest(
     });
 
     try {
-        // Ensure ContextBuilder is initialized
-        const contextBuilder = options.wikiManager.ensureContextBuilder(wikiId);
-
         // Retrieve context
-        const context = contextBuilder.retrieve(askReq.question);
+        const retrieved = context.contextBuilder.retrieve(askReq.question);
         sendSSE(res, {
             type: 'context',
-            componentIds: context.componentIds,
-            ...(context.themeContexts.length > 0 ? {
-                themeIds: context.themeContexts.map((t: { themeId: string; slug: string }) => `${t.themeId}/${t.slug}`),
+            componentIds: retrieved.componentIds,
+            ...(retrieved.themeContexts.length > 0 ? {
+                themeIds: retrieved.themeContexts.map((t: { themeId: string; slug: string }) => `${t.themeId}/${t.slug}`),
             } : {}),
         });
 
         // Determine session mode vs legacy mode
-        const sessionManager = wiki.sessionManager;
+        const sessionManager = context.sessionManager;
         let sessionId = askReq.sessionId;
         let isSessionMode = false;
 
@@ -125,14 +163,13 @@ export async function handleWikiAskRequest(
         }
 
         let fullResponse: string;
-        const model = options.aiModel ?? wiki.registration.aiModel;
-        const workingDirectory = options.aiWorkingDirectory ?? wiki.registration.repoPath;
+        const { model, workingDirectory, sendMessage } = context;
 
         if (isSessionMode && sessionManager && sessionId) {
             const prompt = buildAskPrompt(
                 askReq.question,
-                context.contextText,
-                context.graphSummary,
+                retrieved.contextText,
+                retrieved.graphSummary,
                 undefined,
             );
             const result = await sessionManager.send(sessionId, prompt, {
@@ -146,8 +183,8 @@ export async function handleWikiAskRequest(
         } else {
             const prompt = buildAskPrompt(
                 askReq.question,
-                context.contextText,
-                context.graphSummary,
+                retrieved.contextText,
+                retrieved.graphSummary,
                 askReq.conversationHistory,
             );
             fullResponse = await sendMessage(prompt, {

@@ -21,7 +21,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { sendSSE, readBody } from './ask-handler';
 import { sendJson, send400, send404, send500 } from '../shared/router';
-import type { WikiManager } from './wiki-manager';
+import type { WikiProvider, GenerateWiki } from './wiki-backend';
 
 // ============================================================================
 // Dynamic Import Helper
@@ -69,9 +69,9 @@ export async function handleStartGenerate(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     wikiId: string,
-    wikiManager: WikiManager,
+    wikiProvider: WikiProvider,
 ): Promise<void> {
-    const wiki = wikiManager.get(wikiId);
+    const wiki = wikiProvider.get(wikiId);
     if (!wiki) {
         sendJson(res, { error: `Wiki not found: ${wikiId}` }, 404);
         return;
@@ -385,9 +385,9 @@ export function handleCancelGenerate(
 export function handleGetGenerateStatus(
     res: http.ServerResponse,
     wikiId: string,
-    wikiManager: WikiManager,
+    wikiProvider: WikiProvider,
 ): void {
-    const wiki = wikiManager.get(wikiId);
+    const wiki = wikiProvider.get(wikiId);
     if (!wiki) {
         sendJson(res, { error: `Wiki not found: ${wikiId}` }, 404);
         return;
@@ -446,9 +446,9 @@ export async function handleComponentRegenerate(
     res: http.ServerResponse,
     wikiId: string,
     componentId: string,
-    wikiManager: WikiManager,
+    wikiProvider: WikiProvider,
 ): Promise<void> {
-    const wiki = wikiManager.get(wikiId);
+    const wiki = wikiProvider.get(wikiId);
     if (!wiki) {
         sendJson(res, { error: `Wiki not found: ${wikiId}` }, 404);
         return;

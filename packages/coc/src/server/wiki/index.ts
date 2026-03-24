@@ -68,12 +68,16 @@ export { registerWikiRoutes } from './wiki-routes';
 export type { WikiRouteOptions, WikiRouteHelpers } from './wiki-routes';
 
 // Wiki Handlers (SSE utility shared across handlers)
-export { sendSSE, readBody, buildAskPrompt } from './ask-handler';
+export { sendSSE, readBody, buildAskPrompt, handleAskCore } from './ask-handler';
 export type { AskRequest, ConversationMessage, WikiAskHandlerOptions } from './ask-handler';
-export { buildExplorePrompt } from './explore-handler';
+export { buildExplorePrompt, handleExploreCore } from './explore-handler';
 export type { ExploreRequest, WikiExploreHandlerOptions } from './explore-handler';
 export { getGenerationState, resetGenerationState, resetAllGenerationStates } from './generate-handler';
 export type { GenerateRequest } from './generate-handler';
+
+// Wiki Backend (shared types for handler deduplication)
+export type { ResolvedAskContext, ResolvedExploreContext, GenerateWiki, WikiProvider } from './wiki-backend';
+export { createSingleWikiProvider } from './wiki-backend';
 
 // WebSocket (standalone wiki WebSocket, distinct from process WebSocket)
 export { WebSocketServer as WikiWebSocketServer } from './websocket';

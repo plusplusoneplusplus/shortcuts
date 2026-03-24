@@ -4,12 +4,16 @@
  * POST /api/wikis/:wikiId/explore/:componentId — On-demand deep-dive.
  * Adapted from deep-wiki's explore-handler for multi-wiki CoC server.
  *
+ * The shared core logic lives in `handleExploreCore()`, which is also used by
+ * the deep-wiki standalone handler (`dw-explore-handler.ts`).
+ *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
+import type { ResolvedExploreContext } from './wiki-backend';
 import { sendSSE, readBody } from './ask-handler';
 import { send400, send404 } from '../shared/router';
 
@@ -62,9 +66,45 @@ export async function handleWikiExploreRequest(
         return;
     }
 
+    const resolvedContext: ResolvedExploreContext = {
+        wikiData: wiki.wikiData,
+        sendMessage,
+        model: options.aiModel ?? wiki.registration.aiModel,
+        workingDirectory: options.aiWorkingDirectory ?? wiki.registration.repoPath,
+    };
+
+    await handleExploreCore(req, res, componentId, resolvedContext);
+}
+
+// ============================================================================
+// Core Explore Logic (shared by native and dw handlers)
+// ============================================================================
+
+/**
+ * Core explore handler logic — shared between the multi-wiki handler
+ * (`handleWikiExploreRequest`) and the standalone deep-wiki handler
+ * (`handleExploreRequest` in `dw-explore-handler.ts`).
+ *
+ * The caller is responsible for:
+ *   - Validating wiki access and AI availability
+ *   - Resolving the explore context
+ *
+ * This function handles:
+ *   - Component lookup and validation
+ *   - Body parsing
+ *   - SSE header setup and streaming
+ *   - Prompt building and AI invocation
+ *   - `res.end()`
+ */
+export async function handleExploreCore(
+    req: IncomingMessage,
+    res: ServerResponse,
+    componentId: string,
+    context: ResolvedExploreContext,
+): Promise<void> {
     // Validate component exists
-    const graph = wiki.wikiData.graph;
-    const mod = graph.components.find(m => m.id === componentId);
+    const graph = context.wikiData.graph;
+    const mod = graph.components.find((m: { id: string }) => m.id === componentId);
     if (!mod) {
         send404(res, `Component not found: ${componentId}`);
         return;
@@ -82,20 +122,19 @@ export async function handleWikiExploreRequest(
         }
     }
 
-    // Set SSE headers (no redundant CORS — router handles it)
+    // Set SSE headers (CORS is handled by the router/middleware layer)
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
     });
 
-    const model = options.aiModel ?? wiki.registration.aiModel;
-    const workingDirectory = options.aiWorkingDirectory ?? wiki.registration.repoPath;
+    const { model, workingDirectory, sendMessage } = context;
 
     try {
         sendSSE(res, { type: 'status', message: `Analyzing ${mod.name} component...` });
 
-        const detail = wiki.wikiData.getComponentDetail(componentId);
+        const detail = context.wikiData.getComponentDetail(componentId);
         const existingMarkdown = detail?.markdown || '';
         const prompt = buildExplorePrompt(mod, existingMarkdown, graph, exploreReq);
 

@@ -19,8 +19,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sendJson, send404, send400, send500, readBody, getErrorMessage } from './router';
 import { validateConfig, discoverConfigFile } from './dw-config-loader';
-import { handleGenerateRequest } from './dw-generate-handler';
-import type { GenerateHandlerContext } from './dw-generate-handler';
+import {
+    handleStartGenerate,
+    handleCancelGenerate,
+    handleGetGenerateStatus,
+    handleComponentRegenerate,
+} from './generate-handler';
+import { createSingleWikiProvider } from './wiki-backend';
 import type { WikiData } from './wiki-data';
 import type { WebSocketServer } from './websocket';
 
@@ -88,13 +93,54 @@ export function handleAdminRequest(
 
     // Generate routes: /api/admin/generate*
     if (pathname.startsWith('/api/admin/generate')) {
-        const generateContext: GenerateHandlerContext = {
-            wikiDir: context.wikiDir,
-            repoPath: context.repoPath,
-            wikiData: context.wikiData,
-            wsServer: context.wsServer,
-        };
-        return handleGenerateRequest(req, res, pathname, method, generateContext);
+        const SYNTHETIC_WIKI_ID = '__dw__';
+        const provider = createSingleWikiProvider({
+            registration: {
+                repoPath: context.repoPath,
+                wikiDir: context.wikiDir,
+            },
+            wikiData: context.wikiData ?? {
+                graph: { components: [], categories: [], architectureNotes: '', project: { name: '', description: '', language: '', buildSystem: '', entryPoints: [] } },
+                reload: () => { /* no-op */ },
+                getComponentDetail: () => null,
+            },
+        });
+
+        // POST /api/admin/generate — Start generation (SSE stream)
+        if (method === 'POST' && pathname === '/api/admin/generate') {
+            handleStartGenerate(req, res, SYNTHETIC_WIKI_ID, provider).catch(() => {
+                if (!res.headersSent) {
+                    send500(res, 'Failed to start generation');
+                }
+            });
+            return true;
+        }
+
+        // POST /api/admin/generate/cancel — Cancel running generation
+        if (method === 'POST' && pathname === '/api/admin/generate/cancel') {
+            handleCancelGenerate(res, SYNTHETIC_WIKI_ID);
+            return true;
+        }
+
+        // GET /api/admin/generate/status — Get phase cache status
+        if (method === 'GET' && pathname === '/api/admin/generate/status') {
+            handleGetGenerateStatus(res, SYNTHETIC_WIKI_ID, provider);
+            return true;
+        }
+
+        // POST /api/admin/generate/component/:id — Regenerate single component
+        const componentMatch = pathname.match(/^\/api\/admin\/generate\/component\/(.+)$/);
+        if (method === 'POST' && componentMatch) {
+            const componentId = decodeURIComponent(componentMatch[1]);
+            handleComponentRegenerate(req, res, SYNTHETIC_WIKI_ID, componentId, provider).catch(() => {
+                if (!res.headersSent) {
+                    send500(res, 'Failed to regenerate component');
+                }
+            });
+            return true;
+        }
+
+        return false;
     }
 
     return false;

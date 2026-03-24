@@ -15,7 +15,7 @@ import * as url from 'url';
 import type { WikiData } from './wiki-data';
 import { handleApiRequest } from './api-handlers';
 import type { ContextBuilder } from './context-builder';
-import type { AskAIFunction } from './dw-ask-handler';
+import type { AskAIFunction } from './types';
 import type { ConversationSessionManager } from './conversation-session-manager';
 import type { WebSocketServer } from './websocket';
 
