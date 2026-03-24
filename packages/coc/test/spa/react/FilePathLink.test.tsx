@@ -53,10 +53,27 @@ describe('FilePathLink', () => {
         expect(span?.className).toContain('text-red');
     });
 
-    it('includes truncate class', () => {
+    it('includes truncate class by default', () => {
         const { container } = render(<FilePathLink path="/tmp/test.ts" />);
         const span = container.querySelector('.file-path-link');
         expect(span?.className).toContain('truncate');
+        expect(span?.className).toContain('max-w-[260px]');
+    });
+
+    it('replaces truncate with break-all when noTruncate is true', () => {
+        const { container } = render(<FilePathLink path="/tmp/test.ts" noTruncate />);
+        const span = container.querySelector('.file-path-link');
+        expect(span?.className).toContain('break-all');
+        expect(span?.className).not.toContain('truncate');
+        expect(span?.className).not.toContain('max-w-[260px]');
+    });
+
+    it('preserves default truncation when noTruncate is false', () => {
+        const { container } = render(<FilePathLink path="/tmp/test.ts" noTruncate={false} />);
+        const span = container.querySelector('.file-path-link');
+        expect(span?.className).toContain('truncate');
+        expect(span?.className).toContain('max-w-[260px]');
+        expect(span?.className).not.toContain('break-all');
     });
 
     it('returns null for empty path', () => {

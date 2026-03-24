@@ -14,14 +14,20 @@ export interface FilePathLinkProps {
     className?: string;
     /** When true (default), display the shortened path via `shortenFilePath()`. */
     shorten?: boolean;
+    /** When true, disable truncation and allow the path to wrap with `break-all`. */
+    noTruncate?: boolean;
 }
 
-export function FilePathLink({ path, className, shorten = true }: FilePathLinkProps) {
+export function FilePathLink({ path, className, shorten = true, noTruncate = false }: FilePathLinkProps) {
     if (!path) return null;
     const normalized = toForwardSlashes(path);
     return (
         <span
-            className={cn('file-path-link truncate max-w-[260px]', className)}
+            className={cn(
+                'file-path-link',
+                noTruncate ? 'break-all' : 'truncate max-w-[260px]',
+                className
+            )}
             data-full-path={normalized}
             title={normalized}
         >
