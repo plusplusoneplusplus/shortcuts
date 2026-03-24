@@ -612,7 +612,9 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                     if (!documentContent || typeof documentContent !== 'string') {
                         return sendError(res, 400, 'Missing required field: documentContent');
                     }
-                    const resolvePrompt = buildBatchResolvePrompt([comment], documentContent, taskPath);
+                    const taskRoot = await resolveTaskRootPath(wsId);
+                    const absoluteTaskPath = taskRoot ? path.join(taskRoot, taskPath) : taskPath;
+                    const resolvePrompt = buildBatchResolvePrompt([comment], absoluteTaskPath, taskPath);
 
                     try {
                         const taskId = await enqueueResolveTask(wsId, taskPath, [comment.id], resolvePrompt, documentContent);
@@ -700,7 +702,9 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             }
 
             // Build prompt and invoke AI
-            const prompt = buildBatchResolvePrompt(openComments, documentContent, taskPath);
+            const taskRoot = await resolveTaskRootPath(wsId);
+            const absoluteTaskPath = taskRoot ? path.join(taskRoot, taskPath) : taskPath;
+            const prompt = buildBatchResolvePrompt(openComments, absoluteTaskPath, taskPath);
             const commentIds = openComments.map(c => c.id);
 
             try {
@@ -828,8 +832,8 @@ function buildEnrichedPrompt(
  */
 export function buildBatchResolvePrompt(
     comments: TaskComment[],
-    documentContent: string,
-    filePath: string
+    absoluteFilePath: string,
+    displayPath: string
 ): string {
     const openComments = comments
         .filter(c => c.status === 'open')
@@ -839,11 +843,9 @@ export function buildBatchResolvePrompt(
     prompt += 'Please review and address the following comments in the markdown document.\n';
     prompt += 'For each comment, make the necessary changes to the document.\n\n';
     prompt += '---\n\n';
-    prompt += `## File: ${filePath}\n\n`;
-    prompt += '### Full Document Content\n\n';
-    prompt += '```markdown\n';
-    prompt += documentContent;
-    prompt += '\n```\n\n';
+    prompt += `## File: ${displayPath}\n\n`;
+    prompt += `The document is located at: ${absoluteFilePath}\n`;
+    prompt += 'Read it using your tools before making changes.\n\n';
 
     openComments.forEach((c, i) => {
         prompt += `### Comment ${i + 1} (Line ${c.selection.startLine})\n\n`;

@@ -91,12 +91,12 @@ describe('buildBatchResolvePrompt', () => {
 
     it('produces correct prompt skeleton with headers and sections', () => {
         const comments = [makeComment()];
-        const prompt = buildBatchResolvePrompt(comments, '# My Doc\n\nContent here', 'feature/task1.md');
+        const prompt = buildBatchResolvePrompt(comments, '/workspace/feature/task1.md', 'feature/task1.md');
 
         expect(prompt).toContain('# Document Revision Request');
         expect(prompt).toContain('## File: feature/task1.md');
-        expect(prompt).toContain('### Full Document Content');
-        expect(prompt).toContain('```markdown\n# My Doc\n\nContent here\n```');
+        expect(prompt).toContain('The document is located at: /workspace/feature/task1.md');
+        expect(prompt).toContain('Read it using your tools before making changes.');
         expect(prompt).toContain('### Comment 1 (Line 5)');
         expect(prompt).toContain('**ID:** `aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee`');
         expect(prompt).toContain('**Selected Text:**');
@@ -386,7 +386,7 @@ describe('batch-resolve endpoints', () => {
             const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
             const taskBody = JSON.parse(taskRes.body);
             expect(taskBody.task.payload.prompt).toContain('# Document Revision Request');
-            expect(taskBody.task.payload.prompt).toContain(DOC_CONTENT);
+            expect(taskBody.task.payload.prompt).toContain('The document is located at:');
             expect(taskBody.task.payload.prompt).toContain('my selected text');
         });
     });
