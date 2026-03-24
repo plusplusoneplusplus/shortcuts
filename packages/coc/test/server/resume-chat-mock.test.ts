@@ -178,14 +178,20 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
 
         // Pause request 1 at the getProcess call so request 2 can arrive while
         // request 1 is in-flight (pid is already in resumeInProgress).
-        let releaseRequest1: () => void = () => {};
-        const request1Paused = new Promise<void>(r => { releaseRequest1 = r; });
-        let getProcessCallCount = 0;
+        // Use Promise-based signaling (not polling) so the test is deterministic
+        // under parallel load: the signal fires the exact moment the mock is entered,
+        // guaranteeing pid is already in resumeInProgress when request 2 fires.
+        let signalRequest1AtPause!: () => void;
+        const request1AtPause = new Promise<void>(r => { signalRequest1AtPause = r; });
+        let releaseRequest1!: () => void;
+        const request1Release = new Promise<void>(r => { releaseRequest1 = r; });
+        let isFirstCall = true;
         store.getProcess = vi.fn().mockImplementation(
             async (id: string) => {
-                getProcessCallCount++;
-                if (getProcessCallCount === 1) {
-                    await request1Paused;
+                if (isFirstCall) {
+                    isFirstCall = false;
+                    signalRequest1AtPause(); // signal: pid is in resumeInProgress
+                    await request1Release;  // hold until test releases us
                 }
                 return store.processes.get(id);
             }
@@ -196,9 +202,9 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
         // Start request 1; it will suspend at the paused getProcess
         const req1Promise = postJSON(url, { message: 'Request 1' });
 
-        // Wait until request 1 is in-flight (handler has added pid to resumeInProgress
-        // and is now awaiting the paused getProcess)
-        await vi.waitFor(() => expect(getProcessCallCount).toBeGreaterThan(0), { timeout: 2000 });
+        // Wait until request 1 is definitely paused inside getProcess.
+        // At this point pid is guaranteed to be in resumeInProgress.
+        await request1AtPause;
 
         // Now send request 2 — pid is in resumeInProgress, so handler returns 409
         const req2Promise = postJSON(url, { message: 'Request 2' });

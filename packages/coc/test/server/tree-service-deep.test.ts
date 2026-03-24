@@ -110,6 +110,7 @@ describe('RepoTreeService.listDirectoryDeep', () => {
     });
 
     it('threads showIgnored option through all recursion levels', async () => {
+        // Increased timeout: git/rg operations slow down significantly under parallel load on Windows
         seedDefaultRepo();
         // Create a .gitignore that ignores 'ignored-dir'
         fs.writeFileSync(path.join(repoDir, '.gitignore'), 'ignored-dir/\n');
@@ -135,7 +136,7 @@ describe('RepoTreeService.listDirectoryDeep', () => {
             expect(visibleEntry.children).toBeDefined();
             expect(visibleEntry.children!.some(c => c.name === 'file.ts')).toBe(true);
         }
-    });
+    }, 90000);
 });
 
 // ── Route-level depth param tests ─────────────────────────────────────────────
