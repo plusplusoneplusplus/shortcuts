@@ -8,6 +8,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { parseSlashCommands, getSlashCommandContext } from './slash-command-parser';
 import type { SkillItem } from './SlashCommandMenu';
+import type { RichTextInputHandle } from '../shared/RichTextInput';
 
 export interface UseSlashCommandsResult {
     menuVisible: boolean;
@@ -17,9 +18,14 @@ export interface UseSlashCommandsResult {
     /** Call on every input change with current text and cursor position */
     handleInputChange: (text: string, cursorPos: number) => void;
     /** Intercepts keyboard events when menu is open. Returns true if event was consumed. */
-    handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
+    handleKeyDown: (e: React.KeyboardEvent<HTMLElement>) => boolean;
     /** Insert selected skill at the slash position */
-    selectSkill: (name: string, text: string, setText: (t: string) => void) => void;
+    selectSkill: (
+        name: string,
+        text: string,
+        setText: (t: string) => void,
+        ref?: React.RefObject<RichTextInputHandle>,
+    ) => void;
     /** Extract skills and clean prompt for submission */
     parseAndExtract: (text: string) => { skills: string[]; prompt: string };
     /** Dismiss the menu */
@@ -51,7 +57,7 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         }
     }, []);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLElement>): boolean => {
         if (!menuVisible || filteredSkills.length === 0) return false;
 
         if (e.key === 'ArrowDown') {
@@ -77,7 +83,12 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         return false;
     }, [menuVisible, filteredSkills.length]);
 
-    const selectSkill = useCallback((name: string, text: string, setText: (t: string) => void) => {
+    const selectSkill = useCallback((
+        name: string,
+        text: string,
+        setText: (t: string) => void,
+        ref?: React.RefObject<RichTextInputHandle>,
+    ) => {
         const start = slashStartRef.current;
         if (start < 0) return;
 
@@ -90,8 +101,12 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         // Replace the /partial with /name followed by a space
         const before = text.slice(0, start);
         const after = text.slice(end);
-        const insertion = `/${name} `;
-        setText(before + insertion + after);
+        const newText = before + `/${name} ` + after;
+        if (ref?.current) {
+            ref.current.setValue(newText);
+        } else {
+            setText(newText);
+        }
 
         setMenuVisible(false);
         setMenuFilter('');

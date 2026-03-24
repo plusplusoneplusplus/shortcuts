@@ -1,0 +1,138 @@
+/**
+ * Tests for useSlashCommands hook — slash-command autocomplete state management.
+ *
+ * Covers selectSkill with/without RichTextInput ref, handleKeyDown type
+ * compatibility, and handleInputChange menu control.
+ */
+
+import { describe, it, expect, vi } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useSlashCommands } from '../../../../src/server/spa/client/react/repos/useSlashCommands';
+import type { SkillItem } from '../../../../src/server/spa/client/react/repos/SlashCommandMenu';
+import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';
+
+const skills: SkillItem[] = [
+    { name: 'impl', description: 'Implement code changes with tests' },
+    { name: 'draft', description: 'Draft a UX specification' },
+    { name: 'go-deep', description: 'Advanced research and verification' },
+];
+
+/** Trigger the menu by simulating typing "/im" at position 3 */
+function openMenu(result: ReturnType<typeof useSlashCommands>) {
+    act(() => {
+        result.handleInputChange('/im', 3);
+    });
+}
+
+describe('useSlashCommands', () => {
+    // T1: selectSkill with no ref calls setText with the replacement string
+    it('selectSkill with no ref calls setText', () => {
+        const { result } = renderHook(() => useSlashCommands(skills));
+        const setText = vi.fn();
+
+        // Open the menu so slashStartRef is set
+        openMenu(result.current);
+
+        act(() => {
+            result.current.selectSkill('impl', '/im', setText);
+        });
+
+        expect(setText).toHaveBeenCalledWith('/impl ');
+    });
+
+    // T2: selectSkill with a ref calls ref.current.setValue and does NOT call setText
+    it('selectSkill with a ref calls ref.current.setValue', () => {
+        const { result } = renderHook(() => useSlashCommands(skills));
+        const setText = vi.fn();
+        const ref: React.RefObject<RichTextInputHandle> = {
+            current: {
+                setValue: vi.fn(),
+                getValue: vi.fn(() => ''),
+                focus: vi.fn(),
+            },
+        };
+
+        openMenu(result.current);
+
+        act(() => {
+            result.current.selectSkill('impl', '/im', setText, ref);
+        });
+
+        expect(ref.current!.setValue).toHaveBeenCalledWith('/impl ');
+        expect(setText).not.toHaveBeenCalled();
+    });
+
+    // T3: selectSkill with a ref where ref.current is null falls back to setText
+    it('selectSkill with null ref.current falls back to setText', () => {
+        const { result } = renderHook(() => useSlashCommands(skills));
+        const setText = vi.fn();
+        const ref: React.RefObject<RichTextInputHandle> = { current: null };
+
+        openMenu(result.current);
+
+        act(() => {
+            result.current.selectSkill('impl', '/im', setText, ref);
+        });
+
+        expect(setText).toHaveBeenCalledWith('/impl ');
+    });
+
+    // T4: After selectSkill (either path), menuVisible is false
+    it('menuVisible is false after selectSkill', () => {
+        const { result } = renderHook(() => useSlashCommands(skills));
+        const setText = vi.fn();
+
+        openMenu(result.current);
+        expect(result.current.menuVisible).toBe(true);
+
+        act(() => {
+            result.current.selectSkill('impl', '/im', setText);
+        });
+
+        expect(result.current.menuVisible).toBe(false);
+    });
+
+    // T5: handleKeyDown accepts React.KeyboardEvent<HTMLElement> (compile-time check)
+    it('handleKeyDown accepts HTMLElement keyboard events', () => {
+        const { result } = renderHook(() => useSlashCommands(skills));
+
+        openMenu(result.current);
+
+        // Create a keyboard event typed as HTMLElement (not HTMLTextAreaElement)
+        const event: React.KeyboardEvent<HTMLElement> = {
+            key: 'Escape',
+            preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent<HTMLElement>;
+
+        let consumed = false;
+        act(() => {
+            consumed = result.current.handleKeyDown(event);
+        });
+
+        expect(consumed).toBe(true);
+        expect(event.preventDefault).toHaveBeenCalled();
+    });
+
+    // T6: handleInputChange + menu visibility smoke test
+    it('handleInputChange drives menu visibility correctly', () => {
+        const { result } = renderHook(() => useSlashCommands(skills));
+
+        // Initially menu is hidden
+        expect(result.current.menuVisible).toBe(false);
+
+        // Typing a slash command opens the menu
+        act(() => {
+            result.current.handleInputChange('/d', 2);
+        });
+        expect(result.current.menuVisible).toBe(true);
+        expect(result.current.menuFilter).toBe('d');
+        expect(result.current.filteredSkills).toHaveLength(1);
+        expect(result.current.filteredSkills[0].name).toBe('draft');
+
+        // Typing non-slash text closes the menu
+        act(() => {
+            result.current.handleInputChange('hello', 5);
+        });
+        expect(result.current.menuVisible).toBe(false);
+    });
+});
