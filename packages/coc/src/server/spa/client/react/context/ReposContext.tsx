@@ -121,8 +121,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                         fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks`).catch(() => null),
                     ]);
 
-                    const processRes = await fetchApi(`/processes?workspace=${encodeURIComponent(ws.id)}&limit=200`).catch(() => null);
-                    const processes = processRes?.processes || [];
+                    const processRes = await fetchApi(`/processes/summaries?workspace=${encodeURIComponent(ws.id)}&limit=200`).catch(() => null);
+                    const processes = processRes?.summaries || [];
                     const stats = { success: 0, failed: 0, running: 0 };
                     for (const p of processes) {
                         if (p.status === 'completed') stats.success++;

@@ -110,6 +110,23 @@ describe('ReposContext', () => {
         expect(screen.getByText('Repo One')).toBeTruthy();
     });
 
+    it('fetches /processes/summaries instead of /processes for lightweight stats', async () => {
+        (fetchApi as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('ws-1')])) // /workspaces
+            .mockResolvedValue(null); // subsequent calls
+
+        render(<ProviderWithConsumer />);
+        await waitFor(() => {
+            expect(screen.getByTestId('repo-ws-1')).toBeTruthy();
+        });
+
+        const calls = (fetchApi as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => c[0]);
+        const processCalls = calls.filter((url: string) => url?.includes('/processes'));
+        expect(processCalls.length).toBe(1);
+        expect(processCalls[0]).toContain('/processes/summaries');
+        expect(processCalls[0]).not.toMatch(/\/processes\?/);
+    });
+
     it('shows empty list when workspaces API returns empty array', async () => {
         (fetchApi as ReturnType<typeof vi.fn>)
             .mockResolvedValueOnce(makeWorkspacesResponse([]))
