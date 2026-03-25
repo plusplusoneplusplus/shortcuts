@@ -377,7 +377,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 setExactOpenVisible(true);
                 return;
             }
-            if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+            if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA' && !(document.activeElement as HTMLElement)?.isContentEditable) {
                 e.preventDefault();
                 searchInputRef.current?.focus();
             } else if (e.key === 'Escape' && (searchInput || document.activeElement === searchInputRef.current)) {

@@ -165,6 +165,10 @@ describe('ExplorerPanel — search integration', () => {
             expect(panelSource).toContain("document.activeElement?.tagName !== 'INPUT'");
         });
 
+        it('skips "/" shortcut when a contentEditable element is focused', () => {
+            expect(panelSource).toContain('isContentEditable');
+        });
+
         it('handles Escape to clear search', () => {
             expect(panelSource).toContain("e.key === 'Escape'");
             expect(panelSource).toContain('onSearchClear()');
