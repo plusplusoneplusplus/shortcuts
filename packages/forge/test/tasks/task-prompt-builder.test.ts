@@ -595,6 +595,12 @@ describe('buildAutoFolderLocationBlock', () => {
         const block = buildAutoFolderLocationBlock('C:/Users/dev/tasks', ['coc']);
         expect(block).toContain('C:/Users/dev/tasks/<chosen-folder>');
     });
+
+    it('should explicitly exclude .copilot/session-state from save location', () => {
+        const block = buildAutoFolderLocationBlock('/tmp/tasks', ['coc']);
+        expect(block).toContain('.copilot/session-state');
+        expect(block).toContain('Do NOT save');
+    });
 });
 
 // ============================================================================
