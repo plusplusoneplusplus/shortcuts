@@ -40,8 +40,8 @@ describe('useSlashCommands', () => {
         expect(setText).toHaveBeenCalledWith('/impl ');
     });
 
-    // T2: selectSkill with a ref calls ref.current.setValue and does NOT call setText
-    it('selectSkill with a ref calls ref.current.setValue', () => {
+    // T2: selectSkill with a ref calls both ref.current.setValue AND setText
+    it('selectSkill with a ref calls ref.current.setValue and setText', () => {
         const { result } = renderHook(() => useSlashCommands(skills));
         const setText = vi.fn();
         const ref: React.RefObject<RichTextInputHandle> = {
@@ -59,7 +59,7 @@ describe('useSlashCommands', () => {
         });
 
         expect(ref.current!.setValue).toHaveBeenCalledWith('/impl ');
-        expect(setText).not.toHaveBeenCalled();
+        expect(setText).toHaveBeenCalledWith('/impl ');
     });
 
     // T3: selectSkill with a ref where ref.current is null falls back to setText

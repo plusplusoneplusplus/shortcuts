@@ -257,7 +257,7 @@ export function GenerateTaskDialog({
                         ref={richTextRef}
                         id="gen-task-prompt"
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[80px]"
-                        onChange={value => setPrompt(value)}
+                        onChange={(value) => setPrompt(value)}
                         onKeyDown={e => {
                             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && prompt.trim() && !isSubmitting && !isQueued) {
                                 e.preventDefault();

@@ -128,9 +128,9 @@ export function FollowUpInputArea({
                             MODE_BORDER_COLORS[selectedMode].border,
                             MODE_BORDER_COLORS[selectedMode].ring,
                         )}
-                        onChange={(val) => {
+                        onChange={(val, cursorPos) => {
                             setFollowUpInput(val);
-                            slashCommands.handleInputChange(val, val.length);
+                            slashCommands.handleInputChange(val, cursorPos);
                         }}
                         onKeyDown={(e) => {
                             if (slashCommands.handleKeyDown(e)) {

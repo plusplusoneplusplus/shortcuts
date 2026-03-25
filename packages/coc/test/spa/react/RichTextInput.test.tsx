@@ -30,7 +30,7 @@ describe('RichTextInput', () => {
         });
         const div = screen.getByTestId('rich');
         fireEvent.input(div);
-        expect(onChange).toHaveBeenCalledWith('typed text');
+        expect(onChange).toHaveBeenCalledWith('typed text', expect.any(Number));
     });
 
     it('disabled renders contentEditable false', () => {
@@ -118,7 +118,7 @@ describe('RichTextInput', () => {
         // Simulate Chromium behavior: innerText has trailing \n
         Object.defineProperty(div, 'innerText', { value: '/\n', writable: true, configurable: true });
         fireEvent.input(div);
-        expect(onChange).toHaveBeenCalledWith('/');
+        expect(onChange).toHaveBeenCalledWith('/', expect.any(Number));
     });
 
     it('strips multiple trailing newlines from onChange', () => {
@@ -128,7 +128,7 @@ describe('RichTextInput', () => {
         const div = screen.getByTestId('rich');
         Object.defineProperty(div, 'innerText', { value: 'hello\n\n', writable: true, configurable: true });
         fireEvent.input(div);
-        expect(onChange).toHaveBeenCalledWith('hello');
+        expect(onChange).toHaveBeenCalledWith('hello', expect.any(Number));
     });
 
     it('preserves interior newlines in onChange', () => {
@@ -138,7 +138,32 @@ describe('RichTextInput', () => {
         const div = screen.getByTestId('rich');
         Object.defineProperty(div, 'innerText', { value: 'line1\nline2\n', writable: true, configurable: true });
         fireEvent.input(div);
-        expect(onChange).toHaveBeenCalledWith('line1\nline2');
+        expect(onChange).toHaveBeenCalledWith('line1\nline2', expect.any(Number));
+    });
+
+    it('passes cursor position as second argument to onChange', () => {
+        const onChange = vi.fn();
+        render(<RichTextInput onChange={onChange} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        Object.defineProperty(div, 'innerText', { value: 'hello', writable: true, configurable: true });
+        fireEvent.input(div);
+        // In jsdom, getSelection may return offset 0; in real browsers, actual cursor position
+        expect(onChange).toHaveBeenCalledWith('hello', expect.any(Number));
+    });
+
+    it('falls back to text.length when getSelection is unavailable', () => {
+        const origGetSelection = window.getSelection;
+        window.getSelection = () => null as any;
+        try {
+            const onChange = vi.fn();
+            render(<RichTextInput onChange={onChange} data-testid="rich2" />);
+            const div = screen.getByTestId('rich2');
+            Object.defineProperty(div, 'innerText', { value: '/cmd', writable: true, configurable: true });
+            fireEvent.input(div);
+            expect(onChange).toHaveBeenCalledWith('/cmd', 4);
+        } finally {
+            window.getSelection = origGetSelection;
+        }
     });
 
     it('getValue strips trailing newlines', () => {

@@ -333,9 +333,9 @@ export function EnqueueDialog() {
                     <RichTextInput
                         ref={richTextRef}
                         value={prompt}
-                        onChange={(text) => {
+                        onChange={(text, cursorPos) => {
                             setPrompt(text);
-                            slashCommands.handleInputChange(text, text.length);
+                            slashCommands.handleInputChange(text, cursorPos);
                         }}
                         onPaste={submitting ? undefined : addFromPaste}
                         onKeyDown={handleKeyDown}

@@ -9,7 +9,7 @@ export interface RichTextInputHandle {
 
 export interface RichTextInputProps {
     value?: string;
-    onChange: (val: string) => void;
+    onChange: (val: string, cursorPos: number) => void;
     onPaste?: (e: React.ClipboardEvent) => void;
     onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
     disabled?: boolean;
@@ -43,7 +43,21 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
 
         const handleInput = () => {
             const text = (divRef.current?.innerText ?? '').replace(/\n+$/, '');
-            props.onChange(text);
+            let cursorPos = text.length;
+            try {
+                const sel = window.getSelection?.();
+                if (sel && sel.rangeCount > 0 && divRef.current
+                    && document.activeElement === divRef.current) {
+                    const range = sel.getRangeAt(0);
+                    if (divRef.current.contains(range.startContainer)) {
+                        const pre = document.createRange();
+                        pre.selectNodeContents(divRef.current);
+                        pre.setEnd(range.startContainer, range.startOffset);
+                        cursorPos = Math.min(pre.toString().length, text.length);
+                    }
+                }
+            } catch { /* fallback to text.length */ }
+            props.onChange(text, cursorPos);
         };
 
         return (

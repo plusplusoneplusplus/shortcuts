@@ -102,10 +102,10 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         const before = text.slice(0, start);
         const after = text.slice(end);
         const newText = before + `/${name} ` + after;
+        // Always sync React state; additionally update DOM when ref is available
+        setText(newText);
         if (ref?.current) {
             ref.current.setValue(newText);
-        } else {
-            setText(newText);
         }
 
         setMenuVisible(false);
