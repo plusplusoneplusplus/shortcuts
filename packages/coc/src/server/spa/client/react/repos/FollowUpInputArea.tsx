@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Button, SuggestionChips } from '../shared';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { cn } from '../shared/cn';
@@ -66,7 +66,14 @@ export function FollowUpInputArea({
 }: FollowUpInputAreaProps) {
     // Sync programmatic followUpInput changes (draft restore, clear after send) to the editor.
     // Guard prevents re-setting when the change originated from the user typing.
+    // skipNextSyncRef is set by selectSkill callers so the effect does not overwrite the cursor
+    // position that selectSkill already placed synchronously via ref.current.setValue(text, cursor).
+    const skipNextSyncRef = useRef(false);
     useEffect(() => {
+        if (skipNextSyncRef.current) {
+            skipNextSyncRef.current = false;
+            return;
+        }
         if (richTextRef.current && richTextRef.current.getValue() !== followUpInput) {
             richTextRef.current.setValue(followUpInput);
         }
@@ -137,6 +144,7 @@ export function FollowUpInputArea({
                                 if (e.key === 'Enter' || e.key === 'Tab') {
                                     const skill = slashCommands.filteredSkills[slashCommands.highlightIndex];
                                     if (skill) {
+                                        skipNextSyncRef.current = true;
                                         slashCommands.selectSkill(skill.name, followUpInput, setFollowUpInput, richTextRef);
                                     }
                                 }
@@ -164,6 +172,7 @@ export function FollowUpInputArea({
                         skills={skills}
                         filter={slashCommands.menuFilter}
                         onSelect={(name) => {
+                            skipNextSyncRef.current = true;
                             slashCommands.selectSkill(name, followUpInput, setFollowUpInput, richTextRef);
                             richTextRef.current?.focus();
                         }}
