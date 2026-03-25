@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { TaskManager, ARCHIVE_UNDO_FILE, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory, VALID_TASK_STATUSES } from '@plusplusoneplusplus/forge';
+import { getFullTaskHierarchy, ARCHIVE_UNDO_FILE, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory, VALID_TASK_STATUSES } from '@plusplusoneplusplus/forge';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from './api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
@@ -319,13 +319,8 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 : resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
             const includeArchiveFolder= parsed.query.showArchived === 'true';
 
-            const manager = new TaskManager({
-                workspaceRoot: ws.rootPath,
-                settings: { ...DEFAULT_SETTINGS, folderPath: resolvedFolder },
-            });
-
             try {
-                const hierarchy = await manager.getTaskFolderHierarchy();
+                const hierarchy = await getFullTaskHierarchy(resolvedFolder);
 
                 // When showArchived=true, include archive/ as a visible subfolder
                 if (includeArchiveFolder) {

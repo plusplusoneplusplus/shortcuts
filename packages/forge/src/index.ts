@@ -785,7 +785,15 @@ export {
     moveExternalTask,
     taskExistsInFolder,
     taskExists,
-    // TaskManager facade
+    // Composite helpers (replacements for TaskManager facade)
+    resolveTaskPaths,
+    ensureTaskFolders,
+    getAllTasks,
+    getAllDocuments,
+    getAllDocumentGroups,
+    getFullTaskHierarchy,
+    getFeatureFolders,
+    // TaskManager facade (deprecated)
     TaskManager,
     TaskManagerOptions,
     // Task prompt builders

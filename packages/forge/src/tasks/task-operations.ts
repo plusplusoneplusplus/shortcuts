@@ -1,5 +1,5 @@
 /**
- * Task CRUD operations - Pure Node.js functions for task file management.
+ * Task CRUD operations and composite helpers — Pure Node.js functions for task file management.
  * No VS Code dependencies. Every function takes explicit path arguments.
  */
 
@@ -8,6 +8,21 @@ import * as path from 'path';
 import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, safeWriteFile } from '../utils';
 import { toForwardSlashes } from '../utils/path-utils';
 import { parseFileName, sanitizeFileName } from './task-parser';
+import type {
+    Task,
+    TaskDocument,
+    TaskDocumentGroup,
+    TaskFolder,
+    TasksViewerSettings,
+    DiscoverySettings,
+} from './types';
+import {
+    scanTasksRecursively,
+    scanDocumentsRecursively,
+    groupTaskDocuments,
+    buildTaskFolderHierarchy,
+} from './task-scanner';
+import { loadRelatedItems } from './related-items-loader';
 
 // Re-export parseFileName and sanitizeFileName for convenience
 export { parseFileName, sanitizeFileName } from './task-parser';
@@ -597,4 +612,160 @@ export function taskExists(name: string, tasksFolder: string): boolean {
     const sanitized = sanitizeFileName(name);
     const filePath = path.join(tasksFolder, `${sanitized}.md`);
     return safeExists(filePath);
+}
+
+// ============================================================================
+// Path resolution helpers
+// ============================================================================
+
+/**
+ * Resolve the absolute tasks-folder and archive-folder paths from workspace root and settings.
+ */
+export function resolveTaskPaths(
+    workspaceRoot: string,
+    settings: Pick<TasksViewerSettings, 'folderPath'>
+): { tasksFolder: string; archiveFolder: string } {
+    const folderPath = settings.folderPath || '.vscode/tasks';
+    const tasksFolder = path.isAbsolute(folderPath)
+        ? folderPath
+        : path.join(workspaceRoot, folderPath);
+    return {
+        tasksFolder,
+        archiveFolder: path.join(tasksFolder, 'archive'),
+    };
+}
+
+/**
+ * Ensure both the tasks folder and archive sub-folder exist on disk.
+ */
+export function ensureTaskFolders(tasksFolder: string): void {
+    ensureDirectoryExists(tasksFolder);
+    ensureDirectoryExists(path.join(tasksFolder, 'archive'));
+}
+
+// ============================================================================
+// Composite scanning helpers
+// ============================================================================
+
+/**
+ * Scan and return all tasks, optionally including archived tasks.
+ */
+export async function getAllTasks(
+    tasksFolder: string,
+    showArchived: boolean = false
+): Promise<Task[]> {
+    const tasks: Task[] = scanTasksRecursively(tasksFolder, '', false);
+    if (showArchived) {
+        const archiveFolder = path.join(tasksFolder, 'archive');
+        tasks.push(...scanTasksRecursively(archiveFolder, '', true));
+    }
+    return tasks;
+}
+
+/**
+ * Scan and return all task documents, optionally including archived documents.
+ */
+export async function getAllDocuments(
+    tasksFolder: string,
+    showArchived: boolean = false
+): Promise<TaskDocument[]> {
+    const documents: TaskDocument[] = scanDocumentsRecursively(tasksFolder, '', false);
+    if (showArchived) {
+        const archiveFolder = path.join(tasksFolder, 'archive');
+        documents.push(...scanDocumentsRecursively(archiveFolder, '', true));
+    }
+    return documents;
+}
+
+/**
+ * Scan documents and group them by base name.
+ */
+export async function getAllDocumentGroups(
+    tasksFolder: string,
+    showArchived: boolean = false
+): Promise<{ groups: TaskDocumentGroup[]; singles: TaskDocument[] }> {
+    const documents = await getAllDocuments(tasksFolder, showArchived);
+    return groupTaskDocuments(documents);
+}
+
+/**
+ * Build the full task folder hierarchy, optionally loading related items.
+ */
+export async function getFullTaskHierarchy(
+    tasksFolder: string,
+    options?: {
+        showArchived?: boolean;
+        discovery?: Pick<DiscoverySettings, 'enabled' | 'showRelatedInTree'>;
+    }
+): Promise<TaskFolder> {
+    const showArchived = options?.showArchived ?? false;
+    const documents = await getAllDocuments(tasksFolder, showArchived);
+    const archiveFolder = path.join(tasksFolder, 'archive');
+
+    const { root, folderMap } = buildTaskFolderHierarchy(
+        tasksFolder,
+        documents,
+        showArchived,
+        showArchived ? archiveFolder : undefined
+    );
+
+    if (options?.discovery?.enabled && options?.discovery?.showRelatedInTree) {
+        for (const [, folder] of folderMap) {
+            if (!folder.relativePath) continue;
+            const relatedItems = await loadRelatedItems(folder.folderPath);
+            if (relatedItems) {
+                folder.relatedItems = relatedItems;
+            }
+        }
+    }
+
+    return root;
+}
+
+/**
+ * Recursively collect feature sub-folders under a tasks folder, excluding `archive/`.
+ */
+export async function getFeatureFolders(
+    tasksFolder: string
+): Promise<Array<{ path: string; displayName: string; relativePath: string }>> {
+    const folders: Array<{ path: string; displayName: string; relativePath: string }> = [];
+    await collectFeatureFoldersRecursively(tasksFolder, '', folders);
+    return folders;
+}
+
+async function collectFeatureFoldersRecursively(
+    dirPath: string,
+    relativePath: string,
+    folders: Array<{ path: string; displayName: string; relativePath: string }>
+): Promise<void> {
+    const archiveFolderName = 'archive';
+    const readResult = safeReadDir(dirPath);
+
+    if (!readResult.success || !readResult.data) {
+        return;
+    }
+
+    for (const item of readResult.data) {
+        if (item === archiveFolderName) {
+            continue;
+        }
+
+        const itemPath = path.join(dirPath, item);
+        const statsResult = safeStats(itemPath);
+
+        if (!statsResult.success || !statsResult.data || !statsResult.data.isDirectory()) {
+            continue;
+        }
+
+        const itemRelativePath = toForwardSlashes(relativePath ? path.join(relativePath, item) : item);
+        const displayName = relativePath ? `${relativePath}/${item}` : item;
+
+        folders.push({
+            path: itemPath,
+            displayName,
+            relativePath: itemRelativePath,
+        });
+
+        await collectFeatureFoldersRecursively(itemPath, itemRelativePath, folders);
+    }
 }

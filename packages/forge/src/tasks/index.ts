@@ -89,13 +89,22 @@ export {
     moveExternalTask,
     taskExistsInFolder,
     taskExists,
+    // Composite helpers (replacements for TaskManager facade)
+    resolveTaskPaths,
+    ensureTaskFolders,
+    getAllTasks,
+    getAllDocuments,
+    getAllDocumentGroups,
+    getFullTaskHierarchy,
+    getFeatureFolders,
 } from './task-operations';
 
-export {
-    // TaskManager facade
-    TaskManager,
-    TaskManagerOptions,
-} from './task-manager';
+/**
+ * @deprecated Use standalone functions (`resolveTaskPaths`, `getAllTasks`,
+ * `getFullTaskHierarchy`, etc.) from `@plusplusoneplusplus/forge` instead.
+ * This class will be removed in a future version.
+ */
+export { TaskManager, TaskManagerOptions } from './task-manager';
 
 export {
     // Task prompt builders (pure Node.js, no VS Code deps)

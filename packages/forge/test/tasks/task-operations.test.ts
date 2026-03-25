@@ -31,6 +31,13 @@ import {
     taskExists,
     sanitizeFileName,
     parseFileName,
+    resolveTaskPaths,
+    ensureTaskFolders,
+    getAllTasks,
+    getAllDocuments,
+    getAllDocumentGroups,
+    getFullTaskHierarchy,
+    getFeatureFolders,
 } from '../../src/tasks/task-operations';
 
 let tmpDir: string;
@@ -690,5 +697,223 @@ describe('parseFileName', () => {
 
     it('does not treat unknown suffixes as docType', () => {
         expect(parseFileName('task1.xyz.md')).toEqual({ baseName: 'task1.xyz', docType: undefined });
+    });
+});
+
+// ============================================================================
+// resolveTaskPaths
+// ============================================================================
+
+describe('resolveTaskPaths', () => {
+    it('resolves relative folderPath against workspaceRoot', () => {
+        const result = resolveTaskPaths('/home/user/project', { folderPath: '.tasks' });
+        expect(result.tasksFolder).toBe(path.join('/home/user/project', '.tasks'));
+        expect(result.archiveFolder).toBe(path.join('/home/user/project', '.tasks', 'archive'));
+    });
+
+    it('uses absolute folderPath as-is', () => {
+        const absPath = path.resolve(tmpDir, 'abs-tasks');
+        const result = resolveTaskPaths(tmpDir, { folderPath: absPath });
+        expect(result.tasksFolder).toBe(absPath);
+        expect(result.archiveFolder).toBe(path.join(absPath, 'archive'));
+    });
+
+    it('defaults to .vscode/tasks when folderPath is empty', () => {
+        const result = resolveTaskPaths(tmpDir, { folderPath: '' });
+        expect(result.tasksFolder).toBe(path.join(tmpDir, '.vscode/tasks'));
+    });
+});
+
+// ============================================================================
+// ensureTaskFolders
+// ============================================================================
+
+describe('ensureTaskFolders', () => {
+    it('creates tasks and archive directories', () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        ensureTaskFolders(tasksFolder);
+        expect(fs.existsSync(tasksFolder)).toBe(true);
+        expect(fs.existsSync(path.join(tasksFolder, 'archive'))).toBe(true);
+    });
+});
+
+// ============================================================================
+// getAllTasks
+// ============================================================================
+
+function writeTestTask(relativePath: string, content?: string, status?: string): string {
+    const absPath = path.join(tmpDir, relativePath);
+    fs.mkdirSync(path.dirname(absPath), { recursive: true });
+    let body = content ?? `# ${path.basename(relativePath, '.md')}\n`;
+    if (status) {
+        body = `---\nstatus: ${status}\n---\n\n${body}`;
+    }
+    fs.writeFileSync(absPath, body, 'utf-8');
+    return absPath;
+}
+
+describe('getAllTasks', () => {
+    it('returns tasks from root and nested folders', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(tasksFolder, { recursive: true });
+        writeTestTask('.tasks/root.md');
+        writeTestTask('.tasks/feature/nested.md');
+
+        const tasks = await getAllTasks(tasksFolder);
+        const names = tasks.map(t => t.name).sort();
+        expect(names).toEqual(['nested', 'root']);
+    });
+
+    it('excludes archive when showArchived is false', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(path.join(tasksFolder, 'archive'), { recursive: true });
+        writeTestTask('.tasks/active.md');
+        writeTestTask('.tasks/archive/old.md');
+
+        const tasks = await getAllTasks(tasksFolder, false);
+        expect(tasks).toHaveLength(1);
+        expect(tasks[0].name).toBe('active');
+    });
+
+    it('includes archive when showArchived is true', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(path.join(tasksFolder, 'archive'), { recursive: true });
+        writeTestTask('.tasks/active.md');
+        writeTestTask('.tasks/archive/old.md');
+
+        const tasks = await getAllTasks(tasksFolder, true);
+        expect(tasks).toHaveLength(2);
+    });
+});
+
+// ============================================================================
+// getAllDocuments
+// ============================================================================
+
+describe('getAllDocuments', () => {
+    it('returns documents with baseName and docType parsed', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(tasksFolder, { recursive: true });
+        writeTestTask('.tasks/task1.plan.md');
+        writeTestTask('.tasks/task1.spec.md');
+        writeTestTask('.tasks/simple.md');
+
+        const docs = await getAllDocuments(tasksFolder);
+        expect(docs).toHaveLength(3);
+
+        const planDoc = docs.find(d => d.fileName === 'task1.plan.md');
+        expect(planDoc).toBeDefined();
+        expect(planDoc!.baseName).toBe('task1');
+        expect(planDoc!.docType).toBe('plan');
+    });
+});
+
+// ============================================================================
+// getAllDocumentGroups
+// ============================================================================
+
+describe('getAllDocumentGroups', () => {
+    it('groups multi-doc tasks and separates singles', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(tasksFolder, { recursive: true });
+        writeTestTask('.tasks/task1.plan.md');
+        writeTestTask('.tasks/task1.spec.md');
+        writeTestTask('.tasks/standalone.md');
+
+        const { groups, singles } = await getAllDocumentGroups(tasksFolder);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].baseName).toBe('task1');
+        expect(groups[0].documents).toHaveLength(2);
+        expect(singles).toHaveLength(1);
+        expect(singles[0].baseName).toBe('standalone');
+    });
+});
+
+// ============================================================================
+// getFullTaskHierarchy
+// ============================================================================
+
+describe('getFullTaskHierarchy', () => {
+    it('builds correct tree with children, groups, and singles', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(tasksFolder, { recursive: true });
+        writeTestTask('.tasks/root.md');
+        writeTestTask('.tasks/feature/task1.plan.md');
+        writeTestTask('.tasks/feature/task1.spec.md');
+        writeTestTask('.tasks/feature/solo.md');
+
+        const root = await getFullTaskHierarchy(tasksFolder);
+        expect(root.singleDocuments).toHaveLength(1);
+        expect(root.singleDocuments[0].baseName).toBe('root');
+
+        const feature = root.children.find(c => c.name === 'feature');
+        expect(feature).toBeDefined();
+        expect(feature!.documentGroups).toHaveLength(1);
+        expect(feature!.documentGroups[0].baseName).toBe('task1');
+        expect(feature!.singleDocuments).toHaveLength(1);
+    });
+
+    it('loads related items when discovery options are provided', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(tasksFolder, { recursive: true });
+        writeTestTask('.tasks/feat/task.md');
+        const relatedPath = path.join(tasksFolder, 'feat', 'related.yaml');
+        fs.writeFileSync(relatedPath, 'description: test feature\nitems:\n  - name: src/a.ts\n    path: src/a.ts\n    type: file\n    category: source\n    relevance: 90\n    reason: main\n', 'utf-8');
+
+        const root = await getFullTaskHierarchy(tasksFolder, {
+            discovery: { enabled: true, showRelatedInTree: true },
+        });
+        const feat = root.children.find(c => c.name === 'feat');
+        expect(feat).toBeDefined();
+        expect(feat!.relatedItems).toBeDefined();
+        expect(feat!.relatedItems!.items).toHaveLength(1);
+    });
+
+    it('does not load related items when discovery is disabled', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(tasksFolder, { recursive: true });
+        writeTestTask('.tasks/feat/task.md');
+        const relatedPath = path.join(tasksFolder, 'feat', 'related.yaml');
+        fs.writeFileSync(relatedPath, 'description: test feature\nitems:\n  - name: src/a.ts\n    path: src/a.ts\n    type: file\n    category: source\n    relevance: 90\n    reason: main\n', 'utf-8');
+
+        const root = await getFullTaskHierarchy(tasksFolder);
+        const feat = root.children.find(c => c.name === 'feat');
+        expect(feat).toBeDefined();
+        expect(feat!.relatedItems).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// getFeatureFolders
+// ============================================================================
+
+describe('getFeatureFolders', () => {
+    it('returns flat list excluding archive', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(tasksFolder, { recursive: true });
+        fs.mkdirSync(path.join(tasksFolder, 'archive'), { recursive: true });
+        fs.mkdirSync(path.join(tasksFolder, 'feature-a'), { recursive: true });
+        fs.mkdirSync(path.join(tasksFolder, 'feature-b', 'nested'), { recursive: true });
+
+        const folders = await getFeatureFolders(tasksFolder);
+        const names = folders.map(f => f.displayName).sort();
+
+        expect(names).toContain('feature-a');
+        expect(names).toContain('feature-b');
+        expect(names).toContain('feature-b/nested');
+        expect(names).not.toContain('archive');
+    });
+
+    it('returns empty array for empty directory', async () => {
+        const tasksFolder = path.join(tmpDir, '.tasks');
+        fs.mkdirSync(tasksFolder, { recursive: true });
+
+        const folders = await getFeatureFolders(tasksFolder);
+        expect(folders).toHaveLength(0);
+    });
+
+    it('returns empty array for non-existent directory', async () => {
+        const folders = await getFeatureFolders(path.join(tmpDir, 'nonexistent'));
+        expect(folders).toHaveLength(0);
     });
 });

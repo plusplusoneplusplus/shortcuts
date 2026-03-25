@@ -54,6 +54,11 @@ export interface TaskManagerOptions {
 // TaskManager
 // ============================================================================
 
+/**
+ * @deprecated Use standalone functions (`resolveTaskPaths`, `getAllTasks`,
+ * `getFullTaskHierarchy`, etc.) from this module instead.
+ * This class will be removed in a future version.
+ */
 export class TaskManager {
     private readonly workspaceRoot: string;
     private readonly settings: TasksViewerSettings;
