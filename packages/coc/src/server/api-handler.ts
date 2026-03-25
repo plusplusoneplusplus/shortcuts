@@ -52,20 +52,17 @@ export interface QueueExecutorBridge {
 // Response Helpers
 // ============================================================================
 
-/** Write a JSON response with the correct Content-Type header. */
+import { sendJson, sendError } from './shared/router';
+
+/**
+ * Write a JSON response with the correct Content-Type header.
+ * @deprecated Use `sendJson(res, data, statusCode)` from `./shared/router` instead.
+ */
 export function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown): void {
-    const body = JSON.stringify(data);
-    res.writeHead(statusCode, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Content-Length': Buffer.byteLength(body),
-    });
-    res.end(body);
+    sendJson(res, data, statusCode);
 }
 
-/** Write a JSON error envelope `{ error: message }`. */
-export function sendError(res: http.ServerResponse, statusCode: number, message: string): void {
-    sendJSON(res, statusCode, { error: message });
-}
+export { sendError };
 
 // ============================================================================
 // Request Helpers

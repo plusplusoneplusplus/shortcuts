@@ -12,7 +12,6 @@ import * as http from 'http';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
-import { EventEmitter } from 'events';
 import { createRequestHandler } from './router';
 import { registerAllRoutes } from './routes/index';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
@@ -20,7 +19,7 @@ import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
 import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from './types';
 import type { Route } from './types';
-import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
@@ -31,92 +30,8 @@ import { createWebSocketInfrastructure } from './infrastructure/websocket-infras
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
-
-// ============================================================================
-// Stub Process Store
-// ============================================================================
-
-/**
- * Minimal in-memory ProcessStore used when no store is injected.
- * Supports event emission for SSE streaming and process tracking.
- */
-function createStubStore(): ProcessStore {
-    const processes = new Map<string, AIProcess>();
-    const emitters = new Map<string, EventEmitter>();
-    let changeCallback: ProcessChangeCallback | undefined;
-
-    function getOrCreateEmitter(id: string): EventEmitter {
-        let emitter = emitters.get(id);
-        if (!emitter) {
-            emitter = new EventEmitter();
-            emitters.set(id, emitter);
-        }
-        return emitter;
-    }
-
-    const store: ProcessStore = {
-        addProcess: async (proc) => {
-            processes.set(proc.id, proc);
-            changeCallback?.({ type: 'process-added', process: proc });
-        },
-        updateProcess: async (id, updates) => {
-            const existing = processes.get(id);
-            if (!existing) return;
-            const merged = { ...existing, ...updates };
-            processes.set(id, merged as AIProcess);
-            changeCallback?.({ type: 'process-updated', process: merged as AIProcess });
-        },
-        getProcess: async (id) => processes.get(id),
-        getAllProcesses: async () => Array.from(processes.values()),
-        removeProcess: async (id) => {
-            const proc = processes.get(id);
-            processes.delete(id);
-            if (proc) changeCallback?.({ type: 'process-removed', process: proc });
-        },
-        clearProcesses: async () => { const count = processes.size; processes.clear(); changeCallback?.({ type: 'processes-cleared' }); return count; },
-        getWorkspaces: async () => [],
-        registerWorkspace: async () => {},
-        removeWorkspace: async () => false,
-        updateWorkspace: async () => undefined,
-        getWikis: async () => [],
-        registerWiki: async () => {},
-        removeWiki: async () => false,
-        updateWiki: async () => undefined,
-        clearAllWorkspaces: async () => 0,
-        clearAllWikis: async () => 0,
-        getStorageStats: async () => ({ totalProcesses: 0, totalWorkspaces: 0, totalWikis: 0, storageSize: 0 }),
-        onProcessOutput: (id, callback) => {
-            const emitter = getOrCreateEmitter(id);
-            const listener = (event: ProcessOutputEvent) => callback(event);
-            emitter.on('output', listener);
-            return () => { emitter.removeListener('output', listener); };
-        },
-        emitProcessOutput: (id, content) => {
-            const emitter = getOrCreateEmitter(id);
-            emitter.emit('output', { type: 'chunk', content });
-        },
-        emitProcessComplete: (id, status, duration) => {
-            const emitter = emitters.get(id);
-            if (!emitter) return;
-            emitter.emit('output', { type: 'complete', status, duration });
-            emitters.delete(id);
-        },
-        emitProcessEvent: (id, event) => {
-            const emitter = getOrCreateEmitter(id);
-            emitter.emit('output', event);
-        },
-    };
-
-    // Expose onProcessChange setter via defineProperty
-    Object.defineProperty(store, 'onProcessChange', {
-        get: () => changeCallback,
-        set: (cb: ProcessChangeCallback | undefined) => { changeCallback = cb; },
-        enumerable: true,
-        configurable: true,
-    });
-
-    return store;
-}
+import { createStubStore } from './in-memory-process-store';
+import { createCLIAIInvoker } from '../ai-invoker';
 
 // ============================================================================
 // Close Handler Builder
@@ -210,6 +125,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
 
     const resolvedAiService = options.aiService ?? getCopilotSDKService();
+    const aiInvoker = createCLIAIInvoker({ approvePermissions: true });
     const routes: Route[] = [];
     const { wikiManager } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
@@ -218,6 +134,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         globalWorkspaceRootPath: globalWorkspace.rootPath,
         resolvedAiService, getWsServer: () => wsServer,
         queuePersistence, wikiOptions: options.wiki,
+        aiInvoker,
     });
 
     const handler = createRequestHandler({
@@ -252,76 +169,117 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     };
 }
 
-// Re-exports
-export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions } from './types';
+// ============================================================================
+// Public API
+// ============================================================================
+
+export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions, ServeCommandOptions } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/forge';
-export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
-export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';
-export { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
-export { registerQueueRoutes } from './queue-handler';
-export { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from './global-workspace';
-export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
-export { registerTaskGenerationRoutes } from './task-generation-handler';
-export { handleProcessStream } from './sse-handler';
-export { ProcessWebSocketServer, toProcessSummary, toCommentSummary } from './websocket';
-export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, ServerMessage, ClientMessage } from './websocket';
-export type { QueueSnapshot } from './websocket';
+
+// HTTP helpers (canonical source: shared/router.ts)
+export { sendJson, send404, send400, send500, sendError, readJsonBody } from './shared/router';
+export { createRequestHandler } from './router';
 export type { RouterOptions } from './router';
+
+// Deprecated compat wrapper — use sendJson(res, data, statusCode) instead
+export { sendJSON, parseBody, parseQueryParams, stripExcludedFields } from './api-handler';
+export { detectRemoteUrl, normalizeRemoteUrl } from './api-handler';
+
+// WebSocket
+export { ProcessWebSocketServer, toProcessSummary, toCommentSummary } from './websocket';
+export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, ServerMessage, ClientMessage, QueueSnapshot } from './websocket';
+
+// SSE
+export { handleProcessStream } from './sse-handler';
+
+// SPA
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
+
+// Global workspace
+export { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from './global-workspace';
+
+// Queue
 export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from './queue-executor-bridge';
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue-executor-bridge';
 export { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 export { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
-export { QueuePersistence } from './queue/queue-persistence';
-export { OutputPruner } from './output-pruner';
-export { StaleTaskDetector } from './stale-task-detector';
-export type { StaleTaskDetectorOptions } from './stale-task-detector';
-export { TaskWatcher } from './task-watcher';
-export type { TasksChangedCallback } from './task-watcher';
-export { WorkflowWatcher } from './workflow-watcher';
-export type { WorkflowsChangedCallback } from './workflow-watcher';
-export { TemplateWatcher } from './template-watcher';
-export type { TemplatesChangedCallback } from './template-watcher';
-export { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
-export { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
-export { registerWikiRoutes } from './wiki';
-export type { WikiRouteOptions } from './wiki';
-export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';
-export type { PromptFileInfo } from './prompt-utils';
-export { registerPreferencesRoutes, readPreferences, writePreferences, validatePreferences } from './preferences-handler';
-export type { UserPreferences } from './preferences-handler';
-export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments-handler';
-export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';
-export { registerDiffCommentsRoutes, DiffCommentsManager } from './diff-comments-handler';
-export type { DiffCommentsStorage } from './diff-comments-handler';
-export { registerAdminRoutes, resetWipeToken, getBuiltInPrompts } from './admin-handler';
-export type { AdminRouteOptions, BuiltInPrompt } from './admin-handler';
+export { QueuePersistence, getRepoQueueFilePath, sanitizeTaskForPersistence } from './queue/queue-persistence';
+export { ImageBlobStore } from './queue/image-blob-store';
+
+// Data management
 export { DataWiper } from './data-wiper';
 export type { WipeOptions, WipeResult } from './data-wiper';
+export { exportAllData } from './data-exporter';
+export { importData } from './data-importer';
+export type { CoCExportPayload, ImportOptions } from './export-import-types';
+export { EXPORT_SCHEMA_VERSION, validateExportPayload } from './export-import-types';
+
+// Admin & tokens
+export { registerAdminRoutes, resetWipeToken, getBuiltInPrompts } from './admin-handler';
+export type { AdminRouteOptions, BuiltInPrompt } from './admin-handler';
+export { generateImportToken, generateWipeToken, importTokenManager, resetImportToken, wipeTokenManager, validateImportToken, validateWipeToken, TOKEN_EXPIRY_MS, TokenManager } from './admin-handler';
+
+// Scheduling
 export { ScheduleYamlPersistence } from './schedule-yaml-persistence';
 export { ScheduleRunPersistence } from './schedule-run-persistence';
 export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule-manager';
 export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule-manager';
-export { registerScheduleRoutes } from './schedule-handler';
-export { resolveTaskRoot, ensureTaskRoot } from './task-root-resolver';
-export type { TaskRootInfo, TaskRootOptions } from './task-root-resolver';
 
-// Additional exports needed by tests (previously from @plusplusoneplusplus/coc-server)
+// Tasks
 export type { ChatPayload } from './task-types';
 export { isChatPayload, hasTaskGenerationContext } from './task-types';
-export type { CoCExportPayload, ImportOptions } from './export-import-types';
-export { EXPORT_SCHEMA_VERSION, validateExportPayload } from './export-import-types';
-export { exportAllData } from './data-exporter';
-export { importData } from './data-importer';
-export { generateImportToken, generateWipeToken, importTokenManager, resetImportToken, wipeTokenManager, validateImportToken, validateWipeToken, TOKEN_EXPIRY_MS, TokenManager } from './admin-handler';
-export { getRepoQueueFilePath, sanitizeTaskForPersistence } from './queue/queue-persistence';
-export { ImageBlobStore } from './queue/image-blob-store';
-export { stripExcludedFields } from './api-handler';
-export type { ServeCommandOptions } from './types';
+export { resolveTaskRoot, ensureTaskRoot } from './task-root-resolver';
+export type { TaskRootInfo, TaskRootOptions } from './task-root-resolver';
+export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments-handler';
+export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';
+export { registerDiffCommentsRoutes, DiffCommentsManager } from './diff-comments-handler';
+export type { DiffCommentsStorage } from './diff-comments-handler';
+
+// Preferences
+export { registerPreferencesRoutes, readPreferences, writePreferences, validatePreferences } from './preferences-handler';
+export type { UserPreferences } from './preferences-handler';
+
+// Prompts
+export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';
+export type { PromptFileInfo } from './prompt-utils';
+
+// Wiki
+export { registerWikiRoutes } from './wiki';
+export type { WikiRouteOptions } from './wiki';
 export { FileWatcher } from './wiki/file-watcher';
 export { WikiData } from './wiki/wiki-data';
 export type { ComponentAnalysis, ComponentGraph } from './wiki/types';
-export { detectRemoteUrl, normalizeRemoteUrl } from './api-handler';
+
+// Logging
 export { captureEntry, clearLogBuffer } from './server-log-capture';
+
+// Paths
 export { getRepoDataPath } from './paths';
+
+// ============================================================================
+// @internal — Infrastructure used by createExecutionServer; avoid in new code
+// ============================================================================
+
+/** @internal */ export { OutputPruner } from './output-pruner';
+/** @internal */ export { StaleTaskDetector } from './stale-task-detector';
+/** @internal */ export type { StaleTaskDetectorOptions } from './stale-task-detector';
+/** @internal */ export { TaskWatcher } from './task-watcher';
+/** @internal */ export type { TasksChangedCallback } from './task-watcher';
+/** @internal */ export { WorkflowWatcher } from './workflow-watcher';
+/** @internal */ export type { WorkflowsChangedCallback } from './workflow-watcher';
+/** @internal */ export { TemplateWatcher } from './template-watcher';
+/** @internal */ export type { TemplatesChangedCallback } from './template-watcher';
+
+// ============================================================================
+// @internal — Route registration (called by registerAllRoutes only)
+// ============================================================================
+
+/** @internal */ export { registerApiRoutes } from './api-handler';
+/** @internal */ export { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
+/** @internal */ export { registerQueueRoutes } from './queue-handler';
+/** @internal */ export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
+/** @internal */ export { registerTaskGenerationRoutes } from './task-generation-handler';
+/** @internal */ export { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
+/** @internal */ export { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
+/** @internal */ export { registerScheduleRoutes } from './schedule-handler';

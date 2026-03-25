@@ -1,8 +1,8 @@
 /**
- * Deep-Wiki Config Loader (subset)
+ * Config Loader (Standalone Wiki)
  *
- * Minimal subset of deep-wiki/src/config-loader.ts needed by
- * dw-admin-handlers.ts. Only `discoverConfigFile` and `validateConfig`
+ * Minimal subset of deep-wiki config-loader needed by
+ * standalone-admin-handlers.ts. Only `discoverConfigFile` and `validateConfig`
  * are included.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -10,7 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { PhaseName, PhasesConfig } from './dw-types';
+import type { PhaseName, PhasesConfig } from './types';
 
 // ============================================================================
 // Config Discovery

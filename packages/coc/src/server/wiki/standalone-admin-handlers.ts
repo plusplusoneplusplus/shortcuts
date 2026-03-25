@@ -1,7 +1,7 @@
 /**
- * Admin Handlers
+ * Admin Handlers (Standalone Wiki)
  *
- * REST API handlers for the admin portal.
+ * REST API handlers for the standalone wiki admin portal.
  * Provides read/write access to seeds (seeds.json) and
  * config (deep-wiki.config.yaml) files.
  *
@@ -18,7 +18,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { sendJson, send404, send400, send500, readBody, getErrorMessage } from './router';
-import { validateConfig, discoverConfigFile } from './dw-config-loader';
+import { validateConfig, discoverConfigFile } from './standalone-config-loader';
 import {
     handleStartGenerate,
     handleCancelGenerate,

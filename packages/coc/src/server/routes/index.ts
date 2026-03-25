@@ -6,7 +6,7 @@
  */
 
 import type { Route } from '../types';
-import type { ProcessStore, TaskQueueManager, CopilotSDKService } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskQueueManager, CopilotSDKService, AIInvoker } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../websocket';
 import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
@@ -40,7 +40,6 @@ import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
-import { createCLIAIInvoker } from '../../ai-invoker';
 
 export interface RegisterRoutesOptions {
     store: ProcessStore;
@@ -55,6 +54,7 @@ export interface RegisterRoutesOptions {
     getWsServer: () => ProcessWebSocketServer;
     queuePersistence: MultiRepoQueuePersistence;
     wikiOptions?: WikiServerOptions;
+    aiInvoker: AIInvoker;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -62,6 +62,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store, bridge, queueFacade, scheduleManager,
         dataDir, configPath, tokenTtlMs, globalWorkspaceRootPath,
         resolvedAiService, getWsServer, queuePersistence, wikiOptions,
+        aiInvoker,
     } = opts;
 
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer);
@@ -115,12 +116,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
 
     registerMemoryRoutes(routes, dataDir, {
-        aggregateToolCallsAIInvoker: createCLIAIInvoker({ approvePermissions: true }),
+        aggregateToolCallsAIInvoker: aiInvoker,
     });
 
     registerRepoMemoryRoutes(routes, dataDir, {
         store,
-        aiInvoker: createCLIAIInvoker({ approvePermissions: true }),
+        aiInvoker: aiInvoker,
     });
 
     registerModelRoutes(routes, modelMetadataStore, {

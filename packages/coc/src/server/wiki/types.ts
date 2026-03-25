@@ -244,3 +244,54 @@ export interface WikiServeCommandOptions {
 
 // Website Theme
 export type WebsiteTheme = 'light' | 'dark' | 'auto';
+
+// ============================================================================
+// Deep-Wiki Generate Pipeline Types
+// ============================================================================
+
+export type ArticleType = 'component' | 'index' | 'architecture' | 'getting-started' | 'domain-index' | 'domain-architecture';
+
+export interface GeneratedArticle {
+    type: ArticleType;
+    slug: string;
+    title: string;
+    content: string;
+    componentId?: string;
+    domainId?: string;
+}
+
+export type PhaseName = 'discovery' | 'consolidation' | 'analysis' | 'writing';
+
+export interface PhaseConfig {
+    model?: string;
+    timeout?: number;
+    concurrency?: number;
+    depth?: 'shallow' | 'normal' | 'deep';
+    skipAI?: boolean;
+}
+
+export type PhasesConfig = Partial<Record<PhaseName, PhaseConfig>>;
+
+export interface GenerateCommandOptions {
+    repoPath?: string;
+    output: string;
+    model?: string;
+    concurrency?: number;
+    timeout?: number;
+    focus?: string;
+    depth: 'shallow' | 'normal' | 'deep';
+    force: boolean;
+    useCache: boolean;
+    phase?: number;
+    endPhase?: number;
+    verbose: boolean;
+    skipWebsite?: boolean;
+    theme?: WebsiteTheme;
+    title?: string;
+    seeds?: string;
+    noCluster?: boolean;
+    strict?: boolean;
+    largeRepoThreshold?: number;
+    config?: string;
+    phases?: PhasesConfig;
+}

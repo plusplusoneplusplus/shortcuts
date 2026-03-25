@@ -9,14 +9,16 @@
 
 import * as http from 'http';
 import type { WikiData } from './wiki-data';
-import { sendJson, send404, send400, getErrorMessage } from './router';
+import { sendJson, send404, send400, getErrorMessage, readBody } from './router';
 import type { ContextBuilder } from './context-builder';
 import type { AskAIFunction } from './types';
-import { handleAskRequest } from './dw-ask-handler';
-import { handleExploreRequest } from './dw-explore-handler';
-import { handleAdminRequest } from './dw-admin-handlers';
+import { handleAskCore } from './ask-handler';
+import type { AskRequest } from './ask-handler';
+import { handleExploreCore } from './explore-handler';
+import { handleAdminRequest } from './standalone-admin-handlers';
 import type { ConversationSessionManager } from './conversation-session-manager';
 import type { WebSocketServer } from './websocket';
+import type { ResolvedAskContext, ResolvedExploreContext } from './wiki-backend';
 
 // ============================================================================
 // Types
@@ -117,13 +119,29 @@ export function handleApiRequest(
             send400(res, 'AI service is not configured.');
             return;
         }
-        handleAskRequest(req, res, {
-            contextBuilder: context.contextBuilder,
-            sendMessage: context.aiSendMessage,
-            model: context.aiModel,
-            workingDirectory: context.aiWorkingDirectory,
-            sessionManager: context.sessionManager,
-        }).catch(() => {
+        // Inline ask: parse body, create context, delegate to handleAskCore
+        (async () => {
+            const askBody = await readBody(req);
+            let askReq: AskRequest;
+            try {
+                askReq = JSON.parse(askBody);
+            } catch {
+                send400(res, 'Invalid JSON body');
+                return;
+            }
+            if (!askReq.question || typeof askReq.question !== 'string') {
+                send400(res, 'Missing or invalid "question" field');
+                return;
+            }
+            const askContext: ResolvedAskContext = {
+                contextBuilder: context.contextBuilder!,
+                sendMessage: context.aiSendMessage!,
+                model: context.aiModel,
+                workingDirectory: context.aiWorkingDirectory,
+                sessionManager: context.sessionManager,
+            };
+            await handleAskCore(res, askReq, askContext);
+        })().catch(() => {
             if (!res.headersSent) {
                 sendJson(res, { error: 'Internal server error' }, 500);
             }
@@ -156,12 +174,13 @@ export function handleApiRequest(
             return;
         }
         const exploreComponentId = decodeURIComponent(exploreMatch[1]);
-        handleExploreRequest(req, res, exploreComponentId, {
+        const exploreContext: ResolvedExploreContext = {
             wikiData: context.wikiData,
             sendMessage: context.aiSendMessage,
             model: context.aiModel,
             workingDirectory: context.aiWorkingDirectory,
-        }).catch(() => {
+        };
+        handleExploreCore(req, res, exploreComponentId, exploreContext).catch(() => {
             if (!res.headersSent) {
                 sendJson(res, { error: 'Internal server error' }, 500);
             }

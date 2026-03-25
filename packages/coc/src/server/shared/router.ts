@@ -314,3 +314,8 @@ export function send400(res: http.ServerResponse, message = 'Bad Request'): void
 export function send500(res: http.ServerResponse, message = 'Internal Server Error'): void {
     sendJson(res, { error: message }, 500);
 }
+
+/** Send a JSON error response with a given status code. */
+export function sendError(res: http.ServerResponse, statusCode: number, message: string): void {
+    sendJson(res, { error: message }, statusCode);
+}
