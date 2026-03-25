@@ -40,7 +40,7 @@ describe('useSlashCommands', () => {
         expect(setText).toHaveBeenCalledWith('/impl ');
     });
 
-    // T2: selectSkill with a ref calls both ref.current.setValue AND setText
+    // T2: selectSkill with a ref calls both ref.current.setValue AND setText (with cursor position)
     it('selectSkill with a ref calls ref.current.setValue and setText', () => {
         const { result } = renderHook(() => useSlashCommands(skills));
         const setText = vi.fn();
@@ -58,7 +58,8 @@ describe('useSlashCommands', () => {
             result.current.selectSkill('impl', '/im', setText, ref);
         });
 
-        expect(ref.current!.setValue).toHaveBeenCalledWith('/impl ');
+        // cursor = start(0) + 1('/') + name.length(4) + 1(' ') = 6
+        expect(ref.current!.setValue).toHaveBeenCalledWith('/impl ', 6);
         expect(setText).toHaveBeenCalledWith('/impl ');
     });
 
@@ -134,5 +135,39 @@ describe('useSlashCommands', () => {
             result.current.handleInputChange('hello', 5);
         });
         expect(result.current.menuVisible).toBe(false);
+    });
+
+    // T7: cursor is placed after the inserted skill name + space (regression: was jumping to start)
+    it('selectSkill passes cursor position after /${name}<space> to setValue', () => {
+        const { result } = renderHook(() => useSlashCommands(skills));
+        const setText = vi.fn();
+        const setValue = vi.fn();
+        const ref: React.RefObject<RichTextInputHandle> = {
+            current: { setValue, getValue: vi.fn(() => ''), focus: vi.fn() },
+        };
+
+        // Simulate "/go-" typed at start, cursor at 4
+        act(() => { result.current.handleInputChange('/go-', 4); });
+        act(() => { result.current.selectSkill('go-deep', '/go-', setText, ref); });
+
+        // cursor = 0 + 1 + 7 + 1 = 9
+        expect(setValue).toHaveBeenCalledWith('/go-deep ', 9);
+    });
+
+    // T8: cursor accounts for text before the slash
+    it('selectSkill cursor is offset when slash is mid-string', () => {
+        const { result } = renderHook(() => useSlashCommands(skills));
+        const setText = vi.fn();
+        const setValue = vi.fn();
+        const ref: React.RefObject<RichTextInputHandle> = {
+            current: { setValue, getValue: vi.fn(() => ''), focus: vi.fn() },
+        };
+
+        // Simulate "hello /dr" with slash at index 6, cursor at 9
+        act(() => { result.current.handleInputChange('hello /dr', 9); });
+        act(() => { result.current.selectSkill('draft', 'hello /dr', setText, ref); });
+
+        // cursor = 6 + 1 + 5 + 1 = 13
+        expect(setValue).toHaveBeenCalledWith('hello /draft ', 13);
     });
 });

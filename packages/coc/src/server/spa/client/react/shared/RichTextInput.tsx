@@ -3,7 +3,8 @@ import { cn } from './cn';
 
 export interface RichTextInputHandle {
     getValue(): string;
-    setValue(text: string): void;
+    /** Set the text content. Pass cursorPos to place the cursor at that offset after setting. */
+    setValue(text: string, cursorPos?: number): void;
     focus(): void;
 }
 
@@ -25,7 +26,42 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
 
         useImperativeHandle(ref, () => ({
             getValue: () => (divRef.current?.innerText ?? '').replace(/\n+$/, ''),
-            setValue: (text) => { if (divRef.current) divRef.current.innerText = text; },
+            setValue: (text, cursorPos) => {
+                const div = divRef.current;
+                if (!div) return;
+                div.innerText = text;
+                if (cursorPos == null) return;
+                const sel = window.getSelection?.();
+                if (!sel) return;
+                const range = document.createRange();
+                let remaining = cursorPos;
+                let placed = false;
+                const walk = (node: Node) => {
+                    if (placed) return;
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        const len = node.textContent?.length ?? 0;
+                        if (remaining <= len) {
+                            range.setStart(node, remaining);
+                            range.collapse(true);
+                            placed = true;
+                            return;
+                        }
+                        remaining -= len;
+                    } else {
+                        for (const child of Array.from(node.childNodes)) {
+                            walk(child);
+                            if (placed) return;
+                        }
+                    }
+                };
+                walk(div);
+                if (!placed) {
+                    range.selectNodeContents(div);
+                    range.collapse(false);
+                }
+                sel.removeAllRanges();
+                sel.addRange(range);
+            },
             focus: () => divRef.current?.focus(),
         }));
 

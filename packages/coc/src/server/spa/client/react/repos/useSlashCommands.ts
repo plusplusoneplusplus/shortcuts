@@ -105,7 +105,9 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         // Always sync React state; additionally update DOM when ref is available
         setText(newText);
         if (ref?.current) {
-            ref.current.setValue(newText);
+            // Place cursor right after the inserted "/${name} "
+            const newCursorPos = before.length + 1 + name.length + 1;
+            ref.current.setValue(newText, newCursorPos);
         }
 
         setMenuVisible(false);

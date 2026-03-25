@@ -173,4 +173,52 @@ describe('RichTextInput', () => {
         Object.defineProperty(div, 'innerText', { value: '/\n', writable: true, configurable: true });
         expect(ref.current!.getValue()).toBe('/');
     });
+
+    it('setValue with cursorPos still sets innerText correctly', () => {
+        const ref = createRef<RichTextInputHandle>();
+        render(<RichTextInput ref={ref} onChange={vi.fn()} data-testid="rich" />);
+        act(() => {
+            ref.current!.setValue('/impl ', 6);
+        });
+        expect(ref.current!.getValue()).toBe('/impl ');
+    });
+
+    it('setValue with cursorPos does not throw when getSelection is null', () => {
+        const origGetSelection = window.getSelection;
+        window.getSelection = () => null as any;
+        try {
+            const ref = createRef<RichTextInputHandle>();
+            render(<RichTextInput ref={ref} onChange={vi.fn()} data-testid="rich-gs-null" />);
+            expect(() => {
+                act(() => { ref.current!.setValue('/impl ', 6); });
+            }).not.toThrow();
+            expect(ref.current!.getValue()).toBe('/impl ');
+        } finally {
+            window.getSelection = origGetSelection;
+        }
+    });
+
+    it('setValue with cursorPos calls getSelection and addRange', () => {
+        const addRange = vi.fn();
+        const removeAllRanges = vi.fn();
+        const origGetSelection = window.getSelection;
+        window.getSelection = () => ({ addRange, removeAllRanges, rangeCount: 0 }) as any;
+        try {
+            const ref = createRef<RichTextInputHandle>();
+            render(<RichTextInput ref={ref} onChange={vi.fn()} data-testid="rich-sel" />);
+            act(() => { ref.current!.setValue('/impl ', 6); });
+            expect(removeAllRanges).toHaveBeenCalled();
+            expect(addRange).toHaveBeenCalled();
+        } finally {
+            window.getSelection = origGetSelection;
+        }
+    });
+
+    it('setValue without cursorPos does not call getSelection', () => {
+        const getSelectionSpy = vi.spyOn(window, 'getSelection');
+        const ref = createRef<RichTextInputHandle>();
+        render(<RichTextInput ref={ref} onChange={vi.fn()} data-testid="rich-no-cur" />);
+        act(() => { ref.current!.setValue('/impl '); });
+        expect(getSelectionSpy).not.toHaveBeenCalled();
+    });
 });
