@@ -651,7 +651,7 @@ export function MarkdownReviewEditor({
                                 {saving ? 'Saving…' : 'Save'}
                             </button>
                         )}
-                        {fetchMode === 'tasks' && (
+                        {(filePath.endsWith('.md') || filePath.endsWith('.markdown')) && (
                             <select
                                 value={taskStatus ?? ''}
                                 onChange={e => handleStatusChange(e.target.value)}

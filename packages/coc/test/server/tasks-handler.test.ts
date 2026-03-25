@@ -651,6 +651,106 @@ describe('Tasks Handler', () => {
     });
 
     // ========================================================================
+    // PATCH /api/workspaces/:id/tasks — Status update (plain md files)
+    // ========================================================================
+
+    describe('PATCH /api/workspaces/:id/tasks — Status update for plain md files', () => {
+        it('should update status for a task file (relative path)', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'sprint.plan.md': '---\nstatus: pending\n---\n# Sprint' });
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks`, {
+                path: 'sprint.plan.md', status: 'in-progress'
+            });
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.status).toBe('in-progress');
+
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath;
+            const content = fs.readFileSync(path.join(taskRoot, 'sprint.plan.md'), 'utf-8');
+            expect(content).toContain('status: in-progress');
+        });
+
+        it('should update status for a plain md file using absolute workspace path', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const mdPath = path.join(workspaceDir, 'docs', 'notes.md');
+            fs.mkdirSync(path.dirname(mdPath), { recursive: true });
+            fs.writeFileSync(mdPath, '# Notes\n\nSome content', 'utf-8');
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks`, {
+                path: mdPath, status: 'in-progress'
+            });
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.status).toBe('in-progress');
+
+            const content = fs.readFileSync(mdPath, 'utf-8');
+            expect(content).toContain('status: in-progress');
+        });
+
+        it('should prepend frontmatter when plain md file has none', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const mdPath = path.join(workspaceDir, 'readme.md');
+            fs.writeFileSync(mdPath, '# Hello World', 'utf-8');
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks`, {
+                path: mdPath, status: 'done'
+            });
+            expect(res.status).toBe(200);
+
+            const content = fs.readFileSync(mdPath, 'utf-8');
+            expect(content).toBe('---\nstatus: done\n---\n# Hello World');
+        });
+
+        it('should update existing frontmatter status in plain md file', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const mdPath = path.join(workspaceDir, 'task.md');
+            fs.writeFileSync(mdPath, '---\ntitle: My Task\nstatus: pending\n---\n# Task', 'utf-8');
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks`, {
+                path: mdPath, status: 'future'
+            });
+            expect(res.status).toBe(200);
+
+            const content = fs.readFileSync(mdPath, 'utf-8');
+            expect(content).toContain('status: future');
+            expect(content).toContain('title: My Task');
+        });
+
+        it('should return 403 for absolute path outside workspace', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const outsidePath = path.join(os.tmpdir(), 'outside.md');
+            fs.writeFileSync(outsidePath, '# Outside', 'utf-8');
+
+            try {
+                const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks`, {
+                    path: outsidePath, status: 'done'
+                });
+                expect(res.status).toBe(403);
+            } finally {
+                fs.unlinkSync(outsidePath);
+            }
+        });
+
+        it('should return 403 for non-md file with absolute path', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const txtPath = path.join(workspaceDir, 'notes.txt');
+            fs.writeFileSync(txtPath, 'plain text', 'utf-8');
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks`, {
+                path: txtPath, status: 'done'
+            });
+            expect(res.status).toBe(403);
+        });
+    });
+
+    // ========================================================================
     // GET /api/workspaces/:id/files/image — Local image proxy
     // ========================================================================
 

@@ -569,9 +569,14 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 return sendError(res, 400, 'Missing required field: path');
             }
 
-            const resolvedPath = resolveAndValidatePath(tasksFolder, itemPath);
+            let resolvedPath = resolveAndValidatePath(tasksFolder, itemPath);
             if (!resolvedPath) {
-                return sendError(res, 403, 'Access denied: path is outside tasks folder');
+                // Allow workspace .md files (plain md files use absolute paths)
+                const wsResolved = resolveAndValidatePath(ws.rootPath, itemPath);
+                if (!wsResolved || !wsResolved.endsWith('.md')) {
+                    return sendError(res, 403, 'Access denied: path is outside workspace');
+                }
+                resolvedPath = wsResolved;
             }
 
             // Distinguish rename vs status update
