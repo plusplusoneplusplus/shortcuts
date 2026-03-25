@@ -179,6 +179,16 @@ export function filterTaskItems(
 
 // ── Status Icon ────────────────────────────────────────────────────────
 
+export const TASK_STATUSES = ['pending', 'in-progress', 'done', 'future'] as const;
+export type TaskStatusValue = (typeof TASK_STATUSES)[number];
+
+export const STATUS_PILLS: { status: TaskStatusValue; icon: string; label: string }[] = [
+    { status: 'pending', icon: '⏳', label: 'Pending' },
+    { status: 'in-progress', icon: '🔄', label: 'In-Progress' },
+    { status: 'done', icon: '✅', label: 'Done' },
+    { status: 'future', icon: '📋', label: 'Future' },
+];
+
 /**
  * Return the emoji status icon for a task status string.
  */
@@ -190,6 +200,52 @@ export function getTaskStatusIcon(status?: string): string {
         case 'future':      return '📋';
         default:            return '';
     }
+}
+
+// ── Status Filtering ───────────────────────────────────────────────────
+
+/**
+ * Returns true if a document matches the active status filter.
+ * An empty filter array means "show all".
+ */
+export function isDocumentMatchingFilter(doc: { status?: string }, filter: TaskStatusValue[]): boolean {
+    if (filter.length === 0) return true;
+    return filter.includes(doc.status as TaskStatusValue);
+}
+
+/**
+ * Recursively prune a task folder tree to only include documents matching the filter.
+ * Folders with no matching descendants are removed.
+ */
+export function filterFolderTree(folder: TaskFolder, filter: TaskStatusValue[]): TaskFolder | null {
+    if (filter.length === 0) return folder;
+
+    const filteredChildren = folder.children
+        .map(child => filterFolderTree(child, filter))
+        .filter((child): child is TaskFolder => child !== null);
+
+    const filteredSingleDocs = folder.singleDocuments.filter(doc => isDocumentMatchingFilter(doc, filter));
+
+    const filteredDocGroups = folder.documentGroups.filter(group => {
+        return group.documents.some(doc => isDocumentMatchingFilter(doc, filter));
+    });
+
+    const contextDocs: TaskDocument[] = (folder as any).contextDocuments ?? [];
+    const filteredContextDocs = contextDocs.filter(doc => isDocumentMatchingFilter(doc, filter));
+
+    const hasContent = filteredChildren.length > 0 || filteredSingleDocs.length > 0 || filteredDocGroups.length > 0 || filteredContextDocs.length > 0;
+    if (!hasContent) return null;
+
+    const result: TaskFolder = {
+        ...folder,
+        children: filteredChildren,
+        singleDocuments: filteredSingleDocs,
+        documentGroups: filteredDocGroups,
+    };
+    if (contextDocs.length > 0) {
+        (result as any).contextDocuments = filteredContextDocs;
+    }
+    return result;
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────

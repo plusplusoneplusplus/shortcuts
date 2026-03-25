@@ -3,9 +3,9 @@
  * Renders a two-zone flex layout: left = TaskTree, right = TaskPreview.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
-import { useTaskTree } from '../hooks/useTaskTree';
+import { useTaskTree, filterFolderTree, isDocumentMatchingFilter, type TaskStatusValue, STATUS_PILLS } from '../hooks/useTaskTree';
 import { fetchApi } from '../hooks/useApi';
 import { useFolderActions } from '../hooks/useFolderActions';
 import { useFileActions } from '../hooks/useFileActions';
@@ -60,6 +60,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const scrollRef = useRef<HTMLDivElement>(null);
     const { isMobile } = useBreakpoint();
     const [toolbarOverflowOpen, setToolbarOverflowOpen] = useState(false);
+    const [statusFilter, setStatusFilter] = useState<TaskStatusValue[]>([]);
     const [tasksFolder, setTasksFolder] = useState('.vscode/tasks');
     useEffect(() => {
         fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/settings`)
@@ -100,6 +101,21 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     });
 
     const { searchInput, searchQuery, searchResults, searchInputRef, onSearchChange, onSearchClear } = useTaskSearch(tree ?? null, { isPreviewOpen: !!openFilePath });
+
+    const filteredTree = useMemo(() => {
+        if (!tree || statusFilter.length === 0) return tree;
+        return filterFolderTree(tree, statusFilter);
+    }, [tree, statusFilter]);
+
+    const filteredSearchResults = useMemo(() => {
+        if (statusFilter.length === 0) return searchResults;
+        return searchResults.filter(item => {
+            if ('documents' in item && !('children' in item)) {
+                return item.documents.some(doc => isDocumentMatchingFilter(doc, statusFilter));
+            }
+            return isDocumentMatchingFilter(item as { status?: string }, statusFilter);
+        });
+    }, [searchResults, statusFilter]);
 
     const fileDlg = useFileDialogHandlers({ fileActions, refresh, addToast, onSearchClear });
     const folderDlg = useFolderDialogHandlers({ folderActions, fileActions, refresh, addToast, onOpenGenerateDialog });
@@ -193,14 +209,36 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 onQueueFolder={(fp) => queueDispatch({ type: 'OPEN_DIALOG', folderPath: fp })}
                 toolbarOverflowOpen={toolbarOverflowOpen}
                 setToolbarOverflowOpen={setToolbarOverflowOpen}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
             />
+
+            {statusFilter.length > 0 && (
+                <div
+                    className="bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-b border-[#0078d4]/20 dark:border-[#3794ff]/20 px-3 py-1 text-xs text-[#616161] dark:text-[#9d9d9d] flex items-center gap-2"
+                    data-testid="task-status-filter-banner"
+                >
+                    <span>Filtered by:</span>
+                    {statusFilter.map(s => {
+                        const pill = STATUS_PILLS.find(p => p.status === s);
+                        return pill ? <span key={s}>{pill.icon} {pill.label}</span> : null;
+                    })}
+                    <button
+                        className="ml-auto text-[#0078d4] dark:text-[#3794ff] hover:underline text-xs"
+                        onClick={() => setStatusFilter([])}
+                        data-testid="task-filter-clear"
+                    >
+                        ✕ Clear filter
+                    </button>
+                </div>
+            )}
 
             <TasksMillerLayout
                 scrollRef={scrollRef}
                 isSearching={!!searchQuery}
-                searchResults={searchResults}
+                searchResults={filteredSearchResults}
                 searchQuery={searchQuery}
-                tree={tree}
+                tree={filteredTree ?? tree!}
                 commentCounts={commentCounts}
                 wsId={wsId}
                 tasksFolder={tasksFolder}
