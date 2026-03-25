@@ -1031,6 +1031,32 @@
     cursor: not-allowed;
 }
 
+.task-status-select {
+    margin-left: 8px;
+    padding: 2px 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    background: #fff;
+    color: #333;
+    cursor: pointer;
+    outline: none;
+}
+.task-status-select:focus {
+    border-color: #0078d4;
+    box-shadow: 0 0 0 1px #0078d4;
+}
+.dark .task-status-select {
+    background: #2d2d2d;
+    color: #ccc;
+    border-color: #555;
+}
+.dark .task-status-select:focus {
+    border-color: #0078d4;
+    box-shadow: 0 0 0 1px #0078d4;
+}
+
 /* Dark-mode overrides — source-mode */
 .dark .mode-toggle { border-bottom-color: #3c3c3c; }
 .dark .source-line .line-number { color: #9a9a9a; }

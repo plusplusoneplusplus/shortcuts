@@ -37,6 +37,20 @@ import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
+const TASK_STATUS_OPTIONS = [
+    { value: 'pending', label: '⏳ Pending' },
+    { value: 'in-progress', label: '🔄 In Progress' },
+    { value: 'done', label: '✅ Done' },
+    { value: 'future', label: '📋 Future' },
+] as const;
+
+export function parseFrontmatterStatus(content: string): string | undefined {
+    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!match) return undefined;
+    const statusMatch = match[1].match(/^status:\s*(.+)$/m);
+    return statusMatch?.[1]?.trim();
+}
+
 export interface MarkdownReviewEditorProps {
     wsId: string;
     filePath: string;
@@ -99,6 +113,7 @@ export function MarkdownReviewEditor({
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
     const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | null>(null);
+    const [taskStatus, setTaskStatus] = useState<string | undefined>(undefined);
     const taskName = filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? filePath;
 
     const setViewMode = useCallback((mode: 'review' | 'source') => {
@@ -111,6 +126,27 @@ export function MarkdownReviewEditor({
     // Ref mirror so the content-fetch useEffect can read dirty state without depending on it
     const isDirtyRef = useRef(false);
     isDirtyRef.current = isDirty;
+
+    const { addToast } = useGlobalToast();
+
+    // Sync task status from frontmatter whenever content loads/reloads
+    useEffect(() => { setTaskStatus(parseFrontmatterStatus(rawContent)); }, [rawContent]);
+
+    const handleStatusChange = useCallback(async (newStatus: string) => {
+        const prev = taskStatus;
+        setTaskStatus(newStatus);
+        try {
+            await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: filePath, status: newStatus }),
+            });
+            window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId } }));
+        } catch {
+            setTaskStatus(prev);
+            addToast('Failed to update status', 'error');
+        }
+    }, [wsId, filePath, taskStatus, addToast]);
 
     // Selection & popup state
     const [contextMenuVisible, setContextMenuVisible] = useState(false);
@@ -190,8 +226,6 @@ export function MarkdownReviewEditor({
         viewMode,
         comments: renderComments,
     });
-
-    const { addToast } = useGlobalToast();
 
     const showCommentListPanel = comments.length > 0;
 
@@ -616,6 +650,20 @@ export function MarkdownReviewEditor({
                             <button className="save-btn" onClick={saveContent} disabled={saving}>
                                 {saving ? 'Saving…' : 'Save'}
                             </button>
+                        )}
+                        {fetchMode === 'tasks' && (
+                            <select
+                                value={taskStatus ?? ''}
+                                onChange={e => handleStatusChange(e.target.value)}
+                                className="task-status-select"
+                                aria-label="Task status"
+                                data-testid="task-status-select"
+                            >
+                                <option value="" disabled>— Status —</option>
+                                {TASK_STATUS_OPTIONS.map(o => (
+                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                            </select>
                         )}
                         {(showAiButtons || toolbarRight) && (
                             <div className="ml-auto flex items-center">
