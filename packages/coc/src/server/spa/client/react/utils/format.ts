@@ -64,6 +64,31 @@ export function copyToClipboard(text: string): Promise<void> {
     return Promise.resolve();
 }
 
+export async function copyHtmlToClipboard(html: string): Promise<void> {
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        const htmlBlob = new Blob([html], { type: 'text/html' });
+        const textBlob = new Blob([html], { type: 'text/plain' });
+        await navigator.clipboard.write([
+            new ClipboardItem({ 'text/html': htmlBlob, 'text/plain': textBlob }),
+        ]);
+        return;
+    }
+    // Fallback: hidden contenteditable div + execCommand
+    const div = document.createElement('div');
+    div.contentEditable = 'true';
+    div.innerHTML = html;
+    div.style.position = 'fixed';
+    div.style.left = '-9999px';
+    document.body.appendChild(div);
+    const range = document.createRange();
+    range.selectNodeContents(div);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    document.execCommand('copy');
+    document.body.removeChild(div);
+}
+
 export function statusIcon(status: string): string {
     const map: Record<string, string> = { running: '\u{1F504}', completed: '\u2705', failed: '\u274C', cancelled: '\u{1F6AB}', queued: '\u23F3' };
     return map[status] || '';

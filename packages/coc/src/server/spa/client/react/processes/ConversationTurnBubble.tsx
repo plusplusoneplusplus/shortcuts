@@ -10,7 +10,7 @@ import { mergeConsecutiveContentItems } from './timeline-utils';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { fetchApi } from '../hooks/useApi';
-import { copyToClipboard, splitMarkdownSections } from '../utils/format';
+import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../utils/format';
 import { linkifyFilePaths } from '../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
@@ -592,6 +592,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [copiedHtml, setCopiedHtml] = useState(false);
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
 
     // Pre-compute section markdown slices for section-level copy buttons on assistant turns.
@@ -791,6 +792,24 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     >
                         {copied ? '✓' : '📋'}
                     </button>
+                    {!showRaw && (
+                        <button
+                            className="bubble-copy-html-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                            title="Copy as HTML"
+                            onClick={async () => {
+                                try {
+                                    const html = chatMarkdownToHtml(turn.content || '', wsId);
+                                    await copyHtmlToClipboard(html);
+                                    setCopiedHtml(true);
+                                    setTimeout(() => setCopiedHtml(false), 1500);
+                                } catch (e) {
+                                    console.error('Copy HTML failed:', e);
+                                }
+                            }}
+                        >
+                            {copiedHtml ? '✓' : 'HTML'}
+                        </button>
+                    )}
                 </div>
 
                 <div className="space-y-2 chat-message-content">
