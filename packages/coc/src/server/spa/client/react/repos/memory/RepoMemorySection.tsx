@@ -38,7 +38,7 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
                 memoryApi.getFeed(repoId),
             ]);
             setStats(statsData);
-            setFeed(feedData);
+            setFeed(feedData.items);
         } catch (e: any) {
             setError(e?.message ?? 'Failed to load memory');
         } finally {

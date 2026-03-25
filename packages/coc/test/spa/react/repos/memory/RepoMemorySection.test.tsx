@@ -38,7 +38,7 @@ function mockFetchWith(stats: any, feed: any[]) {
             return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(stats) });
         }
         if (url.includes('/memory/feed') && !url.includes('/feed/')) {
-            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(feed) });
+            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: feed, consolidatedAt: stats.consolidatedAt ?? null, totalCount: feed.length }) });
         }
         return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
     });

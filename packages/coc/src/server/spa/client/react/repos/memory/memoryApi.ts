@@ -22,6 +22,12 @@ export interface MemoryStats {
     consolidatedAt: string | null;
 }
 
+export interface FeedResponse {
+    items: FeedItem[];
+    consolidatedAt: string | null;
+    totalCount: number;
+}
+
 export interface DiffLine {
     type: 'add' | 'remove' | 'unchanged';
     text: string;
@@ -34,7 +40,7 @@ export const memoryApi = {
         return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/stats`);
     },
 
-    getFeed(repoId: string): Promise<FeedItem[]> {
+    getFeed(repoId: string): Promise<FeedResponse> {
         return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/feed`);
     },
 
