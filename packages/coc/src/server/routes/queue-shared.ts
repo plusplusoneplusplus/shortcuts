@@ -177,6 +177,8 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         if (!payload.kind) payload.kind = 'chat';
         if (!payload.mode) payload.mode = 'autopilot';
     }
+    if (taskSpec.type === 'run-script' && !payload.kind) payload.kind = 'run-script';
+    if (taskSpec.type === 'run-workflow' && !payload.kind) payload.kind = 'run-workflow';
 
     if (typeof taskSpec.prompt === 'string' && taskSpec.prompt.trim() && !payload.prompt) {
         payload.prompt = taskSpec.prompt.trim();
