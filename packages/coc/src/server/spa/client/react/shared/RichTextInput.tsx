@@ -107,6 +107,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                 onPaste={handlePaste}
                 className={cn(
                     'w-full min-h-[34px] max-h-28 overflow-y-auto resize-y rounded border',
+                    'whitespace-pre-wrap',
                     'bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc]',
                     'focus:outline-none focus:ring-2',
                     props.disabled && 'opacity-60 cursor-not-allowed',

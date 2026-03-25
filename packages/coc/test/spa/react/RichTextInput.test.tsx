@@ -221,4 +221,14 @@ describe('RichTextInput', () => {
         act(() => { ref.current!.setValue('/impl '); });
         expect(getSelectionSpy).not.toHaveBeenCalled();
     });
+
+    // Regression: contentEditable div must have white-space:pre-wrap so browsers preserve
+    // trailing spaces after Tab-autocomplete (e.g. "/impl " stays "/impl " — not "/impl").
+    // Without this class, Chromium strips trailing whitespace from text nodes under
+    // white-space:normal, causing the cursor to land before the space and breaking typing.
+    it('contentEditable div has whitespace-pre-wrap class (browser trailing-space preservation)', () => {
+        render(<RichTextInput onChange={vi.fn()} data-testid="rich-ws" />);
+        const div = screen.getByTestId('rich-ws');
+        expect(div.className).toContain('whitespace-pre-wrap');
+    });
 });
