@@ -195,8 +195,8 @@ export function FloatingDialog({
     const panelClass = cn(
         'fixed z-[10002]',
         hasMaxWOverride
-            ? `w-full ${isMaximized ? 'rounded-none' : 'rounded-lg'} bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col`
-            : `w-full max-w-[600px] min-w-[480px] ${isMaximized ? 'rounded-none' : 'rounded-lg'} bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col`,
+            ? `w-full ${isMaximized ? 'rounded-none' : 'rounded-lg'} bg-white dark:bg-[#252526] border border-[#c8c8c8] dark:border-[#555555] shadow-xl flex flex-col`
+            : `w-full max-w-[600px] min-w-[480px] ${isMaximized ? 'rounded-none' : 'rounded-lg'} bg-white dark:bg-[#252526] border border-[#c8c8c8] dark:border-[#555555] shadow-xl flex flex-col`,
         noPadding ? '' : 'p-6 gap-4',
         className,
     );

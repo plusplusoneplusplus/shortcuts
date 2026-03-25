@@ -188,6 +188,30 @@ describe('FloatingDialog', () => {
         });
     });
 
+    describe('panel border contrast', () => {
+        it('uses #c8c8c8 light border and #555555 dark border for clarity', () => {
+            render(
+                <FloatingDialog open={true} onClose={vi.fn()} title="T">
+                    Content
+                </FloatingDialog>
+            );
+            const panel = screen.getByTestId('floating-dialog-panel');
+            expect(panel.className).toContain('border-[#c8c8c8]');
+            expect(panel.className).toContain('dark:border-[#555555]');
+        });
+
+        it('uses stronger border in hasMaxWOverride path', () => {
+            render(
+                <FloatingDialog open={true} onClose={vi.fn()} className="max-w-[800px]">
+                    Content
+                </FloatingDialog>
+            );
+            const panel = screen.getByTestId('floating-dialog-panel');
+            expect(panel.className).toContain('border-[#c8c8c8]');
+            expect(panel.className).toContain('dark:border-[#555555]');
+        });
+    });
+
     describe('maximize prop', () => {
         it('renders resize handles hidden when isMaximized=true', () => {
             render(

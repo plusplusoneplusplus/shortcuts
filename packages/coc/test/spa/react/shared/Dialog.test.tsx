@@ -99,6 +99,28 @@ describe('Dialog', () => {
         expect(closeBtn).toBeDisabled();
     });
 
+    describe('panel border contrast', () => {
+        it('uses #c8c8c8 light border and #555555 dark border for clarity', () => {
+            render(
+                <Dialog open={true} onClose={vi.fn()} title="T">Content</Dialog>
+            );
+            const overlay = screen.getByTestId('dialog-overlay');
+            const panel = overlay.firstElementChild!;
+            expect(panel.className).toContain('border-[#c8c8c8]');
+            expect(panel.className).toContain('dark:border-[#555555]');
+        });
+
+        it('uses stronger border in hasMaxWOverride path', () => {
+            render(
+                <Dialog open={true} onClose={vi.fn()} className="max-w-[800px]">Content</Dialog>
+            );
+            const overlay = screen.getByTestId('dialog-overlay');
+            const panel = overlay.firstElementChild!;
+            expect(panel.className).toContain('border-[#c8c8c8]');
+            expect(panel.className).toContain('dark:border-[#555555]');
+        });
+    });
+
     it('renderHeader replaces built-in header', () => {
         render(
             <Dialog open={true} onClose={vi.fn()} title="Ignored" renderHeader={() => (

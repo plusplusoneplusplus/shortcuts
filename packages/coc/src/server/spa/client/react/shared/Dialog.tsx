@@ -48,8 +48,8 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
         ? 'w-full h-full flex flex-col p-4 overflow-hidden'
         : cn(
             hasMaxWOverride
-                ? 'relative w-full max-h-[90vh] overflow-hidden rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-6 flex flex-col gap-4'
-                : 'relative w-full max-w-lg max-h-[90vh] overflow-hidden rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-6 flex flex-col gap-4',
+                ? 'relative w-full max-h-[90vh] overflow-hidden rounded-lg bg-white dark:bg-[#252526] border border-[#c8c8c8] dark:border-[#555555] shadow-xl p-6 flex flex-col gap-4'
+                : 'relative w-full max-w-lg max-h-[90vh] overflow-hidden rounded-lg bg-white dark:bg-[#252526] border border-[#c8c8c8] dark:border-[#555555] shadow-xl p-6 flex flex-col gap-4',
             className,
         );
 
