@@ -169,7 +169,7 @@ describe('TaskTreeItem — file (TaskDocument) rendering', () => {
         const onFileClick = vi.fn();
         renderItem({ item: makeDocument({ relativePath: 'sub', fileName: 'task.md' }), onFileClick });
         fireEvent.click(screen.getByTestId('task-tree-item-task'));
-        expect(onFileClick).toHaveBeenCalledWith('sub/task.md');
+        expect(onFileClick).toHaveBeenCalledWith('sub/task.md', expect.any(Object));
     });
 
     it('file right-click calls onFileContextMenu', () => {
@@ -204,7 +204,7 @@ describe('TaskTreeItem — document group rendering', () => {
         });
         renderItem({ item: group, onFileClick });
         fireEvent.click(screen.getByTestId('task-tree-item-design'));
-        expect(onFileClick).toHaveBeenCalledWith('feat/design.spec.md');
+        expect(onFileClick).toHaveBeenCalledWith('feat/design.spec.md', expect.any(Object));
     });
 });
 
@@ -462,7 +462,7 @@ describe('TaskTreeItem — backslash normalization in paths', () => {    afterEa
             onFileClick,
         });
         fireEvent.click(screen.getByTestId('task-tree-item-task'));
-        expect(onFileClick).toHaveBeenCalledWith('coc/chat/render.md');
+        expect(onFileClick).toHaveBeenCalledWith('coc/chat/render.md', expect.any(Object));
     });
 
     it('normalizes backslashes in relativePath for document group click', () => {
@@ -475,7 +475,7 @@ describe('TaskTreeItem — backslash normalization in paths', () => {    afterEa
         });
         renderItem({ item: group, onFileClick });
         fireEvent.click(screen.getByTestId('task-tree-item-design'));
-        expect(onFileClick).toHaveBeenCalledWith('feat/sub/design.spec.md');
+        expect(onFileClick).toHaveBeenCalledWith('feat/sub/design.spec.md', expect.any(Object));
     });
 
     it('sets data-file-path with normalized forward slashes', () => {

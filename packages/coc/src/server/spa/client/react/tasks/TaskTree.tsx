@@ -70,13 +70,14 @@ export function TaskTree({
     onDrop: onDropCallback,
     onNavigateBack,
 }: TaskTreeProps) {
-    const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
+    const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, setSelectedFiles, clearSelection, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId, tasksFolder);
     const { isMobile } = useBreakpoint();
     const dnd = useTaskDragDrop();
     const [columns, setColumns] = useState<TaskNode[][]>([]);
     const [activeFolderKeys, setActiveFolderKeys] = useState<(string | null)[]>([]);
     const activeFolderKeysRef = useRef<(string | null)[]>([]);
+    const lastClickAnchorRef = useRef<{ path: string; colIndex: number } | null>(null);
     const isInitialMount = useRef(true);
 
     // Initialize or rebuild columns from tree
@@ -162,7 +163,59 @@ export function TaskTree({
         onColumnsChange?.();
     };
 
-    const handleFileClick = (path: string, colIndex: number) => {
+    const handleFileClick = (path: string, colIndex: number, e: React.MouseEvent) => {
+        const isCtrl = e.ctrlKey || e.metaKey;
+        const isShift = e.shiftKey;
+
+        if (isCtrl && !isShift) {
+            // Ctrl+Click: toggle selection, no navigation
+            toggleSelectedFile(path);
+            lastClickAnchorRef.current = { path, colIndex };
+            return;
+        }
+
+        if (isShift) {
+            // Shift+Click: range-select within same column
+            const anchor = lastClickAnchorRef.current;
+            if (!anchor || anchor.colIndex !== colIndex) {
+                // No anchor in same column → fall back to toggle
+                toggleSelectedFile(path);
+                lastClickAnchorRef.current = { path, colIndex };
+                return;
+            }
+
+            const colNodes = columns[colIndex] ?? [];
+            const anchorIdx = colNodes.findIndex(n => getTaskNodePath(n) === anchor.path);
+            const currentIdx = colNodes.findIndex(n => getTaskNodePath(n) === path);
+
+            if (anchorIdx === -1 || currentIdx === -1) {
+                toggleSelectedFile(path);
+                return;
+            }
+
+            const [lo, hi] = anchorIdx < currentIdx
+                ? [anchorIdx, currentIdx]
+                : [currentIdx, anchorIdx];
+
+            const rangePaths = new Set<string>();
+            for (const p of selectedFilePaths) rangePaths.add(p);
+            for (let i = lo; i <= hi; i++) {
+                const node = colNodes[i];
+                if (!isTaskFolder(node)) {
+                    const p = getTaskNodePath(node);
+                    if (p) rangePaths.add(p);
+                }
+            }
+
+            setSelectedFiles(rangePaths);
+            // Keep anchor fixed for further shift-clicks
+            return;
+        }
+
+        // Plain click: clear selection, navigate/open
+        clearSelection();
+        lastClickAnchorRef.current = { path, colIndex };
+
         // Collapse any deeper stale folder columns when opening a file.
         setColumns(prev => prev.slice(0, colIndex + 1));
 
@@ -322,7 +375,7 @@ export function TaskTree({
                                         folderMdCount={folderMdCount}
                                         showContextFiles={showContextFiles}
                                         onFolderClick={(folder) => handleFolderClick(folder, colIndex)}
-                                        onFileClick={(path) => handleFileClick(path, colIndex)}
+                                        onFileClick={(path, e) => handleFileClick(path, colIndex, e)}
                                         onCheckboxChange={handleCheckboxChange}
                                         onDoubleClick={handleFileDoubleClick}
                                         onFolderContextMenu={onFolderContextMenu}

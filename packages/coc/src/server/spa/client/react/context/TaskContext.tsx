@@ -31,6 +31,7 @@ const initialState: TaskContextState = {
 export type TaskAction =
     | { type: 'SET_OPEN_FILE_PATH'; path: string | null }
     | { type: 'TOGGLE_SELECTED_FILE'; path: string }
+    | { type: 'SET_SELECTED_FILES'; paths: Set<string> }
     | { type: 'CLEAR_SELECTION' }
     | { type: 'TOGGLE_SHOW_CONTEXT_FILES' }
     | { type: 'WORKSPACE_TASKS_CHANGED'; wsId: string }
@@ -51,6 +52,8 @@ export function taskReducer(state: TaskContextState, action: TaskAction): TaskCo
             }
             return { ...state, selectedFilePaths: next };
         }
+        case 'SET_SELECTED_FILES':
+            return { ...state, selectedFilePaths: new Set(action.paths) };
         case 'CLEAR_SELECTION':
             return { ...state, selectedFilePaths: new Set() };
         case 'TOGGLE_SHOW_CONTEXT_FILES':
@@ -110,6 +113,7 @@ export function useTaskPanel() {
         setOpenFilePath: (p: string | null) => dispatch({ type: 'SET_OPEN_FILE_PATH', path: p }),
         selectedFilePaths: state.selectedFilePaths,
         toggleSelectedFile: (p: string) => dispatch({ type: 'TOGGLE_SELECTED_FILE', path: p }),
+        setSelectedFiles: (paths: Set<string>) => dispatch({ type: 'SET_SELECTED_FILES', paths }),
         clearSelection: () => dispatch({ type: 'CLEAR_SELECTION' }),
         showContextFiles: state.showContextFiles,
         toggleShowContextFiles: () => dispatch({ type: 'TOGGLE_SHOW_CONTEXT_FILES' }),

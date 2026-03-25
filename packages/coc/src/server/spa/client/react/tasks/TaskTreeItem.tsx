@@ -19,7 +19,7 @@ export interface TaskTreeItemProps {
     folderMdCount: number;
     showContextFiles: boolean;
     onFolderClick: (folder: TaskFolder) => void;
-    onFileClick: (path: string) => void;
+    onFileClick: (path: string, e: React.MouseEvent) => void;
     onCheckboxChange: (path: string, checked: boolean) => void;
     onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
     onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
@@ -107,11 +107,11 @@ export function TaskTreeItem({
     const isArchiveFolder = isFolder && ((item as TaskFolder).relativePath === 'archive' || (item as TaskFolder).name === 'archive');
     const tooltip = !isFolder ? buildFileTooltip(path, commentCount, status) : undefined;
 
-    const handleClick = () => {
+    const handleClick = (e: React.MouseEvent) => {
         if (isFolder) {
             onFolderClick(item as TaskFolder);
         } else if (path) {
-            onFileClick(path);
+            onFileClick(path, e);
         }
     };
 
@@ -165,13 +165,13 @@ export function TaskTreeItem({
         }
     };
 
-    const handleClickWithLongPress = () => {
+    const handleClickWithLongPress = (e: React.MouseEvent) => {
         // Suppress click if it was triggered by a long press
         if (longPressFired.current) {
             longPressFired.current = false;
             return;
         }
-        handleClick();
+        handleClick(e);
     };
 
     const handleDoubleClick = () => {
