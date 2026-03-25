@@ -31,6 +31,7 @@ import { BranchPickerModal } from './BranchPickerModal';
 import { AmendMessageModal } from './AmendMessageModal';
 import { clearCacheForHash } from './useCommitDiffCache';
 import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from './useBranchRangeCache';
+import { getCommitsCache, setCommitsCache, clearCommitsCache } from './useCommitsCache';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
@@ -100,6 +101,20 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
 
     const fetchCommits = useCallback((refresh = false, skipOffset = 0, search = '') => {
+        // For the initial page with no search, check/update the client-side cache.
+        if (skipOffset === 0 && !search) {
+            if (refresh) {
+                clearCommitsCache(workspaceId);
+            } else {
+                const cached = getCommitsCache(workspaceId);
+                if (cached) {
+                    setCommits(cached.commits);
+                    setUnpushedCount(cached.unpushedCount);
+                    setHasMore(cached.hasMore);
+                    return Promise.resolve(cached.commits);
+                }
+            }
+        }
         const skipQs = skipOffset > 0 ? `&skip=${skipOffset}` : '';
         const refreshQs = refresh ? '&refresh=true' : '';
         const searchQs = search ? `&search=${encodeURIComponent(search)}` : '';
@@ -111,6 +126,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 } else {
                     setCommits(loaded);
                     setUnpushedCount(data.unpushedCount || 0);
+                    if (!search) {
+                        setCommitsCache(workspaceId, {
+                            commits: loaded,
+                            unpushedCount: data.unpushedCount || 0,
+                            hasMore: loaded.length === 50,
+                        });
+                    }
                 }
                 setHasMore(loaded.length === 50);
                 return loaded;
