@@ -37,6 +37,26 @@ export interface LastModelsByMode {
     plan?: string;
 }
 
+/** A single saved run-script template. */
+export interface ScriptTemplateEntry {
+    id: string;
+    name: string;
+    scriptPath: string;
+    args?: string;
+    workingDirectory?: string;
+    model?: string;
+    pauseOnFailure?: boolean;
+}
+
+/** A single saved skill/model template. */
+export interface SkillTemplateEntry {
+    id: string;
+    name?: string;
+    model: string;
+    mode: 'ask' | 'task';
+    skills: string[];
+}
+
 /** A recently-used skill in the Run Skill dialog. */
 export interface RecentFollowPromptEntry {
     type: 'prompt' | 'skill';
@@ -86,6 +106,10 @@ export interface PerRepoPreferences {
     skillUsageMap?: Record<string, string>;
     /** IDs of workspaces whose skill folders are linked via "Extra Skill Folders". */
     linkedRepoIds?: string[];
+    /** Saved run-script templates from the Run Script dialog. */
+    scriptTemplates?: ScriptTemplateEntry[];
+    /** Saved skill/model templates from the Run Skill dialog. */
+    skillTemplates?: SkillTemplateEntry[];
 }
 
 /** backward-compat alias */
@@ -266,6 +290,58 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         );
         // Preserve array even when empty so callers can detect an explicit clear
         result.linkedRepoIds = ids;
+    }
+
+    if (Array.isArray(obj.scriptTemplates)) {
+        const validated: ScriptTemplateEntry[] = [];
+        for (const entry of obj.scriptTemplates as unknown[]) {
+            if (
+                typeof entry === 'object' && entry !== null &&
+                typeof (entry as any).id === 'string' && (entry as any).id.length > 0 &&
+                typeof (entry as any).name === 'string' &&
+                typeof (entry as any).scriptPath === 'string'
+            ) {
+                const clean: ScriptTemplateEntry = {
+                    id: (entry as any).id,
+                    name: (entry as any).name,
+                    scriptPath: (entry as any).scriptPath,
+                };
+                if (typeof (entry as any).args === 'string') clean.args = (entry as any).args;
+                if (typeof (entry as any).workingDirectory === 'string') clean.workingDirectory = (entry as any).workingDirectory;
+                if (typeof (entry as any).model === 'string') clean.model = (entry as any).model;
+                if (typeof (entry as any).pauseOnFailure === 'boolean') clean.pauseOnFailure = (entry as any).pauseOnFailure;
+                validated.push(clean);
+            }
+        }
+        // Keep empty array as explicit "delete all"
+        result.scriptTemplates = validated;
+    }
+
+    if (Array.isArray(obj.skillTemplates)) {
+        const validated: SkillTemplateEntry[] = [];
+        for (const entry of obj.skillTemplates as unknown[]) {
+            if (
+                typeof entry === 'object' && entry !== null &&
+                typeof (entry as any).id === 'string' && (entry as any).id.length > 0 &&
+                typeof (entry as any).model === 'string' &&
+                ((entry as any).mode === 'ask' || (entry as any).mode === 'task') &&
+                Array.isArray((entry as any).skills)
+            ) {
+                const skills = ((entry as any).skills as unknown[]).filter(
+                    (s): s is string => typeof s === 'string'
+                );
+                const clean: SkillTemplateEntry = {
+                    id: (entry as any).id,
+                    model: (entry as any).model,
+                    mode: (entry as any).mode,
+                    skills,
+                };
+                if (typeof (entry as any).name === 'string') clean.name = (entry as any).name;
+                validated.push(clean);
+            }
+        }
+        // Keep empty array as explicit "delete all"
+        result.skillTemplates = validated;
     }
 
     return result;

@@ -388,6 +388,20 @@ describe('readPreferences / writePreferences', () => {
         expect(loadedA.lastModel).toBe('gpt-4');
         expect(loadedB.lastModel).toBe('claude-3');
     });
+
+    it('round-trips scriptTemplates through write and read', () => {
+        const templates = [{ id: 't1', name: 'Build', scriptPath: './build.sh', args: '--prod', model: 'gpt-4' }];
+        writeRepoPreferences(tmpDir, 'repo-a', { scriptTemplates: templates });
+        const loaded = readRepoPreferences(tmpDir, 'repo-a');
+        expect(loaded.scriptTemplates).toEqual(templates);
+    });
+
+    it('round-trips skillTemplates through write and read', () => {
+        const templates = [{ id: 's1', name: 'My Template', model: 'gpt-4', mode: 'ask' as const, skills: ['code-review'] }];
+        writeRepoPreferences(tmpDir, 'repo-a', { skillTemplates: templates });
+        const loaded = readRepoPreferences(tmpDir, 'repo-a');
+        expect(loaded.skillTemplates).toEqual(templates);
+    });
 });
 
 describe('validatePreferences', () => {
@@ -773,6 +787,88 @@ describe('validatePreferences', () => {
         expect(validatePerRepoPreferences({ linkedRepoIds: 'ws-abc' }).linkedRepoIds).toBeUndefined();
         expect(validatePerRepoPreferences({ linkedRepoIds: null }).linkedRepoIds).toBeUndefined();
         expect(validatePerRepoPreferences({ linkedRepoIds: { a: 'b' } }).linkedRepoIds).toBeUndefined();
+    });
+
+    // --- scriptTemplates ---
+
+    it('accepts valid scriptTemplates array with all required fields', () => {
+        const input = [{ id: 't1', name: 'Build', scriptPath: './build.sh' }];
+        expect(validatePerRepoPreferences({ scriptTemplates: input }).scriptTemplates).toEqual(input);
+    });
+
+    it('accepts empty scriptTemplates array (explicit clear)', () => {
+        expect(validatePerRepoPreferences({ scriptTemplates: [] }).scriptTemplates).toEqual([]);
+    });
+
+    it('filters out entries missing id or scriptPath from scriptTemplates', () => {
+        const input = [
+            { id: 't1', name: 'Build', scriptPath: './build.sh' },
+            { name: 'No ID', scriptPath: './run.sh' },
+            { id: 't3', name: 'No Path' },
+        ];
+        const result = validatePerRepoPreferences({ scriptTemplates: input }).scriptTemplates!;
+        expect(result).toHaveLength(1);
+        expect(result[0].id).toBe('t1');
+    });
+
+    it('filters out entries where id is empty string in scriptTemplates', () => {
+        const input = [{ id: '', name: 'Empty ID', scriptPath: './run.sh' }];
+        expect(validatePerRepoPreferences({ scriptTemplates: input }).scriptTemplates).toEqual([]);
+    });
+
+    it('preserves optional fields in scriptTemplates', () => {
+        const input = [{ id: 't1', name: 'Build', scriptPath: './build.sh', args: '--prod', workingDirectory: '/app', model: 'gpt-4', pauseOnFailure: true }];
+        const result = validatePerRepoPreferences({ scriptTemplates: input }).scriptTemplates!;
+        expect(result[0]).toEqual(input[0]);
+    });
+
+    it('rejects non-array scriptTemplates', () => {
+        expect(validatePerRepoPreferences({ scriptTemplates: 'not-array' }).scriptTemplates).toBeUndefined();
+        expect(validatePerRepoPreferences({ scriptTemplates: { id: 't1' } }).scriptTemplates).toBeUndefined();
+    });
+
+    // --- skillTemplates ---
+
+    it('accepts valid skillTemplates array', () => {
+        const input = [{ id: 's1', model: 'gpt-4', mode: 'ask', skills: ['code-review'] }];
+        expect(validatePerRepoPreferences({ skillTemplates: input }).skillTemplates).toEqual(input);
+    });
+
+    it('accepts empty skillTemplates array (explicit clear)', () => {
+        expect(validatePerRepoPreferences({ skillTemplates: [] }).skillTemplates).toEqual([]);
+    });
+
+    it('filters out entries missing required fields from skillTemplates', () => {
+        const input = [
+            { id: 's1', model: 'gpt-4', mode: 'ask', skills: ['a'] },
+            { id: 's2', mode: 'ask', skills: ['a'] },           // missing model
+            { id: 's3', model: 'gpt-4', skills: ['a'] },        // missing mode
+            { id: 's4', model: 'gpt-4', mode: 'ask' },          // missing skills
+        ];
+        const result = validatePerRepoPreferences({ skillTemplates: input }).skillTemplates!;
+        expect(result).toHaveLength(1);
+        expect(result[0].id).toBe('s1');
+    });
+
+    it('filters out entries with invalid mode in skillTemplates', () => {
+        const input = [{ id: 's1', model: 'gpt-4', mode: 'invalid', skills: ['a'] }];
+        expect(validatePerRepoPreferences({ skillTemplates: input }).skillTemplates).toEqual([]);
+    });
+
+    it('filters out entries where skills is not an array in skillTemplates', () => {
+        const input = [{ id: 's1', model: 'gpt-4', mode: 'ask', skills: 'not-array' }];
+        expect(validatePerRepoPreferences({ skillTemplates: input }).skillTemplates).toEqual([]);
+    });
+
+    it('preserves optional name field in skillTemplates', () => {
+        const input = [{ id: 's1', name: 'My Template', model: 'gpt-4', mode: 'ask', skills: ['a'] }];
+        const result = validatePerRepoPreferences({ skillTemplates: input }).skillTemplates!;
+        expect(result[0].name).toBe('My Template');
+    });
+
+    it('rejects non-array skillTemplates', () => {
+        expect(validatePerRepoPreferences({ skillTemplates: 'not-array' }).skillTemplates).toBeUndefined();
+        expect(validatePerRepoPreferences({ skillTemplates: { id: 's1' } }).skillTemplates).toBeUndefined();
     });
 });
 
@@ -1461,5 +1557,37 @@ describe('Per-Repo Preferences REST API', () => {
         const body = JSON.parse(res.body);
         expect(body.lastModel).toBe('gpt-4');
         expect(body.linkedRepoIds).toEqual(['ws-abc']);
+    });
+
+    it('PATCH persists scriptTemplates', async () => {
+        const templates = [{ id: 't1', name: 'Build', scriptPath: './build.sh', args: '--prod' }];
+        const res = await patchJSON(repoUrl(repoId), { scriptTemplates: templates });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).scriptTemplates).toEqual(templates);
+        const get = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(get.body).scriptTemplates).toEqual(templates);
+    });
+
+    it('PATCH with scriptTemplates:[] clears existing templates', async () => {
+        await patchJSON(repoUrl(repoId), { scriptTemplates: [{ id: 't1', name: 'Build', scriptPath: './build.sh' }] });
+        const res = await patchJSON(repoUrl(repoId), { scriptTemplates: [] });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).scriptTemplates).toEqual([]);
+    });
+
+    it('PATCH persists skillTemplates', async () => {
+        const templates = [{ id: 's1', name: 'Review', model: 'gpt-4', mode: 'ask', skills: ['code-review'] }];
+        const res = await patchJSON(repoUrl(repoId), { skillTemplates: templates });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).skillTemplates).toEqual(templates);
+        const get = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(get.body).skillTemplates).toEqual(templates);
+    });
+
+    it('PATCH with skillTemplates:[] clears existing templates', async () => {
+        await patchJSON(repoUrl(repoId), { skillTemplates: [{ id: 's1', model: 'gpt-4', mode: 'task', skills: ['impl'] }] });
+        const res = await patchJSON(repoUrl(repoId), { skillTemplates: [] });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).skillTemplates).toEqual([]);
     });
 });
