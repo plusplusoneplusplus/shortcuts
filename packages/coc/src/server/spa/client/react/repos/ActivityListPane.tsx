@@ -18,6 +18,7 @@ import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 import { getDraft } from '../hooks/useDraftStore';
 import { useLongPress } from '../hooks/useLongPress';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
+import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -822,8 +823,8 @@ export function ActivityListPane({
                                     const hasPinnedDraft = !!getDraft(task.id);
                                     const isHistorySelected = selectedHistoryIds.has(task.id);
                                     return (
+                                        <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
                                         <Card
-                                            key={task.id}
                                             className={cn(
                                                 "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
                                                 isHistorySelected
@@ -867,6 +868,7 @@ export function ActivityListPane({
                                                 </div>
                                             )}
                                         </Card>
+                                        </SwipeableHistoryItem>
                                     );
                                 })}
                             </div>
@@ -912,8 +914,8 @@ export function ActivityListPane({
                                     const hasUnpinnedDraft = !!getDraft(task.id);
                                     const isHistorySelected = selectedHistoryIds.has(task.id);
                                     return (
+                                        <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
                                         <Card
-                                            key={task.id}
                                             className={cn(
                                                 "p-2 cursor-pointer",
                                                 isHistorySelected
@@ -956,6 +958,7 @@ export function ActivityListPane({
                                                 </div>
                                             )}
                                         </Card>
+                                        </SwipeableHistoryItem>
                                     );
                                 })}
                             </div>
@@ -976,8 +979,8 @@ export function ActivityListPane({
                             {filteredArchived.map(task => {
                                 const isUnseen = unseenTaskIds?.has(task.id) ?? false;
                                 return (
+                                    <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
                                     <Card
-                                        key={task.id}
                                         className={cn(
                                             "p-2 cursor-pointer opacity-60",
                                             selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
@@ -1008,6 +1011,7 @@ export function ActivityListPane({
                                         </div>
                                         {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
                                     </Card>
+                                    </SwipeableHistoryItem>
                                 );
                             })}
                         </div>
