@@ -165,6 +165,16 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
     it('returns 409 when two simultaneous resume requests target the same process', async () => {
         const { taskId, processId } = await enqueueChatTask();
 
+        // Wait for the fire-and-forget title generator (triggered by task completion)
+        // to finish calling store.getProcess before we install the pausing mock.
+        // Without this wait, the title generator's getProcess call triggers the
+        // pause signal prematurely — before any resume-chat request has added pid
+        // to resumeInProgress — causing both requests to slip through the 409 guard.
+        await vi.waitFor(
+            () => { expect(store.processes.get(processId)?.title).toBeDefined(); },
+            { timeout: 3000 }
+        );
+
         // Override process: valid sdkSessionId + conversation history
         const existing = store.processes.get(processId)!;
         store.processes.set(processId, {

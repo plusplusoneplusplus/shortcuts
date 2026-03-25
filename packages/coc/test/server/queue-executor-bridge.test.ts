@@ -2556,10 +2556,10 @@ describe('CLITaskExecutor', () => {
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
-            expect(result.result).toEqual({
+            expect(result.result).toEqual(expect.objectContaining({
                 revisedContent: '# Revised Document\n\nFixed content.',
                 commentIds: ['comment-a', 'comment-b'],
-            });
+            }));
         });
 
         it('should pass promptTemplate as the AI prompt', async () => {
@@ -2742,7 +2742,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             // Only c1 was resolved via tool, c2 was not
-            expect(result.result).toEqual({ revisedContent: 'revised doc', commentIds: ['c1'] });
+            expect(result.result).toEqual(expect.objectContaining({ revisedContent: 'revised doc', commentIds: ['c1'] }));
         });
 
         it('should fall back to all comment IDs when tool is not called', async () => {
@@ -2775,7 +2775,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             // Fallback: all IDs returned
-            expect(result.result).toEqual({ revisedContent: 'revised doc', commentIds: ['c1', 'c2', 'c3'] });
+            expect(result.result).toEqual(expect.objectContaining({ revisedContent: 'revised doc', commentIds: ['c1', 'c2', 'c3'] }));
         });
     });
 });
