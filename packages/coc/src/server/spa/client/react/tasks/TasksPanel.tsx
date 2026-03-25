@@ -99,7 +99,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         return normalizeRemoteUrl(currentUrl) === normalizeRemoteUrl(candidateUrl);
     });
 
-    const { searchInput, searchQuery, searchResults, searchInputRef, onSearchChange, onSearchClear } = useTaskSearch(tree ?? null);
+    const { searchInput, searchQuery, searchResults, searchInputRef, onSearchChange, onSearchClear } = useTaskSearch(tree ?? null, { isPreviewOpen: !!openFilePath });
 
     const fileDlg = useFileDialogHandlers({ fileActions, refresh, addToast, onSearchClear });
     const folderDlg = useFolderDialogHandlers({ folderActions, fileActions, refresh, addToast, onOpenGenerateDialog });

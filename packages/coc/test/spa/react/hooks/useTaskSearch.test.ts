@@ -125,6 +125,53 @@ describe('useTaskSearch', () => {
         expect(result.current.searchQuery).toBe('');
     });
 
+    it('Ctrl+F does not focus search when isPreviewOpen is true', () => {
+        const { result } = renderHook(() => useTaskSearch(makeTree(), { isPreviewOpen: true }));
+        const focusSpy = vi.fn();
+        Object.defineProperty(result.current.searchInputRef, 'current', {
+            value: { focus: focusSpy, blur: vi.fn() },
+            writable: true,
+        });
+
+        const event = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true });
+        const preventSpy = vi.spyOn(event, 'preventDefault');
+
+        act(() => { document.dispatchEvent(event); });
+
+        expect(focusSpy).not.toHaveBeenCalled();
+        expect(preventSpy).not.toHaveBeenCalled();
+    });
+
+    it('Ctrl+F focuses search when isPreviewOpen is false', () => {
+        const { result } = renderHook(() => useTaskSearch(makeTree(), { isPreviewOpen: false }));
+        const focusSpy = vi.fn();
+        Object.defineProperty(result.current.searchInputRef, 'current', {
+            value: { focus: focusSpy, blur: vi.fn() },
+            writable: true,
+        });
+
+        const event = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true });
+
+        act(() => { document.dispatchEvent(event); });
+
+        expect(focusSpy).toHaveBeenCalled();
+    });
+
+    it('Escape still clears search when isPreviewOpen is true', () => {
+        const { result } = renderHook(() => useTaskSearch(makeTree(), { isPreviewOpen: true }));
+        act(() => { result.current.onSearchChange('test'); });
+        act(() => { vi.advanceTimersByTime(150); });
+        expect(result.current.searchQuery).toBe('test');
+
+        act(() => {
+            document.dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+            );
+        });
+        expect(result.current.searchInput).toBe('');
+        expect(result.current.searchQuery).toBe('');
+    });
+
     it('removes keydown listener on unmount', () => {
         const removeSpy = vi.spyOn(document, 'removeEventListener');
         const { unmount } = renderHook(() => useTaskSearch(null));

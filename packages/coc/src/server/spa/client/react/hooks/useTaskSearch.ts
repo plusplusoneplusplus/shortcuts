@@ -7,7 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flattenTaskTree, filterTaskItems } from './useTaskTree';
 import type { TaskFolder } from './useTaskTree';
 
-export function useTaskSearch(tree: TaskFolder | null) {
+export function useTaskSearch(tree: TaskFolder | null, options?: { isPreviewOpen?: boolean }) {
+    const isPreviewOpen = options?.isPreviewOpen ?? false;
     const [searchQuery, setSearchQuery] = useState('');
     const [searchInput, setSearchInput] = useState('');
     const debounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -35,6 +36,7 @@ export function useTaskSearch(tree: TaskFolder | null) {
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+                if (isPreviewOpen) return; // let browser native find-in-page activate
                 e.preventDefault();
                 searchInputRef.current?.focus();
             }
@@ -48,7 +50,7 @@ export function useTaskSearch(tree: TaskFolder | null) {
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [searchInput, searchQuery]);
+    }, [searchInput, searchQuery, isPreviewOpen]);
 
     const allItems = useMemo(() => tree ? flattenTaskTree(tree) : [], [tree]);
     const searchResults = useMemo(() => filterTaskItems(allItems, searchQuery), [allItems, searchQuery]);
