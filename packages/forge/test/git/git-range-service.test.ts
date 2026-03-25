@@ -23,6 +23,12 @@ vi.mock('../../src/logger', () => ({
     LogCategory: { GIT: 'Git' },
 }));
 
+// Mock fs so detectCommitRange's existsSync guard treats test paths as existing
+vi.mock('fs', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('fs')>();
+    return { ...actual, existsSync: vi.fn().mockReturnValue(true) };
+});
+
 import { execGit } from '../../src/git/exec';
 
 const mockExecGit = vi.mocked(execGit);

@@ -10,6 +10,7 @@
  * Extracted from `src/shortcuts/git/git-range-service.ts`.
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import { getLogger, LogCategory } from '../logger';
 import { execGit } from './exec';
@@ -282,6 +283,9 @@ export class GitRangeService {
      * @returns GitCommitRange or null if no range detected
      */
     detectCommitRange(repoRoot: string): GitCommitRange | null {
+        if (!fs.existsSync(repoRoot)) {
+            return null;
+        }
         try {
             const currentBranch = this.getCurrentBranch(repoRoot);
 
