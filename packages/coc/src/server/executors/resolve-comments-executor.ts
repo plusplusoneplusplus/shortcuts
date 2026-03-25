@@ -17,7 +17,7 @@
 import type { ProcessStore, QueuedTask, Tool } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import { createResolveCommentTool } from '../resolve-comment-tool';
-import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
+import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import type { ProcessWebSocketServer } from '../websocket';
 
@@ -51,7 +51,7 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
      * 4. Persist comment status and broadcast WS events (best-effort)
      * 5. Return { revisedContent, commentIds }
      */
-    async executeTask(task: QueuedTask): Promise<{ revisedContent?: string; commentIds: string[] }> {
+    async executeTask(task: QueuedTask): Promise<ChatModeExecutionResult & { revisedContent?: string; commentIds: string[] }> {
         const payload = task.payload as unknown as ChatPayload;
         const rc = payload.context?.resolveComments;
         const aiPrompt = payload.prompt;
@@ -102,7 +102,7 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
                 }
             }
 
-            return { revisedContent: chatResult.response, commentIds };
+            return { ...chatResult, revisedContent: chatResult.response, commentIds };
         } finally {
             this.resolvedIdGetters.delete(processId);
         }
