@@ -1,9 +1,10 @@
 /**
- * Regression tests for TopBar.selectRepo — verifies that the active sub-tab
- * and settings section are preserved in location.hash when switching repos.
+ * Regression tests for TopBar.selectRepo — verifies that the target repo's
+ * last-visited sub-tab (from repoTabState) is used in location.hash when
+ * switching repos.
  *
- * Previously, switching repos reset the hash to `#repos/<id>` only,
- * discarding the current sub-tab path.
+ * Previously, switching repos used the *current* repo's activeRepoSubTab
+ * instead of looking up the *target* repo's saved tab from repoTabState.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -15,18 +16,19 @@ let capturedOnSelect: ((id: string) => void) | null = null;
 
 const mockDispatch = vi.fn();
 
-let mockActiveRepoSubTab: RepoSubTab = 'git';
+let mockRepoTabState: Record<string, RepoSubTab> = {};
 let mockSettingsSection: SettingsSection = 'info';
 
 vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
     useApp: () => ({
         state: {
             activeTab: 'repos',
-            activeRepoSubTab: mockActiveRepoSubTab,
+            activeRepoSubTab: 'git',
             settingsSection: mockSettingsSection,
             reposSidebarCollapsed: false,
             wsStatus: 'open',
             selectedRepoId: null,
+            repoTabState: mockRepoTabState,
         },
         dispatch: mockDispatch,
     }),
@@ -62,79 +64,89 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
 
 import { TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
 
-describe('TopBar — selectRepo preserves sub-tab in hash', () => {
+describe('TopBar — selectRepo restores target repo sub-tab from repoTabState', () => {
     beforeEach(() => {
         location.hash = '';
         capturedOnSelect = null;
         mockDispatch.mockClear();
+        mockRepoTabState = {};
+        mockSettingsSection = 'info';
     });
 
     afterEach(() => {
         location.hash = '';
     });
 
-    it('preserves git sub-tab when switching repos', () => {
-        mockActiveRepoSubTab = 'git';
+    it('restores git sub-tab from repoTabState for target repo', () => {
+        mockRepoTabState = { 'repo-abc': 'git' };
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo-abc'); });
         expect(location.hash).toBe('#repos/repo-abc/git');
     });
 
-    it('preserves workflows sub-tab when switching repos', () => {
-        mockActiveRepoSubTab = 'workflows';
+    it('restores workflows sub-tab from repoTabState for target repo', () => {
+        mockRepoTabState = { 'repo-xyz': 'workflows' };
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo-xyz'); });
         expect(location.hash).toBe('#repos/repo-xyz/workflows');
     });
 
-    it('preserves explorer sub-tab when switching repos', () => {
-        mockActiveRepoSubTab = 'explorer';
+    it('restores explorer sub-tab from repoTabState for target repo', () => {
+        mockRepoTabState = { 'repo-123': 'explorer' };
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo-123'); });
         expect(location.hash).toBe('#repos/repo-123/explorer');
     });
 
-    it('preserves activity sub-tab when switching repos', () => {
-        mockActiveRepoSubTab = 'activity';
+    it('restores activity sub-tab from repoTabState for target repo', () => {
+        mockRepoTabState = { 'repo-abc': 'activity' };
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo-abc'); });
         expect(location.hash).toBe('#repos/repo-abc/activity');
     });
 
-    it('preserves settings sub-tab with section when switching repos', () => {
-        mockActiveRepoSubTab = 'settings';
+    it('restores settings sub-tab with section from repoTabState', () => {
+        mockRepoTabState = { 'repo-xyz': 'settings' };
         mockSettingsSection = 'mcp';
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo-xyz'); });
         expect(location.hash).toBe('#repos/repo-xyz/settings/mcp');
     });
 
-    it('preserves settings/info section when switching repos', () => {
-        mockActiveRepoSubTab = 'settings';
+    it('restores settings/info section from repoTabState', () => {
+        mockRepoTabState = { 'repo-abc': 'settings' };
         mockSettingsSection = 'info';
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo-abc'); });
         expect(location.hash).toBe('#repos/repo-abc/settings/info');
     });
 
+    it('defaults to settings when target repo has no saved sub-tab', () => {
+        mockRepoTabState = {};
+        mockSettingsSection = 'info';
+        render(<TopBar />);
+        act(() => { capturedOnSelect?.('new-repo'); });
+        expect(location.hash).toBe('#repos/new-repo/settings/info');
+    });
+
     it('dispatches SET_SELECTED_REPO with the new repo id', () => {
-        mockActiveRepoSubTab = 'git';
+        mockRepoTabState = { 'repo-abc': 'git' };
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo-abc'); });
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: 'repo-abc' });
     });
 
-    it('regression: does not drop sub-tab (previously only set #repos/<id>)', () => {
-        mockActiveRepoSubTab = 'explorer';
+    it('uses target repo tab, not current repo activeRepoSubTab', () => {
+        // activeRepoSubTab is 'git' (set in mock), but target repo has 'explorer'
+        mockRepoTabState = { 'some-repo': 'explorer' };
         render(<TopBar />);
         act(() => { capturedOnSelect?.('some-repo'); });
-        // Must include the sub-tab — not just the bare repo path
-        expect(location.hash).not.toBe('#repos/some-repo');
+        expect(location.hash).not.toContain('/git');
         expect(location.hash).toContain('/explorer');
     });
 
     it('URL-encodes repo ids with special characters', () => {
-        mockActiveRepoSubTab = 'git';
+        mockRepoTabState = { 'repo/with spaces': 'git' };
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo/with spaces'); });
         expect(location.hash).toBe('#repos/' + encodeURIComponent('repo/with spaces') + '/git');

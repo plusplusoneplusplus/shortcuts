@@ -64,12 +64,12 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
 
     const selectRepo = useCallback((id: string) => {
         dispatch({ type: 'SET_SELECTED_REPO', id });
-        const subTab = state.activeRepoSubTab;
+        const subTab = state.repoTabState[id] ?? 'settings';
         const suffix = subTab === 'settings'
             ? `/${subTab}/${state.settingsSection}`
             : `/${subTab}`;
         location.hash = '#repos/' + encodeURIComponent(id) + suffix;
-    }, [dispatch, state.activeRepoSubTab, state.settingsSection]);
+    }, [dispatch, state.repoTabState, state.settingsSection]);
 
     const isOnReposTab = state.activeTab === 'repos';
 
