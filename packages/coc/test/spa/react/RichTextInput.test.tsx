@@ -109,4 +109,43 @@ describe('RichTextInput', () => {
         const div = screen.getByTestId('rich');
         expect(div.className).toContain('my-custom');
     });
+
+    it('strips trailing newlines from onChange (Chromium contentEditable quirk)', () => {
+        const ref = createRef<RichTextInputHandle>();
+        const onChange = vi.fn();
+        render(<RichTextInput ref={ref} onChange={onChange} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        // Simulate Chromium behavior: innerText has trailing \n
+        Object.defineProperty(div, 'innerText', { value: '/\n', writable: true, configurable: true });
+        fireEvent.input(div);
+        expect(onChange).toHaveBeenCalledWith('/');
+    });
+
+    it('strips multiple trailing newlines from onChange', () => {
+        const ref = createRef<RichTextInputHandle>();
+        const onChange = vi.fn();
+        render(<RichTextInput ref={ref} onChange={onChange} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        Object.defineProperty(div, 'innerText', { value: 'hello\n\n', writable: true, configurable: true });
+        fireEvent.input(div);
+        expect(onChange).toHaveBeenCalledWith('hello');
+    });
+
+    it('preserves interior newlines in onChange', () => {
+        const ref = createRef<RichTextInputHandle>();
+        const onChange = vi.fn();
+        render(<RichTextInput ref={ref} onChange={onChange} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        Object.defineProperty(div, 'innerText', { value: 'line1\nline2\n', writable: true, configurable: true });
+        fireEvent.input(div);
+        expect(onChange).toHaveBeenCalledWith('line1\nline2');
+    });
+
+    it('getValue strips trailing newlines', () => {
+        const ref = createRef<RichTextInputHandle>();
+        render(<RichTextInput ref={ref} onChange={vi.fn()} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        Object.defineProperty(div, 'innerText', { value: '/\n', writable: true, configurable: true });
+        expect(ref.current!.getValue()).toBe('/');
+    });
 });

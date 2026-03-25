@@ -24,7 +24,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         const divRef = useRef<HTMLDivElement>(null);
 
         useImperativeHandle(ref, () => ({
-            getValue: () => divRef.current?.innerText ?? '',
+            getValue: () => (divRef.current?.innerText ?? '').replace(/\n+$/, ''),
             setValue: (text) => { if (divRef.current) divRef.current.innerText = text; },
             focus: () => divRef.current?.focus(),
         }));
@@ -42,7 +42,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         };
 
         const handleInput = () => {
-            const text = divRef.current?.innerText ?? '';
+            const text = (divRef.current?.innerText ?? '').replace(/\n+$/, '');
             props.onChange(text);
         };
 
