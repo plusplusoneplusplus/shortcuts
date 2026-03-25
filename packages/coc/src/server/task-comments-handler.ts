@@ -361,7 +361,6 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
         bridge.getOrCreateBridge(wsRootPath);
         const queueManager = bridge.registry.getQueueForRepo(wsRootPath);
-        const taskRoot = await resolveTaskRootPath(wsId);
         const input: CreateTaskInput = {
             type: 'chat',
             priority: 'normal',
@@ -370,7 +369,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 mode: 'autopilot',
                 prompt,
                 tools: ['resolve-comments'],
-                workingDirectory: taskRoot || wsRootPath,
+                workingDirectory: wsRootPath,
                 context: {
                     resolveComments: {
                         documentUri: taskPath,

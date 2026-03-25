@@ -299,6 +299,21 @@ describe('batch-resolve endpoints', () => {
             expect(taskBody.task.payload.context.resolveComments.commentIds).toContain(commentId);
             expect(taskBody.task.payload.context.resolveComments.documentContent).toBe(DOC_CONTENT);
         });
+        it('sets workingDirectory to wsRootPath, not task data dir', async () => {
+            const commentId = await createComment();
+            const res = await postJSON(askAiUrl(commentId), {
+                commandId: 'resolve',
+                documentContent: DOC_CONTENT,
+            });
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+
+            const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
+            const taskBody = JSON.parse(taskRes.body);
+            const wd: string = taskBody.task.payload.workingDirectory;
+            expect(wd).not.toContain(path.join('repos', WS_ID, 'tasks'));
+            expect(wd).not.toContain(path.join('repos', WS_ID));
+        });
     });
 
     // ------------------------------------------------------------------
@@ -374,6 +389,21 @@ describe('batch-resolve endpoints', () => {
             const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
             const taskBody = JSON.parse(taskRes.body);
             expect(taskBody.task.payload.context.resolveComments.commentIds).toEqual([openId]);
+        });
+
+        it('sets workingDirectory to wsRootPath, not task data dir', async () => {
+            await createComment({ selectedText: 'text', comment: 'fix' });
+
+            const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+
+            const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
+            const taskBody = JSON.parse(taskRes.body);
+            const wd: string = taskBody.task.payload.workingDirectory;
+            // workingDirectory must NOT point into the data dir (tasks/ folder)
+            expect(wd).not.toContain(path.join('repos', WS_ID, 'tasks'));
+            expect(wd).not.toContain(path.join('repos', WS_ID));
         });
 
         it('includes the batch resolve prompt in the task payload', async () => {
