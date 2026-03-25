@@ -15,6 +15,7 @@ suite('ShortcutsCommands Integration Tests', function() {
     this.timeout(30000);
     
     let tempDir: string;
+    let ownedTempDir: boolean = false;
     let provider: LogicalTreeDataProvider;
     let configManager: ConfigurationManager;
     let themeManager: ThemeManager;
@@ -30,7 +31,14 @@ suite('ShortcutsCommands Integration Tests', function() {
     suiteSetup(async function() {
         this.timeout(30000);
         // Use the workspace folder launched by the test runner for isolation
-        tempDir = getWorkspaceRoot() || fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-commands-test-'));
+        const workspaceRoot = getWorkspaceRoot();
+        if (workspaceRoot) {
+            tempDir = workspaceRoot;
+            ownedTempDir = false;
+        } else {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-commands-test-'));
+            ownedTempDir = true;
+        }
 
         // Create test folder structure
         testFolder = path.join(tempDir, 'test-folder');
@@ -69,8 +77,8 @@ suite('ShortcutsCommands Integration Tests', function() {
             fs.unlinkSync(globalConfigPath);
         }
 
-        // Clean up temporary directory
-        if (fs.existsSync(tempDir)) {
+        // Clean up temporary directory only if we created it (not the shared workspace root)
+        if (ownedTempDir && fs.existsSync(tempDir)) {
             fs.rmSync(tempDir, { recursive: true, force: true });
         }
     });
