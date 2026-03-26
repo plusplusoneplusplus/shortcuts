@@ -165,14 +165,18 @@ export class FileProcessStore implements ProcessStore {
             // Direct path — workspaceId hint provided
             const entry = await this.readProcessFile(workspaceId, id);
             if (!entry) return undefined;
-            return deserializeProcess(entry.process);
+            const result = deserializeProcess(entry.process);
+            result.dataFilePath = this.getProcessFilePath(workspaceId, id);
+            return result;
         }
         // Scan workspace index files to find owning workspace
         const wsId = await this.findWorkspaceIdForProcess(id);
         if (wsId === undefined) return undefined;
         const entry = await this.readProcessFile(wsId, id);
         if (!entry) return undefined;
-        return deserializeProcess(entry.process);
+        const result = deserializeProcess(entry.process);
+        result.dataFilePath = this.getProcessFilePath(wsId, id);
+        return result;
     }
 
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {

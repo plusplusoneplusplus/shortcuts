@@ -87,6 +87,7 @@ function buildRows(process: any, turnsCount?: number): MetaRow[] {
     if (typeof turnsCount === 'number' && turnsCount >= 0) {
         push('Turns', turnsCount);
     }
+    push('File Path', process.dataFilePath, { breakAll: true, mono: true });
 
     return rows;
 }

@@ -106,6 +106,25 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(result).toBeUndefined();
     });
 
+    // getProcess — sets dataFilePath to the backing JSON file path
+    it('should set dataFilePath when retrieving via workspaceId hint', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+
+        const result = await store.getProcess('p1', 'ws-a');
+        expect(result).toBeDefined();
+        expect(result!.dataFilePath).toBe(store.getProcessFilePath('ws-a', 'p1'));
+    });
+
+    it('should set dataFilePath when retrieving via index scan (no workspaceId hint)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+
+        const result = await store.getProcess('p1');
+        expect(result).toBeDefined();
+        expect(result!.dataFilePath).toBe(store.getProcessFilePath('ws-a', 'p1'));
+    });
+
     // 8. getAllProcesses — no filter returns all workspaces
     it('should return processes from all workspaces when no filter provided', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });

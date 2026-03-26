@@ -418,6 +418,9 @@ export interface AIProcess {
 
     /** True when the stale task detector has flagged this process as stale (running past timeout) */
     stale?: boolean;
+
+    /** Absolute path to the JSON file backing this process in the store. */
+    dataFilePath?: string;
 }
 
 /**
