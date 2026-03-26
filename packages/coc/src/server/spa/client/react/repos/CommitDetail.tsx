@@ -631,6 +631,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                     isResolving={resolvingIds.has(activePopoverComment.id)}
                     isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
+            )}
         </div>
     );
 }

@@ -285,6 +285,7 @@ export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateT
                     isResolving={resolvingIds.has(activePopoverComment.id)}
                     isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
+            )}
         </div>
     );
 }
