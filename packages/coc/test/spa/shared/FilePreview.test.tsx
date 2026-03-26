@@ -5,6 +5,8 @@
  * - Row-based line rendering (not legacy pre+join)
  * - Word wrap styles on line content
  * - Markdown file detection and markdown rendering path
+ * - Syntax-highlighted rendering for known source/config files
+ * - Plain text fallback for unknown extensions
  * - Non-markdown files show line numbers
  * - Caching and error states
  */
@@ -427,6 +429,265 @@ describe('FilePreview', () => {
 
             expect(document.querySelector('.file-preview-lines')).toBeNull();
             vi.useRealTimers();
+        });
+    });
+
+    describe('syntax-highlighted file preview', () => {
+        function mockHighlightedPreviewResponse(overrides?: Partial<{
+            path: string;
+            fileName: string;
+            lines: string[];
+            totalLines: number;
+            truncated: boolean;
+            language: string;
+        }>) {
+            mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    path: '/workspace/src/app.ts',
+                    fileName: 'app.ts',
+                    lines: ['const x = 1;', 'function hello() {', '  return "world";', '}'],
+                    totalLines: 4,
+                    truncated: false,
+                    language: 'ts',
+                    ...overrides,
+                }),
+            });
+        }
+
+        it('renders syntax-highlighted content for TypeScript files', async () => {
+            mockHighlightedPreviewResponse();
+            renderFilePreview();
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lineContents = document.querySelectorAll('.file-preview-line-content');
+                expect(lineContents.length).toBe(4);
+                // Highlighted lines use dangerouslySetInnerHTML, so innerHTML should contain hljs spans
+                const firstLine = lineContents[0] as HTMLElement;
+                expect(firstLine.innerHTML).toContain('hljs-');
+            });
+        });
+
+        it('renders syntax-highlighted content for Python files', async () => {
+            mockHighlightedPreviewResponse({
+                path: '/workspace/src/main.py',
+                fileName: 'main.py',
+                lines: ['def hello():', '    return "world"'],
+                totalLines: 2,
+                language: 'py',
+            });
+            renderFilePreview({ filePath: '/workspace/src/main.py' });
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lineContents = document.querySelectorAll('.file-preview-line-content');
+                expect(lineContents.length).toBe(2);
+                const firstLine = lineContents[0] as HTMLElement;
+                expect(firstLine.innerHTML).toContain('hljs-');
+            });
+        });
+
+        it('renders syntax-highlighted content for JSON files', async () => {
+            mockHighlightedPreviewResponse({
+                path: '/workspace/package.json',
+                fileName: 'package.json',
+                lines: ['{ "name": "test" }'],
+                totalLines: 1,
+                language: 'json',
+            });
+            renderFilePreview({ filePath: '/workspace/package.json' });
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lineContents = document.querySelectorAll('.file-preview-line-content');
+                expect(lineContents.length).toBe(1);
+                const firstLine = lineContents[0] as HTMLElement;
+                expect(firstLine.innerHTML).toContain('hljs-');
+            });
+        });
+
+        it('renders syntax-highlighted content for YAML files', async () => {
+            mockHighlightedPreviewResponse({
+                path: '/workspace/config.yaml',
+                fileName: 'config.yaml',
+                lines: ['name: test', 'version: 1'],
+                totalLines: 2,
+                language: 'yaml',
+            });
+            renderFilePreview({ filePath: '/workspace/config.yaml' });
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lineContents = document.querySelectorAll('.file-preview-line-content');
+                expect(lineContents.length).toBe(2);
+                const firstLine = lineContents[0] as HTMLElement;
+                expect(firstLine.innerHTML).toContain('hljs-');
+            });
+        });
+
+        it('renders syntax-highlighted content for shell scripts', async () => {
+            mockHighlightedPreviewResponse({
+                path: '/workspace/script.sh',
+                fileName: 'script.sh',
+                lines: ['#!/bin/bash', 'echo "hello"'],
+                totalLines: 2,
+                language: 'sh',
+            });
+            renderFilePreview({ filePath: '/workspace/script.sh' });
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lineContents = document.querySelectorAll('.file-preview-line-content');
+                expect(lineContents.length).toBe(2);
+                const firstLine = lineContents[0] as HTMLElement;
+                expect(firstLine.innerHTML).toContain('hljs-');
+            });
+        });
+
+        it('adds hljs class to highlighted line content spans', async () => {
+            mockHighlightedPreviewResponse();
+            renderFilePreview();
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lineContents = document.querySelectorAll('.file-preview-line-content');
+                expect(lineContents.length).toBeGreaterThan(0);
+                const firstLine = lineContents[0] as HTMLElement;
+                expect(firstLine.classList.contains('hljs')).toBe(true);
+            });
+        });
+
+        it('preserves line numbers alongside highlighted content', async () => {
+            mockHighlightedPreviewResponse();
+            renderFilePreview();
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lineNumbers = document.querySelectorAll('.file-preview-line-number');
+                expect(lineNumbers.length).toBe(4);
+                expect(lineNumbers[0].textContent).toBe('1');
+                expect(lineNumbers[3].textContent).toBe('4');
+            });
+        });
+
+        it('falls back to plain text for unknown file extensions', async () => {
+            mockHighlightedPreviewResponse({
+                path: '/workspace/data.bin',
+                fileName: 'data.bin',
+                lines: ['binary content here'],
+                totalLines: 1,
+                language: 'plaintext',
+            });
+            renderFilePreview({ filePath: '/workspace/data.bin' });
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lineContents = document.querySelectorAll('.file-preview-line-content');
+                expect(lineContents.length).toBe(1);
+                const firstLine = lineContents[0] as HTMLElement;
+                // Plain text lines use textContent, not innerHTML with hljs spans
+                expect(firstLine.innerHTML).not.toContain('hljs-');
+                expect(firstLine.textContent).toBe('binary content here');
+            });
+        });
+
+        it('falls back to plain text for files with no extension', async () => {
+            mockHighlightedPreviewResponse({
+                path: '/workspace/Makefile',
+                fileName: 'Makefile',
+                lines: ['all: build', '\tgcc main.c'],
+                totalLines: 2,
+                language: 'plaintext',
+            });
+            renderFilePreview({ filePath: '/workspace/Makefile' });
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lineContents = document.querySelectorAll('.file-preview-line-content');
+                expect(lineContents.length).toBe(2);
+                const firstLine = lineContents[0] as HTMLElement;
+                expect(firstLine.innerHTML).not.toContain('hljs-');
+                // No hljs class on plain text lines
+                expect(firstLine.classList.contains('hljs')).toBe(false);
+            });
+        });
+
+        it('handles empty lines in highlighted content', async () => {
+            mockHighlightedPreviewResponse({
+                lines: ['const x = 1;', '', 'const y = 2;'],
+                totalLines: 3,
+            });
+            renderFilePreview();
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                const lines = document.querySelectorAll('.file-preview-line');
+                expect(lines.length).toBe(3);
+                // Empty line should still render (with zero-width space fallback)
+                const lineContents = document.querySelectorAll('.file-preview-line-content');
+                expect(lineContents[1].innerHTML).toBeTruthy();
+            });
+        });
+
+        it('still uses row-based layout (file-preview-lines) for highlighted files', async () => {
+            mockHighlightedPreviewResponse();
+            renderFilePreview();
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                expect(document.querySelector('.file-preview-lines')).not.toBeNull();
+                // Not using markdown-body
+                expect(document.querySelector('.markdown-body')).toBeNull();
+            });
+        });
+
+        it('does not use markdown rendering path for source code files', async () => {
+            mockHighlightedPreviewResponse();
+            renderFilePreview();
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+
+            await waitFor(() => {
+                expect(document.querySelector('.markdown-body')).toBeNull();
+                expect(document.querySelector('.file-preview-lines')).not.toBeNull();
+            });
         });
     });
 });

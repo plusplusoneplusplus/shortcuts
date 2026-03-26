@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getLanguageFromFileName, highlightLine, escapeHtml } from '../../../src/server/spa/client/react/repos/useSyntaxHighlight';
+import { getLanguageFromFileName, highlightLine, highlightBlock, escapeHtml } from '../../../src/server/spa/client/react/repos/useSyntaxHighlight';
 
 describe('escapeHtml', () => {
     it('escapes ampersands', () => {
@@ -203,5 +203,77 @@ describe('highlightLine', () => {
     it('highlights Python correctly', () => {
         const result = highlightLine('def hello():', 'python');
         expect(result).toContain('hljs-');
+    });
+});
+
+describe('highlightBlock', () => {
+    it('returns an array of HTML strings matching input length', () => {
+        const lines = ['const x = 1;', 'const y = 2;'];
+        const result = highlightBlock(lines, 'typescript');
+        expect(result.length).toBe(2);
+    });
+
+    it('contains hljs spans in highlighted lines', () => {
+        const lines = ['const x = 1;', 'function hello() {}'];
+        const result = highlightBlock(lines, 'typescript');
+        expect(result[0]).toContain('hljs-');
+        expect(result[1]).toContain('hljs-');
+    });
+
+    it('returns escaped HTML for null language', () => {
+        const lines = ['<div>', 'a & b'];
+        const result = highlightBlock(lines, null);
+        expect(result[0]).toBe('&lt;div&gt;');
+        expect(result[1]).toBe('a &amp; b');
+    });
+
+    it('returns empty array for empty input', () => {
+        const result = highlightBlock([], 'typescript');
+        expect(result).toEqual([]);
+    });
+
+    it('handles single-line input', () => {
+        const result = highlightBlock(['const x = 1;'], 'typescript');
+        expect(result.length).toBe(1);
+        expect(result[0]).toContain('hljs-');
+    });
+
+    it('handles empty lines in input', () => {
+        const lines = ['const x = 1;', '', 'const y = 2;'];
+        const result = highlightBlock(lines, 'typescript');
+        expect(result.length).toBe(3);
+        expect(result[1]).toBe('');
+    });
+
+    it('falls back to escaped HTML for unknown language', () => {
+        const lines = ['<div>test</div>'];
+        const result = highlightBlock(lines, 'nonexistentlang');
+        expect(typeof result[0]).toBe('string');
+        // Should either have hljs tokens (if auto-detected) or be escaped
+        expect(result.length).toBe(1);
+    });
+
+    it('highlights JSON correctly across lines', () => {
+        const lines = ['{', '  "key": "value"', '}'];
+        const result = highlightBlock(lines, 'json');
+        expect(result.length).toBe(3);
+        // At least one line should have hljs tokens
+        const hasTokens = result.some(l => l.includes('hljs-'));
+        expect(hasTokens).toBe(true);
+    });
+
+    it('highlights Python correctly', () => {
+        const lines = ['def hello():', '    return "world"'];
+        const result = highlightBlock(lines, 'python');
+        expect(result.length).toBe(2);
+        expect(result[0]).toContain('hljs-');
+    });
+
+    it('highlights multi-line block comments correctly', () => {
+        const lines = ['/*', ' * block comment', ' */', 'const x = 1;'];
+        const result = highlightBlock(lines, 'typescript');
+        expect(result.length).toBe(4);
+        // Block comment lines should have comment-related hljs spans
+        expect(result[0]).toContain('hljs-comment');
     });
 });

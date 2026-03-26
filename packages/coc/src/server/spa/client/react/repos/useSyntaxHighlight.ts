@@ -102,3 +102,19 @@ export function highlightLine(content: string, language: string | null): string 
         return escapeHtml(content);
     }
 }
+
+/**
+ * Highlight a block of code (multi-line), returning an array of HTML strings (one per line).
+ * Uses full-block highlighting for correct multi-line token handling (e.g. block comments).
+ * Falls back to HTML-escaped plain text on error.
+ */
+export function highlightBlock(lines: string[], language: string | null): string[] {
+    if (!language || lines.length === 0) return lines.map(l => escapeHtml(l));
+    try {
+        const code = lines.join('\n');
+        const highlighted = hljs.highlight(code, { language, ignoreIllegals: true }).value;
+        return highlighted.split('\n');
+    } catch {
+        return lines.map(l => escapeHtml(l));
+    }
+}

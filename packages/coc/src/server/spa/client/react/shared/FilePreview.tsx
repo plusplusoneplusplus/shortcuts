@@ -3,7 +3,8 @@
  * Wraps children and renders a portal tooltip with cached file preview.
  *
  * For markdown files, renders using the shared markdown pipeline.
- * For other files, uses row-based line rendering with word wrap.
+ * For known source/config files, applies syntax highlighting via highlight.js.
+ * For unknown/plain files, uses row-based line rendering with word wrap.
  */
 
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
@@ -11,6 +12,7 @@ import ReactDOM from 'react-dom';
 import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
 import { renderMarkdownToHtml } from '../../markdown-renderer';
+import { getLanguageFromFileName, highlightBlock } from '../repos/useSyntaxHighlight';
 import { Spinner } from './Spinner';
 import { cn } from './cn';
 
@@ -33,6 +35,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
+const MAX_HIGHLIGHT_LINES = 500;
 
 function isMarkdownFile(fileName: string, language: string): boolean {
     if (MARKDOWN_EXTENSIONS.has(language)) return true;
@@ -194,6 +197,10 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
             );
         }
 
+        const hljsLang = getLanguageFromFileName(preview.fileName);
+        const useHighlighting = hljsLang && hljsLang !== 'markdown' && preview.lines.length <= MAX_HIGHLIGHT_LINES;
+        const highlightedLines = useHighlighting ? highlightBlock(preview.lines, hljsLang) : null;
+
         const gutterWidth = String(preview.lines.length).length;
         return (
             <div className="file-preview-lines p-1" role="table">
@@ -206,12 +213,20 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
                         >
                             {i + 1}
                         </span>
-                        <span
-                            className="file-preview-line-content text-xs font-mono text-[#1e1e1e] dark:text-[#d4d4d4]"
-                            style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', flex: 1, minWidth: 0 }}
-                        >
-                            {line || '\u200B'}
-                        </span>
+                        {highlightedLines ? (
+                            <span
+                                className="file-preview-line-content text-xs font-mono text-[#1e1e1e] dark:text-[#d4d4d4] hljs"
+                                style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', flex: 1, minWidth: 0 }}
+                                dangerouslySetInnerHTML={{ __html: highlightedLines[i] || '\u200B' }}
+                            />
+                        ) : (
+                            <span
+                                className="file-preview-line-content text-xs font-mono text-[#1e1e1e] dark:text-[#d4d4d4]"
+                                style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', flex: 1, minWidth: 0 }}
+                            >
+                                {line || '\u200B'}
+                            </span>
+                        )}
                     </div>
                 ))}
             </div>
