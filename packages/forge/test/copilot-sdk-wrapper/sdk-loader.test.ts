@@ -16,7 +16,8 @@ import { findSdkBinaryPath, loadSdk } from '../../src/copilot-sdk-wrapper/sdk-lo
 
 describe('findSdkBinaryPath', () => {
     it('returns undefined when no candidate paths contain dist/index.js', () => {
-        const result = findSdkBinaryPath(() => false);
+        const noopResolve = () => { throw new Error('not found'); };
+        const result = findSdkBinaryPath(() => false, noopResolve);
 
         expect(result).toBeUndefined();
     });
@@ -24,13 +25,11 @@ describe('findSdkBinaryPath', () => {
     it('returns the first path where dist/index.js exists', () => {
         let callCount = 0;
         const result = findSdkBinaryPath(() => {
-            // Only the first call returns true
             callCount++;
             return callCount === 1;
         });
 
         expect(typeof result).toBe('string');
-        // The returned path ends with the SDK package name
         expect(result).toMatch(/copilot-sdk[/\\]?$/);
     });
 
@@ -38,7 +37,6 @@ describe('findSdkBinaryPath', () => {
         let callCount = 0;
         const existsFn = vi.fn().mockImplementation(() => {
             callCount++;
-            // Second probe returns true, all others false
             return callCount === 2;
         });
 
@@ -48,31 +46,63 @@ describe('findSdkBinaryPath', () => {
         expect(existsFn).toHaveBeenCalledTimes(2);
     });
 
-    it('probes exactly four candidate directories', () => {
+    it('probes seven relative candidate directories before require.resolve fallback', () => {
         const existsFn = vi.fn().mockReturnValue(false);
+        const noopResolve = () => { throw new Error('not found'); };
 
-        findSdkBinaryPath(existsFn);
+        findSdkBinaryPath(existsFn, noopResolve);
 
-        // Each candidate triggers exactly one existsSync call for dist/index.js
-        expect(existsFn).toHaveBeenCalledTimes(4);
+        expect(existsFn).toHaveBeenCalledTimes(7);
     });
 
     it('probes paths containing node_modules/@github/copilot-sdk with dist/index.js', () => {
         const probedPaths: string[] = [];
+        const noopResolve = () => { throw new Error('not found'); };
         findSdkBinaryPath((p) => {
             probedPaths.push(p);
             return false;
-        });
+        }, noopResolve);
 
-        expect(probedPaths).toHaveLength(4);
+        expect(probedPaths).toHaveLength(7);
         for (const p of probedPaths) {
             expect(p).toContain('copilot-sdk');
             expect(p).toContain(path.join('dist', 'index.js'));
         }
     });
 
+    it('falls back to require.resolve when relative probes fail', () => {
+        const sdkRoot = path.join('/mock', 'node_modules', '@github', 'copilot-sdk');
+        const resolveFn = vi.fn().mockReturnValue(path.join(sdkRoot, 'dist', 'index.js'));
+        const existsFn = vi.fn().mockImplementation((p: string) => {
+            return p === path.join(sdkRoot, 'dist', 'index.js');
+        });
+
+        const result = findSdkBinaryPath(existsFn, resolveFn);
+
+        expect(resolveFn).toHaveBeenCalledWith('@github/copilot-sdk');
+        expect(result).toBe(sdkRoot);
+    });
+
+    it('returns undefined when require.resolve also fails', () => {
+        const resolveFn = vi.fn().mockImplementation(() => { throw new Error('MODULE_NOT_FOUND'); });
+        const result = findSdkBinaryPath(() => false, resolveFn);
+
+        expect(result).toBeUndefined();
+    });
+
+    it('handles require.resolve returning a non-dist path', () => {
+        const sdkRoot = path.join('/mock', 'node_modules', '@github', 'copilot-sdk');
+        const resolveFn = vi.fn().mockReturnValue(path.join(sdkRoot, 'index.js'));
+        const existsFn = vi.fn().mockImplementation((p: string) => {
+            return p === path.join(sdkRoot, 'dist', 'index.js');
+        });
+
+        const result = findSdkBinaryPath(existsFn, resolveFn);
+
+        expect(result).toBe(sdkRoot);
+    });
+
     it('returns a string or undefined without throwing regardless of filesystem state', () => {
-        // Exercise the real filesystem — we do not care about the value, only the contract
         expect(() => findSdkBinaryPath()).not.toThrow();
         const result = findSdkBinaryPath();
         expect(result === undefined || typeof result === 'string').toBe(true);

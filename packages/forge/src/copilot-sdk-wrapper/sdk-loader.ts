@@ -38,6 +38,7 @@ export interface SdkModule {
  */
 export function findSdkBinaryPath(
     existsFn: (p: string) => boolean = fs.existsSync,
+    resolveFn?: (id: string) => string,
 ): string | undefined {
     const possiblePaths = [
         // Development: running from dist/
@@ -48,6 +49,14 @@ export function findSdkBinaryPath(
         path.join(__dirname, 'node_modules', '@github', 'copilot-sdk'),
         // Workspace root (for development)
         path.join(__dirname, '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
+        // Published package: forge is bundled inside a consumer's node_modules
+        // e.g. node_modules/@plusplusoneplusplus/coc/node_modules/@plusplusoneplusplus/forge/dist/copilot-sdk-wrapper/
+        // Walk up to the consumer package root, then to its parent node_modules
+        path.join(__dirname, '..', '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
+        // Published package: consumer is a scoped package (@scope/pkg) so one more level
+        path.join(__dirname, '..', '..', '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
+        // Published package: hoisted to top-level node_modules
+        path.join(__dirname, '..', '..', '..', '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
     ];
 
     for (const testPath of possiblePaths) {
@@ -55,6 +64,20 @@ export function findSdkBinaryPath(
         if (existsFn(indexPath)) {
             return testPath;
         }
+    }
+
+    // Fallback: use Node's module resolution which handles hoisting correctly
+    const resolve = resolveFn ?? ((id: string) => require.resolve(id));
+    try {
+        const sdkEntry = resolve('@github/copilot-sdk');
+        const sdkDir = path.dirname(sdkEntry);
+        const sdkRoot = sdkDir.endsWith('dist') ? path.dirname(sdkDir) : sdkDir;
+        const indexPath = path.join(sdkRoot, 'dist', 'index.js');
+        if (existsFn(indexPath)) {
+            return sdkRoot;
+        }
+    } catch {
+        // require.resolve throws when the package is not installed
     }
 
     return undefined;
