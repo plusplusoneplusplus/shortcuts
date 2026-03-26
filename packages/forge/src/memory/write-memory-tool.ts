@@ -17,6 +17,9 @@ export interface WriteMemoryToolOptions {
     source: string;
     /** Repo hash for repo-level writes. Omit for system-only. */
     repoHash?: string;
+    /** Explicit repo-level directory, alternative to repoHash. When the store
+     *  is constructed with `repoDir`, this field is unnecessary. */
+    repoDir?: string;
     /** Memory level to write to. Default: 'both' */
     level?: MemoryLevel;
     /** AI model name for observation metadata */

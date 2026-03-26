@@ -9,6 +9,8 @@ export interface WithMemoryOptions {
     store: MemoryStore;
     source: string;
     repoHash?: string;
+    /** Explicit repo-level directory, alternative to repoHash. */
+    repoDir?: string;
     level?: MemoryLevel;
     model?: string;
     repo?: string;
