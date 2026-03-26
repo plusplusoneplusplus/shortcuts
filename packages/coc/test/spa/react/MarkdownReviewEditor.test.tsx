@@ -42,6 +42,8 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
         fixWithAI: mockFixWithAI,
         copyResolvePrompt: mockCopyResolvePrompt,
         refresh: mockRefresh,
+        resolvingIds: new Set(),
+        deletingIds: new Set(),
         ...hookOverrides,
     }),
 }));

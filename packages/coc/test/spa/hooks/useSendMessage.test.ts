@@ -6,6 +6,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useSendMessage } from '../../../src/server/spa/client/react/hooks/useSendMessage';
 
+// ── Mock useChatPrefs ─────────────────────────────────────────────────────────
+vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    useChatPrefs: () => ({
+        archivedChatIds: new Set<string>(),
+        unarchiveChat: vi.fn(),
+        pinnedChatIds: new Set<string>(),
+        pinChat: vi.fn(),
+        unpinChat: vi.fn(),
+        archiveChat: vi.fn(),
+    }),
+}));
+
 // ── Mock EventSource ──────────────────────────────────────────────────────────
 
 class MockEventSource {

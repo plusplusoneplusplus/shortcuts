@@ -17,6 +17,17 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
     clearDraft: vi.fn(),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    useChatPrefs: () => ({
+        archivedChatIds: new Set<string>(),
+        unarchiveChat: vi.fn(),
+        pinnedChatIds: new Set<string>(),
+        pinChat: vi.fn(),
+        unpinChat: vi.fn(),
+        archiveChat: vi.fn(),
+    }),
+}));
+
 const fetchMock = vi.fn();
 global.fetch = fetchMock as any;
 

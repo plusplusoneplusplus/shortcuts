@@ -1456,13 +1456,10 @@ describe('API Handler', () => {
             expect(body.processId).toBe(proc.id);
             expect(body.turnIndex).toBe(0);
 
-            // Verify the process was updated with user turn and running status
+            // Verify the process was updated to running status (user turn is saved inside the executor)
             const getRes = await request(`${srv.url}/api/processes/${proc.id}`);
             const getBody = JSON.parse(getRes.body);
             expect(getBody.process.status).toBe('running');
-            expect(getBody.process.conversationTurns).toHaveLength(1);
-            expect(getBody.process.conversationTurns[0].role).toBe('user');
-            expect(getBody.process.conversationTurns[0].content).toBe('Follow up question');
         });
 
         it('should return 202 with turnIndex 0 for process with empty conversationTurns', async () => {

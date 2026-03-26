@@ -86,6 +86,8 @@ function makeHook(overrides: Record<string, unknown> = {}) {
         aiLoadingIds: new Set<string>(),
         aiErrors: new Map<string, string>(),
         clearAiError: mockClearAiError,
+        resolvingIds: new Set<string>(),
+        deletingIds: new Set<string>(),
 
         refresh: vi.fn(),
         runRelocation: vi.fn(),

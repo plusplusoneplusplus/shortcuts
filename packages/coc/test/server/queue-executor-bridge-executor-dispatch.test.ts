@@ -320,6 +320,7 @@ describe('CLITaskExecutor executor dispatch', () => {
                 undefined,
                 undefined,
                 undefined,
+                undefined,
             );
         });
 

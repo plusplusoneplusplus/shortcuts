@@ -26,6 +26,18 @@ vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => (
     invalidateDisplaySettings: vi.fn(),
 }));
 
+vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    useChatPrefs: () => ({
+        archivedChatIds: new Set<string>(),
+        unarchiveChat: vi.fn(),
+        pinnedChatIds: new Set<string>(),
+        pinChat: vi.fn(),
+        unpinChat: vi.fn(),
+        archiveChat: vi.fn(),
+    }),
+    ChatPreferencesProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
 }

@@ -69,7 +69,7 @@ describe('CLI', () => {
 
         it('should have version', () => {
             const program = createProgram();
-            expect(program.version()).toBe('1.0.0');
+            expect(program.version()).toBe('1.0.4');
         });
 
         it('run command should have expected options', () => {

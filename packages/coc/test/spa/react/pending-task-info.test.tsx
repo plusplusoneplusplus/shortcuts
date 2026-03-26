@@ -13,6 +13,18 @@ import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/co
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { ActivityChatDetail } from '../../../src/server/spa/client/react/repos/ActivityChatDetail';
 
+// Mock useChatPrefs to avoid ChatPreferencesProvider requirement
+vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    useChatPrefs: () => ({
+        archivedChatIds: new Set<string>(),
+        unarchiveChat: vi.fn(),
+        pinnedChatIds: new Set<string>(),
+        pinChat: vi.fn(),
+        unpinChat: vi.fn(),
+        archiveChat: vi.fn(),
+    }),
+}));
+
 // Mock config to return predictable API base
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',

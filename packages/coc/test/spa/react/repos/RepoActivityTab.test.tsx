@@ -175,12 +175,12 @@ describe('ActivityDetailPane: detail routing', () => {
         expect(ACTIVITY_DETAIL_PANE_SOURCE).not.toContain('isTopLevelChatTask');
     });
 
-    it('shows empty-state placeholder when no task is selected', () => {
-        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('Select a task to view details');
+    it('shows NewChatArea when no task is selected', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('NewChatArea');
     });
 
-    it('empty state has clipboard icon', () => {
-        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('📋');
+    it('empty state uses NewChatArea component', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('<NewChatArea');
     });
 
     it('passes onBack prop to ActivityChatDetail', () => {

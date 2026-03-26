@@ -82,6 +82,8 @@ function makeHook(overrides: Record<string, unknown> = {}) {
         aiErrors: new Map(),
         clearAiError: vi.fn(),
         copyAllCommentsAsPrompt: vi.fn(),
+        resolvingIds: new Set(),
+        deletingIds: new Set(),
 
         refresh: vi.fn(),
         ...overrides,
