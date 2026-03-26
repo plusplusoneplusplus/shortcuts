@@ -38,6 +38,7 @@ import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { handleGetMemoryConfig, handlePutMemoryConfig, readMemoryConfig } from './memory-config-handler';
 import { FileMemoryStore } from './memory-store';
 import { handleAggregateToolCalls } from './tool-call-aggregation-handler';
+import { getRepoDataPath } from '../paths';
 
 // ============================================================================
 // Types
@@ -264,8 +265,12 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
 
     // -- Observation browsing (pipeline-core memory files) --------------------
 
-    const getObservationStore = (): PipelineMemoryStore => {
+    const getObservationStore = (workspaceId?: string): PipelineMemoryStore => {
         const config = readMemoryConfig(dataDir);
+        if (workspaceId) {
+            const repoDir = getRepoDataPath(dataDir, workspaceId, 'memory');
+            return new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        }
         return new PipelineMemoryStore({ dataDir: config.storageDir });
     };
 
@@ -316,15 +321,19 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
         pattern: '/api/memory/observations',
         handler: async (req, res) => {
             try {
-                const store = getObservationStore();
                 const parsedUrl = url.parse(req.url ?? '', true);
                 const level = (parsedUrl.query.level as string) || 'system';
                 const hash = typeof parsedUrl.query.hash === 'string' ? parsedUrl.query.hash : undefined;
+                const workspaceId = typeof parsedUrl.query.workspaceId === 'string' ? parsedUrl.query.workspaceId : undefined;
 
                 if (!['system', 'git-remote', 'repo'].includes(level)) {
                     send400(res, `Invalid level: ${level}. Must be system, git-remote, or repo`);
                     return;
                 }
+
+                const store = (level === 'repo' && workspaceId)
+                    ? getObservationStore(workspaceId)
+                    : getObservationStore();
 
                 const mlevel = level as MemoryLevel;
                 const [files, consolidated, stats] = await Promise.all([
@@ -333,7 +342,7 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
                     store.getStats(mlevel, hash),
                 ]);
 
-                sendJson(res, { level, hash, files, consolidatedExists: !!consolidated, stats });
+                sendJson(res, { level, hash, workspaceId, files, consolidatedExists: !!consolidated, stats });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }
@@ -346,16 +355,20 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
         pattern: /^\/api\/memory\/observations\/([^/]+)$/,
         handler: async (req, res, match) => {
             try {
-                const store = getObservationStore();
                 const filename = decodeURIComponent(match![1]);
                 const parsedUrl = url.parse(req.url ?? '', true);
                 const level = (parsedUrl.query.level as string) || 'system';
                 const hash = typeof parsedUrl.query.hash === 'string' ? parsedUrl.query.hash : undefined;
+                const workspaceId = typeof parsedUrl.query.workspaceId === 'string' ? parsedUrl.query.workspaceId : undefined;
 
                 if (!['system', 'git-remote', 'repo'].includes(level)) {
                     send400(res, `Invalid level: ${level}. Must be system, git-remote, or repo`);
                     return;
                 }
+
+                const store = (level === 'repo' && workspaceId)
+                    ? getObservationStore(workspaceId)
+                    : getObservationStore();
 
                 if (filename === 'consolidated') {
                     const content = await store.readConsolidated(level as MemoryLevel, hash);
