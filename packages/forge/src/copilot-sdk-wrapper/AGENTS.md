@@ -10,7 +10,10 @@ Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lif
 | `request-runner.ts` | `sendMessage` / `transform` execution logic; session creation, MCP wiring, permission handler, streaming vs non-streaming routing |
 | `stream-error-guard.ts` | `StreamErrorGuard` class + `isStreamDestroyedError()` / `isConnectionDisposedError()` helpers |
 | `session-manager.ts` | Active session tracking and cancellation (`SessionManager` class) |
-| `streaming-session.ts` | Streaming state machine (`StreamingSession.run()`) |
+| `streaming-session.ts` | Streaming orchestrator (`StreamingSession.run()`) — wires state machine, timers, and telemetry |
+| `streaming-state-machine.ts` | Pure state machine: `Idle → Streaming → Settled \| Cancelled` transitions with guards |
+| `session-timer-manager.ts` | Timer management: overall timeout, idle timeout, turn-end grace (callback-based API) |
+| `session-telemetry.ts` | Token usage accumulation, tool-call tracking, response accumulation (pure data, no async) |
 | `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: cwd validation, folder trust, `new CopilotClient()` |
 | `sdk-loader.ts` | SDK binary discovery (`findSdkBinaryPath`) and ESM import workaround (`loadSdk`) |
 | `types.ts` | All shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
@@ -31,7 +34,9 @@ Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lif
 | Client spawning | `createSdkClient` (`sdk-client-factory.ts`) |
 | sendMessage / transform logic | `RequestRunner` (`request-runner.ts`) |
 | Session tracking / abort | `SessionManager` (`session-manager.ts`) |
-| Streaming state machine | `StreamingSession` (`streaming-session.ts`) |
+| Streaming state machine | `StreamingStateMachine` (`streaming-state-machine.ts`) |
+| Streaming timers | `SessionTimerManager` (`session-timer-manager.ts`) |
+| Streaming telemetry | `SessionTelemetry` (`session-telemetry.ts`) |
 | Stream-error process guard | `StreamErrorGuard` (`stream-error-guard.ts`) |
 | Model listing | `fetchModelsFromClient` (`model-registry.ts`) |
 
