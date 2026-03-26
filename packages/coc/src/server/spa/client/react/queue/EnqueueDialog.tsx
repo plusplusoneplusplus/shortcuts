@@ -63,6 +63,8 @@ export function EnqueueDialog() {
     const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [minimized, setMinimized] = useState(false);
+    const [beforeScript, setBeforeScript] = useState('');
+    const [afterScript, setAfterScript] = useState('');
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const richTextRef = useRef<RichTextInputHandle>(null);
     const slashCommands = useSlashCommands(skills);
@@ -237,6 +239,9 @@ export function EnqueueDialog() {
                 };
                 if (model) body.config = { model };
             }
+            // Inject optional before/after scripts into payload
+            if (beforeScript.trim()) body.payload.beforeScript = beforeScript.trim();
+            if (afterScript.trim()) body.payload.afterScript = afterScript.trim();
             const res = await fetch(getApiBase() + '/queue/tasks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -256,6 +261,8 @@ export function EnqueueDialog() {
             setPrompt('');
             richTextRef.current?.setValue('');
             setSelectedSkills([]);
+            setBeforeScript('');
+            setAfterScript('');
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
             // Record skill usage for ordering
             for (const sk of effectiveSkills) {
@@ -301,6 +308,8 @@ export function EnqueueDialog() {
     const handleRestore = useCallback(() => setMinimized(false), []);
     const handleClose = useCallback(() => {
         setMinimized(false);
+        setBeforeScript('');
+        setAfterScript('');
         queueDispatch({ type: 'CLOSE_DIALOG' });
     }, [queueDispatch]);
 
@@ -396,6 +405,35 @@ export function EnqueueDialog() {
                     onSkillChange={handleSkillChange}
                 />
             )}
+            <details>
+              <summary className="text-xs font-medium text-[#848484] cursor-pointer select-none mb-1">
+                Scripts (optional)
+              </summary>
+              <div className="flex flex-col gap-2 mt-2">
+                <div>
+                  <label className="block text-xs text-[#848484] mb-1">Before script</label>
+                  <input
+                    type="text"
+                    value={beforeScript}
+                    onChange={e => setBeforeScript(e.target.value)}
+                    placeholder="./scripts/setup.sh"
+                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                  />
+                  <p className="text-xs text-[#848484] mt-0.5">Runs before the AI task</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-[#848484] mb-1">After script</label>
+                  <input
+                    type="text"
+                    value={afterScript}
+                    onChange={e => setAfterScript(e.target.value)}
+                    placeholder="./scripts/cleanup.sh"
+                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                  />
+                  <p className="text-xs text-[#848484] mt-0.5">Always runs, even if the AI task fails</p>
+                </div>
+              </div>
+            </details>
             <div>
                 <label className="block text-xs font-medium text-[#848484] mb-1">Model</label>
                 <select
