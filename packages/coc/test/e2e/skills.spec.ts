@@ -38,7 +38,7 @@ test.describe('SkillsView – Tab navigation', () => {
         await gotoSkills(page, serverUrl);
 
         await expect(page.locator('[data-subtab="installed"]')).toBeVisible();
-        await expect(page.locator('[data-subtab="bundled"]')).toBeVisible();
+        await expect(page.locator('[data-subtab="gallery"]')).toBeVisible();
         await expect(page.locator('[data-subtab="config"]')).toBeVisible();
     });
 
@@ -48,11 +48,11 @@ test.describe('SkillsView – Tab navigation', () => {
         await expect(page.locator('[data-subtab="installed"]')).toHaveClass(/border-\[#0078d4\]/, { timeout: 5_000 });
     });
 
-    test('S.3 clicking bundled tab activates it', async ({ page, serverUrl }) => {
+    test('S.3 clicking gallery tab activates it', async ({ page, serverUrl }) => {
         await gotoSkills(page, serverUrl);
 
-        await page.click('[data-subtab="bundled"]');
-        await expect(page.locator('[data-subtab="bundled"]')).toHaveClass(/border-\[#0078d4\]/, { timeout: 5_000 });
+        await page.click('[data-subtab="gallery"]');
+        await expect(page.locator('[data-subtab="gallery"]')).toHaveClass(/border-\[#0078d4\]/, { timeout: 5_000 });
     });
 
     test('S.4 clicking config tab activates it', async ({ page, serverUrl }) => {
@@ -62,10 +62,10 @@ test.describe('SkillsView – Tab navigation', () => {
         await expect(page.locator('[data-subtab="config"]')).toHaveClass(/border-\[#0078d4\]/, { timeout: 5_000 });
     });
 
-    test('S.5 deep-link #skills/bundled activates bundled tab', async ({ page, serverUrl }) => {
+    test('S.5 deep-link #skills/bundled redirects to gallery tab', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#skills/bundled`);
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
-        await expect(page.locator('[data-subtab="bundled"]')).toBeVisible();
+        await expect(page.locator('[data-subtab="gallery"]')).toBeVisible();
     });
 });
 
@@ -119,7 +119,7 @@ test.describe('SkillsInstalledPanel', () => {
 test.describe('SkillsBundledPanel', () => {
     test('S.9 bundled skills list renders items', async ({ page, serverUrl }) => {
         await gotoSkills(page, serverUrl);
-        await page.click('[data-subtab="bundled"]');
+        await page.click('[data-subtab="gallery"]');
 
         // Wait for bundled skills to load
         await expect(page.locator('li[data-testid^="skills-bundled-item-"]').first()).toBeVisible({ timeout: 10_000 });
@@ -127,7 +127,7 @@ test.describe('SkillsBundledPanel', () => {
 
     test('S.10 bundled items show skill name and description', async ({ page, serverUrl }) => {
         await gotoSkills(page, serverUrl);
-        await page.click('[data-subtab="bundled"]');
+        await page.click('[data-subtab="gallery"]');
 
         // pipeline-generator is always in the bundled skills registry
         await expect(page.locator('[data-testid="skills-bundled-item-pipeline-generator"]')).toBeVisible({ timeout: 10_000 });
@@ -135,7 +135,7 @@ test.describe('SkillsBundledPanel', () => {
 
     test('S.11 install-all button is visible and clickable', async ({ page, serverUrl }) => {
         await gotoSkills(page, serverUrl);
-        await page.click('[data-subtab="bundled"]');
+        await page.click('[data-subtab="gallery"]');
 
         await expect(page.locator('[data-testid="skills-install-all-btn"]')).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('[data-testid="skills-install-all-btn"]')).toBeEnabled();
@@ -143,7 +143,7 @@ test.describe('SkillsBundledPanel', () => {
 
     test('S.12 install all marks skills with installed badge', async ({ page, serverUrl }) => {
         await gotoSkills(page, serverUrl);
-        await page.click('[data-subtab="bundled"]');
+        await page.click('[data-subtab="gallery"]');
 
         await expect(page.locator('[data-testid="skills-install-all-btn"]')).toBeEnabled({ timeout: 10_000 });
         await page.locator('[data-testid="skills-install-all-btn"]').click();
@@ -154,7 +154,7 @@ test.describe('SkillsBundledPanel', () => {
 
     test('S.13 source toggle buttons switch view mode', async ({ page, serverUrl }) => {
         await gotoSkills(page, serverUrl);
-        await page.click('[data-subtab="bundled"]');
+        await page.click('[data-subtab="gallery"]');
 
         // Click "GitHub URL" source button
         await page.getByRole('button', { name: 'GitHub URL' }).click();

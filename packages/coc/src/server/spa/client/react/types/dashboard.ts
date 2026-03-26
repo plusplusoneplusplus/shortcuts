@@ -26,7 +26,7 @@ export type CopilotSection = SettingsSection;
 export type WikiProjectTab = 'browse' | 'ask' | 'graph' | 'admin';
 export type WikiAdminTab = 'generate' | 'seeds' | 'config' | 'delete';
 export type MemorySubTab = 'entries' | 'config' | 'files';
-export type SkillsSubTab = 'installed' | 'bundled' | 'config';
+export type SkillsSubTab = 'installed' | 'gallery' | 'config';
 
 /** Tool call status for the SPA client (timestamps are ISO strings) */
 export interface ClientToolCall {

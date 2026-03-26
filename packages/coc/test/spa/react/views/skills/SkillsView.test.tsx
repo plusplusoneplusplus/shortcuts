@@ -31,10 +31,10 @@ afterEach(() => {
 });
 
 describe('SkillsView', () => {
-    it('renders the sub-tab bar with Installed, Bundled, Config tabs', () => {
+    it('renders the sub-tab bar with Installed, Gallery, Config tabs', () => {
         render(<SkillsView />);
         expect(screen.getByText('Installed')).toBeTruthy();
-        expect(screen.getByText('Bundled')).toBeTruthy();
+        expect(screen.getByText('Gallery')).toBeTruthy();
         expect(screen.getByText('Config')).toBeTruthy();
     });
 
@@ -45,13 +45,13 @@ describe('SkillsView', () => {
         expect(screen.getByText('Loading global skills…')).toBeTruthy();
     });
 
-    it('dispatches SET_SKILLS_SUB_TAB when Bundled tab is clicked', () => {
+    it('dispatches SET_SKILLS_SUB_TAB when Gallery tab is clicked', () => {
         (useApp as ReturnType<typeof vi.fn>).mockReturnValue(makeAppState('installed'));
         render(<SkillsView />);
-        const bundledBtn = screen.getAllByRole('button').find(b => b.textContent === 'Bundled');
-        fireEvent.click(bundledBtn!);
+        const galleryBtn = screen.getAllByRole('button').find(b => b.textContent === 'Gallery');
+        fireEvent.click(galleryBtn!);
         expect(mockDispatch).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'SET_SKILLS_SUB_TAB', tab: 'bundled' })
+            expect.objectContaining({ type: 'SET_SKILLS_SUB_TAB', tab: 'gallery' })
         );
     });
 
@@ -65,9 +65,9 @@ describe('SkillsView', () => {
     });
 
     it('active tab button has highlighted left-border class', () => {
-        (useApp as ReturnType<typeof vi.fn>).mockReturnValue(makeAppState('bundled'));
+        (useApp as ReturnType<typeof vi.fn>).mockReturnValue(makeAppState('gallery'));
         render(<SkillsView />);
-        const bundledBtn = screen.getAllByRole('button').find(b => b.textContent === 'Bundled')!;
-        expect(bundledBtn.className).toContain('border-[#0078d4]');
+        const galleryBtn = screen.getAllByRole('button').find(b => b.textContent === 'Gallery')!;
+        expect(galleryBtn.className).toContain('border-[#0078d4]');
     });
 });

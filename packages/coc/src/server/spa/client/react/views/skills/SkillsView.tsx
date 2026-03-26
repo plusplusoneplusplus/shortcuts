@@ -1,7 +1,7 @@
 /**
  * SkillsView — top-level route component for #skills.
  *
- * Renders sub-tabs: Installed | Bundled | Config
+ * Renders sub-tabs: Installed | Gallery | Config
  */
 
 import { useCallback } from 'react';
@@ -14,7 +14,7 @@ import { SkillsConfigPanel } from './SkillsConfigPanel';
 
 const SUB_TABS: { id: SkillsSubTab; label: string }[] = [
     { id: 'installed', label: 'Installed' },
-    { id: 'bundled', label: 'Bundled' },
+    { id: 'gallery', label: 'Gallery' },
     { id: 'config', label: 'Config' },
 ];
 
@@ -51,7 +51,7 @@ export function SkillsView() {
             {/* Right content area */}
             <div className="flex-1 min-w-0 overflow-auto">
                 {activeSubTab === 'installed' && <SkillsInstalledPanel />}
-                {activeSubTab === 'bundled' && <SkillsBundledPanel />}
+                {activeSubTab === 'gallery' && <SkillsBundledPanel />}
                 {activeSubTab === 'config' && <SkillsConfigPanel />}
             </div>
         </div>

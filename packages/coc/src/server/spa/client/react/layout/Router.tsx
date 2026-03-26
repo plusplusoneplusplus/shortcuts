@@ -373,8 +373,14 @@ export function Router() {
             // Parse skills sub-tab deep links: #skills/:subTab
             if (tab === 'skills') {
                 const parts = hash.split('/');
-                if (parts.length >= 2 && (parts[1] === 'installed' || parts[1] === 'bundled' || parts[1] === 'config')) {
+                if (parts.length >= 2 && (parts[1] === 'installed' || parts[1] === 'gallery' || parts[1] === 'config')) {
                     dispatch({ type: 'SET_SKILLS_SUB_TAB', tab: parts[1] as SkillsSubTab });
+                }
+                // Backward compat: redirect old #skills/bundled → #skills/gallery
+                if (parts.length >= 2 && parts[1] === 'bundled') {
+                    dispatch({ type: 'SET_SKILLS_SUB_TAB', tab: 'gallery' });
+                    location.replace('#skills/gallery');
+                    return;
                 }
             }
         };

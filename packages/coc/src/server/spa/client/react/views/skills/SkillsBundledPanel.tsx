@@ -116,7 +116,7 @@ export function SkillsBundledPanel() {
     }, [scanResult, sourceInput, loadBundled]);
 
     if (loading) {
-        return <div className="p-4 text-sm text-[#848484]">Loading bundled skills…</div>;
+        return <div className="p-4 text-sm text-[#848484]">Loading gallery…</div>;
     }
 
     return (
@@ -152,7 +152,7 @@ export function SkillsBundledPanel() {
             {installSource === 'bundled' && (
                 <div>
                     <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs text-[#848484]">{bundledSkills.length} bundled skill(s) available</div>
+                        <div className="text-xs text-[#848484]">{bundledSkills.length} skill(s) available</div>
                         <button
                             className="text-xs px-2 py-1 bg-[#0078d4] text-white rounded disabled:opacity-50"
                             disabled={installing}
