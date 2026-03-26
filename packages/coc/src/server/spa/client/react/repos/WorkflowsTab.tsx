@@ -742,6 +742,15 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
     const [replicateTarget, setReplicateTarget] = useState<Template | null>(null);
     const [templatesExpanded, setTemplatesExpanded] = useState(true);
 
+    // ── AI Chat Template state ──
+    const {
+        templates: skillTemplates,
+        deleteTemplate: deleteSkillTemplate,
+        loaded: skillTemplatesLoaded,
+    } = useSkillTemplates(workspaceId);
+    const [selectedSkillTemplateId, setSelectedSkillTemplateId] = useState<string | null>(null);
+    const [skillTemplatesExpanded, setSkillTemplatesExpanded] = useState(true);
+
     // ── Derived ──
     const selectedPipeline: WorkflowInfo | null =
         pipelines.find(p => p.name === state.selectedWorkflowName) ?? null;
@@ -753,6 +762,7 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
         setSelectedTemplateName(null);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
+        setSelectedSkillTemplateId(null);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows/' + encodeURIComponent(p.name);
     };
 
@@ -825,7 +835,24 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
         setSelectedTemplateName(name);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
+        setSelectedSkillTemplateId(null);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows';
+    };
+
+    // ── Skill template handlers ──
+
+    const handleSelectSkillTemplate = (id: string) => {
+        dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+        setSelectedTemplateName(null);
+        setShowTemplateCreate(false);
+        setEditingTemplateName(null);
+        setSelectedSkillTemplateId(id);
+    };
+
+    const handleDeleteSkillTemplate = (id: string) => {
+        if (!confirm('Delete this AI chat template?')) return;
+        deleteSkillTemplate(id);
+        if (selectedSkillTemplateId === id) setSelectedSkillTemplateId(null);
     };
 
     // ── Determine right panel content ──
@@ -943,12 +970,56 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
                             </div>
                         )}
                     </CollapsibleSection>
+
+                    {/* AI Chat Templates section */}
+                    <CollapsibleSection
+                        label="AI Chat Templates"
+                        count={skillTemplates.length}
+                        expanded={skillTemplatesExpanded}
+                        onToggle={() => setSkillTemplatesExpanded(v => !v)}
+                        testId="skill-templates-section"
+                    >
+                        {!skillTemplatesLoaded ? (
+                            <div className="flex items-center justify-center py-4">
+                                <Spinner />
+                            </div>
+                        ) : skillTemplates.length === 0 ? (
+                            <div className="flex items-center justify-center text-center px-4 py-4" data-testid="skill-templates-empty">
+                                <div>
+                                    <div className="text-2xl mb-2">🤖</div>
+                                    <div className="text-sm text-[#6e6e6e] dark:text-[#888]">No AI chat templates</div>
+                                    <div className="text-xs text-[#999] dark:text-[#666] mt-1">
+                                        Save templates from the AI chat dialog
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <ul data-testid="skill-templates-list">
+                                {skillTemplates.map(t => (
+                                    <SkillTemplateListItem
+                                        key={t.id}
+                                        template={t}
+                                        isSelected={selectedSkillTemplateId === t.id}
+                                        onSelect={() => handleSelectSkillTemplate(t.id)}
+                                        onDelete={() => handleDeleteSkillTemplate(t.id)}
+                                    />
+                                ))}
+                            </ul>
+                        )}
+                    </CollapsibleSection>
                 </div>
             </div>
 
             {/* RIGHT PANEL */}
             <div className="flex-1 min-w-0 overflow-hidden">
-                {selectedPipeline && !showTemplatePanel ? (
+                {selectedSkillTemplateId && skillTemplates.find(t => t.id === selectedSkillTemplateId) ? (
+                    <div className="overflow-y-auto h-full">
+                        <SkillTemplateDetailView
+                            template={skillTemplates.find(t => t.id === selectedSkillTemplateId)!}
+                            onDelete={() => handleDeleteSkillTemplate(selectedSkillTemplateId)}
+                        />
+                    </div>
+                ) : selectedPipeline && !showTemplatePanel ? (
                     <WorkflowDetail
                         workspaceId={workspaceId}
                         pipeline={selectedPipeline}
