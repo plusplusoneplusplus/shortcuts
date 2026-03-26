@@ -45,7 +45,7 @@ export function createProgram(): Command {
 
     program
         .name('coc')
-        .description('CoC (Copilot of Copilot) - Execute YAML-based AI workflows from the command line')
+        .description('CoC (Copilot of Copilot) - Run AI workflows, manage skills, and serve your AI dashboard')
         .version(pkg.version);
 
     // ========================================================================
