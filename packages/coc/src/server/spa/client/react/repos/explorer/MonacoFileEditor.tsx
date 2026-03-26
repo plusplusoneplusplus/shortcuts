@@ -14,6 +14,8 @@ export interface MonacoFileEditorProps {
     language: string | null;
     onChange: (value: string) => void;
     onSave?: () => void;
+    /** When true the editor is non-editable and the save keybinding is suppressed. */
+    readOnly?: boolean;
 }
 
 /** Map file extensions to Monaco language IDs. */
@@ -112,7 +114,7 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
     },
 };
 
-export function MonacoFileEditor({ value, language, onChange, onSave }: MonacoFileEditorProps) {
+export function MonacoFileEditor({ value, language, onChange, onSave, readOnly }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -141,7 +143,7 @@ export function MonacoFileEditor({ value, language, onChange, onSave }: MonacoFi
     const handleMount: OnMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
 
-        if (onSave) {
+        if (onSave && !readOnly) {
             editor.addAction({
                 id: 'file-save',
                 label: 'Save File',
@@ -149,7 +151,7 @@ export function MonacoFileEditor({ value, language, onChange, onSave }: MonacoFi
                 run: () => onSave(),
             });
         }
-    }, [onSave]);
+    }, [onSave, readOnly]);
 
     const handleChange = useCallback((newValue: string | undefined) => {
         onChange(newValue ?? '');
@@ -168,7 +170,7 @@ export function MonacoFileEditor({ value, language, onChange, onSave }: MonacoFi
                     theme={monacoTheme}
                     onChange={handleChange}
                     onMount={handleMount}
-                    options={EXPLORER_EDITOR_OPTIONS}
+                    options={readOnly ? { ...EXPLORER_EDITOR_OPTIONS, readOnly: true } : EXPLORER_EDITOR_OPTIONS}
                 />
             )}
         </div>

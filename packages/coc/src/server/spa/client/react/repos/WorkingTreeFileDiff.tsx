@@ -21,6 +21,7 @@ import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../context/QueueContext';
 import { useCrossFileNav } from './useCrossFileNav';
+import { PreviewPane } from './explorer';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
 import type { TaskCommentCategory } from '../../task-comments-types';
@@ -205,8 +206,13 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
             <div className="flex flex-1 min-h-0">
                 <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="working-tree-file-diff-section">
                     {stage === 'untracked' ? (
-                        <div className="text-xs text-[#848484] italic" data-testid="working-tree-file-diff-untracked">
-                            Untracked file – no diff available
+                        <div className="h-full w-full" data-testid="working-tree-file-diff-untracked">
+                            <PreviewPane
+                                repoId={workspaceId}
+                                filePath={filePath}
+                                fileName={filePath.split('/').pop() ?? filePath}
+                                readOnly
+                            />
                         </div>
                     ) : loading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="working-tree-file-diff-loading">

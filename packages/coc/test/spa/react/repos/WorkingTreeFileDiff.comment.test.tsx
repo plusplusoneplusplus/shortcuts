@@ -27,6 +27,12 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/repos/explorer', () => ({
+    PreviewPane: ({ repoId, filePath, fileName, readOnly }: any) => (
+        <div data-testid="mock-preview-pane" data-repo-id={repoId} data-file-path={filePath} data-file-name={fileName} data-read-only={String(!!readOnly)} />
+    ),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
@@ -208,10 +214,12 @@ describe('WorkingTreeFileDiff — comment integration', () => {
         expect(screen.queryByTestId('comment-sidebar')).toBeNull();
     });
 
-    // 8b. Untracked files: shows untracked placeholder, no diff viewer
-    it('shows untracked placeholder for untracked stage', async () => {
+    // 8b. Untracked files: renders PreviewPane instead of placeholder
+    it('renders PreviewPane for untracked stage', async () => {
         await renderDiff('untracked');
         expect(screen.getByTestId('working-tree-file-diff-untracked')).toBeTruthy();
+        expect(screen.getByTestId('mock-preview-pane')).toBeTruthy();
+        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-read-only')).toBe('true');
         expect(screen.queryByTestId('trigger-add-comment')).toBeNull();
     });
 

@@ -22,6 +22,8 @@ export interface PreviewPaneProps {
     fileName: string;
     /** Called when the user clicks the close button */
     onClose?: () => void;
+    /** When true the editor is non-editable and save/dirty UI is suppressed. */
+    readOnly?: boolean;
 }
 
 interface BlobResponse {
@@ -38,7 +40,7 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPaneProps) {
+export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: PreviewPaneProps) {
     const [blob, setBlob] = useState<BlobResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -115,9 +117,10 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
     };
 
     const handleEditorChange = useCallback((value: string) => {
+        if (readOnly) return;
         setEditedContent(value);
         setIsDirty(true);
-    }, []);
+    }, [readOnly]);
 
     const handleSave = useCallback(async () => {
         setIsSaving(true);
@@ -162,7 +165,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
                     className="absolute top-2 right-6 z-10 flex items-center gap-1.5"
                     data-testid="preview-toolbar"
                 >
-                    {isDirty && (
+                    {isDirty && !readOnly && (
                         <button
                             className="text-[10px] px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors shadow-sm"
                             onClick={handleSave}
@@ -172,7 +175,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
                             {isSaving ? 'Saving…' : 'Save'}
                         </button>
                     )}
-                    {isDirty && (
+                    {isDirty && !readOnly && (
                         <span className="w-2 h-2 rounded-full bg-[#f59e0b] flex-shrink-0" title="Unsaved changes" data-testid="dirty-indicator" />
                     )}
                     {onClose && (
@@ -216,7 +219,8 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
                         value={isOversized ? displayContent : editedContent}
                         language={monacoLanguage}
                         onChange={handleEditorChange}
-                        onSave={handleSave}
+                        onSave={readOnly ? undefined : handleSave}
+                        readOnly={readOnly}
                     />
                 </div>
             ) : null}
