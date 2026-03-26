@@ -63,6 +63,7 @@ const EXT_TO_LANG: Record<string, string> = {
     sh: 'bash',
     bash: 'bash',
     zsh: 'bash',
+    ps1: 'bash',
     css: 'css',
     html: 'xml',
     htm: 'xml',

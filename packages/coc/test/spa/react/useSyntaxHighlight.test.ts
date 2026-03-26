@@ -103,6 +103,10 @@ describe('getLanguageFromFileName', () => {
         expect(getLanguageFromFileName('script.sh')).toBe('bash');
     });
 
+    it('returns bash for .ps1 extension', () => {
+        expect(getLanguageFromFileName('build.ps1')).toBe('bash');
+    });
+
     it('returns css for .css extension', () => {
         expect(getLanguageFromFileName('styles.css')).toBe('css');
     });
