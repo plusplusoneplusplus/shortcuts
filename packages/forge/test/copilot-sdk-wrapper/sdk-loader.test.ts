@@ -22,56 +22,8 @@ describe('findSdkBinaryPath', () => {
         expect(result).toBeUndefined();
     });
 
-    it('returns the first path where dist/index.js exists', () => {
-        let callCount = 0;
-        const result = findSdkBinaryPath(() => {
-            callCount++;
-            return callCount === 1;
-        });
-
-        expect(typeof result).toBe('string');
-        expect(result).toMatch(/copilot-sdk[/\\]?$/);
-    });
-
-    it('skips non-matching candidates and returns the second hit', () => {
-        let callCount = 0;
-        const existsFn = vi.fn().mockImplementation(() => {
-            callCount++;
-            return callCount === 2;
-        });
-
-        const result = findSdkBinaryPath(existsFn);
-
-        expect(typeof result).toBe('string');
-        expect(existsFn).toHaveBeenCalledTimes(2);
-    });
-
-    it('probes seven relative candidate directories before require.resolve fallback', () => {
-        const existsFn = vi.fn().mockReturnValue(false);
-        const noopResolve = () => { throw new Error('not found'); };
-
-        findSdkBinaryPath(existsFn, noopResolve);
-
-        expect(existsFn).toHaveBeenCalledTimes(7);
-    });
-
-    it('probes paths containing node_modules/@github/copilot-sdk with dist/index.js', () => {
-        const probedPaths: string[] = [];
-        const noopResolve = () => { throw new Error('not found'); };
-        findSdkBinaryPath((p) => {
-            probedPaths.push(p);
-            return false;
-        }, noopResolve);
-
-        expect(probedPaths).toHaveLength(7);
-        for (const p of probedPaths) {
-            expect(p).toContain('copilot-sdk');
-            expect(p).toContain(path.join('dist', 'index.js'));
-        }
-    });
-
-    it('falls back to require.resolve when relative probes fail', () => {
-        const sdkRoot = path.join('/mock', 'node_modules', '@github', 'copilot-sdk');
+    it('uses require.resolve first (primary strategy)', () => {
+        const sdkRoot = path.join('/installed', 'node_modules', '@github', 'copilot-sdk');
         const resolveFn = vi.fn().mockReturnValue(path.join(sdkRoot, 'dist', 'index.js'));
         const existsFn = vi.fn().mockImplementation((p: string) => {
             return p === path.join(sdkRoot, 'dist', 'index.js');
@@ -81,13 +33,46 @@ describe('findSdkBinaryPath', () => {
 
         expect(resolveFn).toHaveBeenCalledWith('@github/copilot-sdk');
         expect(result).toBe(sdkRoot);
+        // existsFn called once for the require.resolve result — never reached relative probes
+        expect(existsFn).toHaveBeenCalledTimes(1);
     });
 
-    it('returns undefined when require.resolve also fails', () => {
+    it('falls back to relative probes when require.resolve fails', () => {
         const resolveFn = vi.fn().mockImplementation(() => { throw new Error('MODULE_NOT_FOUND'); });
-        const result = findSdkBinaryPath(() => false, resolveFn);
+        let callCount = 0;
+        const existsFn = vi.fn().mockImplementation(() => {
+            callCount++;
+            return callCount === 1; // first relative probe matches
+        });
 
-        expect(result).toBeUndefined();
+        const result = findSdkBinaryPath(existsFn, resolveFn);
+
+        expect(typeof result).toBe('string');
+        expect(result).toMatch(/copilot-sdk[/\\]?$/);
+    });
+
+    it('probes four relative candidate directories when require.resolve fails', () => {
+        const resolveFn = vi.fn().mockImplementation(() => { throw new Error('MODULE_NOT_FOUND'); });
+        const existsFn = vi.fn().mockReturnValue(false);
+
+        findSdkBinaryPath(existsFn, resolveFn);
+
+        expect(existsFn).toHaveBeenCalledTimes(4);
+    });
+
+    it('all relative probe paths contain node_modules/@github/copilot-sdk/dist/index.js', () => {
+        const resolveFn = vi.fn().mockImplementation(() => { throw new Error('not found'); });
+        const probedPaths: string[] = [];
+        findSdkBinaryPath((p) => {
+            probedPaths.push(p);
+            return false;
+        }, resolveFn);
+
+        expect(probedPaths).toHaveLength(4);
+        for (const p of probedPaths) {
+            expect(p).toContain('copilot-sdk');
+            expect(p).toContain(path.join('dist', 'index.js'));
+        }
     });
 
     it('handles require.resolve returning a non-dist path', () => {
@@ -102,6 +87,13 @@ describe('findSdkBinaryPath', () => {
         expect(result).toBe(sdkRoot);
     });
 
+    it('returns undefined when require.resolve also fails', () => {
+        const resolveFn = vi.fn().mockImplementation(() => { throw new Error('MODULE_NOT_FOUND'); });
+        const result = findSdkBinaryPath(() => false, resolveFn);
+
+        expect(result).toBeUndefined();
+    });
+
     it('returns a string or undefined without throwing regardless of filesystem state', () => {
         expect(() => findSdkBinaryPath()).not.toThrow();
         const result = findSdkBinaryPath();
@@ -114,17 +106,52 @@ describe('findSdkBinaryPath', () => {
 // ---------------------------------------------------------------------------
 
 describe('loadSdk', () => {
-    it('returns a SdkModule with CopilotClient when import resolves with it', async () => {
+    it('returns a SdkModule when import by package name succeeds', async () => {
         const MockCopilotClient = class {};
         const importFn = vi.fn().mockResolvedValue({ CopilotClient: MockCopilotClient });
 
         const result = await loadSdk('/some/sdk', importFn);
 
         expect(result.CopilotClient).toBe(MockCopilotClient);
-        expect(importFn).toHaveBeenCalledOnce();
+        // Called once with the package name (strategy 1 succeeded)
+        expect(importFn).toHaveBeenCalledWith('@github/copilot-sdk');
     });
 
-    it('throws when the loaded module does not export CopilotClient', async () => {
+    it('falls back to file-path import when package-name import fails', async () => {
+        const MockCopilotClient = class {};
+        const importFn = vi.fn().mockImplementation((specifier: string) => {
+            if (specifier === '@github/copilot-sdk') {
+                return Promise.reject(new Error('MODULE_NOT_FOUND'));
+            }
+            return Promise.resolve({ CopilotClient: MockCopilotClient });
+        });
+
+        const result = await loadSdk('/some/sdk', importFn);
+
+        expect(result.CopilotClient).toBe(MockCopilotClient);
+        expect(importFn).toHaveBeenCalledTimes(2);
+        expect(importFn.mock.calls[0][0]).toBe('@github/copilot-sdk');
+        expect(importFn.mock.calls[1][0]).toMatch(/^file:/i);
+    });
+
+    it('falls back to file-path import when package-name import has no CopilotClient', async () => {
+        const MockCopilotClient = class {};
+        let callCount = 0;
+        const importFn = vi.fn().mockImplementation((specifier: string) => {
+            callCount++;
+            if (callCount === 1) {
+                return Promise.resolve({ someOtherExport: {} });
+            }
+            return Promise.resolve({ CopilotClient: MockCopilotClient });
+        });
+
+        const result = await loadSdk('/some/sdk', importFn);
+
+        expect(result.CopilotClient).toBe(MockCopilotClient);
+        expect(importFn).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws when the loaded module does not export CopilotClient from either strategy', async () => {
         const importFn = vi.fn().mockResolvedValue({ someOtherExport: {} });
 
         await expect(loadSdk('/some/sdk', importFn)).rejects.toThrow(
@@ -132,38 +159,29 @@ describe('loadSdk', () => {
         );
     });
 
-    it('passes a file:// URL built from sdkPath + dist/index.js to the importFn', async () => {
+    it('file-path fallback passes a file:// URL built from sdkPath + dist/index.js', async () => {
         const MockCopilotClient = class {};
         const capturedSpecifiers: string[] = [];
         const importFn = vi.fn().mockImplementation((specifier: string) => {
             capturedSpecifiers.push(specifier);
+            if (specifier === '@github/copilot-sdk') {
+                return Promise.reject(new Error('not found'));
+            }
             return Promise.resolve({ CopilotClient: MockCopilotClient });
         });
 
         const sdkPath = path.join('/fake', 'sdk');
         await loadSdk(sdkPath, importFn);
 
-        expect(capturedSpecifiers).toHaveLength(1);
-        expect(capturedSpecifiers[0]).toMatch(/^file:/i);
-        expect(capturedSpecifiers[0]).toContain('dist');
-        expect(capturedSpecifiers[0]).toContain('index.js');
+        expect(capturedSpecifiers).toHaveLength(2);
+        expect(capturedSpecifiers[1]).toMatch(/^file:/i);
+        expect(capturedSpecifiers[1]).toContain('dist');
+        expect(capturedSpecifiers[1]).toContain('index.js');
     });
 
-    it('propagates errors thrown by the importFn', async () => {
+    it('propagates errors thrown by the file-path import', async () => {
         const importFn = vi.fn().mockRejectedValue(new Error('Cannot find module'));
 
         await expect(loadSdk('/bad/path', importFn)).rejects.toThrow('Cannot find module');
-    });
-
-    it('calls importFn with the correct path segment for sdkPath', async () => {
-        const MockCopilotClient = class {};
-        const importFn = vi.fn().mockResolvedValue({ CopilotClient: MockCopilotClient });
-
-        const sdkPath = path.normalize('/my/copilot-sdk');
-        await loadSdk(sdkPath, importFn);
-
-        const specifier: string = importFn.mock.calls[0][0];
-        // The URL must include dist/index.js (normalised to OS separators via pathToFileURL)
-        expect(specifier).toMatch(/dist.*index\.js/);
     });
 });

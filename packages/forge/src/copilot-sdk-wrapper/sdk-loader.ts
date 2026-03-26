@@ -1,14 +1,19 @@
 /**
  * SDK Loader
  *
- * Isolates SDK binary discovery and the ESM dynamic-import workaround so they
+ * Isolates SDK discovery and the ESM dynamic-import workaround so they
  * can be unit-tested and swapped independently of CopilotSDKService.
  *
- * The `new Function('return import()')` pattern is intentional and must stay
- * verbatim: webpack transforms bare `import()` calls in ways that break ESM
- * loading for packages whose entry point is an ES module (like @github/copilot-sdk).
- * Using the Function constructor bypasses webpack's static analysis so the
- * runtime dynamic import is used instead.
+ * **Resolution strategy (loadSdk):**
+ * 1. Try Node's standard module resolution via dynamic `import('@github/copilot-sdk')`.
+ *    This works for published npm packages (CoC, deep-wiki) regardless of hoisting.
+ * 2. Fall back to `__dirname`-relative file probing + file-URL import.  This covers
+ *    the VS Code extension where webpack rewrites `import()` and the SDK is marked
+ *    external — `new Function('specifier','return import(specifier)')` bypasses
+ *    webpack's static analysis so the runtime import is used.
+ *
+ * **findSdkBinaryPath** is kept for the availability check (`isAvailable()`) which
+ * needs a sync answer before any async import happens.
  */
 
 import * as path from 'path';
@@ -22,51 +27,25 @@ export interface SdkModule {
     CopilotClient: new (options?: any) => any;
 }
 
+// Bypass webpack's import() transformation using the Function constructor.
+// Webpack rewrites bare `import()` calls; `new Function` is opaque to static analysis.
+// eslint-disable-next-line @typescript-eslint/no-implied-eval
+const nativeImport: (specifier: string) => Promise<unknown> =
+    new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<unknown>;
+
 /**
- * Find the installed @github/copilot-sdk package directory by probing several
- * candidate locations. Returns the package root (the directory that contains
- * `dist/index.js`), or `undefined` when the SDK cannot be found.
+ * Find the installed @github/copilot-sdk package directory.  Returns the
+ * package root (the directory containing `dist/index.js`), or `undefined`.
  *
- * Probe order covers the common cases:
- * 1. Adjacent `node_modules` when running from a compiled `dist/` output.
- * 2. Three levels up for monorepo layouts (e.g. `out/shortcuts/ai-service`).
- * 3. Sibling `node_modules` (packaged extension scenario).
- * 4. Four levels up for workspace-root installs during development.
- *
- * @param existsFn - Optional override for `fs.existsSync`.  Pass a custom
- *   function in tests to avoid filesystem I/O.
+ * Uses `require.resolve` first (works for any npm install layout including
+ * hoisting), then falls back to `__dirname`-relative probing for edge cases
+ * like the VS Code extension webpack bundle.
  */
 export function findSdkBinaryPath(
     existsFn: (p: string) => boolean = fs.existsSync,
     resolveFn?: (id: string) => string,
 ): string | undefined {
-    const possiblePaths = [
-        // Development: running from dist/
-        path.join(__dirname, '..', 'node_modules', '@github', 'copilot-sdk'),
-        // Development: running from out/shortcuts/ai-service
-        path.join(__dirname, '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
-        // Packaged extension
-        path.join(__dirname, 'node_modules', '@github', 'copilot-sdk'),
-        // Workspace root (for development)
-        path.join(__dirname, '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
-        // Published package: forge is bundled inside a consumer's node_modules
-        // e.g. node_modules/@plusplusoneplusplus/coc/node_modules/@plusplusoneplusplus/forge/dist/copilot-sdk-wrapper/
-        // Walk up to the consumer package root, then to its parent node_modules
-        path.join(__dirname, '..', '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
-        // Published package: consumer is a scoped package (@scope/pkg) so one more level
-        path.join(__dirname, '..', '..', '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
-        // Published package: hoisted to top-level node_modules
-        path.join(__dirname, '..', '..', '..', '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
-    ];
-
-    for (const testPath of possiblePaths) {
-        const indexPath = path.join(testPath, 'dist', 'index.js');
-        if (existsFn(indexPath)) {
-            return testPath;
-        }
-    }
-
-    // Fallback: use Node's module resolution which handles hoisting correctly
+    // Primary: Node's standard module resolution — handles hoisting correctly
     const resolve = resolveFn ?? ((id: string) => require.resolve(id));
     try {
         const sdkEntry = resolve('@github/copilot-sdk');
@@ -77,44 +56,63 @@ export function findSdkBinaryPath(
             return sdkRoot;
         }
     } catch {
-        // require.resolve throws when the package is not installed
+        // require.resolve throws when the package is not installed — fall through
+    }
+
+    // Fallback: __dirname-relative probing (VS Code extension / monorepo layouts)
+    const relativeCandidates = [
+        path.join(__dirname, '..', 'node_modules', '@github', 'copilot-sdk'),
+        path.join(__dirname, '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
+        path.join(__dirname, 'node_modules', '@github', 'copilot-sdk'),
+        path.join(__dirname, '..', '..', '..', '..', 'node_modules', '@github', 'copilot-sdk'),
+    ];
+
+    for (const testPath of relativeCandidates) {
+        const indexPath = path.join(testPath, 'dist', 'index.js');
+        if (existsFn(indexPath)) {
+            return testPath;
+        }
     }
 
     return undefined;
 }
 
 /**
- * Dynamically import the @github/copilot-sdk module from the given package
- * directory and return the typed module object.
+ * Load the @github/copilot-sdk module and return the typed module object.
  *
- * Uses the `new Function('specifier', 'return import(specifier)')` workaround
- * to bypass webpack's `import()` transformation, which is required for correct
- * ESM loading at runtime.
+ * 1. Try `import('@github/copilot-sdk')` via Node's native resolution (npm).
+ * 2. If that fails, resolve the SDK by file path and import via file URL
+ *    (needed for the webpack VS Code extension bundle).
  *
  * @param sdkPath - Absolute path to the SDK package root (as returned by
- *   `findSdkBinaryPath()`).  Must contain `dist/index.js`.
- * @param importFn - Optional override for the dynamic import call.  Defaults
- *   to the `new Function` workaround.  Pass a custom function in tests to
- *   avoid the `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` limitation inside
- *   Vitest's VM context.
+ *   `findSdkBinaryPath()`).  Used only when the npm-style import fails.
+ * @param importFn - Optional override for the dynamic import call.  Pass a
+ *   custom function in tests to avoid `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`
+ *   inside Vitest's VM context.
  * @throws {Error} When `CopilotClient` is not exported by the loaded module.
  */
 export async function loadSdk(
     sdkPath: string,
     importFn?: (specifier: string) => Promise<unknown>,
 ): Promise<SdkModule> {
-    const sdkIndexPath = path.join(sdkPath, 'dist', 'index.js');
+    const doImport = importFn ?? nativeImport;
 
-    // Import using file URL for ESM compatibility
+    // Strategy 1: import by package name — works for any standard npm install
+    try {
+        const sdk = await doImport('@github/copilot-sdk');
+        if ((sdk as any)?.CopilotClient) {
+            return sdk as SdkModule;
+        }
+    } catch {
+        // Package not resolvable by name — fall through to file-path import
+    }
+
+    // Strategy 2: import by absolute file URL (webpack / extension scenario)
+    const sdkIndexPath = path.join(sdkPath, 'dist', 'index.js');
     const { pathToFileURL } = await import('url');
     const sdkUrl = pathToFileURL(sdkIndexPath).href;
 
-    // Bypass webpack's import transformation using Function constructor.
-    // This is necessary because webpack transforms import() in ways that break ESM loading.
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const dynamicImport: (specifier: string) => Promise<unknown> =
-        importFn ?? (new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<unknown>);
-    const sdk = await dynamicImport(sdkUrl);
+    const sdk = await doImport(sdkUrl);
 
     if (!(sdk as any).CopilotClient) {
         throw new Error('CopilotClient not found in SDK module');
