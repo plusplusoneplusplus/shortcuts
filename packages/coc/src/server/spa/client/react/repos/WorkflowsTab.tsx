@@ -12,6 +12,8 @@ import { formatRelativeTime } from '../utils/format';
 import type { RepoData, WorkflowInfo } from './repoGrouping';
 import { WorkflowDetail } from './WorkflowDetail';
 import { AddWorkflowDialog } from './AddWorkflowDialog';
+import { useSkillTemplates } from '../hooks/useSkillTemplates';
+import type { SkillTemplate } from '../hooks/useSkillTemplates';
 
 // ── Template types ──
 
@@ -151,6 +153,61 @@ function TemplateListItem({ template, isSelected, onSelect, onEdit, onReplicate,
     );
 }
 
+// ── SkillTemplateListItem ──
+
+interface SkillTemplateListItemProps {
+    template: SkillTemplate;
+    isSelected: boolean;
+    onSelect: () => void;
+    onDelete: () => void;
+}
+
+function SkillTemplateListItem({ template, isSelected, onSelect, onDelete }: SkillTemplateListItemProps) {
+    const [showContextMenu, setShowContextMenu] = useState(false);
+    const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+
+    return (
+        <li
+            className={cn(
+                "px-4 py-2.5 cursor-pointer border-b border-[#f0f0f0] dark:border-[#2a2a2a] text-sm",
+                "hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a]",
+                isSelected && "bg-[#e8f0fe] dark:bg-[#1a3a5c] border-l-2 border-l-[#0078d4]"
+            )}
+            onClick={onSelect}
+            onContextMenu={(e) => {
+                if (e.shiftKey) return;
+                e.preventDefault();
+                setMenuPos({ x: e.clientX, y: e.clientY });
+                setShowContextMenu(true);
+            }}
+            data-testid={`skill-template-item-${template.id}`}
+        >
+            <div className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                {template.name ?? template.id}
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-xs px-1.5 py-0.5 rounded bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#0078d4]">
+                    {template.mode}
+                </span>
+                <span className="text-xs text-[#6e6e6e] dark:text-[#888] truncate">
+                    {template.model || 'default'}
+                </span>
+            </div>
+
+            {showContextMenu && (
+                <ContextMenu
+                    x={menuPos.x}
+                    y={menuPos.y}
+                    onClose={() => setShowContextMenu(false)}
+                    items={[
+                        { label: 'Delete', onClick: onDelete, danger: true },
+                    ]}
+                />
+            )}
+        </li>
+    );
+}
+
 // ── TemplateDetailView ──
 
 interface TemplateDetailViewProps {
@@ -259,6 +316,61 @@ function TemplateDetailView({ template, loading, onEdit, onReplicate, onDelete }
             <div className="text-xs text-[#999] dark:text-[#666] mt-6">
                 Created {formatRelativeTime(template.createdAt)}
                 {template.updatedAt && ` · Updated ${formatRelativeTime(template.updatedAt)}`}
+            </div>
+        </div>
+    );
+}
+
+// ── SkillTemplateDetailView ──
+
+interface SkillTemplateDetailViewProps {
+    template: SkillTemplate;
+    onDelete: () => void;
+}
+
+function SkillTemplateDetailView({ template, onDelete }: SkillTemplateDetailViewProps) {
+    return (
+        <div className="p-6" data-testid="skill-template-detail">
+            <div className="flex items-start justify-between mb-6">
+                <h2 className="text-lg font-semibold text-[#1e1e1e] dark:text-[#e0e0e0]">
+                    {template.name ?? template.id}
+                </h2>
+                <Button size="sm" variant="danger" onClick={onDelete} data-testid="skill-template-delete-btn">
+                    Delete
+                </Button>
+            </div>
+
+            {/* Mode */}
+            <div className="mb-4">
+                <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Mode</label>
+                <div className="mt-1">
+                    <span className="px-2 py-0.5 text-xs rounded bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#0078d4]">
+                        {template.mode}
+                    </span>
+                </div>
+            </div>
+
+            {/* Model */}
+            <div className="mb-4">
+                <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Model</label>
+                <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]">
+                    {template.model || 'default'}
+                </p>
+            </div>
+
+            {/* Skills */}
+            <div className="mb-4">
+                <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Skills</label>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                    {template.skills.length === 0
+                        ? <span className="text-sm text-[#848484]">None</span>
+                        : template.skills.map(s => (
+                            <span key={s} className="px-2 py-0.5 text-xs rounded bg-[#f0f0f0] dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc]">
+                                {s}
+                            </span>
+                          ))
+                    }
+                </div>
             </div>
         </div>
     );
