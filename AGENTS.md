@@ -109,6 +109,14 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 
 **Execution layer:** Process CRUD API, queue management, admin (time-limited crypto tokens for destructive ops), WebSocket (workspace-scoped events, file subscriptions), SSE per-process streaming, export/import.
 
+**Module decomposition:** Large handler files are split into focused sub-modules with thin re-export aggregators for backward compatibility:
+- `schedule-manager.ts` → cron utilities in `cron-utils.ts` (parseCron, nextCronTime, describeCron, slugifyName)
+- `api-git-routes.ts` → aggregator delegating to `api-git-commit-routes`, `api-git-branch-range-routes`, `api-git-branch-routes`, `api-git-working-tree-routes`
+- `task-comments-handler.ts` → manager in `task-comments-manager.ts`, AI helpers in `task-comments-ai.ts`, relocation in `task-comments-relocation.ts`, shared AI in `comments-ai-helpers.ts`
+- `diff-comments-handler.ts` → manager in `diff-comments-manager.ts`, AI helpers in `diff-comments-ai.ts`
+- `tasks-handler.ts` → `tasks-read-handler.ts`, `tasks-write-handler.ts`, `tasks-handler-utils.ts`
+- `workflows-handler.ts` → `workflows-read-handler.ts`, `workflows-write-handler.ts`, `workflow-constants.ts`, `workflow-utils.ts`
+
 **Storage layout — `~/.coc/` (top-level, global):**
 - `config.yaml` — server configuration
 - `preferences.json` — global UI preferences (theme, etc.)
