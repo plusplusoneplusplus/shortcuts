@@ -1,6 +1,6 @@
 {
   "name": "@plusplusoneplusplus/coc",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "CoC (Copilot of Copilot) - CLI tool for executing YAML-based AI pipelines",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,6 +15,7 @@
     "build:client": "node scripts/build-client.mjs",
     "build:copy-client": "node -e \"const fs=require('fs');const p=require('path');function cp(s,d){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s))fs.copyFileSync(p.join(s,f),p.join(d,f));}cp(p.join('src','server','spa','client','dist'),p.join('dist','server','spa','client','dist'));\"",
     "build": "npm run build:client && tsc && npm run build:copy-client && node -e \"require('fs').copyFileSync('src/server/openapi.yaml','dist/server/openapi.yaml')\" && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
+    "prepack": "node scripts/bundle-forge.js",
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "npx playwright test --config test/e2e/playwright.config.ts",

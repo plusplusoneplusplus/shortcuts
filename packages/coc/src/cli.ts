@@ -15,6 +15,10 @@ import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipe
 import { resolveConfig } from './config';
 import { setColorEnabled } from './logger';
 import { executeSkillList, executeSkillInstallBundled, executeSkillInstall, executeSkillDelete } from './commands/skills';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
 
 // ============================================================================
 // Exit Codes
@@ -42,7 +46,7 @@ export function createProgram(): Command {
     program
         .name('coc')
         .description('CoC (Copilot of Copilot) - Execute YAML-based AI workflows from the command line')
-        .version('1.0.0');
+        .version(pkg.version);
 
     // ========================================================================
     // coc run <path>
