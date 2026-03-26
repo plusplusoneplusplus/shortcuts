@@ -11,6 +11,7 @@ interface MemoryHeaderProps {
     consolidatedAt: string | null;
     onAddNote: () => void;
     onAggregate: () => void;
+    onViewConsolidated?: () => void;
 }
 
 export function MemoryHeader({
@@ -19,6 +20,7 @@ export function MemoryHeader({
     consolidatedAt,
     onAddNote,
     onAggregate,
+    onViewConsolidated,
 }: MemoryHeaderProps) {
     const totalCount = observationCount + noteCount;
     const consolidatedLabel = consolidatedAt
@@ -30,7 +32,18 @@ export function MemoryHeader({
             <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Memory</h2>
             <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-[#848484] flex-1" data-testid="memory-stats-label">
-                    {totalCount} observation{totalCount !== 1 ? 's' : ''} · consolidated {consolidatedLabel}
+                    {totalCount} observation{totalCount !== 1 ? 's' : ''} · consolidated{' '}
+                    {consolidatedAt && onViewConsolidated ? (
+                        <button
+                            onClick={onViewConsolidated}
+                            className="text-[#0078d4] hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit text-inherit"
+                            data-testid="memory-view-consolidated-btn"
+                        >
+                            {consolidatedLabel}
+                        </button>
+                    ) : (
+                        consolidatedLabel
+                    )}
                 </span>
                 <button
                     onClick={onAddNote}

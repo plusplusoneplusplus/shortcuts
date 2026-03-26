@@ -83,6 +83,19 @@ describe('MemoryHeader', () => {
         fireEvent.click(screen.getByTestId('memory-aggregate-btn'));
         expect(onAggregate).toHaveBeenCalledOnce();
     });
+
+    it('renders clickable consolidated label when consolidatedAt is set and onViewConsolidated provided', () => {
+        const onView = vi.fn();
+        render(<MemoryHeader observationCount={0} noteCount={0} consolidatedAt="2024-01-01T08:00:00Z" onAddNote={vi.fn()} onAggregate={vi.fn()} onViewConsolidated={onView} />);
+        const btn = screen.getByTestId('memory-view-consolidated-btn');
+        fireEvent.click(btn);
+        expect(onView).toHaveBeenCalledOnce();
+    });
+
+    it('does not render clickable consolidated label when consolidatedAt is null', () => {
+        render(<MemoryHeader observationCount={0} noteCount={0} consolidatedAt={null} onAddNote={vi.fn()} onAggregate={vi.fn()} onViewConsolidated={vi.fn()} />);
+        expect(screen.queryByTestId('memory-view-consolidated-btn')).toBeNull();
+    });
 });
 
 // ── AddNoteForm ─────────────────────────────────────────────────────────────
@@ -245,6 +258,48 @@ describe('RepoMemorySection', () => {
         await waitFor(() => expect(screen.getByTestId('memory-aggregate-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('memory-aggregate-btn'));
         expect(screen.getByTestId('aggregate-panel')).toBeTruthy();
+    });
+
+    it('shows ConsolidatedPanel when consolidated label is clicked', async () => {
+        (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+            if (url.includes('/memory/stats')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(okStats) });
+            }
+            if (url.includes('/memory/consolidated')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: '# Memory\n- fact 1' }) });
+            }
+            if (url.includes('/memory/feed') && !url.includes('/feed/')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: okFeed, consolidatedAt: okStats.consolidatedAt, totalCount: okFeed.length }) });
+            }
+            return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
+        });
+        render(<RepoMemorySection repoId="ws-abc" />);
+        await waitFor(() => expect(screen.getByTestId('memory-view-consolidated-btn')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('memory-view-consolidated-btn'));
+        await waitFor(() => expect(screen.getByTestId('consolidated-panel')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('consolidated-content')).toBeTruthy());
+        expect(screen.getByTestId('consolidated-content').textContent).toContain('# Memory');
+    });
+
+    it('hides ConsolidatedPanel when close button is clicked', async () => {
+        (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+            if (url.includes('/memory/stats')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(okStats) });
+            }
+            if (url.includes('/memory/consolidated')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: '# Memory' }) });
+            }
+            if (url.includes('/memory/feed') && !url.includes('/feed/')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: okFeed, consolidatedAt: okStats.consolidatedAt, totalCount: okFeed.length }) });
+            }
+            return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
+        });
+        render(<RepoMemorySection repoId="ws-abc" />);
+        await waitFor(() => expect(screen.getByTestId('memory-view-consolidated-btn')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('memory-view-consolidated-btn'));
+        await waitFor(() => expect(screen.getByTestId('consolidated-panel')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('consolidated-close-btn'));
+        expect(screen.queryByTestId('consolidated-panel')).toBeNull();
     });
 
     it('filters by source on client side', async () => {

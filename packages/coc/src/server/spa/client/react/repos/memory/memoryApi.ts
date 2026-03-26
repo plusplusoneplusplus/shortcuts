@@ -40,6 +40,10 @@ export const memoryApi = {
         return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/stats`);
     },
 
+    getConsolidated(repoId: string): Promise<{ content: string }> {
+        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/consolidated`);
+    },
+
     getFeed(repoId: string): Promise<FeedResponse> {
         return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/feed`);
     },

@@ -419,6 +419,39 @@ describe('GET /api/repos/:repoId/memory/stats', () => {
     });
 });
 
+// ── GET /api/repos/:repoId/memory/consolidated ───────────────────────────────
+
+describe('GET /api/repos/:repoId/memory/consolidated', () => {
+    it('returns 404 when no consolidated content exists', async () => {
+        const { status } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/consolidated`);
+        expect(status).toBe(404);
+    });
+
+    it('returns 404 when workspace not found', async () => {
+        const s = makeServer(tmpDir, {
+            store: {
+                getWorkspaces: vi.fn().mockResolvedValue([]),
+            } as unknown as ProcessStore,
+        });
+        const url = await startServer(s);
+        const { status } = await apiGet(`${url}/api/repos/unknown/memory/consolidated`);
+        await stopServer(s);
+        expect(status).toBe(404);
+    });
+
+    it('returns consolidated content when it exists', async () => {
+        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
+        writeMemoryConfig(tmpDir, config);
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
+        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
+        await pipelineStore.writeConsolidated('repo', '# Memory\n- fact 1\n- fact 2', repoHash);
+
+        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/consolidated`);
+        expect(status).toBe(200);
+        expect(body.content).toBe('# Memory\n- fact 1\n- fact 2');
+    });
+});
+
 // ── GET /api/repos/:repoId/memory/aggregate (SSE) ────────────────────────────
 // Regression: endpoint must be GET (EventSource only supports GET), accept
 // sources as comma-separated query param, map 'user'→notes/'ai'→observations,

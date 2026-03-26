@@ -134,6 +134,7 @@ export function computeDiff(prev: string, next: string): DiffLine[] {
  *   POST /api/repos/:repoId/memory/notes             — create user note
  *   DELETE /api/repos/:repoId/memory/feed/:id        — delete observation or note
  *   GET  /api/repos/:repoId/memory/stats             — counts + consolidatedAt
+ *   GET  /api/repos/:repoId/memory/consolidated      — read consolidated.md content
  *   POST /api/repos/:repoId/memory/aggregate/accept  — accept aggregation (clean backup)
  *   POST /api/repos/:repoId/memory/aggregate/revert  — revert to pre-aggregation state
  *   POST /api/repos/:repoId/memory/aggregate         — run AI aggregation (SSE)
@@ -320,6 +321,35 @@ export function registerRepoMemoryRoutes(
                 const { total: noteCount } = noteStore.list({ pageSize: 1 });
 
                 sendJson(res, { observationCount, noteCount, consolidatedAt });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- GET /api/repos/:repoId/memory/consolidated ---------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/memory\/consolidated$/,
+        handler: async (_req, res, match) => {
+            try {
+                const workspaceId = decodeURIComponent(match![1]);
+                const repoPath = await getRepoRootPath(store, workspaceId);
+                if (!repoPath) {
+                    send404(res, `Repo not found: ${workspaceId}`);
+                    return;
+                }
+
+                const pipelineStore = getPipelineStore(dataDir);
+                const repoHash = pipelineStore.computeRepoHash(repoPath);
+                const content = await pipelineStore.readConsolidated('repo', repoHash);
+                if (content === null) {
+                    send404(res, 'No consolidated memory yet');
+                    return;
+                }
+
+                sendJson(res, { content });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }

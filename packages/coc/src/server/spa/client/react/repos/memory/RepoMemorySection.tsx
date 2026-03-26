@@ -10,6 +10,7 @@ import type { FeedItem, MemoryStats } from './memoryApi';
 import { MemoryHeader } from './MemoryHeader';
 import { AddNoteForm } from './AddNoteForm';
 import { AggregatePanel } from './AggregatePanel';
+import { ConsolidatedPanel } from './ConsolidatedPanel';
 import { FeedControls } from './FeedControls';
 import type { SourceFilter } from './FeedControls';
 import { FeedList } from './FeedList';
@@ -28,6 +29,7 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddingNote, setIsAddingNote] = useState(false);
     const [isAggregating, setIsAggregating] = useState(false);
+    const [isViewingConsolidated, setIsViewingConsolidated] = useState(false);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -92,8 +94,9 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
                 observationCount={stats.observationCount}
                 noteCount={stats.noteCount}
                 consolidatedAt={stats.consolidatedAt}
-                onAddNote={() => { setIsAddingNote(v => !v); setIsAggregating(false); }}
-                onAggregate={() => { setIsAggregating(v => !v); setIsAddingNote(false); }}
+                onAddNote={() => { setIsAddingNote(v => !v); setIsAggregating(false); setIsViewingConsolidated(false); }}
+                onAggregate={() => { setIsAggregating(v => !v); setIsAddingNote(false); setIsViewingConsolidated(false); }}
+                onViewConsolidated={() => { setIsViewingConsolidated(v => !v); setIsAddingNote(false); setIsAggregating(false); }}
             />
 
             {isAddingNote && (
@@ -107,7 +110,14 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
                 <AggregatePanel
                     repoId={repoId}
                     onClose={() => setIsAggregating(false)}
-                    onDone={() => { setIsAggregating(false); refresh(); }}
+                    onDone={() => { setIsAggregating(false); setIsViewingConsolidated(false); refresh(); }}
+                />
+            )}
+
+            {isViewingConsolidated && (
+                <ConsolidatedPanel
+                    repoId={repoId}
+                    onClose={() => setIsViewingConsolidated(false)}
                 />
             )}
 
