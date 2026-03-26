@@ -350,11 +350,20 @@ export class FileProcessStore implements ProcessStore {
             const existing = deserializeProcess(entry.process);
 
             let turns = existing.conversationTurns ?? [];
+            let stableTurnIndex: number | undefined;
             if (options?.filterStreaming) {
+                // Recover the original turnIndex from the streaming turn being replaced,
+                // so the final assistant turn keeps the correct position in the conversation.
+                for (let i = turns.length - 1; i >= 0; i--) {
+                    if (turns[i].role === 'assistant' && turns[i].streaming && turns[i].turnIndex != null) {
+                        stableTurnIndex = turns[i].turnIndex;
+                        break;
+                    }
+                }
                 turns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
             }
 
-            const turn = makeTurn(turns.length);
+            const turn = makeTurn(stableTurnIndex ?? turns.length);
             const allTurns = [...turns, turn];
 
             const extraUpdates = typeof options?.additionalUpdates === 'function'

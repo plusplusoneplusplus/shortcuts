@@ -248,6 +248,34 @@ describe('BaseExecutor', () => {
             expect(updated!.conversationTurns![1].content).toBe('updated partial');
         });
 
+        it('finds streaming assistant turn even when user message was appended after it (race regression)', async () => {
+            const processId = 'proc-flush-race';
+            // Simulate: AI streaming at index 3, then user sends follow-up at index 4
+            const proc = createTestProcess(processId, [
+                { role: 'user', content: 'q1', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'a1', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                { role: 'user', content: 'q2', timestamp: new Date(), turnIndex: 2, timeline: [] },
+                { role: 'assistant', content: 'partial...', timestamp: new Date(), turnIndex: 3, timeline: [], streaming: true },
+                { role: 'user', content: 'q3', timestamp: new Date(), turnIndex: 4, timeline: [] },
+            ]);
+            await store.addProcess(proc);
+
+            const session = executor.getOrCreateSessionPublic(processId);
+            session.outputBuffer = 'updated streaming content';
+
+            await executor.flushConversationTurnPublic(processId, true);
+
+            const updated = store.processes.get(processId);
+            // Must still be 5 turns — no duplicate appended
+            expect(updated?.conversationTurns).toHaveLength(5);
+            // The streaming turn at index 3 should be updated in-place
+            expect(updated!.conversationTurns![3].content).toBe('updated streaming content');
+            expect(updated!.conversationTurns![3].streaming).toBe(true);
+            // User turn at index 4 is untouched
+            expect(updated!.conversationTurns![4].content).toBe('q3');
+            expect(updated!.conversationTurns![4].role).toBe('user');
+        });
+
         it('is a no-op when process does not exist in store', async () => {
             const session = executor.getOrCreateSessionPublic('proc-missing');
             session.outputBuffer = 'data';

@@ -67,8 +67,12 @@ export function ConversationArea({
                                 task?.status === 'running' && !hasStreaming && turns.length > 0
                                     ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [] }]
                                     : turns;
-                            return renderTurns.map((turn, i) => (
-                                <ConversationTurnBubble key={i} turn={turn} taskId={taskId} wsId={wsId} />
+                            // Sort by turnIndex to handle storage order anomalies from race conditions
+                            const sortedTurns = [...renderTurns].sort(
+                                (a, b) => (a.turnIndex ?? 0) - (b.turnIndex ?? 0),
+                            );
+                            return sortedTurns.map((turn, i) => (
+                                <ConversationTurnBubble key={turn.turnIndex ?? i} turn={turn} taskId={taskId} wsId={wsId} />
                             ));
                         })()}
                         {pendingQueue.map(msg => <QueuedBubble key={msg.id} msg={msg} />)}

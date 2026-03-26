@@ -219,4 +219,37 @@ describe('FileProcessStore.appendConversationTurn', () => {
         }));
         expect(result).toBeUndefined();
     });
+
+    it('recovers stable turnIndex from streaming turn when filterStreaming=true (race regression)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        // Simulate race: streaming assistant at idx 3, then user msg appended at idx 4
+        const p = makeProcess('p-race', {
+            conversationTurns: [
+                { role: 'user', content: 'q1', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'a1', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                { role: 'user', content: 'q2', timestamp: new Date(), turnIndex: 2, timeline: [] },
+                { role: 'assistant', content: 'streaming...', timestamp: new Date(), turnIndex: 3, timeline: [], streaming: true },
+                { role: 'user', content: 'q3', timestamp: new Date(), turnIndex: 4, timeline: [] },
+            ],
+        });
+        await store.addProcess(p);
+
+        const result = await store.appendConversationTurn(
+            'p-race',
+            (idx) => ({
+                role: 'assistant',
+                content: 'final answer',
+                timestamp: new Date(),
+                turnIndex: idx,
+                timeline: [],
+            }),
+            { filterStreaming: true },
+        );
+
+        // The final assistant turn should recover turnIndex=3 from the removed streaming turn
+        expect(result!.turn.turnIndex).toBe(3);
+        // Streaming turn should be replaced, so 5 turns total: 4 non-streaming + 1 new
+        expect(result!.allTurns).toHaveLength(5);
+        expect(result!.allTurns.map(t => t.turnIndex)).toEqual([0, 1, 2, 4, 3]);
+    });
 });

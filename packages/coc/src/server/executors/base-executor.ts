@@ -143,18 +143,27 @@ export abstract class BaseExecutor {
             if (!currentProcess) return;
 
             const existingTurns = currentProcess.conversationTurns || [];
-            const lastTurn = existingTurns.length > 0 ? existingTurns[existingTurns.length - 1] : null;
+
+            // Search for existing streaming assistant turn anywhere in the array,
+            // not just the last position — a user follow-up may have been appended after it.
+            let streamingIdx = -1;
+            for (let i = existingTurns.length - 1; i >= 0; i--) {
+                if (existingTurns[i].role === 'assistant' && existingTurns[i].streaming) {
+                    streamingIdx = i;
+                    break;
+                }
+            }
 
             let updatedTurns;
-            if (lastTurn && lastTurn.role === 'assistant' && lastTurn.streaming) {
-                // Update existing streaming assistant turn
+            if (streamingIdx !== -1) {
+                // Update existing streaming assistant turn in-place
                 updatedTurns = existingTurns.map((turn, i) =>
-                    i === existingTurns.length - 1
+                    i === streamingIdx
                         ? { ...turn, content: buffer ?? '', streaming: streaming || undefined, timeline: timelineSnapshot }
                         : turn
                 );
             } else {
-                // Append new assistant turn
+                // No streaming turn exists yet — append new assistant turn
                 updatedTurns = [
                     ...existingTurns,
                     {
