@@ -7,7 +7,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { registerSkillRoutes, sortSkillsByUsage, skillCache } from '../../src/server/skill-handler';
+import { registerSkillRoutes, sortSkillsByUsage, skillCache, SKILL_CACHE_TTL_MS } from '../../src/server/skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
@@ -630,7 +630,7 @@ describe('registerSkillRoutes', () => {
 
     it('GET /api/workspaces/:id/skills returns cached data on cache hit (no filesystem re-read)', async () => {
         // Pre-populate cache with a skill that doesn't exist on disk
-        skillCache.set(workspaceId, { skills: [{ name: 'cached-skill', source: 'repo' }], refreshing: false });
+        skillCache.set(workspaceId, { skills: [{ name: 'cached-skill', source: 'repo' }], refreshing: false, lastUpdated: Date.now() });
 
         const { statusCode, body } = await dispatchRoute(routes, 'GET', `/api/workspaces/${workspaceId}/skills`);
         expect(statusCode).toBe(200);
@@ -668,6 +668,10 @@ describe('registerSkillRoutes', () => {
         fs.mkdirSync(skillV2Dir, { recursive: true });
         fs.writeFileSync(path.join(skillV2Dir, 'SKILL.md'), '# skill-v2');
 
+        // Make cache entry stale by backdating lastUpdated
+        const entry = skillCache.get(workspaceId)!;
+        entry.lastUpdated = Date.now() - SKILL_CACHE_TTL_MS - 1;
+
         // Second GET: returns stale cache (skill-v1), triggers background refresh
         const call2 = await dispatchRoute(routes, 'GET', `/api/workspaces/${workspaceId}/skills`);
         expect(call2.body.skills[0].name).toBe('skill-v1'); // still stale
@@ -680,13 +684,51 @@ describe('registerSkillRoutes', () => {
         expect(call3.body.skills[0].name).toBe('skill-v2');
     });
 
+    it('GET /api/workspaces/:id/skills does not trigger background refresh when cache is fresh', async () => {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        fs.mkdirSync(path.join(skillsDir, 'fresh-skill'), { recursive: true });
+        fs.writeFileSync(path.join(skillsDir, 'fresh-skill', 'SKILL.md'), '# fresh-skill');
+
+        // First GET populates cache
+        await dispatchRoute(routes, 'GET', `/api/workspaces/${workspaceId}/skills`);
+
+        // Replace skill on disk
+        fs.rmSync(path.join(skillsDir, 'fresh-skill'), { recursive: true, force: true });
+        fs.mkdirSync(path.join(skillsDir, 'replaced-skill'), { recursive: true });
+        fs.writeFileSync(path.join(skillsDir, 'replaced-skill', 'SKILL.md'), '# replaced');
+
+        // Second GET within TTL — no background refresh should occur
+        const call2 = await dispatchRoute(routes, 'GET', `/api/workspaces/${workspaceId}/skills`);
+        expect(call2.body.skills[0].name).toBe('fresh-skill');
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Third GET — still serves fresh cache, no refresh was triggered
+        const call3 = await dispatchRoute(routes, 'GET', `/api/workspaces/${workspaceId}/skills`);
+        expect(call3.body.skills[0].name).toBe('fresh-skill');
+    });
+
+    it('GET /api/workspaces/:id/skills sets lastUpdated on cache miss', async () => {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        fs.mkdirSync(path.join(skillsDir, 'ts-skill'), { recursive: true });
+        fs.writeFileSync(path.join(skillsDir, 'ts-skill', 'SKILL.md'), '# ts-skill');
+
+        const before = Date.now();
+        await dispatchRoute(routes, 'GET', `/api/workspaces/${workspaceId}/skills`);
+        const after = Date.now();
+
+        const entry = skillCache.get(workspaceId)!;
+        expect(entry.lastUpdated).toBeGreaterThanOrEqual(before);
+        expect(entry.lastUpdated).toBeLessThanOrEqual(after);
+    });
+
     it('DELETE /api/workspaces/:id/skills/:name clears the skill cache for that workspace', async () => {
         const skillsDir = path.join(workspaceDir, '.github', 'skills');
         fs.mkdirSync(path.join(skillsDir, 'del-skill'), { recursive: true });
         fs.writeFileSync(path.join(skillsDir, 'del-skill', 'SKILL.md'), '# del-skill');
 
         // Populate cache
-        skillCache.set(workspaceId, { skills: [{ name: 'del-skill', source: 'repo' }], refreshing: false });
+        skillCache.set(workspaceId, { skills: [{ name: 'del-skill', source: 'repo' }], refreshing: false, lastUpdated: Date.now() });
 
         await dispatchRoute(routes, 'DELETE', `/api/workspaces/${workspaceId}/skills/del-skill`);
         expect(skillCache.has(workspaceId)).toBe(false);
@@ -694,7 +736,7 @@ describe('registerSkillRoutes', () => {
 
     it('POST /api/workspaces/:id/skills/install clears the skill cache for that workspace', async () => {
         // Populate cache
-        skillCache.set(workspaceId, { skills: [{ name: 'stale-skill', source: 'repo' }], refreshing: false });
+        skillCache.set(workspaceId, { skills: [{ name: 'stale-skill', source: 'repo' }], refreshing: false, lastUpdated: Date.now() });
 
         await dispatchRoute(routes, 'POST', `/api/workspaces/${workspaceId}/skills/install`, { source: 'bundled', skills: [] });
         expect(skillCache.has(workspaceId)).toBe(false);
@@ -702,7 +744,7 @@ describe('registerSkillRoutes', () => {
 
     it('POST /api/workspaces/:id/skills/scan clears the skill cache for that workspace', async () => {
         // Populate cache
-        skillCache.set(workspaceId, { skills: [{ name: 'stale-skill', source: 'repo' }], refreshing: false });
+        skillCache.set(workspaceId, { skills: [{ name: 'stale-skill', source: 'repo' }], refreshing: false, lastUpdated: Date.now() });
 
         await dispatchRoute(routes, 'POST', `/api/workspaces/${workspaceId}/skills/scan`, { url: 'https://github.com/x' });
         expect(skillCache.has(workspaceId)).toBe(false);

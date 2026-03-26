@@ -80,7 +80,11 @@ export interface SkillInfo {
 interface SkillCacheEntry {
     skills: SkillInfo[];
     refreshing: boolean;
+    lastUpdated: number;
 }
+
+/** How long (ms) a cached skill list is considered fresh before a background refresh is triggered. */
+export const SKILL_CACHE_TTL_MS = 60_000;
 
 /** Per-workspace skill list cache. Keyed by workspace id. Exported for testing and global invalidation. */
 export const skillCache = new Map<string, SkillCacheEntry>();
@@ -357,12 +361,13 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
 
             const cached = skillCache.get(wsId);
             if (cached) {
-                // Cache hit: serve immediately, trigger async background refresh
+                // Cache hit: serve immediately, trigger async background refresh if stale
                 sendJSON(res, 200, { skills: cached.skills });
-                if (!cached.refreshing) {
+                const stale = Date.now() - cached.lastUpdated > SKILL_CACHE_TTL_MS;
+                if (stale && !cached.refreshing) {
                     cached.refreshing = true;
                     loadSkillsForWorkspace(ws, dataDir, store)
-                        .then(skills => skillCache.set(wsId, { skills, refreshing: false }))
+                        .then(skills => skillCache.set(wsId, { skills, refreshing: false, lastUpdated: Date.now() }))
                         .catch(() => { cached.refreshing = false; });
                 }
                 return;
@@ -370,7 +375,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
 
             // Cache miss: load synchronously, populate cache, then respond
             const skills = await loadSkillsForWorkspace(ws, dataDir, store);
-            skillCache.set(wsId, { skills, refreshing: false });
+            skillCache.set(wsId, { skills, refreshing: false, lastUpdated: Date.now() });
             sendJSON(res, 200, { skills });
         },
     });
