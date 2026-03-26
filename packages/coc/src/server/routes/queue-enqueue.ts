@@ -252,8 +252,8 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             if (!Array.isArray(body.processIds)) {
                 return sendError(res, 400, 'Missing or invalid field: processIds (must be an array)');
             }
-            if (body.processIds.length < 2) {
-                return sendError(res, 400, 'processIds must contain at least 2 items');
+            if (body.processIds.length < 1) {
+                return sendError(res, 400, 'processIds must contain at least 1 item');
             }
             if (body.processIds.length > 20) {
                 return sendError(res, 400, 'processIds cannot exceed 20 items');

@@ -2810,15 +2810,15 @@ describe('Queue Handler', () => {
             expect(body.error).toContain('processIds');
         });
 
-        it('should return 400 when processIds has fewer than 2 items', async () => {
+        it('should accept a single processId (minimum boundary)', async () => {
             const srv = await startServer();
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['id1'],
                 workspaceId: 'ws1',
             });
-            expect(res.status).toBe(400);
+            expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.error).toContain('at least 2');
+            expect(body.taskId).toBeDefined();
         });
 
         it('should return 400 when processIds exceeds 20 items', async () => {
@@ -2861,7 +2861,7 @@ describe('Queue Handler', () => {
             });
             expect(res.status).toBe(400);
             const body = JSON.parse(res.body);
-            expect(body.error).toContain('at least 2');
+            expect(body.error).toContain('at least 1');
         });
 
         it('should accept exactly 20 processIds (maximum boundary)', async () => {

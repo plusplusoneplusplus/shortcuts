@@ -425,10 +425,12 @@ export function ActivityListPane({
 
         const bulkIds =
             taskStatus === 'completed' &&
-            selectedHistoryIds.size >= 2 &&
+            selectedHistoryIds.size >= 1 &&
             selectedHistoryIds.has(taskId)
                 ? Array.from(selectedHistoryIds)
-                : undefined;
+                : taskStatus === 'completed'
+                    ? [taskId]
+                    : undefined;
 
         setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus, bulkIds });
     }, [selectedHistoryIds]);
@@ -458,7 +460,7 @@ export function ActivityListPane({
                 ...(anyUnarchived && onArchiveChats  ? [{ label: 'Archive',   icon: '📦', onClick: () => { onArchiveChats!(ids);   closeContextMenu(); } }] : []),
                 ...(anyArchived  && onUnarchiveChats ? [{ label: 'Unarchive', icon: '📤', onClick: () => { onUnarchiveChats!(ids); closeContextMenu(); } }] : []),
                 ...(ids.length <= 20 ? [{
-                    label: `Summarize ${ids.length} chats`,
+                    label: ids.length === 1 ? 'Summarize chat' : `Summarize ${ids.length} chats`,
                     icon: '📝',
                     onClick: async () => {
                         closeContextMenu();

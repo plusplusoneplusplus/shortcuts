@@ -363,14 +363,30 @@ describe('ActivityListPane pinned chats', () => {
             expect(handler).toContain('setSelectedHistoryIds(new Set())');
         });
 
-        it('handleTaskContextMenu detects bulk mode when >= 2 items selected and right-clicked item is in selection', () => {
+        it('handleTaskContextMenu detects bulk mode when >= 1 item selected and right-clicked item is in selection', () => {
             const handler = source.substring(
                 source.indexOf('handleTaskContextMenu'),
                 source.indexOf('handleTaskContextMenu') + 500,
             );
-            expect(handler).toContain('selectedHistoryIds.size >= 2');
+            expect(handler).toContain('selectedHistoryIds.size >= 1');
             expect(handler).toContain('selectedHistoryIds.has(taskId)');
             expect(handler).toContain('bulkIds');
+        });
+
+        it('handleTaskContextMenu falls back to [taskId] for a single completed chat', () => {
+            const handler = source.substring(
+                source.indexOf('handleTaskContextMenu'),
+                source.indexOf('handleTaskContextMenu') + 600,
+            );
+            expect(handler).toContain('[taskId]');
+        });
+
+        it('bulk context menu uses singular label for single chat', () => {
+            const bulkBlock = source.substring(
+                source.indexOf('contextMenu.bulkIds'),
+                source.indexOf('contextMenu.bulkIds') + 3000,
+            );
+            expect(bulkBlock).toContain("ids.length === 1 ? 'Summarize chat'");
         });
 
         it('bulk context menu branch checks for bulkIds', () => {
@@ -489,6 +505,7 @@ describe('ActivityListPane pinned chats', () => {
                     source.indexOf('contextMenu.bulkIds') + 3000,
                 );
                 expect(bulkBlock).toContain('Summarize');
+                expect(bulkBlock).toContain("'Summarize chat'");
                 expect(bulkBlock).toContain('`Summarize ${ids.length} chats`');
             });
 
