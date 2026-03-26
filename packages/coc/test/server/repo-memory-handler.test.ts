@@ -201,9 +201,9 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
         // Write an observation directly to the pipeline memory store
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
-        await pipelineStore.writeRaw('repo', repoHash, {
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        await pipelineStore.writeRaw('repo', undefined, {
             pipeline: 'code-review',
             timestamp: '2026-01-01T00:00:00.000Z',
         }, 'use snake_case');
@@ -221,11 +221,11 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
     it('merges and sorts by createdAt descending', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
 
         // Older observation
-        await pipelineStore.writeRaw('repo', repoHash, {
+        await pipelineStore.writeRaw('repo', undefined, {
             pipeline: 'analyze',
             timestamp: '2026-01-01T00:00:00.000Z',
         }, 'old fact');
@@ -336,9 +336,9 @@ describe('DELETE /api/repos/:repoId/memory/feed/:id', () => {
     it('deletes an observation', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
-        const filename = await pipelineStore.writeRaw('repo', repoHash, {
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        const filename = await pipelineStore.writeRaw('repo', undefined, {
             pipeline: 'test-pipeline',
             timestamp: new Date().toISOString(),
         }, 'some observation');
@@ -384,10 +384,10 @@ describe('GET /api/repos/:repoId/memory/stats', () => {
     it('counts observations correctly', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
-        await pipelineStore.writeRaw('repo', repoHash, { pipeline: 'p1', timestamp: new Date().toISOString() }, 'obs 1');
-        await pipelineStore.writeRaw('repo', repoHash, { pipeline: 'p2', timestamp: new Date().toISOString() }, 'obs 2');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'p1', timestamp: new Date().toISOString() }, 'obs 1');
+        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'p2', timestamp: new Date().toISOString() }, 'obs 2');
 
         const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/stats`);
         expect(body.observationCount).toBe(2);
@@ -396,10 +396,10 @@ describe('GET /api/repos/:repoId/memory/stats', () => {
     it('returns consolidatedAt from pipeline memory index', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
         const ts = '2026-03-01T10:00:00.000Z';
-        await pipelineStore.updateIndex('repo', repoHash, { lastAggregation: ts });
+        await pipelineStore.updateIndex('repo', undefined, { lastAggregation: ts });
 
         const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/stats`);
         expect(body.consolidatedAt).toBe(ts);
@@ -442,9 +442,9 @@ describe('GET /api/repos/:repoId/memory/consolidated', () => {
     it('returns consolidated content when it exists', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
-        await pipelineStore.writeConsolidated('repo', '# Memory\n- fact 1\n- fact 2', repoHash);
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        await pipelineStore.writeConsolidated('repo', '# Memory\n- fact 1\n- fact 2');
 
         const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/consolidated`);
         expect(status).toBe(200);
@@ -526,9 +526,9 @@ describe('GET /api/repos/:repoId/memory/aggregate', () => {
     it('maps source alias "ai" to observations', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
-        await pipelineStore.writeRaw('repo', repoHash, { pipeline: 'analyze', timestamp: new Date().toISOString() }, 'old fact');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'analyze', timestamp: new Date().toISOString() }, 'old fact');
 
         const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
         const s = makeServer(tmpDir, { aiInvoker: mockAI });
@@ -546,9 +546,9 @@ describe('GET /api/repos/:repoId/memory/aggregate', () => {
     it('defaults to both user and ai sources when sources param is absent', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
-        await pipelineStore.writeRaw('repo', repoHash, { pipeline: 'p', timestamp: new Date().toISOString() }, 'obs fact');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'p', timestamp: new Date().toISOString() }, 'obs fact');
 
         const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
         noteStore.create({ content: 'note fact', tags: [], source: 'manual' });
@@ -614,9 +614,9 @@ describe('GET /api/repos/:repoId/memory/aggregate', () => {
         // Give time for async writes
         await new Promise(r => setTimeout(r, 100));
 
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
-        const consolidated = await pipelineStore.readConsolidated('repo', repoHash);
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        const consolidated = await pipelineStore.readConsolidated('repo');
         expect(consolidated).toBe(newContent);
         await stopServer(s);
     });
@@ -624,9 +624,9 @@ describe('GET /api/repos/:repoId/memory/aggregate', () => {
     it('diff event contains unified-diff text with +/- prefixes', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
-        await pipelineStore.writeConsolidated('repo', '- old fact', repoHash);
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        await pipelineStore.writeConsolidated('repo', '- old fact');
 
         const newContent = '- new fact';
         const mockAI = vi.fn().mockResolvedValue({ success: true, response: newContent });
@@ -688,11 +688,11 @@ describe('POST /api/repos/:repoId/memory/aggregate/revert', () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
 
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
-        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
 
         // Write current consolidated
-        await pipelineStore.writeConsolidated('repo', '# New version', repoHash);
+        await pipelineStore.writeConsolidated('repo', '# New version');
 
         // Create backup
         const memDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
@@ -706,7 +706,7 @@ describe('POST /api/repos/:repoId/memory/aggregate/revert', () => {
         expect(status).toBe(200);
         expect(body.success).toBe(true);
 
-        const restored = await pipelineStore.readConsolidated('repo', repoHash);
+        const restored = await pipelineStore.readConsolidated('repo');
         expect(restored).toBe('# Old version');
 
         // Backup should be removed after revert

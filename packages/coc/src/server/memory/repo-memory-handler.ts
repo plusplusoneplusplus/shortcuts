@@ -61,9 +61,10 @@ function getNoteStore(dataDir: string, workspaceId: string): FileMemoryStore {
     return new FileMemoryStore(noteDir);
 }
 
-function getPipelineStore(dataDir: string): PipelineMemoryStore {
+function getPipelineStore(dataDir: string, workspaceId: string): PipelineMemoryStore {
     const config = readMemoryConfig(dataDir);
-    return new PipelineMemoryStore({ dataDir: config.storageDir });
+    const repoDir = getRepoDataPath(dataDir, workspaceId, 'memory');
+    return new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
 }
 
 async function getRepoRootPath(store: ProcessStore, workspaceId: string): Promise<string | undefined> {
@@ -160,19 +161,18 @@ export function registerRepoMemoryRoutes(
                     return;
                 }
 
-                const pipelineStore = getPipelineStore(dataDir);
-                const repoHash = pipelineStore.computeRepoHash(repoPath);
+                const pipelineStore = getPipelineStore(dataDir, workspaceId);
                 const noteStore = getNoteStore(dataDir, workspaceId);
 
                 const [obsFilenames, noteResult, stats] = await Promise.all([
-                    pipelineStore.listRaw('repo', repoHash),
+                    pipelineStore.listRaw('repo', undefined),
                     Promise.resolve(noteStore.list({ pageSize: 10000 })),
-                    pipelineStore.getStats('repo', repoHash),
+                    pipelineStore.getStats('repo'),
                 ]);
 
                 const obsItems = await Promise.all(
                     obsFilenames.map(async (filename): Promise<FeedItem | null> => {
-                        const obs = await pipelineStore.readRaw('repo', repoHash, filename);
+                        const obs = await pipelineStore.readRaw('repo', undefined, filename);
                         if (!obs) return null;
                         return {
                             id: filename,
@@ -274,9 +274,8 @@ export function registerRepoMemoryRoutes(
                         send404(res, `Repo not found: ${workspaceId}`);
                         return;
                     }
-                    const pipelineStore = getPipelineStore(dataDir);
-                    const repoHash = pipelineStore.computeRepoHash(repoPath);
-                    const deleted = await pipelineStore.deleteRaw('repo', repoHash, id);
+                    const pipelineStore = getPipelineStore(dataDir, workspaceId);
+                    const deleted = await pipelineStore.deleteRaw('repo', undefined, id);
                     if (!deleted) {
                         send404(res, `Observation not found: ${id}`);
                         return;
@@ -310,9 +309,8 @@ export function registerRepoMemoryRoutes(
                 let observationCount = 0;
                 let consolidatedAt: string | null = null;
                 if (repoPath) {
-                    const pipelineStore = getPipelineStore(dataDir);
-                    const repoHash = pipelineStore.computeRepoHash(repoPath);
-                    const stats = await pipelineStore.getStats('repo', repoHash);
+                    const pipelineStore = getPipelineStore(dataDir, workspaceId);
+                    const stats = await pipelineStore.getStats('repo');
                     observationCount = stats.rawCount;
                     consolidatedAt = stats.lastAggregation;
                 }
@@ -341,9 +339,8 @@ export function registerRepoMemoryRoutes(
                     return;
                 }
 
-                const pipelineStore = getPipelineStore(dataDir);
-                const repoHash = pipelineStore.computeRepoHash(repoPath);
-                const content = await pipelineStore.readConsolidated('repo', repoHash);
+                const pipelineStore = getPipelineStore(dataDir, workspaceId);
+                const content = await pipelineStore.readConsolidated('repo');
                 if (content === null) {
                     send404(res, 'No consolidated memory yet');
                     return;
@@ -399,9 +396,8 @@ export function registerRepoMemoryRoutes(
                 }
 
                 const prevContent = fs.readFileSync(prevPath, 'utf-8');
-                const pipelineStore = getPipelineStore(dataDir);
-                const repoHash = pipelineStore.computeRepoHash(repoPath);
-                await pipelineStore.writeConsolidated('repo', prevContent, repoHash);
+                const pipelineStore = getPipelineStore(dataDir, workspaceId);
+                await pipelineStore.writeConsolidated('repo', prevContent);
 
                 try {
                     fs.unlinkSync(prevPath);
@@ -476,15 +472,14 @@ export function registerRepoMemoryRoutes(
 
                 sendSseRaw('chunk', 'Loading memory data...\n');
 
-                const pipelineStore = getPipelineStore(dataDir);
-                const repoHash = pipelineStore.computeRepoHash(repoPath);
+                const pipelineStore = getPipelineStore(dataDir, workspaceId);
 
                 // Load observations
                 let observations: Array<{ pipeline: string; content: string }> = [];
                 if (sources.includes('observations')) {
-                    const filenames = await pipelineStore.listRaw('repo', repoHash);
+                    const filenames = await pipelineStore.listRaw('repo', undefined);
                     const rawObs = await Promise.all(
-                        filenames.map(f => pipelineStore.readRaw('repo', repoHash, f)),
+                        filenames.map(f => pipelineStore.readRaw('repo', undefined, f)),
                     );
                     observations = rawObs
                         .filter((o): o is NonNullable<typeof o> => o !== undefined)
@@ -510,7 +505,7 @@ export function registerRepoMemoryRoutes(
                 }
 
                 // Read existing consolidated and save backup
-                const previous = await pipelineStore.readConsolidated('repo', repoHash);
+                const previous = await pipelineStore.readConsolidated('repo');
                 if (previous !== null) {
                     const prevPath = consolidatedPrevPath(dataDir, workspaceId);
                     fs.mkdirSync(path.dirname(prevPath), { recursive: true });
@@ -556,8 +551,8 @@ export function registerRepoMemoryRoutes(
                 const newConsolidated = result.response ?? '';
 
                 // Write new consolidated.md
-                await pipelineStore.writeConsolidated('repo', newConsolidated, repoHash);
-                await pipelineStore.updateIndex('repo', repoHash, {
+                await pipelineStore.writeConsolidated('repo', newConsolidated);
+                await pipelineStore.updateIndex('repo', undefined, {
                     lastAggregation: new Date().toISOString(),
                 });
 
