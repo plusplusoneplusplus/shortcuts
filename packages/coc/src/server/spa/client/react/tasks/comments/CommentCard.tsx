@@ -29,6 +29,8 @@ export interface CommentCardProps {
     aiError?: string | null;
     onClearAiError?: () => void;
     onFixWithAI?: () => void;
+    isResolving?: boolean;
+    isDeleting?: boolean;
     showFilePath?: boolean;
 }
 
@@ -44,6 +46,8 @@ export function CommentCard({
     aiError,
     onClearAiError,
     onFixWithAI,
+    isResolving,
+    isDeleting,
     showFilePath = false,
 }: CommentCardProps) {
     const [editing, setEditing] = useState(false);
@@ -186,18 +190,18 @@ export function CommentCard({
                     triggerClassName={ACTION_BTN}
                 />
                 {isResolved ? (
-                    <button className={ACTION_BTN} onClick={onUnresolve} title="Reopen" aria-label="Reopen">🔓</button>
+                    <button className={ACTION_BTN} onClick={onUnresolve} disabled={isResolving} title="Reopen" aria-label="Reopen">🔓</button>
                 ) : (
-                    <button className={ACTION_BTN} onClick={onResolve} title="Resolve" aria-label="Resolve">✅</button>
+                    <button className={ACTION_BTN} onClick={onResolve} disabled={isResolving} title="Resolve" aria-label="Resolve">✅</button>
                 )}
                 <button className={ACTION_BTN} onClick={() => { setEditing(true); setEditText(comment.comment); }} title="Edit" aria-label="Edit">✏️</button>
                 {confirmDelete ? (
                     <>
-                        <Button size="sm" variant="danger" onClick={onDelete} className="!px-1.5 !py-0.5 !text-[10px]">Confirm</Button>
+                        <Button size="sm" variant="danger" onClick={onDelete} disabled={isDeleting} className="!px-1.5 !py-0.5 !text-[10px]">Confirm</Button>
                         <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(false)} className="!px-1.5 !py-0.5 !text-[10px]">Cancel</Button>
                     </>
                 ) : (
-                    <button className={ACTION_BTN} onClick={() => setConfirmDelete(true)} title="Delete" aria-label="Delete">🗑️</button>
+                    <button className={ACTION_BTN} onClick={() => setConfirmDelete(true)} disabled={isDeleting} title="Delete" aria-label="Delete">🗑️</button>
                 )}
             </div>
 

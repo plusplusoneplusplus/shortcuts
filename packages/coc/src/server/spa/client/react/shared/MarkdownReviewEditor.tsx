@@ -190,6 +190,8 @@ export function MarkdownReviewEditor({
         aiLoadingIds,
         aiErrors,
         clearAiError,
+        resolvingIds,
+        deletingIds,
         resolveWithAI,
         fixWithAI,
         copyResolvePrompt,
@@ -626,6 +628,8 @@ export function MarkdownReviewEditor({
         aiLoadingIds,
         aiErrors,
         onClearAiError: clearAiError,
+        resolvingIds,
+        deletingIds,
         onResolveAllWithAI: handleResolveAllWithAI,
         onCopyPrompt: handleCopyPrompt,
         onFixWithAI: handleFixWithAI,
@@ -841,6 +845,8 @@ export function MarkdownReviewEditor({
                     aiError={aiErrors.get(activePopoverComment.id) ?? null}
                     onClearAiError={(id) => clearAiError(id)}
                     onFixWithAI={handleFixWithAI}
+                    isResolving={resolvingIds.has(activePopoverComment.id)}
+                    isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
             )}
             {showAiButtons && aiDialogType === 'follow-prompt' && (

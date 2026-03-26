@@ -532,4 +532,54 @@ describe('CommentPopover', () => {
         expect(onFixWithAI).toHaveBeenCalledWith('fix-me');
     });
 
+    // --- Disabled states (in-flight) ---
+
+    it('disables Resolve button when isResolving=true', () => {
+        render(
+            <CommentPopover
+                comment={makeComment({ status: 'open' })}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                isResolving={true}
+            />,
+        );
+        expect(screen.getByLabelText('Resolve')).toHaveProperty('disabled', true);
+    });
+
+    it('disables Reopen button when isResolving=true', () => {
+        render(
+            <CommentPopover
+                comment={makeComment({ status: 'resolved' })}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                isResolving={true}
+            />,
+        );
+        expect(screen.getByLabelText('Reopen')).toHaveProperty('disabled', true);
+    });
+
+    it('disables Delete button when isDeleting=true', () => {
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                isDeleting={true}
+            />,
+        );
+        expect(screen.getByLabelText('Delete')).toHaveProperty('disabled', true);
+    });
+
 });

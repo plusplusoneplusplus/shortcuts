@@ -422,4 +422,80 @@ describe('CommentCard', () => {
             expect(onFixWithAI).toHaveBeenCalledOnce();
         });
     });
+
+    describe('Disabled states (in-flight)', () => {
+        it('disables Resolve button when isResolving=true', () => {
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'open' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    isResolving={true}
+                />
+            );
+            expect(screen.getByLabelText('Resolve')).toHaveProperty('disabled', true);
+        });
+
+        it('disables Reopen button when isResolving=true', () => {
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'resolved' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    isResolving={true}
+                />
+            );
+            expect(screen.getByLabelText('Reopen')).toHaveProperty('disabled', true);
+        });
+
+        it('disables Delete button when isDeleting=true', () => {
+            render(
+                <CommentCard
+                    comment={makeComment()}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    isDeleting={true}
+                />
+            );
+            expect(screen.getByLabelText('Delete')).toHaveProperty('disabled', true);
+        });
+
+        it('disables Confirm delete button when isDeleting=true', () => {
+            const { rerender } = render(
+                <CommentCard
+                    comment={makeComment()}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    isDeleting={false}
+                />
+            );
+            // Open confirm dialog first while not deleting
+            fireEvent.click(screen.getByLabelText('Delete'));
+            expect(screen.getByText('Confirm')).toBeTruthy();
+            // Re-render with isDeleting=true (simulates request starting)
+            rerender(
+                <CommentCard
+                    comment={makeComment()}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    isDeleting={true}
+                />
+            );
+            expect(screen.getByText('Confirm')).toHaveProperty('disabled', true);
+        });
+
+        it('does not disable buttons when isResolving/isDeleting are false', () => {
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'open' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    isResolving={false}
+                    isDeleting={false}
+                />
+            );
+            expect(screen.getByLabelText('Resolve')).toHaveProperty('disabled', false);
+            expect(screen.getByLabelText('Delete')).toHaveProperty('disabled', false);
+        });
+    });
 });

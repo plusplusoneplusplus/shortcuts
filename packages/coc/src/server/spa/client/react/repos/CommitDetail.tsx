@@ -161,7 +161,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
-            clearAiError, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
+            clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
 
     // Commit-level comments (only active when !filePath and !rangeMode)
     const {
@@ -572,6 +572,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                         aiLoadingIds={aiLoadingIds}
                         aiErrors={aiErrors}
                         onClearAiError={clearAiError}
+                        resolvingIds={resolvingIds}
+                        deletingIds={deletingIds}
                         onCopyPrompt={copyAllCommentsAsPrompt}
                         data-testid="diff-comment-sidebar"
                     />
@@ -626,8 +628,9 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                     aiLoading={aiLoadingIds.has(activePopoverComment.id)}
                     aiError={aiErrors.get(activePopoverComment.id) ?? null}
                     onClearAiError={clearAiError}
+                    isResolving={resolvingIds.has(activePopoverComment.id)}
+                    isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
-            )}
         </div>
     );
 }

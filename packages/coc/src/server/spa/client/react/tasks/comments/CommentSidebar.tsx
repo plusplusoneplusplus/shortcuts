@@ -33,6 +33,8 @@ export interface CommentSidebarProps {
     aiErrors?: Map<string, string>;
     onClearAiError?: (id: string) => void;
     onFixWithAI?: (id: string) => void;
+    resolvingIds?: Set<string>;
+    deletingIds?: Set<string>;
     onResolveAllWithAI?: () => void;
     onCopyPrompt?: () => void;
 }
@@ -57,6 +59,8 @@ export function CommentSidebar({
     aiErrors,
     onClearAiError,
     onFixWithAI,
+    resolvingIds,
+    deletingIds,
     onResolveAllWithAI,
     onCopyPrompt,
 }: CommentSidebarProps) {
@@ -237,6 +241,8 @@ export function CommentSidebar({
                         aiError={aiErrors?.get(comment.id) ?? null}
                         onClearAiError={onClearAiError ? () => onClearAiError(comment.id) : undefined}
                         onFixWithAI={onFixWithAI ? () => onFixWithAI(comment.id) : undefined}
+                        isResolving={resolvingIds?.has(comment.id)}
+                        isDeleting={deletingIds?.has(comment.id)}
                         showFilePath={showFilePath}
                     />
                     </div>

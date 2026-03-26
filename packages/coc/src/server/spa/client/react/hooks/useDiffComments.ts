@@ -52,6 +52,8 @@ export interface UseDiffCommentsReturn {
     aiLoadingIds: Set<string>;
     aiErrors: Map<string, string>;
     clearAiError: (id: string) => void;
+    resolvingIds: Set<string>;
+    deletingIds: Set<string>;
     resolving: boolean;
     resolvingCommentId: string | null;
     refresh: () => Promise<void>;
@@ -122,6 +124,8 @@ export function useDiffComments(
     const [error, setError]       = useState<string | null>(null);
     const [aiLoadingIds, setAiLoadingIds] = useState<Set<string>>(new Set());
     const [aiErrors, setAiErrors]         = useState<Map<string, string>>(new Map());
+    const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
+    const [deletingIds, setDeletingIds]   = useState<Set<string>>(new Set());
     const [resolving, setResolving]               = useState(false);
     const [resolvingCommentId, setResolvingCommentId] = useState<string | null>(null);
     const mountedRef  = useRef(true);
@@ -230,26 +234,50 @@ export function useDiffComments(
     // ------------------------------------------------------------------
 
     const deleteCommentFn = useCallback(async (id: string): Promise<void> => {
-        const ctx = contextRef.current;
-        if (!ctx) throw new Error('No diff context');
-        const storageKey = await computeStorageKey(ctx);
-        await deleteDiffCommentById(wsId, storageKey, id);
-        if (mountedRef.current) {
-            setComments(prev => prev.filter(c => c.id !== id));
+        if (deletingIds.has(id)) return;
+        setDeletingIds(prev => new Set(prev).add(id));
+        try {
+            const ctx = contextRef.current;
+            if (!ctx) throw new Error('No diff context');
+            const storageKey = await computeStorageKey(ctx);
+            await deleteDiffCommentById(wsId, storageKey, id);
+            if (mountedRef.current) {
+                setComments(prev => prev.filter(c => c.id !== id));
+            }
+        } finally {
+            if (mountedRef.current) {
+                setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            }
         }
-    }, [wsId]);
+    }, [wsId, deletingIds]);
 
     // ------------------------------------------------------------------
     // resolveComment / unresolveComment
     // ------------------------------------------------------------------
 
     const resolveComment = useCallback(async (id: string): Promise<DiffComment> => {
-        return updateCommentFn(id, { status: 'resolved' });
-    }, [updateCommentFn]);
+        if (resolvingIds.has(id)) return {} as DiffComment;
+        setResolvingIds(prev => new Set(prev).add(id));
+        try {
+            return await updateCommentFn(id, { status: 'resolved' });
+        } finally {
+            if (mountedRef.current) {
+                setResolvingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            }
+        }
+    }, [updateCommentFn, resolvingIds]);
 
     const unresolveComment = useCallback(async (id: string): Promise<DiffComment> => {
-        return updateCommentFn(id, { status: 'open' });
-    }, [updateCommentFn]);
+        if (resolvingIds.has(id)) return {} as DiffComment;
+        setResolvingIds(prev => new Set(prev).add(id));
+        try {
+            return await updateCommentFn(id, { status: 'open' });
+        } finally {
+            if (mountedRef.current) {
+                setResolvingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            }
+        }
+    }, [updateCommentFn, resolvingIds]);
 
     // ------------------------------------------------------------------
     // askAI — POST /api/diff-comments/:wsId/:storageKey/:id/ask-ai
@@ -416,6 +444,8 @@ export function useDiffComments(
         aiLoadingIds,
         aiErrors,
         clearAiError,
+        resolvingIds,
+        deletingIds,
         resolving,
         resolvingCommentId,
         refresh,

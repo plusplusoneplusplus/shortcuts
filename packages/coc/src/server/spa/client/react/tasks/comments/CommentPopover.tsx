@@ -30,6 +30,8 @@ export interface CommentPopoverProps {
     aiError?: string | null;
     onClearAiError?: (id: string) => void;
     onFixWithAI?: (id: string) => Promise<void>;
+    isResolving?: boolean;
+    isDeleting?: boolean;
 }
 
 export function CommentPopover({
@@ -45,6 +47,8 @@ export function CommentPopover({
     aiError,
     onClearAiError,
     onFixWithAI,
+    isResolving,
+    isDeleting,
 }: CommentPopoverProps) {
     const popoverRef = useRef<HTMLDivElement>(null);
     const [clampedPos, setClampedPos] = useState(position);
@@ -181,12 +185,12 @@ export function CommentPopover({
             {!editing && (
                 <div className={cn('flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]', isMobile && 'flex-wrap gap-1')}>
                     {isResolved ? (
-                        <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => onUnresolve(comment.id)} title="Reopen" aria-label="Reopen">🔓</button>
+                        <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => onUnresolve(comment.id)} disabled={isResolving} title="Reopen" aria-label="Reopen">🔓</button>
                     ) : (
-                        <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => onResolve(comment.id)} title="Resolve" aria-label="Resolve">✅</button>
+                        <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => onResolve(comment.id)} disabled={isResolving} title="Resolve" aria-label="Resolve">✅</button>
                     )}
                     <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => { setEditing(true); setEditText(comment.comment); }} title="Edit" aria-label="Edit">✏️</button>
-                    <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => { onDelete(comment.id); onClose(); }} title="Delete" aria-label="Delete">🗑️</button>
+                    <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => { onDelete(comment.id); onClose(); }} disabled={isDeleting} title="Delete" aria-label="Delete">🗑️</button>
                     {onAskAI && (
                         <AICommandMenu
                             onCommand={(cmdId, q) => onAskAI(comment.id, cmdId, q)}

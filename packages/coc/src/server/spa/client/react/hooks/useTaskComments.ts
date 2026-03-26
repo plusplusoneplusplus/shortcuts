@@ -97,6 +97,8 @@ export interface UseTaskCommentsReturn {
     aiLoadingIds: Set<string>;
     aiErrors: Map<string, string>;
     clearAiError: (id: string) => void;
+    resolvingIds: Set<string>;
+    deletingIds: Set<string>;
     resolveWithAI: (documentContent: string, filePath: string) => Promise<ResolveWithAIResult>;
     fixWithAI: (id: string, documentContent: string, filePath: string) => Promise<FixWithAIResult>;
     copyResolvePrompt: (documentContent: string, filePath: string) => void;
@@ -110,6 +112,8 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     const [error, setError] = useState<string | null>(null);
     const [aiLoadingIds, setAiLoadingIds] = useState<Set<string>>(new Set());
     const [aiErrors, setAiErrors] = useState<Map<string, string>>(new Map());
+    const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
+    const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
     const mountedRef = useRef(true);
 
     useEffect(() => {
@@ -186,20 +190,44 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     }, [wsId, taskPath]);
 
     const deleteCommentFn = useCallback(async (id: string): Promise<void> => {
-        const res = await fetch(commentUrl(wsId, taskPath, id), { method: 'DELETE' });
-        if (!res.ok) throw new Error('Failed to delete comment');
-        if (mountedRef.current) {
-            setComments(prev => prev.filter(c => c.id !== id));
+        if (deletingIds.has(id)) return;
+        setDeletingIds(prev => new Set(prev).add(id));
+        try {
+            const res = await fetch(commentUrl(wsId, taskPath, id), { method: 'DELETE' });
+            if (!res.ok) throw new Error('Failed to delete comment');
+            if (mountedRef.current) {
+                setComments(prev => prev.filter(c => c.id !== id));
+            }
+        } finally {
+            if (mountedRef.current) {
+                setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            }
         }
-    }, [wsId, taskPath]);
+    }, [wsId, taskPath, deletingIds]);
 
     const resolveComment = useCallback(async (id: string): Promise<TaskComment> => {
-        return updateCommentFn(id, { status: 'resolved' });
-    }, [updateCommentFn]);
+        if (resolvingIds.has(id)) return {} as TaskComment;
+        setResolvingIds(prev => new Set(prev).add(id));
+        try {
+            return await updateCommentFn(id, { status: 'resolved' });
+        } finally {
+            if (mountedRef.current) {
+                setResolvingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            }
+        }
+    }, [updateCommentFn, resolvingIds]);
 
     const unresolveComment = useCallback(async (id: string): Promise<TaskComment> => {
-        return updateCommentFn(id, { status: 'open' });
-    }, [updateCommentFn]);
+        if (resolvingIds.has(id)) return {} as TaskComment;
+        setResolvingIds(prev => new Set(prev).add(id));
+        try {
+            return await updateCommentFn(id, { status: 'open' });
+        } finally {
+            if (mountedRef.current) {
+                setResolvingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            }
+        }
+    }, [updateCommentFn, resolvingIds]);
 
     const askAI = useCallback(async (id: string, options: AskAIOptions = {}): Promise<void> => {
         const { commandId, customQuestion, documentContext } = options;
@@ -326,6 +354,8 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         aiLoadingIds,
         aiErrors,
         clearAiError,
+        resolvingIds,
+        deletingIds,
         resolveWithAI,
         fixWithAI,
         copyResolvePrompt,

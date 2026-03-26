@@ -95,7 +95,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
-            clearAiError, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
+            clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
 
     const fetchDiff = useCallback(() => {
         if (stage === 'untracked') {
@@ -270,6 +270,8 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
                         aiLoadingIds={aiLoadingIds}
                         aiErrors={aiErrors}
                         onClearAiError={clearAiError}
+                        resolvingIds={resolvingIds}
+                        deletingIds={deletingIds}
                         onCopyPrompt={copyAllCommentsAsPrompt}
                         data-testid="diff-comment-sidebar"
                     />
@@ -297,6 +299,8 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
                     aiLoading={aiLoadingIds.has(activePopoverComment.id)}
                     aiError={aiErrors.get(activePopoverComment.id) ?? null}
                     onClearAiError={clearAiError}
+                    isResolving={resolvingIds.has(activePopoverComment.id)}
+                    isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
             )}
         </div>

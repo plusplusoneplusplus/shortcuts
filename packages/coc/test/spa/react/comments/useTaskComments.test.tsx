@@ -740,4 +740,199 @@ describe('useTaskComments', () => {
 
         expect(writeTextSpy).not.toHaveBeenCalled();
     });
+
+    // ======================================================================
+    // In-flight guards: resolvingIds / deletingIds
+    // ======================================================================
+
+    it('resolveComment sets resolvingIds during request and clears after', async () => {
+        const comment = makeComment({ id: 'c1', status: 'open' });
+        const resolved = makeComment({ id: 'c1', status: 'resolved' });
+        let resolvePatch!: (v: any) => void;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'PATCH') {
+                return new Promise(r => { resolvePatch = r; });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let resolvePromise: Promise<any>;
+        act(() => {
+            resolvePromise = result.current.resolveComment('c1');
+        });
+
+        await waitFor(() => expect(result.current.resolvingIds.has('c1')).toBe(true));
+
+        await act(async () => {
+            resolvePatch({ ok: true, json: () => Promise.resolve({ comment: resolved }) });
+            await resolvePromise!;
+        });
+
+        expect(result.current.resolvingIds.has('c1')).toBe(false);
+    });
+
+    it('resolveComment double-call is a no-op while in-flight', async () => {
+        const comment = makeComment({ id: 'c1', status: 'open' });
+        const resolved = makeComment({ id: 'c1', status: 'resolved' });
+        let patchCallCount = 0;
+        let resolvePatch!: (v: any) => void;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'PATCH') {
+                patchCallCount++;
+                return new Promise(r => { resolvePatch = r; });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let firstPromise: Promise<any>;
+        act(() => {
+            firstPromise = result.current.resolveComment('c1');
+        });
+
+        await waitFor(() => expect(result.current.resolvingIds.has('c1')).toBe(true));
+
+        // Second call while first is in-flight — should be a no-op
+        await act(async () => {
+            await result.current.resolveComment('c1');
+        });
+
+        expect(patchCallCount).toBe(1);
+
+        // Clean up first call
+        await act(async () => {
+            resolvePatch({ ok: true, json: () => Promise.resolve({ comment: resolved }) });
+            await firstPromise!;
+        });
+    });
+
+    it('resolvingIds cleared after server error (button re-enabled)', async () => {
+        const comment = makeComment({ id: 'c1', status: 'open' });
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'PATCH') {
+                return Promise.resolve({ ok: false, status: 500 });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            try { await result.current.resolveComment('c1'); } catch { /* expected */ }
+        });
+
+        expect(result.current.resolvingIds.has('c1')).toBe(false);
+    });
+
+    it('deleteComment sets deletingIds during request and clears after', async () => {
+        const comment = makeComment({ id: 'c1' });
+        let resolveDelete!: (v: any) => void;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'DELETE') {
+                return new Promise(r => { resolveDelete = r; });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let deletePromise: Promise<any>;
+        act(() => {
+            deletePromise = result.current.deleteComment('c1');
+        });
+
+        await waitFor(() => expect(result.current.deletingIds.has('c1')).toBe(true));
+
+        await act(async () => {
+            resolveDelete({ ok: true, json: () => Promise.resolve({}) });
+            await deletePromise!;
+        });
+
+        expect(result.current.deletingIds.has('c1')).toBe(false);
+    });
+
+    it('deleteComment double-call is a no-op while in-flight', async () => {
+        const comment = makeComment({ id: 'c1' });
+        let deleteCallCount = 0;
+        let resolveDelete!: (v: any) => void;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'DELETE') {
+                deleteCallCount++;
+                return new Promise(r => { resolveDelete = r; });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let firstPromise: Promise<any>;
+        act(() => {
+            firstPromise = result.current.deleteComment('c1');
+        });
+
+        await waitFor(() => expect(result.current.deletingIds.has('c1')).toBe(true));
+
+        // Second call while first is in-flight — should be a no-op
+        await act(async () => {
+            await result.current.deleteComment('c1');
+        });
+
+        expect(deleteCallCount).toBe(1);
+
+        await act(async () => {
+            resolveDelete({ ok: true, json: () => Promise.resolve({}) });
+            await firstPromise!;
+        });
+    });
+
+    it('deletingIds cleared after server error (button re-enabled)', async () => {
+        const comment = makeComment({ id: 'c1' });
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'DELETE') {
+                return Promise.resolve({ ok: false, status: 500 });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            try { await result.current.deleteComment('c1'); } catch { /* expected */ }
+        });
+
+        expect(result.current.deletingIds.has('c1')).toBe(false);
+    });
 });
