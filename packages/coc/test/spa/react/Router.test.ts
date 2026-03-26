@@ -1920,3 +1920,41 @@ describe('settings section hash routing', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(true);
     });
 });
+
+// ─── memory sub-tab deep-link parsing ───────────────────────────
+
+describe('memory sub-tab deep-link parsing', () => {
+    function parseMemorySubTab(rawHash: string): string | null {
+        const hash = rawHash.replace(/^#/, '');
+        const parts = hash.split('/');
+        if (parts[0] !== 'memory') return null;
+        if (parts.length >= 2 && (parts[1] === 'entries' || parts[1] === 'config' || parts[1] === 'files')) {
+            return parts[1];
+        }
+        return null;
+    }
+
+    it('returns "entries" for #memory/entries', () => {
+        expect(parseMemorySubTab('#memory/entries')).toBe('entries');
+    });
+
+    it('returns "config" for #memory/config', () => {
+        expect(parseMemorySubTab('#memory/config')).toBe('config');
+    });
+
+    it('returns "files" for #memory/files', () => {
+        expect(parseMemorySubTab('#memory/files')).toBe('files');
+    });
+
+    it('returns null for #memory (no sub-tab)', () => {
+        expect(parseMemorySubTab('#memory')).toBeNull();
+    });
+
+    it('returns null for #memory/unknown', () => {
+        expect(parseMemorySubTab('#memory/unknown')).toBeNull();
+    });
+
+    it('returns null for non-memory hash', () => {
+        expect(parseMemorySubTab('#repos/my-repo')).toBeNull();
+    });
+});

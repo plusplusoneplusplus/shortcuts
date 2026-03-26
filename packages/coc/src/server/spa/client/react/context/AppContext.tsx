@@ -100,7 +100,7 @@ const initialState: AppContextState = {
     selectedExplorerPath: null,
     conversationCache: {},
     wsStatus: 'closed',
-    activeMemorySubTab: 'entries',
+    activeMemorySubTab: 'config',
     activeSkillsSubTab: 'installed',
     repoTabState: {},
     wikiTabState: {},

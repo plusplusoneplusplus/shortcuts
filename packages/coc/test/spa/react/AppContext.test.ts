@@ -37,6 +37,8 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         repoWikiInitialTab: null,
         repoWikiInitialAdminTab: null,
         repoWikiInitialComponentId: null,
+        activeMemorySubTab: 'config',
+        activeSkillsSubTab: 'installed',
         repoTabState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
@@ -944,6 +946,32 @@ describe('AppContext reducer', () => {
             const state = makeState({ settingsSection: 'skills' });
             const result = appReducer(state, { type: 'SET_SETTINGS_SECTION', section: 'skills' });
             expect(result).toBe(state);
+        });
+    });
+
+    // ── SET_MEMORY_SUB_TAB ─────────────────────────────────────────
+    describe('SET_MEMORY_SUB_TAB', () => {
+        it('defaults activeMemorySubTab to "config"', () => {
+            const state = makeState();
+            expect(state.activeMemorySubTab).toBe('config');
+        });
+
+        it('switches to entries', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SET_MEMORY_SUB_TAB', tab: 'entries' });
+            expect(result.activeMemorySubTab).toBe('entries');
+        });
+
+        it('switches to files', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SET_MEMORY_SUB_TAB', tab: 'files' });
+            expect(result.activeMemorySubTab).toBe('files');
+        });
+
+        it('switches to config', () => {
+            const state = makeState({ activeMemorySubTab: 'entries' });
+            const result = appReducer(state, { type: 'SET_MEMORY_SUB_TAB', tab: 'config' });
+            expect(result.activeMemorySubTab).toBe('config');
         });
     });
 });
