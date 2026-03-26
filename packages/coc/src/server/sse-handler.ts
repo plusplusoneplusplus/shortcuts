@@ -199,6 +199,8 @@ export async function handleProcessStream(
             sendEvent(res, 'message-steering', {
                 turnIndex: event.turnIndex,
             });
+        } else if (event.type === 'hook-step') {
+            sendEvent(res, 'hook-step', { hookStep: event.hookStep });
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {
                 status: event.status,
