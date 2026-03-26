@@ -41,8 +41,12 @@ export { DEFAULT_MAP_REDUCE_OPTIONS } from './types';
 // Executor
 export { MapReduceExecutor, createExecutor } from './executor';
 
-// Concurrency limiter
-export { ConcurrencyLimiter, CancellationError, DEFAULT_MAX_CONCURRENCY } from './concurrency-limiter';
+// Concurrency limiter (canonical source: runtime/)
+export { ConcurrencyLimiter, CancellationError, DEFAULT_MAX_CONCURRENCY } from '../runtime/concurrency-limiter';
+
+// Extracted collaborators
+export { ProgressReporter } from './progress-reporter';
+export { ProcessTrackerAdapter } from './process-tracker-adapter';
 
 // Prompt template
 export {

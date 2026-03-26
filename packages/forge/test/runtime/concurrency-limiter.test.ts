@@ -7,7 +7,7 @@ import {
 import {
     ConcurrencyLimiter as MRLimiter,
     CancellationError as MRCancellationError,
-} from '../../src/map-reduce/concurrency-limiter';
+} from '../../src/map-reduce';
 import {
     ConcurrencyLimiter as WFLimiter,
     CancellationError as WFCancellationError,

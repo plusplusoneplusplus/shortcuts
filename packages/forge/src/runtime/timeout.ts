@@ -141,3 +141,40 @@ export function createTimeoutPromise(
         }, timeoutMs);
     });
 }
+
+/**
+ * Options for withTimeoutDoubling
+ */
+export interface TimeoutDoublingOptions {
+    /** Base timeout in milliseconds. If omitted or ≤ 0, no timeout is applied. */
+    timeoutMs?: number;
+    /** Optional operation name for error messages */
+    operationName?: string;
+    /** Additional metadata for the timeout error */
+    meta?: ErrorMetadata;
+}
+
+/**
+ * Execute an async function with timeout and automatic retry on timeout with doubled duration.
+ *
+ * On first timeout, retries once with 2× the original timeout value.
+ * If the second attempt also times out (or fails), the error propagates.
+ * If timeoutMs is omitted or ≤ 0, the function runs without a timeout.
+ */
+export async function withTimeoutDoubling<T>(
+    fn: () => Promise<T>,
+    options: TimeoutDoublingOptions
+): Promise<T> {
+    const { timeoutMs, operationName, meta } = options;
+    if (!timeoutMs || timeoutMs <= 0) {
+        return fn();
+    }
+    try {
+        return await withTimeout(fn, { timeoutMs, operationName, meta });
+    } catch (error) {
+        if (!isTimeoutError(error)) {
+            throw error;
+        }
+        return await withTimeout(fn, { timeoutMs: timeoutMs * 2, operationName, meta });
+    }
+}
