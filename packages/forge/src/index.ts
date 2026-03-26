@@ -390,6 +390,7 @@ export {
 // ============================================================================
 
 export {
+    HookStepEvent,
     ProcessOutputEvent,
     WorkspaceInfo,
     WikiInfo,

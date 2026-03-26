@@ -15,8 +15,16 @@ import type { TokenUsage } from './copilot-sdk-wrapper/types';
  * Output event emitted during process execution.
  * Used by SSE streaming to push real-time output to clients.
  */
+export interface HookStepEvent {
+    step: 'before' | 'after';
+    status: 'running' | 'done' | 'failed';
+    script: string;
+    output?: string;
+    durationMs?: number;
+}
+
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -61,6 +69,8 @@ export interface ProcessOutputEvent {
     deliveryMode?: 'immediate' | 'enqueue';
     /** 1-based queue position; 0 for immediate mode (for 'message-queued' events). */
     queuePosition?: number;
+    /** Hook step event data (for 'hook-step' events). */
+    hookStep?: HookStepEvent;
 }
 
 /**

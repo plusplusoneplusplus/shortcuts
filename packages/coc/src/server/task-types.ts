@@ -92,6 +92,10 @@ export interface ChatPayload {
     workingDirectory?: string;
     /** Model override for this task. */
     model?: string;
+    /** Shell command/path to run before the AI task. */
+    beforeScript?: string;
+    /** Shell command/path to run after the AI task (always runs, even if AI fails). */
+    afterScript?: string;
 }
 
 export interface RunWorkflowPayload {
