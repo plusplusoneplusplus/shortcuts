@@ -131,6 +131,12 @@ export interface MemoryConfig {
 export interface MemoryStoreOptions {
     /** Root directory for all memory data. Default: ~/.coc/memory */
     dataDir?: string;
+    /**
+     * Explicit directory for repo-level memory. When set, repo-level
+     * operations use this path directly instead of computing
+     * `dataDir/repos/<hash>/`. `repoHash` becomes optional for repo-level calls.
+     */
+    repoDir?: string;
 }
 
 /**

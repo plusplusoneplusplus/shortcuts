@@ -407,4 +407,125 @@ describe('FileMemoryStore', () => {
             expect(list).toEqual([]);
         });
     });
+
+    // --- repoDir option ---
+
+    describe('repoDir option', () => {
+        let repoDir: string;
+        let repoDirStore: FileMemoryStore;
+
+        beforeEach(async () => {
+            repoDir = path.join(tmpDir, 'custom-repo-memory');
+            repoDirStore = new FileMemoryStore({ dataDir: tmpDir, repoDir });
+        });
+
+        it('uses repoDir for repo-level ensureStorageLayout', async () => {
+            await repoDirStore.ensureStorageLayout('repo');
+            const stat = await fs.stat(path.join(repoDir, 'raw'));
+            expect(stat.isDirectory()).toBe(true);
+        });
+
+        it('writeRaw / readRaw roundtrips at repo level without repoHash', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'test', timestamp: '2026-04-01T00:00:00.000Z' };
+            const filename = await repoDirStore.writeRaw('repo', undefined, meta, 'repoDir content');
+            const obs = await repoDirStore.readRaw('repo', undefined, filename);
+            expect(obs).toBeDefined();
+            expect(obs!.content).toBe('repoDir content');
+
+            // File lives inside the custom repoDir
+            const filePath = path.join(repoDir, 'raw', filename);
+            await expect(fs.stat(filePath)).resolves.toBeDefined();
+        });
+
+        it('listRaw returns files from repoDir at repo level', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-05-01T00:00:00.000Z' };
+            await repoDirStore.writeRaw('repo', undefined, meta, 'a');
+            const list = await repoDirStore.listRaw('repo', undefined);
+            expect(list).toHaveLength(1);
+        });
+
+        it('deleteRaw removes files from repoDir', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-05-01T00:00:00.000Z' };
+            const fn = await repoDirStore.writeRaw('repo', undefined, meta, 'delete me');
+            const deleted = await repoDirStore.deleteRaw('repo', undefined, fn);
+            expect(deleted).toBe(true);
+            expect(await repoDirStore.listRaw('repo', undefined)).toEqual([]);
+        });
+
+        it('consolidated reads/writes use repoDir', async () => {
+            await repoDirStore.writeConsolidated('repo', '# Custom repo facts');
+            const content = await repoDirStore.readConsolidated('repo');
+            expect(content).toBe('# Custom repo facts');
+
+            const filePath = path.join(repoDir, 'consolidated.md');
+            await expect(fs.stat(filePath)).resolves.toBeDefined();
+        });
+
+        it('getStats works with repoDir', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-06-01T00:00:00.000Z' };
+            await repoDirStore.writeRaw('repo', undefined, meta, 'obs');
+            await repoDirStore.writeConsolidated('repo', '# Facts');
+            const stats = await repoDirStore.getStats('repo');
+            expect(stats.rawCount).toBe(1);
+            expect(stats.consolidatedExists).toBe(true);
+        });
+
+        it('both level writes to system and repoDir', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-07-01T00:00:00.000Z' };
+            const filename = await repoDirStore.writeRaw('both', undefined, meta, 'both');
+
+            const sysPath = path.join(tmpDir, 'system', 'raw', filename);
+            const repoPath = path.join(repoDir, 'raw', filename);
+            await expect(fs.stat(sysPath)).resolves.toBeDefined();
+            await expect(fs.stat(repoPath)).resolves.toBeDefined();
+        });
+
+        it('repoDir takes precedence over repoHash', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-08-01T00:00:00.000Z' };
+            // Pass a repoHash — it should be ignored because repoDir is set
+            const filename = await repoDirStore.writeRaw('repo', 'somehash', meta, 'precedence');
+            const filePath = path.join(repoDir, 'raw', filename);
+            await expect(fs.stat(filePath)).resolves.toBeDefined();
+
+            // The hash-based path should NOT have the file
+            const hashPath = path.join(tmpDir, 'repos', 'somehash', 'raw', filename);
+            await expect(fs.stat(hashPath)).rejects.toThrow();
+        });
+
+        it('system and git-remote levels are unaffected by repoDir', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-09-01T00:00:00.000Z' };
+            await repoDirStore.writeRaw('system', undefined, meta, 'system');
+            await repoDirStore.writeRaw('git-remote', 'rhash', meta, 'remote');
+
+            const sysPath = path.join(tmpDir, 'system', 'raw');
+            const remotePath = path.join(tmpDir, 'git-remotes', 'rhash', 'raw');
+            const sysFiles = await fs.readdir(sysPath);
+            const remoteFiles = await fs.readdir(remotePath);
+            expect(sysFiles).toHaveLength(1);
+            expect(remoteFiles).toHaveLength(1);
+        });
+
+        it('index reads/writes use repoDir', async () => {
+            await repoDirStore.updateIndex('repo', undefined, {
+                lastAggregation: '2026-10-01T00:00:00.000Z',
+                rawCount: 3,
+            });
+            const index = await repoDirStore.readIndex('repo', undefined);
+            expect(index.lastAggregation).toBe('2026-10-01T00:00:00.000Z');
+            expect(index.rawCount).toBe(3);
+
+            const filePath = path.join(repoDir, 'index.json');
+            await expect(fs.stat(filePath)).resolves.toBeDefined();
+        });
+
+        it('clear removes repoDir contents', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-11-01T00:00:00.000Z' };
+            await repoDirStore.writeRaw('repo', undefined, meta, 'obs');
+            await repoDirStore.writeConsolidated('repo', '# Facts');
+            await repoDirStore.clear('repo');
+            // After clear, listing should return empty
+            expect(await repoDirStore.listRaw('repo', undefined)).toEqual([]);
+            expect(await repoDirStore.readConsolidated('repo')).toBeNull();
+        });
+    });
 });

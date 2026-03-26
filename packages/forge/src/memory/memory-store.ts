@@ -38,6 +38,7 @@ export class FileMemoryStore extends BaseFileStore implements MemoryStore {
     private readonly systemDir: string;
     private readonly reposDir: string;
     private readonly gitRemotesDir: string;
+    private readonly _repoDir?: string;
 
     constructor(options?: MemoryStoreOptions) {
         super();
@@ -45,6 +46,18 @@ export class FileMemoryStore extends BaseFileStore implements MemoryStore {
         this.systemDir = path.join(this.dataDir, 'system');
         this.reposDir = path.join(this.dataDir, 'repos');
         this.gitRemotesDir = path.join(this.dataDir, 'git-remotes');
+        this._repoDir = options?.repoDir;
+    }
+
+    /**
+     * Resolve the repo-level directory. When `_repoDir` is set it takes
+     * precedence; otherwise falls back to the traditional hash-based path.
+     * Returns `undefined` when neither source can produce a path.
+     */
+    private resolveRepoDir(repoHash?: string): string | undefined {
+        if (this._repoDir) return this._repoDir;
+        if (repoHash) return path.join(this.reposDir, repoHash);
+        return undefined;
     }
 
     // --- Path helpers ---
@@ -72,8 +85,9 @@ export class FileMemoryStore extends BaseFileStore implements MemoryStore {
         if (level === 'system' || level === 'both') {
             await fs.mkdir(path.join(this.systemDir, 'raw'), { recursive: true });
         }
-        if ((level === 'repo' || level === 'both') && repoHash) {
-            await fs.mkdir(path.join(this.reposDir, repoHash, 'raw'), { recursive: true });
+        const repoDir = this.resolveRepoDir(repoHash);
+        if ((level === 'repo' || level === 'both') && repoDir) {
+            await fs.mkdir(path.join(repoDir, 'raw'), { recursive: true });
         }
         if (level === 'git-remote' && repoHash) {
             await fs.mkdir(path.join(this.gitRemotesDir, repoHash, 'raw'), { recursive: true });
@@ -132,8 +146,9 @@ export class FileMemoryStore extends BaseFileStore implements MemoryStore {
     // --- Raw observation CRUD ---
 
     private rawDir(level: MemoryLevel, repoHash: string | undefined): string {
-        if (level === 'repo' && repoHash) {
-            return path.join(this.reposDir, repoHash, 'raw');
+        if (level === 'repo') {
+            const repoDir = this.resolveRepoDir(repoHash);
+            if (repoDir) return path.join(repoDir, 'raw');
         }
         if (level === 'git-remote' && repoHash) {
             return path.join(this.gitRemotesDir, repoHash, 'raw');
@@ -162,8 +177,9 @@ export class FileMemoryStore extends BaseFileStore implements MemoryStore {
             if (level === 'system' || level === 'both') {
                 await writeTo(path.join(this.systemDir, 'raw'));
             }
-            if ((level === 'repo' || level === 'both') && repoHash) {
-                await writeTo(path.join(this.reposDir, repoHash, 'raw'));
+            const repoDir = this.resolveRepoDir(repoHash);
+            if ((level === 'repo' || level === 'both') && repoDir) {
+                await writeTo(path.join(repoDir, 'raw'));
             }
             if (level === 'git-remote' && repoHash) {
                 await writeTo(path.join(this.gitRemotesDir, repoHash, 'raw'));
@@ -191,8 +207,9 @@ export class FileMemoryStore extends BaseFileStore implements MemoryStore {
         if (level === 'system' || level === 'both') {
             results.push(...await readDir(path.join(this.systemDir, 'raw')));
         }
-        if ((level === 'repo' || level === 'both') && repoHash) {
-            results.push(...await readDir(path.join(this.reposDir, repoHash, 'raw')));
+        const repoDir = this.resolveRepoDir(repoHash);
+        if ((level === 'repo' || level === 'both') && repoDir) {
+            results.push(...await readDir(path.join(repoDir, 'raw')));
         }
         if (level === 'git-remote' && repoHash) {
             results.push(...await readDir(path.join(this.gitRemotesDir, repoHash, 'raw')));
@@ -212,7 +229,8 @@ export class FileMemoryStore extends BaseFileStore implements MemoryStore {
         // Determine which directory to read from (prefer repo for 'both')
         const dirs: string[] = [];
         if (level === 'repo' || level === 'both') {
-            if (repoHash) dirs.push(path.join(this.reposDir, repoHash, 'raw'));
+            const repoDir = this.resolveRepoDir(repoHash);
+            if (repoDir) dirs.push(path.join(repoDir, 'raw'));
         }
         if (level === 'git-remote') {
             if (repoHash) dirs.push(path.join(this.gitRemotesDir, repoHash, 'raw'));
@@ -254,8 +272,9 @@ export class FileMemoryStore extends BaseFileStore implements MemoryStore {
                     deleted = true;
                 }
             }
-            if ((level === 'repo' || level === 'both') && repoHash) {
-                if (await tryDelete(path.join(this.reposDir, repoHash, 'raw'))) {
+            const repoDir = this.resolveRepoDir(repoHash);
+            if ((level === 'repo' || level === 'both') && repoDir) {
+                if (await tryDelete(path.join(repoDir, 'raw'))) {
                     deleted = true;
                 }
             }
@@ -273,7 +292,10 @@ export class FileMemoryStore extends BaseFileStore implements MemoryStore {
     /** Resolve the base directory for a given level + hash. */
     private levelDir(level: MemoryLevel, hash?: string): string {
         if (level === 'git-remote' && hash) return this.getGitRemoteDir(hash);
-        if (level === 'repo' && hash) return this.getRepoDir(hash);
+        if (level === 'repo') {
+            const dir = this.resolveRepoDir(hash);
+            if (dir) return dir;
+        }
         return this.getSystemDir();
     }
 
