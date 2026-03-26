@@ -4,6 +4,9 @@
  * Without sorting, turns appear in raw array order. When a race condition causes
  * turns to be stored out of order (e.g., user turn appended before the final
  * assistant turn), the UI would render them in the wrong sequence.
+ *
+ * Turns without turnIndex must sort to the END (they are the newest, e.g.
+ * streaming placeholders or synthetic follow-up turns), not to position 0.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -27,5 +30,20 @@ describe('ConversationArea: turn ordering', () => {
     it('uses turnIndex as React key instead of array index', () => {
         // Using turnIndex as key ensures React reconciles correctly even when order changes
         expect(CONVERSATION_AREA_SOURCE).toMatch(/key=\{turn\.turnIndex/);
+    });
+
+    it('sorts turns without turnIndex to the end, not the beginning', () => {
+        // The old ?? 0 fallback moved turns without turnIndex to position 0;
+        // the fix uses null-aware comparison to push them to the end
+        expect(CONVERSATION_AREA_SOURCE).not.toMatch(/turnIndex\s*\?\?\s*0/);
+        // Verify null checks exist for proper end-sort behavior
+        expect(CONVERSATION_AREA_SOURCE).toContain('ai == null');
+        expect(CONVERSATION_AREA_SOURCE).toContain('bi == null');
+    });
+
+    it('assigns turnIndex to the streaming placeholder appended for running tasks', () => {
+        // When a running task has no streaming turn, a placeholder is appended;
+        // it must have a turnIndex to avoid sort instability
+        expect(CONVERSATION_AREA_SOURCE).toContain('nextTurnIndex');
     });
 });

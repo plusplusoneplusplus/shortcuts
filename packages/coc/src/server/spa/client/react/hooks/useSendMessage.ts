@@ -132,11 +132,14 @@ export function useSendMessage({
             setSending(true);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
             const timestamp = new Date().toISOString();
-            setTurnsAndRef(prev => ([
-                ...prev,
-                { role: 'user' as const, content: next.content, timestamp, timeline: [] },
-                { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [] },
-            ]));
+            setTurnsAndRef(prev => {
+                const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
+                return [
+                    ...prev,
+                    { role: 'user' as const, content: next.content, timestamp, timeline: [], turnIndex: nextIdx },
+                    { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1 },
+                ];
+            });
             fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -200,11 +203,14 @@ export function useSendMessage({
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
 
         const timestamp = new Date().toISOString();
-        setTurnsAndRef(prev => ([
-            ...prev,
-            { role: 'user' as const, content: rawContent, timestamp, timeline: [] },
-            { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [] },
-        ]));
+        setTurnsAndRef(prev => {
+            const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
+            return [
+                ...prev,
+                { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx },
+                { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1 },
+            ];
+        });
 
         try {
             const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {

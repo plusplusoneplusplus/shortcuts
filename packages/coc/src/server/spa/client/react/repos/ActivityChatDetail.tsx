@@ -314,7 +314,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                                 i === loadedTurns.length - 1 ? { ...t, streaming: true } : t
                             ));
                         } else {
-                            setTurnsAndRef([...loadedTurns, { role: 'assistant', content: '', streaming: true, timeline: [] }]);
+                            const nextIdx = Math.max(0, ...loadedTurns.map((t: ClientConversationTurn) => t.turnIndex ?? -1)) + 1;
+                            setTurnsAndRef([...loadedTurns, { role: 'assistant', content: '', streaming: true, timeline: [], turnIndex: nextIdx }]);
                         }
                     } else {
                         setTurnsAndRef(loadedTurns);

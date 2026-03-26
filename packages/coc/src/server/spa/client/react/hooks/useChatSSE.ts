@@ -57,7 +57,8 @@ export function useChatSSE({
         const ensureAssistantTurn = (prev: ClientConversationTurn[]): ClientConversationTurn[] => {
             const last = prev[prev.length - 1];
             if (last && last.role === 'assistant') return prev;
-            return [...prev, { role: 'assistant', content: '', streaming: true, timeline: [] }];
+            const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
+            return [...prev, { role: 'assistant', content: '', streaming: true, timeline: [], turnIndex: nextIdx }];
         };
 
         es.addEventListener('conversation-snapshot', (event: Event) => {

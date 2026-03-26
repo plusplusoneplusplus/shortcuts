@@ -63,14 +63,21 @@ export function ConversationArea({
                     <div className="space-y-3" ref={turnsContainerRef}>
                         {(() => {
                             const hasStreaming = turns.some(t => t.streaming);
+                            const nextTurnIndex = Math.max(0, ...turns.map(t => t.turnIndex ?? -1)) + 1;
                             const renderTurns =
                                 task?.status === 'running' && !hasStreaming && turns.length > 0
-                                    ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [] }]
+                                    ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [], turnIndex: nextTurnIndex }]
                                     : turns;
-                            // Sort by turnIndex to handle storage order anomalies from race conditions
-                            const sortedTurns = [...renderTurns].sort(
-                                (a, b) => (a.turnIndex ?? 0) - (b.turnIndex ?? 0),
-                            );
+                            // Sort by turnIndex to handle storage order anomalies from race conditions;
+                            // turns without turnIndex sort to end (they are always the newest)
+                            const sortedTurns = [...renderTurns].sort((a, b) => {
+                                const ai = a.turnIndex;
+                                const bi = b.turnIndex;
+                                if (ai == null && bi == null) return 0;
+                                if (ai == null) return 1;
+                                if (bi == null) return -1;
+                                return ai - bi;
+                            });
                             return sortedTurns.map((turn, i) => (
                                 <ConversationTurnBubble key={turn.turnIndex ?? i} turn={turn} taskId={taskId} wsId={wsId} />
                             ));
