@@ -5,7 +5,7 @@
 
 import React from 'react';
 
-export type SourceFilter = 'all' | 'user' | 'ai';
+export type SourceFilter = 'all' | 'user' | 'conversation' | 'ai';
 
 interface FeedControlsProps {
     sourceFilter: SourceFilter;
@@ -15,7 +15,8 @@ interface FeedControlsProps {
 
 const SOURCE_OPTIONS: { value: SourceFilter; label: string }[] = [
     { value: 'all', label: 'All' },
-    { value: 'user', label: '👤 You' },
+    { value: 'user', label: '👤 Notes' },
+    { value: 'conversation', label: '💬 Messages' },
     { value: 'ai', label: '🤖 AI' },
 ];
 

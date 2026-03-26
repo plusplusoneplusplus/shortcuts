@@ -67,6 +67,18 @@ describe('validateMemoryConfig', () => {
         expect(validateMemoryConfig({ autoInject: 'yes' }).autoInject).toBe(false);
     });
 
+    it('validates recording.enabled as boolean', () => {
+        expect(validateMemoryConfig({ recording: { enabled: true } }).recording.enabled).toBe(true);
+        expect(validateMemoryConfig({ recording: { enabled: false } }).recording.enabled).toBe(false);
+    });
+
+    it('defaults recording.enabled to false', () => {
+        expect(validateMemoryConfig({}).recording.enabled).toBe(false);
+        expect(validateMemoryConfig({ recording: {} }).recording.enabled).toBe(false);
+        expect(validateMemoryConfig({ recording: null }).recording.enabled).toBe(false);
+        expect(validateMemoryConfig({ recording: 'yes' }).recording.enabled).toBe(false);
+    });
+
     it('ignores unknown fields', () => {
         const result = validateMemoryConfig({ unknown: 'field', maxEntries: 100 });
         expect((result as any).unknown).toBeUndefined();
@@ -96,6 +108,7 @@ describe('readMemoryConfig / writeMemoryConfig', () => {
                 maxEntries: 5000,
                 ttlDays: 30,
                 autoInject: true,
+                recording: { enabled: false },
             };
             writeMemoryConfig(tmpDir, config);
             const result = readMemoryConfig(tmpDir);
@@ -104,6 +117,22 @@ describe('readMemoryConfig / writeMemoryConfig', () => {
             expect(result.maxEntries).toBe(config.maxEntries);
             expect(result.ttlDays).toBe(config.ttlDays);
             expect(result.autoInject).toBe(config.autoInject);
+            expect(result.recording.enabled).toBe(false);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    it('round-trips recording.enabled = true', () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'memory-config-test-'));
+        try {
+            const config = {
+                ...DEFAULT_MEMORY_CONFIG,
+                recording: { enabled: true },
+            };
+            writeMemoryConfig(tmpDir, config);
+            const result = readMemoryConfig(tmpDir);
+            expect(result.recording.enabled).toBe(true);
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }

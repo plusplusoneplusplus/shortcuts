@@ -23,6 +23,7 @@ import { handleProcessStream, emitMessageQueued } from '../sse-handler';
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../image-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
+import { recordUserMessage } from '../memory/conversation-recorder';
 import type { ApiRouteContext } from './api-shared';
 
 /** Valid AIProcessStatus values for validation. */
@@ -32,7 +33,7 @@ const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'completed', '
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
 
 export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
-    const { routes, store, bridge } = ctx;
+    const { routes, store, bridge, dataDir } = ctx;
 
     // GET /api/processes/summaries — Lightweight index-only process list (no file I/O per process)
     routes.push({
@@ -337,6 +338,12 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             if (!body.content || typeof body.content !== 'string') {
                 return handleAPIError(res, missingFields(['content']));
+            }
+
+            // Record user message to repo memory (fire-and-forget)
+            const recordWsId = (proc.metadata?.workspaceId as string) ?? '';
+            if (dataDir && recordWsId && body.content) {
+                try { recordUserMessage(dataDir, recordWsId, body.content); } catch { /* never block the response */ }
             }
 
             // Validate and extract image data URLs for persistence (cap at 5)

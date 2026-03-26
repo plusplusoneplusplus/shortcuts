@@ -72,7 +72,8 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
 
     // Client-side filtering
     const filteredFeed = feed.filter(item => {
-        if (sourceFilter === 'user' && item.type !== 'note') return false;
+        if (sourceFilter === 'user' && (item.type !== 'note' || item.source === 'conversation')) return false;
+        if (sourceFilter === 'conversation' && (item.type !== 'note' || item.source !== 'conversation')) return false;
         if (sourceFilter === 'ai' && item.type !== 'observation') return false;
         if (searchQuery) {
             const q = searchQuery.toLowerCase();

@@ -15,10 +15,17 @@ export function FeedItem({ item, onDelete }: FeedItemProps) {
     const [expanded, setExpanded] = useState(false);
 
     const isNote = item.type === 'note';
-    const sourceBadge = isNote ? '👤 You' : `🤖 ${item.source}`;
-    const badgeClass = isNote
-        ? 'bg-[#0078d4]/10 text-[#0078d4] dark:text-[#4fc3f7]'
-        : 'bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999]';
+    const isConversation = isNote && item.source === 'conversation';
+    const sourceBadge = isConversation
+        ? '💬 You said'
+        : isNote
+            ? '👤 You'
+            : `🤖 ${item.source}`;
+    const badgeClass = isConversation
+        ? 'bg-[#e6f4ea] dark:bg-[#1e3a2e] text-[#1a7f37] dark:text-[#56d364]'
+        : isNote
+            ? 'bg-[#0078d4]/10 text-[#0078d4] dark:text-[#4fc3f7]'
+            : 'bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999]';
 
     return (
         <div

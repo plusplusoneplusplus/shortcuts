@@ -13,6 +13,7 @@ interface MemoryConfig {
     maxEntries: number;
     ttlDays: number;
     autoInject: boolean;
+    recording: { enabled: boolean };
 }
 
 export function MemoryConfigPanel() {
@@ -29,6 +30,7 @@ export function MemoryConfigPanel() {
     const [maxEntries, setMaxEntries] = useState(10000);
     const [ttlDays, setTtlDays] = useState(90);
     const [autoInject, setAutoInject] = useState(false);
+    const [recordingEnabled, setRecordingEnabled] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -42,6 +44,7 @@ export function MemoryConfigPanel() {
                 setMaxEntries(data.maxEntries);
                 setTtlDays(data.ttlDays);
                 setAutoInject(data.autoInject);
+                setRecordingEnabled(data.recording?.enabled ?? false);
             })
             .catch(err => {
                 if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -61,6 +64,7 @@ export function MemoryConfigPanel() {
                 maxEntries: Math.max(1, Math.floor(maxEntries)),
                 ttlDays: Math.max(0, Math.floor(ttlDays)),
                 autoInject,
+                recording: { enabled: recordingEnabled },
             };
             const res = await fetch(`${getApiBase()}/memory/config`, {
                 method: 'PUT',
@@ -167,6 +171,29 @@ export function MemoryConfigPanel() {
                     <label htmlFor="auto-inject" className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">
                         Auto-inject relevant memories into AI prompts
                     </label>
+                </div>
+
+                {/* Conversation Recording */}
+                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-4 space-y-2">
+                    <p className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                        Conversation Recording
+                    </p>
+                    <div className="flex items-center gap-3">
+                        <input
+                            id="recording-enabled"
+                            type="checkbox"
+                            checked={recordingEnabled}
+                            onChange={e => setRecordingEnabled(e.target.checked)}
+                            className="h-4 w-4 rounded border-[#c8c8c8] text-[#0078d4]"
+                            data-testid="recording-enabled-checkbox"
+                        />
+                        <label htmlFor="recording-enabled" className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">
+                            Record messages I send in conversations
+                        </label>
+                    </div>
+                    <p className="text-[11px] text-[#848484] ml-7">
+                        Saves your input text to the repo memory feed automatically.
+                    </p>
                 </div>
 
                 {/* Save button + feedback */}

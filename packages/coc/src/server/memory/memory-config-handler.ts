@@ -20,6 +20,11 @@ import { sendJson, readJsonBody, send400, send500 } from '../router';
 
 export type MemoryBackend = 'file' | 'sqlite' | 'vector';
 
+export interface MemoryRecordingConfig {
+    /** When true, user messages in conversations are saved to repo memory. */
+    enabled: boolean;
+}
+
 export interface MemoryConfig {
     /** Directory where memory entries are stored. Defaults to ~/.coc/memory/ */
     storageDir: string;
@@ -31,6 +36,8 @@ export interface MemoryConfig {
     ttlDays: number;
     /** Automatically inject relevant memories as context into AI prompts. */
     autoInject: boolean;
+    /** Conversation recording settings. */
+    recording: MemoryRecordingConfig;
 }
 
 // ============================================================================
@@ -45,6 +52,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     maxEntries: 10000,
     ttlDays: 90,
     autoInject: false,
+    recording: { enabled: false },
 };
 
 // ============================================================================
@@ -109,6 +117,15 @@ export function validateMemoryConfig(raw: unknown): MemoryConfig {
     }
     if (typeof obj.autoInject === 'boolean') {
         result.autoInject = obj.autoInject;
+    }
+
+    // recording sub-config
+    const rawRec = (obj as Record<string, unknown>).recording;
+    if (typeof rawRec === 'object' && rawRec !== null) {
+        const rec = rawRec as Record<string, unknown>;
+        if (typeof rec.enabled === 'boolean') {
+            result.recording = { enabled: rec.enabled };
+        }
     }
 
     return result;
