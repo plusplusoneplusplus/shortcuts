@@ -234,6 +234,104 @@ describe('WebSocket file-scoped subscriptions', () => {
         });
     });
 
+    describe('file path normalization (encoded vs decoded)', () => {
+        it('should deliver event when subscribed with decoded path and broadcast with encoded path', () => {
+            const client = createMockClient('a', ['tasks/my-task.md']);
+            addClientToServer(server, client);
+
+            const msg: ServerMessage = {
+                type: 'comment-resolved',
+                filePath: 'tasks%2Fmy-task.md',
+                commentId: 'c1',
+            };
+            server.broadcastFileEvent('tasks%2Fmy-task.md', msg);
+
+            expect(client.send).toHaveBeenCalledOnce();
+            const parsed = JSON.parse((client.send as any).mock.calls[0][0]);
+            expect(parsed.type).toBe('comment-resolved');
+            // Payload filePath should be the decoded form
+            expect(parsed.filePath).toBe('tasks/my-task.md');
+        });
+
+        it('should deliver event when subscribed with encoded path and broadcast with decoded path', () => {
+            const client = createMockClient('a');
+            addClientToServer(server, client);
+
+            // Subscribe with encoded path via handleClientMessage
+            (server as any).handleClientMessage(client, {
+                type: 'subscribe-file',
+                filePath: 'tasks%2Fmy-task.md',
+            });
+
+            const msg: ServerMessage = {
+                type: 'comment-resolved',
+                filePath: 'tasks/my-task.md',
+                commentId: 'c1',
+            };
+            server.broadcastFileEvent('tasks/my-task.md', msg);
+
+            expect(client.send).toHaveBeenCalledOnce();
+            const parsed = JSON.parse((client.send as any).mock.calls[0][0]);
+            expect(parsed.filePath).toBe('tasks/my-task.md');
+        });
+
+        it('should unsubscribe correctly when encoded path used for subscribe and decoded for unsubscribe', () => {
+            const client = createMockClient('a');
+            addClientToServer(server, client);
+
+            // Subscribe with encoded
+            (server as any).handleClientMessage(client, {
+                type: 'subscribe-file',
+                filePath: 'tasks%2Fmy-task.md',
+            });
+            // Unsubscribe with decoded
+            (server as any).handleClientMessage(client, {
+                type: 'unsubscribe-file',
+                filePath: 'tasks/my-task.md',
+            });
+
+            server.broadcastFileEvent('tasks/my-task.md', {
+                type: 'comment-resolved',
+                filePath: 'tasks/my-task.md',
+                commentId: 'c1',
+            });
+
+            expect(client.send).not.toHaveBeenCalled();
+        });
+
+        it('should handle deeply encoded paths with multiple special characters', () => {
+            const decodedPath = 'folder/sub folder/my task.md';
+            const encodedPath = encodeURIComponent(decodedPath);
+            const client = createMockClient('a', [decodedPath]);
+            addClientToServer(server, client);
+
+            server.broadcastFileEvent(encodedPath, {
+                type: 'comment-added',
+                filePath: encodedPath,
+                comment: createSampleSummary(),
+            });
+
+            expect(client.send).toHaveBeenCalledOnce();
+            const parsed = JSON.parse((client.send as any).mock.calls[0][0]);
+            expect(parsed.filePath).toBe(decodedPath);
+        });
+
+        it('should work with already-decoded paths (no-op normalization)', () => {
+            const client = createMockClient('a', ['simple.md']);
+            addClientToServer(server, client);
+
+            server.broadcastFileEvent('simple.md', {
+                type: 'comment-resolved',
+                filePath: 'simple.md',
+                commentId: 'c1',
+            });
+
+            expect(client.send).toHaveBeenCalledOnce();
+            const parsed = JSON.parse((client.send as any).mock.calls[0][0]);
+            expect(parsed.filePath).toBe('simple.md');
+        });
+    });
+
     describe('multi-tab scenario', () => {
         it('two tabs editing different files receive only their file events', () => {
             const tab1 = createMockClient('tab1', ['docs/readme.md']);

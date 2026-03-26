@@ -310,11 +310,16 @@ export class ProcessWebSocketServer {
      * Broadcast a file-scoped event to connected clients.
      * Only sends to clients whose `subscribedFiles` includes the given path.
      * Clients with no file subscriptions do NOT receive file events.
+     *
+     * File paths are normalized via `decodeURIComponent` so that callers
+     * may pass either encoded (`folder%2Ffile.md`) or decoded (`folder/file.md`)
+     * forms and delivery still works correctly.
      */
     broadcastFileEvent(filePath: string, message: ServerMessage): void {
-        const data = JSON.stringify(message);
+        const normalizedPath = decodeURIComponent(filePath);
+        const data = JSON.stringify({ ...message, filePath: normalizedPath });
         for (const client of this.clients) {
-            if (client.subscribedFiles && client.subscribedFiles.has(filePath)) {
+            if (client.subscribedFiles && client.subscribedFiles.has(normalizedPath)) {
                 client.send(data);
             }
         }
@@ -356,16 +361,20 @@ export class ProcessWebSocketServer {
                 client.subscribedWikiIds.add(message.wikiId);
                 getServerLogger().debug({ clientId: client.id, channel: `wiki:${message.wikiId}` }, 'WebSocket subscribed');
                 break;
-            case 'subscribe-file':
+            case 'subscribe-file': {
                 if (!client.subscribedFiles) {
                     client.subscribedFiles = new Set();
                 }
-                client.subscribedFiles.add(message.filePath);
-                getServerLogger().debug({ clientId: client.id, channel: `file:${message.filePath}` }, 'WebSocket subscribed');
+                const subPath = decodeURIComponent(message.filePath);
+                client.subscribedFiles.add(subPath);
+                getServerLogger().debug({ clientId: client.id, channel: `file:${subPath}` }, 'WebSocket subscribed');
                 break;
-            case 'unsubscribe-file':
-                client.subscribedFiles?.delete(message.filePath);
+            }
+            case 'unsubscribe-file': {
+                const unsubPath = decodeURIComponent(message.filePath);
+                client.subscribedFiles?.delete(unsubPath);
                 break;
+            }
         }
     }
 
