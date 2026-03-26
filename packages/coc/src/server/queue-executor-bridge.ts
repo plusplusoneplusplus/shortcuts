@@ -19,6 +19,7 @@ import { ResolveCommentsExecutor } from './executors/resolve-comments-executor';
 import { ProcessLifecycleRunner } from './executors/process-lifecycle-runner';
 import { resolveSkillConfig } from './executors/skill-config-resolver';
 import { generateTitleIfNeeded as generateTitleIfNeededFn } from './executors/title-generator';
+import { WrappedTaskExecutor } from './executors/wrapped-task-executor';
 
 export interface CLITaskExecutorOptions {
     approvePermissions?: boolean; workingDirectory?: string; dataDir?: string;
@@ -107,6 +108,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (isRunScriptPayload(task.payload)) return new ShellExecutor(this.store, this.dataDir, this.defaultWorkingDirectory).execute(task);
         if (isChatPayload(task.payload) && !isChatFollowUp(task.payload)) {
             const payload = task.payload as unknown as ChatPayload;
+
+            // Wrap with before/after scripts when present
+            if (payload.beforeScript || payload.afterScript) {
+                const innerExecutor = this.resolveInnerExecutor(task, prompt, payload);
+                return new WrappedTaskExecutor(innerExecutor, this.store).execute(task, prompt);
+            }
+
             if (hasTaskGenerationContext(task.payload)) return this.taskGenerationExecutor.execute(task);
             if (hasReplicationContext(task.payload)) return this.registry.get('replicate-template')!.execute(task, this.buildExecutionContext(task));
             if (hasResolveCommentsContext(task.payload) || payload.tools?.includes('resolve-comments')) return this.resolveCommentsExecutor.executeTask(task);
@@ -116,6 +124,17 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             return this.chatExecutor.execute(task, prompt);
         }
         return { status: 'completed', message: `Task type '${task.type}' executed (no-op in CLI mode)` };
+    }
+
+    /** Resolve the inner AI executor based on payload mode and context. */
+    private resolveInnerExecutor(task: QueuedTask, prompt: string, payload: ChatPayload): { execute(task: QueuedTask, prompt: string): Promise<unknown> } {
+        if (hasTaskGenerationContext(task.payload)) return this.taskGenerationExecutor;
+        if (hasReplicationContext(task.payload)) return { execute: (t: QueuedTask) => this.registry.get('replicate-template')!.execute(t, this.buildExecutionContext(t)) };
+        if (hasResolveCommentsContext(task.payload) || payload.tools?.includes('resolve-comments')) return { execute: (t: QueuedTask) => this.resolveCommentsExecutor.executeTask(t) };
+        const mode = payload.mode;
+        if (mode === 'plan') return this.planExecutor;
+        if (mode === 'autopilot') return this.autopilotExecutor;
+        return this.chatExecutor;
     }
 
     private getWorkingDirectory(task: QueuedTask): string | undefined {
