@@ -156,6 +156,12 @@ export interface ToolCallCacheStoreOptions {
     remoteHash?: string;
     /** Required when level is 'repo'. 16-char repo hash. */
     repoHash?: string;
+    /**
+     * Explicit directory for repo-level cache. When set, the cache lives
+     * inside `repoDir/<cacheSubDir>/` instead of `dataDir/repos/<hash>/<cacheSubDir>/`.
+     * Takes precedence over `repoHash`.
+     */
+    repoDir?: string;
 }
 
 /**

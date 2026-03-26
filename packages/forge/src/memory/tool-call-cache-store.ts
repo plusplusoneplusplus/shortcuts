@@ -34,10 +34,15 @@ import { BaseFileStore } from './base-file-store';
 export function resolveToolCallCacheOptions(
     workDir?: string,
     dataDir?: string,
+    repoDir?: string,
 ): ToolCallCacheStoreOptions {
     const base: ToolCallCacheStoreOptions = {};
     if (dataDir) {
         base.dataDir = dataDir;
+    }
+
+    if (repoDir) {
+        return { ...base, level: 'repo', repoDir };
     }
 
     if (!workDir) {
@@ -79,7 +84,11 @@ export class FileToolCallCacheStore extends BaseFileStore implements ToolCallCac
                 this.cacheDir = path.join(dataDir, 'git-remotes', options?.remoteHash ?? 'unknown', cacheSubDir);
                 break;
             case 'repo':
-                this.cacheDir = path.join(dataDir, 'repos', options?.repoHash ?? 'unknown', cacheSubDir);
+                if (options?.repoDir) {
+                    this.cacheDir = path.join(options.repoDir, cacheSubDir);
+                } else {
+                    this.cacheDir = path.join(dataDir, 'repos', options?.repoHash ?? 'unknown', cacheSubDir);
+                }
                 break;
             case 'system':
             default:

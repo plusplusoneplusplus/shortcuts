@@ -533,6 +533,23 @@ describe('FileToolCallCacheStore', () => {
                 path.join(tmpDir, 'repos', 'unknown', 'explore-cache'),
             );
         });
+
+        it('repo level with repoDir uses repoDir/<cacheSubDir>', () => {
+            const repoDir = path.join(tmpDir, 'my-repo-memory');
+            const s = new FileToolCallCacheStore({ dataDir: tmpDir, level: 'repo', repoDir });
+            expect(s.getCacheDir()).toBe(path.join(repoDir, 'explore-cache'));
+        });
+
+        it('repoDir takes precedence over repoHash at repo level', () => {
+            const repoDir = path.join(tmpDir, 'my-repo-memory');
+            const s = new FileToolCallCacheStore({
+                dataDir: tmpDir,
+                level: 'repo',
+                repoHash: 'feedbeef12345678',
+                repoDir,
+            });
+            expect(s.getCacheDir()).toBe(path.join(repoDir, 'explore-cache'));
+        });
     });
 
     // --- Path accessor helpers ---
@@ -646,5 +663,25 @@ describe('resolveToolCallCacheOptions', () => {
         expect(cacheDir).toBeTruthy();
         // Should NOT be under the system-level path since we provided a workDir
         expect(cacheDir).not.toBe(path.join(os.tmpdir(), 'explore-cache'));
+    });
+
+    it('returns repo level with repoDir when repoDir is provided', () => {
+        const opts = resolveToolCallCacheOptions(undefined, '/data', '/my/repo/memory');
+        expect(opts.level).toBe('repo');
+        expect(opts.repoDir).toBe('/my/repo/memory');
+        expect(opts.repoHash).toBeUndefined();
+    });
+
+    it('repoDir takes precedence over workDir', () => {
+        const opts = resolveToolCallCacheOptions(process.cwd(), '/data', '/my/repo/memory');
+        expect(opts.level).toBe('repo');
+        expect(opts.repoDir).toBe('/my/repo/memory');
+    });
+
+    it('repoDir option produces correct cache path', () => {
+        const repoDir = path.join(os.tmpdir(), 'test-repo-memory');
+        const opts = resolveToolCallCacheOptions(undefined, undefined, repoDir);
+        const store = new FileToolCallCacheStore(opts);
+        expect(store.getCacheDir()).toBe(path.join(repoDir, 'explore-cache'));
     });
 });
