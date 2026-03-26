@@ -1,0 +1,129 @@
+/**
+ * Git Branch-Range REST API Routes
+ *
+ * Endpoints for detecting the feature-branch commit range, listing changed files
+ * in the range, full range diff, and per-file range diff.
+ */
+
+import * as url from 'url';
+import { GitRangeService } from '@plusplusoneplusplus/forge';
+import { sendJSON } from '../api-handler';
+import { handleAPIError, badRequest } from '../errors';
+import { gitCache } from '../git-cache';
+import { resolveWorkspaceOrFail } from '../shared/handler-utils';
+import type { ApiRouteContext } from './api-shared';
+
+export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
+    const { routes, store } = ctx;
+
+    // Lazy singleton
+    let _gitRangeService: GitRangeService | undefined;
+    function getGitRangeService(): GitRangeService {
+        if (!_gitRangeService) { _gitRangeService = new GitRangeService(); }
+        return _gitRangeService;
+    }
+
+    // GET /api/workspaces/:id/git/branch-range — Detect feature branch commit range
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            const parsed = url.parse(req.url || '/', true);
+            const refresh = parsed.query.refresh === 'true';
+
+            if (refresh) {
+                gitCache.invalidateMutable(id);
+            }
+
+            const cacheKey = `${id}:branch-range`;
+            const cached = gitCache.get(cacheKey);
+            if (cached) {
+                return sendJSON(res, 200, cached);
+            }
+
+            try {
+                const rangeService = getGitRangeService();
+                const range = rangeService.detectCommitRange(ws.rootPath);
+                if (!range) {
+                    const result = { onDefaultBranch: true };
+                    gitCache.set(cacheKey, result);
+                    return sendJSON(res, 200, result);
+                }
+                gitCache.set(cacheKey, range);
+                sendJSON(res, 200, range);
+            } catch {
+                sendJSON(res, 200, { onDefaultBranch: true });
+            }
+        },
+    });
+
+    // GET /api/workspaces/:id/git/branch-range/files — List changed files in branch range
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/files$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            try {
+                const rangeService = getGitRangeService();
+                const range = rangeService.detectCommitRange(ws.rootPath);
+                if (!range) {
+                    return sendJSON(res, 200, { files: [] });
+                }
+                sendJSON(res, 200, { files: range.files });
+            } catch {
+                sendJSON(res, 200, { files: [] });
+            }
+        },
+    });
+
+    // GET /api/workspaces/:id/git/branch-range/diff — Full range diff
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/diff$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            try {
+                const rangeService = getGitRangeService();
+                const range = rangeService.detectCommitRange(ws.rootPath);
+                if (!range) {
+                    return sendJSON(res, 200, { diff: '' });
+                }
+                const diff = rangeService.getRangeDiff(ws.rootPath, range.baseRef, 'HEAD');
+                sendJSON(res, 200, { diff });
+            } catch {
+                sendJSON(res, 200, { diff: '' });
+            }
+        },
+    });
+
+    // GET /api/workspaces/:id/git/branch-range/files/*/diff — Per-file diff
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/files\/(.+)\/diff$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const filePath = decodeURIComponent(match![2]);
+
+            try {
+                const rangeService = getGitRangeService();
+                const range = rangeService.detectCommitRange(ws.rootPath);
+                if (!range) {
+                    return sendJSON(res, 200, { diff: '', path: filePath });
+                }
+                const diff = rangeService.getFileDiff(ws.rootPath, range.baseRef, 'HEAD', filePath);
+                sendJSON(res, 200, { diff, path: filePath });
+            } catch {
+                sendJSON(res, 200, { diff: '', path: filePath });
+            }
+        },
+    });
+}
