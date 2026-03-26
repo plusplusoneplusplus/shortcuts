@@ -8,7 +8,8 @@
     "coc": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "node_modules/@plusplusoneplusplus/forge"
   ],
   "scripts": {
     "build:client": "node scripts/build-client.mjs",
