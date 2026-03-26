@@ -272,13 +272,13 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            // Verify the enqueued task has skill directives prepended in payload.prompt
+            // Verify the enqueued task has clean prompt (no skill directives prepended)
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             expect(enqueueFn).toHaveBeenCalledTimes(1);
             const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
-            expect(sentContent).toContain('Use go-deep skill when available');
-            expect(sentContent).toContain('Use impl skill when available');
-            expect(sentContent).toContain('[Task]\nanalyze auth module');
+            expect(sentContent).not.toContain('Use go-deep skill when available');
+            expect(sentContent).not.toContain('Use impl skill when available');
+            expect(sentContent).toBe('analyze auth module');
         });
 
         it('should store raw content (with /slash tokens) in conversationTurns for display', async () => {
@@ -326,7 +326,7 @@ describe('POST /api/processes/:id/message', () => {
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
             // /impl must be stripped, only the actual task text remains
-            expect(sentContent).toContain('[Task]\nanalyze auth module');
+            expect(sentContent).toBe('analyze auth module');
             expect(sentContent).not.toContain('/impl');
         });
 
@@ -420,9 +420,9 @@ describe('POST /api/processes/:id/message', () => {
 
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
-            expect(sentContent).toContain('Use impl skill when available');
-            expect(sentContent).toContain('Use draft skill when available');
-            expect(sentContent).toContain('[Task]\nquestion');
+            expect(sentContent).not.toContain('Use impl skill when available');
+            expect(sentContent).not.toContain('Use draft skill when available');
+            expect(sentContent).toBe('question');
         });
     });
 

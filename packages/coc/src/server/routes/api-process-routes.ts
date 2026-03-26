@@ -438,9 +438,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                             ' '
                         );
                     }
-                    cleanPrompt = cleanPrompt.replace(/\s+/g, ' ').trim();
-                    const directives = validSkills.map((n: string) => `Use ${n} skill when available`).join('\n');
-                    messageContent = `${directives}\n\n[Task]\n${cleanPrompt}`;
+                    messageContent = cleanPrompt.replace(/\s+/g, ' ').trim();
                 }
             }
 

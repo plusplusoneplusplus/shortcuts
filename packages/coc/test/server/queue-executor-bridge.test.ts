@@ -1690,8 +1690,8 @@ describe('CLITaskExecutor', () => {
 
             expect(mockResolveSkillSync).not.toHaveBeenCalled();
             const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
-            expect(sentPrompt).toContain('Use impl skill when available');
-            expect(sentPrompt).toContain('[Task]\nUse the impl skill.');
+            expect(sentPrompt).not.toContain('Use impl skill when available');
+            expect(sentPrompt).toContain('Use the impl skill.');
         });
 
         it('should emit skill reference for ask-mode chat with skills context', async () => {
@@ -1718,8 +1718,7 @@ describe('CLITaskExecutor', () => {
 
             expect(mockResolveSkillSync).not.toHaveBeenCalled();
             const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
-            expect(sentPrompt).toContain('Use review skill when available');
-            expect(sentPrompt).toContain('[Task]');
+            expect(sentPrompt).not.toContain('Use review skill when available');
             expect(sentPrompt).toContain('Clarify this code');
         });
 
@@ -1772,8 +1771,8 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
-            expect(addedProcess.fullPrompt).toContain('Use impl skill when available');
-            expect(addedProcess.fullPrompt).toContain('[Task]\nDo the thing.');
+            expect(addedProcess.fullPrompt).not.toContain('Use impl skill when available');
+            expect(addedProcess.fullPrompt).toContain('Do the thing.');
         });
 
         it('should support multiple skillNames array', async () => {
@@ -1798,9 +1797,9 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
-            expect(sentPrompt).toContain('Use go-deep skill when available');
-            expect(sentPrompt).toContain('Use impl skill when available');
-            expect(sentPrompt).toContain('[Task]\nanalyze the auth module');
+            expect(sentPrompt).not.toContain('Use go-deep skill when available');
+            expect(sentPrompt).not.toContain('Use impl skill when available');
+            expect(sentPrompt).toContain('analyze the auth module');
         });
 
         it('should prefer skillNames over skillName when both present', async () => {
@@ -1826,9 +1825,10 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
-            expect(sentPrompt).toContain('Use new-skill-a skill when available');
-            expect(sentPrompt).toContain('Use new-skill-b skill when available');
+            expect(sentPrompt).not.toContain('Use new-skill-a skill when available');
+            expect(sentPrompt).not.toContain('Use new-skill-b skill when available');
             expect(sentPrompt).not.toContain('Use old-skill skill when available');
+            expect(sentPrompt).toContain('Do something.');
         });
 
         it('should fall back to skillName when skillNames is empty', async () => {
@@ -1854,7 +1854,8 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
-            expect(sentPrompt).toContain('Use fallback-skill skill when available');
+            expect(sentPrompt).not.toContain('Use fallback-skill skill when available');
+            expect(sentPrompt).toContain('Do something.');
         });
     });
 

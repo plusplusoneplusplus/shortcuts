@@ -250,13 +250,10 @@ describe('applySkillContent', () => {
         expect(applySkillContent('Hello', task)).toBe('Hello');
     });
 
-    it('prepends skill directives', () => {
+    it('returns prompt unchanged when skills are present (applied via skillDirectories)', () => {
         const task = makeTask(['impl', 'code-review']);
         const result = applySkillContent('Do work', task);
-        expect(result).toContain('Use impl skill when available');
-        expect(result).toContain('Use code-review skill when available');
-        expect(result).toContain('[Task]');
-        expect(result).toContain('Do work');
+        expect(result).toBe('Do work');
     });
 
     it('returns prompt when payload has no context', () => {

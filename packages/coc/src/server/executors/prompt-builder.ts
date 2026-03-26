@@ -169,16 +169,11 @@ export function extractPrompt(task: QueuedTask): string {
 // ============================================================================
 
 /**
- * If the task payload includes skill directives (skillNames array), emit short
- * skill reference directives prepended to the prompt.
+ * Skill content is now applied via `skillDirectories` passed to the AI SDK.
+ * This function is kept for backward compatibility but returns the prompt unchanged.
  */
-export function applySkillContent(prompt: string, task: QueuedTask): string {
-    const payload = task.payload as { context?: { skills?: string[] } };
-    const names = payload.context?.skills ?? [];
-    if (names.length === 0) return prompt;
-
-    const directives = names.map(n => `Use ${n} skill when available`).join('\n');
-    return `${directives}\n\n[Task]\n${prompt}`;
+export function applySkillContent(prompt: string, _task: QueuedTask): string {
+    return prompt;
 }
 
 // ============================================================================
