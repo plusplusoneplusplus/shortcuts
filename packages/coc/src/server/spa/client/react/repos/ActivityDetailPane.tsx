@@ -14,6 +14,7 @@
  */
 
 import { ActivityChatDetail } from './ActivityChatDetail';
+import { NewChatArea } from './NewChatArea';
 import { usePopOut } from '../context/PopOutContext';
 import { useFloatingChats } from '../context/FloatingChatsContext';
 
@@ -29,14 +30,7 @@ export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId }: Acti
     const { floatingChats, unfloatChat } = useFloatingChats();
 
     if (!selectedTaskId) {
-        return (
-            <div className="flex items-center justify-center h-full text-sm text-[#848484]">
-                <div className="text-center">
-                    <div className="text-2xl mb-2">📋</div>
-                    <div>Select a task to view details</div>
-                </div>
-            </div>
-        );
+        return <NewChatArea workspaceId={workspaceId} />;
     }
 
     if (poppedOutTasks.has(selectedTaskId)) {
