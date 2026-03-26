@@ -319,4 +319,59 @@ describe('FollowUpExecutor', () => {
 
         expect(mockBuildConversationHistoryContext).not.toHaveBeenCalled();
     });
+
+    // -------------------------------------------------------------------------
+    // User turn serialization (regression: turn ordering race)
+    // -------------------------------------------------------------------------
+
+    it('saves user turn before assistant turn to guarantee ordering', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI reply',
+            sessionId: 'sess-order',
+        });
+
+        const proc = makeProcess({
+            id: 'proc-order',
+            conversationTurns: [
+                { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'first reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            ],
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-order', 'follow-up question');
+
+        const updated = store.processes.get('proc-order');
+        const turns = updated?.conversationTurns ?? [];
+        // User turn must appear before assistant turn
+        expect(turns[2].role).toBe('user');
+        expect(turns[2].content).toBe('follow-up question');
+        expect(turns[3].role).toBe('assistant');
+        expect(turns[3].content).toBe('AI reply');
+        expect(turns[2].turnIndex).toBeLessThan(turns[3].turnIndex);
+    });
+
+    it('persists images on the user turn when provided', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'seen image',
+            sessionId: 'sess-img',
+        });
+
+        const proc = makeProcess({ id: 'proc-img' });
+        await store.addProcess(proc);
+
+        const images = ['data:image/png;base64,abc123'];
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-img', 'look at this', undefined, undefined, undefined, images);
+
+        const updated = store.processes.get('proc-img');
+        const userTurn = updated?.conversationTurns?.find(
+            t => t.role === 'user' && t.content === 'look at this',
+        );
+        expect(userTurn).toBeDefined();
+        expect(userTurn!.images).toEqual(images);
+    });
 });

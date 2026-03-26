@@ -36,14 +36,14 @@ import type { ApiRouteContext } from './routes/api-shared';
  * and will be moved in a later commit.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;
     /** Find a task by its processId. Used to locate the parent chat task for follow-up re-activation. */
     findTaskByProcessId?(processId: string): { id: string; type: string; status: string } | undefined;
     /** Requeue an existing task for a follow-up message (reuses the parent task instead of creating a ghost child). */
-    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void>;
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
 }

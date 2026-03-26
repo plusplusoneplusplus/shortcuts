@@ -32,9 +32,9 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     isExclusive?: (task: QueuedTask) => boolean; autoStart?: boolean;
 }
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
-    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void>;
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
     cancelProcess?(processId: string): Promise<void>;
 }
 
@@ -78,14 +78,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { generateTitleIfNeededFn(processId, turns, this.store, this.aiService, this.defaultWorkingDirectory, this.queueManager); }
     private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> { const ws = (await this.store.getWorkspaces()).find(w => path.resolve(w.rootPath) === path.resolve(rootPath)); return ws?.id ?? rootPath; }
 
-    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void> {
+    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void> {
         if (!this.queueManager) throw new Error('Queue manager is not available');
         if (!this.queueManager.getTask(taskId)) throw new Error(`Task ${taskId} not found`);
-        applyFollowUpToTask(this.queueManager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode);
+        applyFollowUpToTask(this.queueManager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images);
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
-        return this.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm), executeByTypeFn: (t, p) => this.executeByType(t, p), getWorkingDirectoryFn: (t) => this.getWorkingDirectory(t) });
+        return this.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm, imgs) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs), executeByTypeFn: (t, p) => this.executeByType(t, p), getWorkingDirectoryFn: (t) => this.getWorkingDirectory(t) });
     }
 
     cancel(taskId: string): void { this.cancelledTasks.add(taskId); }
@@ -97,8 +97,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async isSessionAlive(_processId: string): Promise<boolean> { return true; }
 
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string): Promise<void> {
-        return this.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode);
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[]): Promise<void> {
+        return this.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images);
     }
 
     private buildExecutionContext(task: QueuedTask): ExecutionContext { return { processId: `queue_${task.id}`, store: this.store, approvePermissions: this.approvePermissions, workingDirectory: this.getWorkingDirectory(task) }; }

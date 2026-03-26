@@ -96,6 +96,8 @@ export interface ChatPayload {
     beforeScript?: string;
     /** Shell command/path to run after the AI task (always runs, even if AI fails). */
     afterScript?: string;
+    /** Base64 data-URLs to persist in the user conversation turn. */
+    images?: string[];
 }
 
 export interface RunWorkflowPayload {

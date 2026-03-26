@@ -34,6 +34,7 @@ export function applyFollowUpToTask(
     imageTempDir?: string,
     mode?: string,
     deliveryMode?: string,
+    images?: string[],
 ): void {
     const task = manager.getTask(taskId)!;
     const displayName = truncateDisplayName(prompt.trim());
@@ -45,6 +46,7 @@ export function applyFollowUpToTask(
             processId: task.processId,
             attachments,
             imageTempDir,
+            ...(images ? { images } : {}),
             ...(mode ? { mode } : {}),
             ...(deliveryMode ? { deliveryMode } : {}),
         },

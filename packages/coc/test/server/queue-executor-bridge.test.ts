@@ -2821,8 +2821,9 @@ describe('CLITaskExecutor.executeFollowUp', () => {
 
         const updated = await store.getProcess('proc-1');
         expect(updated?.status).toBe('completed');
-        expect(updated?.conversationTurns).toHaveLength(1);
-        expect(updated?.conversationTurns![0].role).toBe('assistant');
+        expect(updated?.conversationTurns).toHaveLength(2);
+        expect(updated?.conversationTurns![0].role).toBe('user');
+        expect(updated?.conversationTurns![1].role).toBe('assistant');
     });
 
     it('should append assistant turn and set status to completed on success', async () => {
@@ -2851,12 +2852,14 @@ describe('CLITaskExecutor.executeFollowUp', () => {
             onStreamingChunk: expect.any(Function),
         }));
 
-        // Verify the process was updated with assistant turn
+        // Verify the process was updated with user + assistant turns
         const updated = await store.getProcess('proc-2');
         expect(updated?.status).toBe('completed');
-        expect(updated?.conversationTurns).toHaveLength(2);
-        expect(updated?.conversationTurns![1].role).toBe('assistant');
-        expect(updated?.conversationTurns![1].content).toBe('Follow-up response');
+        expect(updated?.conversationTurns).toHaveLength(3);
+        expect(updated?.conversationTurns![1].role).toBe('user');
+        expect(updated?.conversationTurns![1].content).toBe('follow up');
+        expect(updated?.conversationTurns![2].role).toBe('assistant');
+        expect(updated?.conversationTurns![2].content).toBe('Follow-up response');
         expect(store.emitProcessComplete).toHaveBeenCalledWith('proc-2', 'completed', expect.stringMatching(/\d+ms/));
     });
 
@@ -2883,9 +2886,10 @@ describe('CLITaskExecutor.executeFollowUp', () => {
 
         const updated = await store.getProcess('proc-3');
         expect(updated?.status).toBe('failed');
-        expect(updated?.conversationTurns).toHaveLength(1);
-        expect(updated?.conversationTurns![0].role).toBe('assistant');
-        expect(updated?.conversationTurns![0].content).toContain('Error:');
+        expect(updated?.conversationTurns).toHaveLength(2);
+        expect(updated?.conversationTurns![0].role).toBe('user');
+        expect(updated?.conversationTurns![1].role).toBe('assistant');
+        expect(updated?.conversationTurns![1].content).toContain('Error:');
         expect(store.emitProcessComplete).toHaveBeenCalledWith('proc-3', 'failed', expect.stringMatching(/\d+ms/));
     });
 
@@ -2948,42 +2952,24 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         mockSendMessage.mockResolvedValueOnce({ success: true, response: 'Reply 2', sessionId: 'session-123' });
         const executor = new CLITaskExecutor(store);
 
-        // Follow-up 1
+        // Follow-up 1 (executor saves user + assistant turns)
         await executor.executeFollowUp('proc-multi', 'Question 2');
 
-        // Simulate api-handler adding user turn before 2nd follow-up
-        const after1 = await store.getProcess('proc-multi');
-        await store.updateProcess('proc-multi', {
-            conversationTurns: [
-                ...after1!.conversationTurns!,
-                { role: 'user', content: 'Question 3', timestamp: new Date(), turnIndex: after1!.conversationTurns!.length , timeline: [] },
-            ],
-        });
-
         mockSendMessage.mockResolvedValueOnce({ success: true, response: 'Reply 3', sessionId: 'session-123' });
-        // Follow-up 2
+        // Follow-up 2 (executor saves user + assistant turns)
         await executor.executeFollowUp('proc-multi', 'Question 3');
 
-        // Simulate api-handler adding user turn before 3rd follow-up
-        const after2 = await store.getProcess('proc-multi');
-        await store.updateProcess('proc-multi', {
-            conversationTurns: [
-                ...after2!.conversationTurns!,
-                { role: 'user', content: 'Question 4', timestamp: new Date(), turnIndex: after2!.conversationTurns!.length , timeline: [] },
-            ],
-        });
-
         mockSendMessage.mockResolvedValueOnce({ success: true, response: 'Reply 4', sessionId: 'session-123' });
-        // Follow-up 3
+        // Follow-up 3 (executor saves user + assistant turns)
         await executor.executeFollowUp('proc-multi', 'Question 4');
 
         const final = await store.getProcess('proc-multi');
-        // 2 initial + 3 assistant + 2 manually-added user = 7
-        expect(final!.conversationTurns!.length).toBeGreaterThanOrEqual(5);
+        // 2 initial + 3 * (user + assistant) = 8
+        expect(final!.conversationTurns!.length).toBeGreaterThanOrEqual(8);
 
-        // Last 3 assistant turns have role 'assistant'
+        // Original Reply 1 + 3 follow-up replies = 4 assistant turns
         const assistantTurns = final!.conversationTurns!.filter(t => t.role === 'assistant');
-        expect(assistantTurns.length).toBeGreaterThanOrEqual(4); // original Reply 1 + 3 follow-up replies
+        expect(assistantTurns.length).toBeGreaterThanOrEqual(4);
 
         // Each assistant turn's turnIndex equals its position
         for (let i = 0; i < final!.conversationTurns!.length; i++) {
@@ -3003,8 +2989,8 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         await executor.executeFollowUp('proc-empty', 'What happened?');
 
         const updated = await store.getProcess('proc-empty');
-        expect(updated!.conversationTurns).toHaveLength(3); // 2 initial + 1 assistant
-        expect(updated!.conversationTurns![2].content).toBe('(No text response)');
+        expect(updated!.conversationTurns).toHaveLength(4); // 2 initial + 1 user + 1 assistant
+        expect(updated!.conversationTurns![3].content).toBe('(No text response)');
         expect(updated!.status).toBe('completed');
         // Empty string is falsy → result: undefined
         expect(store.updateProcess).toHaveBeenCalledWith('proc-empty', expect.objectContaining({
@@ -3023,8 +3009,8 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         const updated = await store.getProcess('proc-dying');
         expect(updated!.status).toBe('failed');
         expect(updated!.error).toBe('Session expired: connection reset');
-        expect(updated!.conversationTurns![2].role).toBe('assistant');
-        expect(updated!.conversationTurns![2].content).toContain('Error: Session expired: connection reset');
+        expect(updated!.conversationTurns![3].role).toBe('assistant');
+        expect(updated!.conversationTurns![3].content).toContain('Error: Session expired: connection reset');
         expect(store.emitProcessComplete).toHaveBeenCalledWith('proc-dying', 'failed', expect.stringMatching(/\d+ms/));
     });
 
@@ -3077,8 +3063,8 @@ describe('executeFollowUp - chat conversation scenarios', () => {
 
         const final = await store.getProcess('proc-concurrent');
         expect(final!.status).toBe('completed');
-        // At least 3: 2 initial + at least 1 assistant turn
-        expect(final!.conversationTurns!.length).toBeGreaterThanOrEqual(3);
+        // At least 4: 2 initial + at least 1 user + 1 assistant turn
+        expect(final!.conversationTurns!.length).toBeGreaterThanOrEqual(4);
         expect(store.emitProcessComplete).toHaveBeenCalledTimes(2);
     });
 
@@ -3176,11 +3162,16 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         await executor.executeFollowUp('proc-empty-turns', 'hello');
 
         const updated = await store.getProcess('proc-empty-turns');
-        expect(updated!.conversationTurns).toHaveLength(1);
+        expect(updated!.conversationTurns).toHaveLength(2);
         expect(updated!.conversationTurns![0]).toMatchObject({
+            role: 'user',
+            content: 'hello',
+            turnIndex: 0,
+        });
+        expect(updated!.conversationTurns![1]).toMatchObject({
             role: 'assistant',
             content: 'first reply',
-            turnIndex: 0,
+            turnIndex: 1,
             timeline: [],
         });
     });
@@ -3202,8 +3193,11 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         await executor.executeFollowUp('proc-undef-turns', 'hi');
 
         const updated = await store.getProcess('proc-undef-turns');
-        expect(updated!.conversationTurns).toHaveLength(1);
+        expect(updated!.conversationTurns).toHaveLength(2);
+        expect(updated!.conversationTurns![0].role).toBe('user');
         expect(updated!.conversationTurns![0].turnIndex).toBe(0);
+        expect(updated!.conversationTurns![1].role).toBe('assistant');
+        expect(updated!.conversationTurns![1].turnIndex).toBe(1);
     });
 });
 
@@ -3299,11 +3293,13 @@ describe('session tracking and conversation turns', () => {
         await executor.executeFollowUp(processId, 'What about Y?');
 
         const updated = store.processes.get(processId);
-        // Existing 2 turns + 1 assistant turn appended (user turn is added by api-handler)
-        expect(updated?.conversationTurns).toHaveLength(3);
-        expect(updated?.conversationTurns![2].role).toBe('assistant');
-        expect(updated?.conversationTurns![2].content).toBe('follow-up reply');
-        expect(updated?.conversationTurns![2].turnIndex).toBe(2);
+        // Existing 2 turns + 1 user turn + 1 assistant turn appended by executor
+        expect(updated?.conversationTurns).toHaveLength(4);
+        expect(updated?.conversationTurns![2].role).toBe('user');
+        expect(updated?.conversationTurns![2].content).toBe('What about Y?');
+        expect(updated?.conversationTurns![3].role).toBe('assistant');
+        expect(updated?.conversationTurns![3].content).toBe('follow-up reply');
+        expect(updated?.conversationTurns![3].turnIndex).toBe(3);
     });
 
     it('should succeed for process without sdkSessionId', async () => {

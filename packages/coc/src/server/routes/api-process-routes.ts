@@ -10,7 +10,7 @@ import * as url from 'url';
 import * as fs from 'fs';
 import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
-    ConversationTurn, CreateTaskInput, Attachment,
+    CreateTaskInput, Attachment,
 } from '@plusplusoneplusplus/forge';
 import { deserializeProcess } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
@@ -393,38 +393,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
             const deliveryMode: 'immediate' | 'enqueue' = (body.deliveryMode === 'immediate') ? 'immediate' : 'enqueue';
 
-            // Atomically append user turn to conversationTurns
-            let turnIndex: number;
-            if (store.appendConversationTurn) {
-                const appendResult = await store.appendConversationTurn(
-                    id,
-                    (idx) => ({
-                        role: 'user' as const,
-                        content: body.content,
-                        timestamp: new Date(),
-                        turnIndex: idx,
-                        timeline: [],
-                        images: validatedImages,
-                    }),
-                    { additionalUpdates: { status: 'running' } }
-                );
-                turnIndex = appendResult?.turn.turnIndex ?? 0;
-            } else {
-                const existingTurns = proc.conversationTurns || [];
-                turnIndex = existingTurns.length;
-                const userTurn: ConversationTurn = {
-                    role: 'user',
-                    content: body.content,
-                    timestamp: new Date(),
-                    turnIndex,
-                    timeline: [],
-                    images: validatedImages,
-                };
-                await store.updateProcess(id, {
-                    conversationTurns: [...existingTurns, userTurn],
-                    status: 'running',
-                });
-            }
+            // Mark process as running; user turn is saved inside the executor
+            // so it is serialized before the assistant turn in the write-queue.
+            const turnIndex = proc.conversationTurns?.length ?? 0;
+            await store.updateProcess(id, { status: 'running' });
 
             // Delegate AI execution to the queue executor bridge
             let messageContent = body.content as string;
@@ -446,7 +418,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 const displayName = truncateDisplayName(messageContent.trim());
                 const parentTask = bridge.findTaskByProcessId?.(id);
                 if (parentTask && parentTask.status === 'completed' && bridge.requeueForFollowUp) {
-                    await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode);
+                    await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages);
                 } else {
                     await bridge.enqueue({
                         type: 'chat',
@@ -457,6 +429,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                             processId: id,
                             attachments,
                             imageTempDir,
+                            images: validatedImages,
                             workingDirectory: proc.workingDirectory,
                             readonly: (proc as any).payload?.readonly,
                             ...(modeOverride ? { mode: modeOverride } : {}),
@@ -467,7 +440,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     });
                 }
             } else {
-                bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode).catch(() => {
+                bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode, validatedImages).catch(() => {
                 }).finally(() => {
                     if (imageTempDir) { cleanupTempDir(imageTempDir); }
                 });

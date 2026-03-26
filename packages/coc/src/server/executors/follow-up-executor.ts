@@ -116,6 +116,7 @@ export class FollowUpExecutor extends BaseExecutor {
         attachments?: Attachment[],
         mode?: ChatMode,
         deliveryMode?: string,
+        images?: string[],
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -168,6 +169,37 @@ export class FollowUpExecutor extends BaseExecutor {
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         try {
+            // Save user turn before the AI call so it is always serialized
+            // ahead of the assistant turn in the write-queue.
+            if (this.store.appendConversationTurn) {
+                await this.store.appendConversationTurn(
+                    processId,
+                    (turnIndex) => ({
+                        role: 'user' as const,
+                        content: message,
+                        timestamp: new Date(),
+                        turnIndex,
+                        timeline: [],
+                        images,
+                    }),
+                    { additionalUpdates: { status: 'running' } },
+                );
+            } else {
+                const existingTurns = process.conversationTurns || [];
+                const userTurn: ConversationTurn = {
+                    role: 'user',
+                    content: message,
+                    timestamp: new Date(),
+                    turnIndex: existingTurns.length,
+                    timeline: [],
+                    images,
+                };
+                await this.store.updateProcess(processId, {
+                    conversationTurns: [...existingTurns, userTurn],
+                    status: 'running',
+                });
+            }
+
             const isFirstTurn = !(process.conversationTurns?.some(t => t.role === 'assistant'));
             const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled && isFirstTurn, this.followUpSuggestions.count);
             const followUpMessage = followUpSuffix ? `${message}${followUpSuffix}` : message;

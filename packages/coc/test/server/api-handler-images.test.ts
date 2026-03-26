@@ -1,8 +1,8 @@
 /**
  * API Handler — Image Persistence Tests
  *
- * Verifies that POST /api/processes/:id/message persists validated
- * image data URLs on the user ConversationTurn.
+ * Verifies that POST /api/processes/:id/message validates image data
+ * URLs and passes them through to the bridge (executeFollowUp).
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -99,7 +99,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
     });
 
-    it('persists valid image data URLs on the user turn', async () => {
+    it('passes valid image data URLs to bridge.executeFollowUp', async () => {
         const images = [PNG_DATA_URL, JPEG_DATA_URL];
         const resp = await request(`${baseUrl}/api/processes/proc-img/message`, {
             method: 'POST',
@@ -108,15 +108,17 @@ describe('POST /api/processes/:id/message — image persistence', () => {
 
         expect(resp.status).toBe(202);
 
-        const proc = store.processes.get('proc-img')!;
-        const lastUserTurn = proc.conversationTurns!.find(
-            (t) => t.role === 'user' && t.turnIndex === resp.json().turnIndex,
+        expect(bridge.executeFollowUp).toHaveBeenCalledWith(
+            'proc-img',
+            'check these images',
+            expect.anything(),
+            undefined,
+            'enqueue',
+            images,
         );
-        expect(lastUserTurn).toBeDefined();
-        expect(lastUserTurn!.images).toEqual(images);
     });
 
-    it('sets images to undefined when body.images is absent', async () => {
+    it('passes undefined images to bridge when body.images is absent', async () => {
         // Reset the process so it has an SDK session
         store.processes.set('proc-img', createCompletedProcessWithSession('proc-img', 'session-1'));
 
@@ -127,15 +129,17 @@ describe('POST /api/processes/:id/message — image persistence', () => {
 
         expect(resp.status).toBe(202);
 
-        const proc = store.processes.get('proc-img')!;
-        const lastUserTurn = proc.conversationTurns!.find(
-            (t) => t.role === 'user' && t.turnIndex === resp.json().turnIndex,
+        expect(bridge.executeFollowUp).toHaveBeenCalledWith(
+            'proc-img',
+            'no images',
+            undefined,
+            undefined,
+            'enqueue',
+            undefined,
         );
-        expect(lastUserTurn).toBeDefined();
-        expect(lastUserTurn!.images).toBeUndefined();
     });
 
-    it('sets images to undefined when body.images is an empty array', async () => {
+    it('passes undefined images to bridge when body.images is an empty array', async () => {
         store.processes.set('proc-img', createCompletedProcessWithSession('proc-img', 'session-1'));
 
         const resp = await request(`${baseUrl}/api/processes/proc-img/message`, {
@@ -145,15 +149,17 @@ describe('POST /api/processes/:id/message — image persistence', () => {
 
         expect(resp.status).toBe(202);
 
-        const proc = store.processes.get('proc-img')!;
-        const lastUserTurn = proc.conversationTurns!.find(
-            (t) => t.role === 'user' && t.turnIndex === resp.json().turnIndex,
+        expect(bridge.executeFollowUp).toHaveBeenCalledWith(
+            'proc-img',
+            'empty images',
+            undefined,
+            undefined,
+            'enqueue',
+            undefined,
         );
-        expect(lastUserTurn).toBeDefined();
-        expect(lastUserTurn!.images).toBeUndefined();
     });
 
-    it('caps stored images at 5 even when more are provided', async () => {
+    it('caps images at 5 even when more are provided', async () => {
         store.processes.set('proc-img', createCompletedProcessWithSession('proc-img', 'session-1'));
 
         const sevenImages = Array.from({ length: 7 }, (_, i) =>
@@ -166,13 +172,14 @@ describe('POST /api/processes/:id/message — image persistence', () => {
 
         expect(resp.status).toBe(202);
 
-        const proc = store.processes.get('proc-img')!;
-        const lastUserTurn = proc.conversationTurns!.find(
-            (t) => t.role === 'user' && t.turnIndex === resp.json().turnIndex,
+        expect(bridge.executeFollowUp).toHaveBeenCalledWith(
+            'proc-img',
+            'too many images',
+            expect.anything(),
+            undefined,
+            'enqueue',
+            sevenImages.slice(0, 5),
         );
-        expect(lastUserTurn).toBeDefined();
-        expect(lastUserTurn!.images).toHaveLength(5);
-        expect(lastUserTurn!.images).toEqual(sevenImages.slice(0, 5));
     });
 
     it('filters out invalid (non-image) data URLs', async () => {
@@ -192,12 +199,14 @@ describe('POST /api/processes/:id/message — image persistence', () => {
 
         expect(resp.status).toBe(202);
 
-        const proc = store.processes.get('proc-img')!;
-        const lastUserTurn = proc.conversationTurns!.find(
-            (t) => t.role === 'user' && t.turnIndex === resp.json().turnIndex,
+        expect(bridge.executeFollowUp).toHaveBeenCalledWith(
+            'proc-img',
+            'mixed images',
+            expect.anything(),
+            undefined,
+            'enqueue',
+            [PNG_DATA_URL, GIF_DATA_URL],
         );
-        expect(lastUserTurn).toBeDefined();
-        expect(lastUserTurn!.images).toEqual([PNG_DATA_URL, GIF_DATA_URL]);
     });
 
     it('filters out non-string entries in images array', async () => {
@@ -216,12 +225,14 @@ describe('POST /api/processes/:id/message — image persistence', () => {
 
         expect(resp.status).toBe(202);
 
-        const proc = store.processes.get('proc-img')!;
-        const lastUserTurn = proc.conversationTurns!.find(
-            (t) => t.role === 'user' && t.turnIndex === resp.json().turnIndex,
+        expect(bridge.executeFollowUp).toHaveBeenCalledWith(
+            'proc-img',
+            'with non-strings',
+            expect.anything(),
+            undefined,
+            'enqueue',
+            [PNG_DATA_URL, JPEG_DATA_URL],
         );
-        expect(lastUserTurn).toBeDefined();
-        expect(lastUserTurn!.images).toEqual([PNG_DATA_URL, JPEG_DATA_URL]);
     });
 
     it('still creates temp file attachments for SDK (existing behavior)', async () => {

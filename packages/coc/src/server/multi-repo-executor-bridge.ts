@@ -215,10 +215,10 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      * Execute a follow-up message on an existing AI session.
      * Searches across all per-repo bridges for the process.
      */
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void> {
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[]): Promise<void> {
         for (const { bridge } of this.bridges.values()) {
             if (await bridge.isSessionAlive(processId)) {
-                return bridge.executeFollowUp(processId, message, attachments);
+                return bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images);
             }
         }
         throw new Error(`No active session found for process ${processId}`);
@@ -287,10 +287,10 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      * Requeue an existing task for a follow-up message.
      * Updates the task's payload with the follow-up prompt, then moves it from history → queued.
      */
-    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void> {
+    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void> {
         for (const manager of this.registry.getAllQueues().values()) {
             if (!manager.getTask(taskId)) continue;
-            applyFollowUpToTask(manager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode);
+            applyFollowUpToTask(manager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images);
             return;
         }
         throw new Error(`Task ${taskId} not found in any queue`);

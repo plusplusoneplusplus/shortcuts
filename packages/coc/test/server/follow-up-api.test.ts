@@ -137,7 +137,7 @@ describe('POST /api/processes/:id/message', () => {
             expect(body.turnIndex).toBe(2);
         });
 
-        it('should append user turn to conversationTurns', async () => {
+        it('should not append user turn (executor saves it); handler only sets status to running', async () => {
             const proc: AIProcess = {
                 id: 'proc-2',
                 type: 'clarification',
@@ -155,10 +155,9 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             const updated = await store.getProcess('proc-2');
-            expect(updated?.conversationTurns).toHaveLength(1);
-            expect(updated!.conversationTurns![0].role).toBe('user');
-            expect(updated!.conversationTurns![0].content).toBe('Hello');
-            expect(updated!.conversationTurns![0].turnIndex).toBe(0);
+            // Handler no longer saves user turns; that is now the executor's job
+            expect(updated?.conversationTurns).toHaveLength(0);
+            expect(updated?.status).toBe('running');
         });
 
         it('should persist updated process in store with running status', async () => {
@@ -247,7 +246,7 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined, undefined, 'enqueue');
+            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined, undefined, 'enqueue', undefined);
             expect((bridgeWithRequeue.enqueue as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
@@ -281,7 +280,7 @@ describe('POST /api/processes/:id/message', () => {
             expect(sentContent).toBe('analyze auth module');
         });
 
-        it('should store raw content (with /slash tokens) in conversationTurns for display', async () => {
+        it('should pass raw content (with /slash tokens) to enqueue for executor to store', async () => {
             const proc: AIProcess = {
                 id: 'proc-raw-display',
                 type: 'clarification',
@@ -299,10 +298,10 @@ describe('POST /api/processes/:id/message', () => {
                 skillNames: ['impl'],
             });
 
+            // Handler no longer saves user turns; verify enqueue got the cleaned prompt
             const updated = await store.getProcess('proc-raw-display');
-            expect(updated?.conversationTurns).toHaveLength(1);
-            // Stored content must be the raw input (including /impl) for UI display
-            expect(updated!.conversationTurns![0].content).toBe('/impl analyze auth module');
+            expect(updated?.conversationTurns).toHaveLength(0);
+            expect(updated?.status).toBe('running');
         });
 
         it('should strip /skill tokens from AI-facing prompt but preserve rest of message', async () => {
@@ -515,7 +514,7 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            expect(requeueSpy).toHaveBeenCalledWith('parent-mode-1', 'plan this', undefined, undefined, 'plan', 'enqueue');
+            expect(requeueSpy).toHaveBeenCalledWith('parent-mode-1', 'plan this', undefined, undefined, 'plan', 'enqueue', undefined);
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
         });
@@ -676,7 +675,7 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
 
     describe('conversation history', () => {
-        it('should accumulate turns across multiple follow-ups', async () => {
+        it('should not accumulate turns in store (executor saves them)', async () => {
             const proc: AIProcess = {
                 id: 'proc-8',
                 type: 'clarification',
@@ -694,13 +693,15 @@ describe('POST /api/processes/:id/message', () => {
             // Second follow-up
             await postJSON(`${baseUrl}/api/processes/proc-8/message`, { content: 'Second' });
 
+            // Handler no longer saves turns; executor does
             const updated = await store.getProcess('proc-8');
-            expect(updated?.conversationTurns).toHaveLength(2);
-            expect(updated!.conversationTurns![0].content).toBe('First');
-            expect(updated!.conversationTurns![1].content).toBe('Second');
+            expect(updated?.conversationTurns).toHaveLength(0);
+            // Verify both enqueue calls were made
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledTimes(2);
         });
 
-        it('should include correct role and timestamp on each turn', async () => {
+        it('should set status to running and enqueue with correct content', async () => {
             const proc: AIProcess = {
                 id: 'proc-9',
                 type: 'clarification',
@@ -715,11 +716,11 @@ describe('POST /api/processes/:id/message', () => {
 
             await postJSON(`${baseUrl}/api/processes/proc-9/message`, { content: 'Check timestamp' });
 
+            // Handler no longer saves turns; verify status and enqueue
             const updated = await store.getProcess('proc-9');
-            const turn = updated!.conversationTurns![0];
-            expect(turn.role).toBe('user');
-            expect(turn.timestamp).toBeInstanceOf(Date);
-            expect(turn.turnIndex).toBe(0);
+            expect(updated?.status).toBe('running');
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn.mock.calls[0][0].payload.prompt).toBe('Check timestamp');
         });
     });
 
@@ -845,8 +846,9 @@ describe('POST /api/processes/:id/message', () => {
                 content: '<script>alert(1)</script>',
             });
             expect(res.status).toBe(202);
-            const updated = await store.getProcess('edge-html');
-            expect(updated!.conversationTurns![0].content).toBe('<script>alert(1)</script>');
+            // Handler no longer saves turns; verify enqueue payload is unsanitised
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn.mock.calls[0][0].payload.prompt).toBe('<script>alert(1)</script>');
         });
 
         it('should accept content with unicode and emoji characters', async () => {
@@ -856,8 +858,9 @@ describe('POST /api/processes/:id/message', () => {
                 content,
             });
             expect(res.status).toBe(202);
-            const updated = await store.getProcess('edge-unicode');
-            expect(updated!.conversationTurns![0].content).toBe(content);
+            // Handler no longer saves turns; verify enqueue payload preserves unicode
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn.mock.calls[0][0].payload.prompt).toBe(content);
         });
 
         it('should return 400 for invalid JSON body', async () => {
@@ -877,7 +880,7 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
 
     describe('concurrent follow-ups', () => {
-        it('should handle two simultaneous follow-ups without losing turns', async () => {
+        it('should handle two simultaneous follow-ups by enqueuing both', async () => {
             const proc: AIProcess = {
                 id: 'proc-concurrent',
                 type: 'clarification',
@@ -898,11 +901,9 @@ describe('POST /api/processes/:id/message', () => {
             expect(res1.status).toBe(202);
             expect(res2.status).toBe(202);
 
-            const updated = await store.getProcess('proc-concurrent');
-            // Non-atomic read-modify-write means a race can cause one turn to
-            // overwrite the other.  We assert >= 1 to document that the race
-            // exists; if a future implementation adds locking, tighten to toBe(2).
-            expect(updated!.conversationTurns!.length).toBeGreaterThanOrEqual(1);
+            // Handler no longer saves turns; verify both enqueue calls were made
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn.mock.calls.length).toBeGreaterThanOrEqual(2);
         });
 
         it('should assign unique turnIndex values to concurrent requests', async () => {
@@ -1080,13 +1081,11 @@ describe('POST /api/processes/:id/message', () => {
             });
             expect(res.status).toBe(202);
             const body = JSON.parse(res.body);
+            // turnIndex is estimated from existing conversationTurns length
             expect(body.turnIndex).toBe(3);
-
-            const updated = await store.getProcess('proc-tidx-len');
-            expect(updated!.conversationTurns![3].turnIndex).toBe(3);
         });
 
-        it('should continue incrementing turnIndex after pre-existing turns', async () => {
+        it('should return same estimated turnIndex when handler does not persist turns', async () => {
             const existingTurns = Array.from({ length: 5 }, (_, i) => ({
                 role: i % 2 === 0 ? 'user' as const : 'assistant' as const,
                 content: `turn-${i}`,
@@ -1111,10 +1110,11 @@ describe('POST /api/processes/:id/message', () => {
             });
             expect(JSON.parse(res1.body).turnIndex).toBe(5);
 
+            // Handler doesn't save turns, so array length is still 5
             const res2 = await postJSON(`${baseUrl}/api/processes/proc-tidx-incr/message`, {
                 content: 'second-follow-up',
             });
-            expect(JSON.parse(res2.body).turnIndex).toBe(6);
+            expect(JSON.parse(res2.body).turnIndex).toBe(5);
         });
 
         it('should start at turnIndex 0 when conversationTurns is undefined', async () => {
@@ -1248,8 +1248,7 @@ describe('POST /api/processes/:id/message', () => {
                 content: largeContent,
             });
 
-            const updated = await store.getProcess('proc-large-store');
-            expect(updated!.conversationTurns![0].content.length).toBe(100_000);
+            // Handler no longer saves turns; verify enqueue payload has full content
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             expect(enqueueFn).toHaveBeenCalledWith(
                 expect.objectContaining({

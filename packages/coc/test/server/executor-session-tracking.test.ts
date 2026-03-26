@@ -187,10 +187,12 @@ describe('executor session tracking', () => {
             await executor.executeFollowUp(processId, 'What about Y?');
 
             const updated = store.processes.get(processId);
-            expect(updated?.conversationTurns).toHaveLength(3);
-            expect(updated!.conversationTurns![2].role).toBe('assistant');
-            expect(updated!.conversationTurns![2].content).toBe('Follow-up answer');
-            expect(updated!.conversationTurns![2].turnIndex).toBe(2);
+            expect(updated?.conversationTurns).toHaveLength(4);
+            expect(updated!.conversationTurns![2].role).toBe('user');
+            expect(updated!.conversationTurns![2].content).toBe('What about Y?');
+            expect(updated!.conversationTurns![3].role).toBe('assistant');
+            expect(updated!.conversationTurns![3].content).toBe('Follow-up answer');
+            expect(updated!.conversationTurns![3].turnIndex).toBe(3);
         });
 
         it('should preserve existing turns when appending', async () => {
@@ -222,13 +224,14 @@ describe('executor session tracking', () => {
             await executor.executeFollowUp(processId, 'follow up');
 
             const updated = store.processes.get(processId);
-            expect(updated?.conversationTurns).toHaveLength(4);
+            expect(updated?.conversationTurns).toHaveLength(5);
             // Original turns preserved
             expect(updated!.conversationTurns![0].content).toBe('Q1');
             expect(updated!.conversationTurns![1].content).toBe('A1');
             expect(updated!.conversationTurns![2].content).toBe('Q2');
-            // New turn appended
-            expect(updated!.conversationTurns![3].content).toBe('A2');
+            // New user + assistant turns appended
+            expect(updated!.conversationTurns![3].content).toBe('follow up');
+            expect(updated!.conversationTurns![4].content).toBe('A2');
         });
     });
 
@@ -356,10 +359,11 @@ describe('executor session tracking', () => {
             await executor.executeFollowUp(processId, 'question');
 
             const updated = store.processes.get(processId);
-            // Should have original user turn + error turn
-            expect(updated?.conversationTurns).toHaveLength(2);
-            expect(updated!.conversationTurns![1].role).toBe('assistant');
-            expect(updated!.conversationTurns![1].content).toMatch(/Error:/);
+            // Should have original user turn + new user turn + error turn
+            expect(updated?.conversationTurns).toHaveLength(3);
+            expect(updated!.conversationTurns![1].role).toBe('user');
+            expect(updated!.conversationTurns![2].role).toBe('assistant');
+            expect(updated!.conversationTurns![2].content).toMatch(/Error:/);
         });
     });
 });
