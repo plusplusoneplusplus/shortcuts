@@ -18,7 +18,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { extractPromptContent } from './prompt-resolver';
+import { extractPromptContent } from '../utils/prompt-resolver';
 import { DEFAULT_SKILLS_DIRECTORY as SKILLS_DIR_DEFAULT } from '../config/defaults';
 import { PipelineCoreError, ErrorCode } from '../errors';
 

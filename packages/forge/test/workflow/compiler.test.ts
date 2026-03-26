@@ -28,7 +28,7 @@ import type {
     MapConfig,
     ReduceConfig,
     JobConfig,
-} from '../../src/pipeline/types';
+} from '../../src/workflow/pipeline-compat';
 
 // =============================================================================
 // detectFormat
@@ -808,6 +808,227 @@ input:
 `;
             expect(() => compileToWorkflow(yaml)).toThrow('must have either `job` or `map`');
         });
+    });
+});
+
+// =============================================================================
+// Additional legacy YAML edge cases
+// =============================================================================
+
+describe('compileToWorkflow — legacy YAML edge cases', () => {
+    it('all reduce types are mapped correctly', () => {
+        const types = [
+            ['list', 'list'],
+            ['table', 'table'],
+            ['json', 'json'],
+            ['csv', 'csv'],
+            ['ai', 'ai'],
+            ['text', 'concat'],
+        ] as const;
+
+        for (const [pipelineType, strategy] of types) {
+            const yaml = `
+name: test
+input:
+  items:
+    - x: a
+map:
+  prompt: test
+reduce:
+  type: ${pipelineType}
+  ${pipelineType === 'ai' ? 'prompt: "summarize"' : ''}
+`;
+            const config = compileToWorkflow(yaml);
+            const reduce = config.nodes['reduce'] as ReduceNodeConfig;
+            expect(reduce.strategy).toBe(strategy);
+        }
+    });
+
+    it('compileToWorkflowFromObject works with pipeline format', () => {
+        const parsed = {
+            name: 'test',
+            job: { prompt: 'Hello' },
+        };
+        const config = compileToWorkflowFromObject(parsed);
+        expect(config.name).toBe('test');
+        expect(Object.keys(config.nodes)).toEqual(['job']);
+    });
+
+    it('compileToWorkflowFromObject works with workflow format', () => {
+        const parsed = {
+            name: 'test',
+            nodes: {
+                ai: { type: 'ai', prompt: 'Hello' },
+            },
+        };
+        const config = compileToWorkflowFromObject(parsed);
+        expect(config.name).toBe('test');
+        expect(config.nodes['ai']).toBeDefined();
+    });
+
+    it('input-level parameters override top-level', () => {
+        const yaml = `
+name: test
+parameters:
+  - name: focus
+    value: general
+input:
+  items:
+    - x: a
+  parameters:
+    - name: focus
+      value: security
+map:
+  prompt: "test"
+reduce:
+  type: list
+`;
+        const config = compileToWorkflow(yaml);
+        expect(config.parameters?.focus).toBe('security');
+    });
+
+    it('input-level parameters without top-level', () => {
+        const yaml = `
+name: test
+input:
+  items:
+    - x: a
+  parameters:
+    - name: threshold
+      value: "5"
+map:
+  prompt: "test"
+reduce:
+  type: list
+`;
+        const config = compileToWorkflow(yaml);
+        expect(config.parameters).toEqual({ threshold: '5' });
+    });
+
+    it('map with dynamic model template', () => {
+        const yaml = `
+name: test
+input:
+  from:
+    - model: gpt-4
+    - model: claude-sonnet
+map:
+  prompt: "test"
+  model: "{{model}}"
+reduce:
+  type: list
+`;
+        const config = compileToWorkflow(yaml);
+        const map = config.nodes['map'] as MapNodeConfig;
+        expect(map.model).toBe('{{model}}');
+    });
+
+    it('no settings omitted from output', () => {
+        const yaml = `
+name: test
+job:
+  prompt: test
+`;
+        const config = compileToWorkflow(yaml);
+        expect(config.settings).toBeUndefined();
+    });
+
+    it('reduce with promptFile and skill', () => {
+        const yaml = `
+name: test
+input:
+  items:
+    - x: a
+map:
+  prompt: "test"
+reduce:
+  type: ai
+  promptFile: summarize.prompt.md
+  skill: summarizer
+  model: gpt-4
+  output: [summary]
+`;
+        const config = compileToWorkflow(yaml);
+        const reduce = config.nodes['reduce'] as ReduceNodeConfig;
+        expect(reduce.promptFile).toBe('summarize.prompt.md');
+        expect(reduce.skill).toBe('summarizer');
+        expect(reduce.model).toBe('gpt-4');
+        expect(reduce.output).toEqual(['summary']);
+    });
+
+    it('full pipeline with all optional fields', () => {
+        const yaml = `
+name: "Full Pipeline"
+workingDirectory: /workspace
+toolCallCache:
+  enabled: true
+parameters:
+  - name: lang
+    value: en
+input:
+  from:
+    type: csv
+    path: data.csv
+    delimiter: ";"
+  limit: 100
+  parameters:
+    - name: mode
+      value: strict
+filter:
+  type: hybrid
+  combineMode: or
+  rule:
+    mode: any
+    rules:
+      - field: status
+        operator: in
+        values: [open, pending]
+      - field: priority
+        operator: gte
+        value: 3
+  ai:
+    prompt: "Is {{title}} relevant?"
+    model: gpt-4
+    parallel: 3
+    timeoutMs: 5000
+map:
+  promptFile: analyze.prompt.md
+  skill: go-deep
+  output: [analysis, confidence]
+  parallel: 10
+  model: gpt-4
+  timeoutMs: 60000
+  batchSize: 5
+reduce:
+  type: ai
+  promptFile: summarize.prompt.md
+  skill: summarizer
+  output: [summary]
+  model: claude-opus-4
+`;
+        const config = compileToWorkflow(yaml);
+
+        expect(config.name).toBe('Full Pipeline');
+        expect(config.settings?.workingDirectory).toBe('/workspace');
+        expect(config.settings?.toolCallCache).toBe(true);
+        expect(config.parameters).toEqual({ lang: 'en', mode: 'strict' });
+        expect(Object.keys(config.nodes)).toEqual(['load', 'filter', 'map', 'reduce']);
+
+        const load = config.nodes['load'] as LoadNodeConfig;
+        expect(load.source).toEqual({ type: 'csv', path: 'data.csv', delimiter: ';' });
+        expect(load.limit).toBe(100);
+
+        const filter = config.nodes['filter'] as FilterNodeConfig;
+        expect(filter.from).toEqual(['load']);
+
+        const map = config.nodes['map'] as MapNodeConfig;
+        expect(map.from).toEqual(['filter']);
+        expect(map.concurrency).toBe(10);
+        expect(map.batchSize).toBe(5);
+
+        const reduce = config.nodes['reduce'] as ReduceNodeConfig;
+        expect(reduce.from).toEqual(['map']);
+        expect(reduce.strategy).toBe('ai');
     });
 });
 

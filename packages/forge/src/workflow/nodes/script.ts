@@ -11,7 +11,7 @@
 
 import * as path from 'path';
 import { spawn } from 'child_process';
-import { parseCSVContent } from '../../pipeline/csv-reader';
+import { parseCSVContent } from '../../utils/csv-reader';
 import type { Items, ScriptNodeConfig, WorkflowExecutionOptions } from '../types';
 
 // ---------------------------------------------------------------------------

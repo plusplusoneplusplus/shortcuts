@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { readCSVFile } from '../../pipeline/csv-reader';
+import { readCSVFile } from '../../utils/csv-reader';
 import type { Item, Items, LoadNodeConfig, WorkflowExecutionOptions } from '../types';
 
 // ---------------------------------------------------------------------------

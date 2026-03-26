@@ -9,7 +9,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { CSVParseOptions, CSVParseResult, PromptItem } from './types';
+import type { CSVParseOptions, CSVParseResult } from '../workflow/pipeline-compat';
+import type { PromptItem } from '../ai/types';
 import {
     DEFAULT_CSV_DELIMITER,
     DEFAULT_CSV_HAS_HEADER

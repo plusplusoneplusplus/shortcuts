@@ -10,7 +10,7 @@ import {
     validatePromptFile,
     resolvePromptFile,
     PromptResolverError,
-} from '../../src/pipeline/prompt-resolver';
+} from '../../src/utils/prompt-resolver';
 
 // ---------------------------------------------------------------------------
 // Helpers — temporary directory management

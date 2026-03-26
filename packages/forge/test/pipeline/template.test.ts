@@ -17,8 +17,8 @@ import {
     escapeTemplateValue,
     previewTemplate,
     TemplateError,
-    PromptItem
-} from '../../src/pipeline';
+} from '../../src/utils/pipeline-template';
+import type { PromptItem } from '../../src/ai/types';
 
 describe('Template Engine', () => {
     describe('substituteTemplate', () => {

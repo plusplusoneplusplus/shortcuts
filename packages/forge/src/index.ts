@@ -552,11 +552,10 @@ export {
 } from './map-reduce';
 
 // ============================================================================
-// Pipeline Framework
+// Pipeline Config Types (from workflow/pipeline-compat)
 // ============================================================================
 
-export {
-    // Types
+export type {
     PipelineConfig,
     InputConfig,
     MapConfig,
@@ -573,8 +572,15 @@ export {
     AIFilterConfig,
     FilterStats,
     FilterResult,
-    isCSVSource,
-    isGenerateConfig,
+    JobConfig,
+} from './workflow/pipeline-compat';
+export { isCSVSource, isGenerateConfig } from './workflow/pipeline-compat';
+
+// ============================================================================
+// Pipeline Phase/Event Types (from pipeline-types)
+// ============================================================================
+
+export type {
     PipelinePhase,
     PipelinePhaseStatus,
     PipelinePhaseEvent,
@@ -582,16 +588,13 @@ export {
     ItemProcessEventData,
     PipelinePhaseInfo,
     PipelineProcessMetadata,
-    // Executor
-    executePipeline,
-    executePipelineWithItems,
-    parsePipelineYAML,
-    parsePipelineYAMLSync,
-    PipelineExecutionError,
-    // DEFAULT_PARALLEL_LIMIT is exported from ./config
-    ExecutePipelineOptions,
-    PipelineExecutionResult,
-    // CSV Reader
+} from './pipeline-types';
+
+// ============================================================================
+// CSV Reader (from utils/csv-reader)
+// ============================================================================
+
+export {
     parseCSVContent,
     readCSVFile,
     readCSVFileSync,
@@ -600,7 +603,13 @@ export {
     getCSVPreview,
     CSVParseError,
     DEFAULT_CSV_OPTIONS,
-    // Template Engine
+} from './utils/csv-reader';
+
+// ============================================================================
+// Template Engine (from utils/pipeline-template)
+// ============================================================================
+
+export {
     substituteTemplate,
     validateItemForTemplate,
     buildFullPrompt,
@@ -608,15 +617,26 @@ export {
     escapeTemplateValue,
     previewTemplate,
     TemplateError,
-    SubstituteTemplateOptions,
-    // Filter Executor
+} from './utils/pipeline-template';
+export type { SubstituteTemplateOptions } from './utils/pipeline-template';
+
+// ============================================================================
+// Filter Executor (from utils/filter-executor)
+// ============================================================================
+
+export {
     executeFilter,
     executeRuleFilter,
     executeAIFilter,
     executeHybridFilter,
-    FilterExecuteOptions,
-    FilterProgress,
-    // Prompt Resolver
+} from './utils/filter-executor';
+export type { FilterExecuteOptions, FilterProgress } from './utils/filter-executor';
+
+// ============================================================================
+// Prompt Resolver (from utils/prompt-resolver)
+// ============================================================================
+
+export {
     resolvePromptFile,
     resolvePromptFileSync,
     resolvePromptFileWithDetails,
@@ -626,8 +646,14 @@ export {
     promptFileExists,
     validatePromptFile,
     PromptResolverError,
-    PromptResolutionResult,
-    // Skill Resolver
+} from './utils/prompt-resolver';
+export type { PromptResolutionResult } from './utils/prompt-resolver';
+
+// ============================================================================
+// Skill Resolver (from skills/skill-resolver)
+// ============================================================================
+
+export {
     resolveSkill,
     resolveSkillSync,
     resolveSkillWithDetails,
@@ -639,11 +665,15 @@ export {
     listSkills,
     validateSkill,
     SkillResolverError,
-    // DEFAULT_SKILLS_DIRECTORY is exported from ./config
     SKILL_PROMPT_FILENAME,
-    SkillResolutionResult,
-    SkillMetadata,
-    // Input Generator
+} from './skills/skill-resolver';
+export type { SkillResolutionResult, SkillMetadata } from './skills/skill-resolver';
+
+// ============================================================================
+// Input Generator (from utils/input-generator)
+// ============================================================================
+
+export {
     generateInputItems,
     buildGeneratePrompt,
     parseGenerateResponse,
@@ -652,10 +682,12 @@ export {
     createEmptyItem,
     validateGenerateConfig,
     InputGenerationError,
-    GenerateInputResult,
-    GeneratedItem,
-    GenerateState
-} from './pipeline';
+} from './utils/input-generator';
+export type { GenerateInputResult, GeneratedItem, GenerateState } from './utils/input-generator';
+
+// Note: withRetry is already exported from ./runtime with a more capable implementation.
+// The pipeline-specific retry-utils has been relocated to utils/retry-utils.ts but is not
+// re-exported here to avoid naming conflicts.
 
 // ============================================================================
 // Queue System

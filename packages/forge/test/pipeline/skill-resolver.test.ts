@@ -23,7 +23,7 @@ import {
     SkillResolverError,
     DEFAULT_SKILLS_DIRECTORY,
     SKILL_PROMPT_FILENAME
-} from '../../src/pipeline';
+} from '../../src/skills/skill-resolver';
 
 describe('Skill Resolver', () => {
     let tempDir: string;

@@ -97,11 +97,22 @@ CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `fo
 
 Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/forge`.
 
-**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Pipeline types (YAML config types, CSV reader, template engine, filters), Process store (`FileProcessStore` — per-repo directory of JSON files under `~/.coc/repos/<workspaceId>/processes/`, atomic writes, 500-process cap, cross-workspace lookup via scanning `repos/*/processes/index.json`), Git CLI (`@plusplusoneplusplus/forge/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine).
+**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Process store (`FileProcessStore` — per-repo directory of JSON files under `~/.coc/repos/<workspaceId>/processes/`, atomic writes, 500-process cap, cross-workspace lookup via scanning `repos/*/processes/index.json`), Git CLI (`@plusplusoneplusplus/forge/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider, skill resolver), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine, CSV reader, prompt resolver, filter executor, input generator).
+
+**Module layout (post pipeline/ deletion):**
+- Pipeline YAML config types → `workflow/pipeline-compat.ts` (used by compiler)
+- Pipeline phase/event types → `pipeline-types.ts` (used by process-store, coc SPA)
+- CSV reader → `utils/csv-reader.ts`
+- Prompt resolver → `utils/prompt-resolver.ts`
+- Skill resolver → `skills/skill-resolver.ts`
+- Template engine (pipeline) → `utils/pipeline-template.ts`
+- Filter executor (pipeline) → `utils/filter-executor.ts`
+- Input generator → `utils/input-generator.ts`
+- Retry utils → `utils/retry-utils.ts`
 
 **Workflow execution:** `compileToWorkflow(yamlContent)` converts legacy pipeline YAML or native workflow YAML to `WorkflowConfig`, then `executeWorkflow(config, options)` runs the DAG. Use `flattenWorkflowResult(result)` for flat display output.
 
-**Testing:** 61 Vitest test files.
+**Testing:** 156 Vitest test files.
 
 ## Server Layer (`packages/coc/src/server/`)
 

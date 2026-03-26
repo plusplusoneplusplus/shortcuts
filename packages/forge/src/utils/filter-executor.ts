@@ -7,18 +7,20 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import {
-    AIInvoker,
+import type {
     AIFilterConfig,
     FilterConfig,
     FilterResult,
     FilterRule,
     FilterStats,
-    PromptItem,
-    RuleFilterConfig,
-    ProcessTracker
-} from './types';
-import { substituteTemplate } from './template';
+    RuleFilterConfig
+} from '../workflow/pipeline-compat';
+import type {
+    AIInvoker,
+    ProcessTracker,
+    PromptItem
+} from '../ai/types';
+import { substituteTemplate } from './pipeline-template';
 import { getLogger, LogCategory } from '../logger';
 
 /**

@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { PromptItem } from './types';
+import type { PromptItem } from '../ai/types';
 import { 
     extractJSON as sharedExtractJSON, 
     parseAIResponse as sharedParseAIResponse 

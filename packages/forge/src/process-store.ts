@@ -8,7 +8,7 @@
  */
 
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn } from './ai/process-types';
-import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline/types';
+import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline-types';
 import type { TokenUsage } from './copilot-sdk-wrapper/types';
 
 /**

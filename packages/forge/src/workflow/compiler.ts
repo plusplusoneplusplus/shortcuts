@@ -36,8 +36,8 @@ import type {
     PipelineParameter,
     FilterOperator,
     FilterRule,
-} from '../pipeline/types';
-import { isCSVSource } from '../pipeline/types';
+} from './pipeline-compat';
+import { isCSVSource } from './pipeline-compat';
 
 // =============================================================================
 // Error

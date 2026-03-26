@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { withRetry, RetryPolicy } from '../../src/pipeline/retry-utils';
+import { withRetry, RetryPolicy } from '../../src/utils/retry-utils';
 
 describe('withRetry', () => {
     describe('happy path', () => {

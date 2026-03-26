@@ -8,7 +8,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { Item, Items, WorkflowExecutionOptions } from '../types';
 import { substituteVariables } from '../../utils/template-engine';
-import { resolveSkill } from '../../pipeline/skill-resolver';
+import { resolveSkill } from '../../skills/skill-resolver';
 import { getLogger, LogCategory } from '../../logger';
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseAIResponse, extractJSON } from '../../src/pipeline';
+import { parseAIResponse, extractJSON } from '../../src/utils/ai-response-parser';
 
 describe('AI Response Parser', () => {
     describe('extractJSON', () => {

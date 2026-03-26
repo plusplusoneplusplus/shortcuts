@@ -14,18 +14,18 @@ Pure Node.js AI pipeline engine. No VS Code dependencies. Used by CoC CLI, Deep 
 | **ai** | `src/ai/` | AI types (`AIInvoker`, `ProcessTracker`, `PromptItem`, `JobProgress`), CLI shell escaping, prompt builder, program utils, timeout defaults |
 | **copilot-sdk** | `src/copilot-sdk-wrapper/` | `CopilotSDKService` (singleton, session-per-request pattern with error recovery, `createClient`/`sendMessage`/`abortSession`/`transform`), `ModelRegistry`, MCP config loader, SDK availability detection, trusted folders |
 | **process-store** | `src/process-store.ts`, `src/file-process-store.ts` | Abstract `ProcessStore` + `FileProcessStore` (per-repo directory layout under `~/.coc/repos/<workspaceId>/processes/`, atomic writes with retry on transient FS errors, 500-process cap; cross-workspace lookup scans `repos/*/processes/index.json`). |
-| **pipeline** | `src/pipeline/` | YAML pipeline types (`PipelineConfig`), CSV reader, template engine, filter executor, skill/prompt resolvers, input generator. The executor has been removed — use `compileToWorkflow` + `executeWorkflow` instead. |
-| **workflow** | `src/workflow/` | DAG-based workflow engine: `executeWorkflow`, graph builder, scheduler, validator, compiler (`compileToWorkflow` — pipeline→workflow format conversion), node executors (load/map/ai/reduce/filter/script/merge/transform), `ConcurrencyLimiter`, result adapter (`flattenWorkflowResult`). Supports `WorkflowSettings` (model/concurrency/timeout/workingDirectory/toolCallCache), `parameters` (template substitution), `skill`/`skills` (per-node single or multi-skill resolution), structured `WorkflowProgressEvent`, per-item `WorkflowItemProcessEvent` |
+| **pipeline types** | `src/workflow/pipeline-compat.ts`, `src/pipeline-types.ts` | Legacy pipeline YAML config types (used by compiler) and pipeline phase/event types (used by process-store). The `pipeline/` directory has been deleted. |
+| **workflow** | `src/workflow/` | DAG-based workflow engine: `executeWorkflow`, graph builder, scheduler, validator, compiler (`compileToWorkflow` — pipeline→workflow format conversion, types in `pipeline-compat.ts`), node executors (load/map/ai/reduce/filter/script/merge/transform), `ConcurrencyLimiter`, result adapter (`flattenWorkflowResult`). Supports `WorkflowSettings` (model/concurrency/timeout/workingDirectory/toolCallCache), `parameters` (template substitution), `skill`/`skills` (per-node single or multi-skill resolution), structured `WorkflowProgressEvent`, per-item `WorkflowItemProcessEvent` |
 | **map-reduce** | `src/map-reduce/` | `MapReduceExecutor`, `MapReduceJob`, splitters (File/Chunk/Rule), reducers (AI/Deterministic/Hybrid), prompt templates, concurrency limiter |
 | **memory** | `src/memory/` | Persistent AI memory system (see [Memory System](#memory-system) below) |
 | **tasks** | `src/tasks/` | Task scanner, parser, CRUD ops, prompt builders for task discovery |
 | **discovery** | `src/discovery/` | Prompt file and skill file resolution |
 | **editor** | `src/editor/` | Comment anchors, markdown parsing/rendering, file state, message transport |
-| **utils** | `src/utils/` | File I/O, glob, HTTP, text matching, AI response parsing, template engine |
+| **utils** | `src/utils/` | File I/O, glob, HTTP, text matching, AI response parsing, template engine, CSV reader (`csv-reader.ts`), prompt resolver (`prompt-resolver.ts`), pipeline template (`pipeline-template.ts`), filter executor (`filter-executor.ts`), input generator (`input-generator.ts`), retry utils (`retry-utils.ts`) |
 | **git** | `src/git/` | `BranchService` (pull/push/fetch/merge/stash), `GitLogService`, `GitRangeService`, `WorkingTreeService`, `GitOpsStore` (background git op tracking, file-persisted to `~/.coc/git-ops/`), exec helpers, remote URL detection |
 | **templates** | `src/templates/` | `replicateCommit()`, prompt builder, result parser — commit template replication service |
 | **ado** | `src/ado/` | Azure DevOps integration: `AdoConnectionFactory` (PAT + Azure CLI bearer token auth), `AdoWorkItemsService`, `AdoPullRequestsService` |
-| **skills** | `src/skills/` | Skill management: source detector, skill scanner, skill installer, bundled skills provider |
+| **skills** | `src/skills/` | Skill management: source detector, skill scanner, skill installer, bundled skills provider, skill resolver (`skill-resolver.ts` — resolves and loads skill prompts from `.github/skills/`) |
 
 Entry point: `src/index.ts` — re-exports all public API from the modules above.
 

@@ -7,11 +7,11 @@ import type { MapNodeConfig, AINodeConfig, ReduceNodeConfig, WorkflowExecutionOp
 import type { AIInvokerResult, AIInvokerOptions } from '../../../src/ai/types';
 
 // Mock the skill resolver
-vi.mock('../../../src/pipeline/skill-resolver', () => ({
+vi.mock('../../../src/skills/skill-resolver', () => ({
     resolveSkill: vi.fn(async (name: string) => `[Skill: ${name}] You are an expert.`),
 }));
 
-import { resolveSkill } from '../../../src/pipeline/skill-resolver';
+import { resolveSkill } from '../../../src/skills/skill-resolver';
 const mockedResolveSkill = vi.mocked(resolveSkill);
 
 // ---------------------------------------------------------------------------

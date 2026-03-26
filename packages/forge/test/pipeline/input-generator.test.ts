@@ -15,8 +15,8 @@ import {
     createEmptyItem,
     validateGenerateConfig,
     InputGenerationError
-} from '../../src/pipeline';
-import { GenerateInputConfig } from '../../src/pipeline/types';
+} from '../../src/utils/input-generator';
+import type { GenerateInputConfig } from '../../src/workflow/pipeline-compat';
 
 describe('Input Generator', () => {
     describe('buildGeneratePrompt', () => {

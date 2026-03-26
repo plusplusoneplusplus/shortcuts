@@ -18,7 +18,7 @@ import {
     getCSVPreview,
     CSVParseError,
     DEFAULT_CSV_OPTIONS
-} from '../../src/pipeline/csv-reader';
+} from '../../src/utils/csv-reader';
 
 describe('CSV Reader', () => {
     describe('parseCSVContent', () => {

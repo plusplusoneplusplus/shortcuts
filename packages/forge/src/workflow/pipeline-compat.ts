@@ -1,40 +1,10 @@
 /**
- * YAML Pipeline Framework Types
- *
- * Configuration types for YAML-based pipeline definitions.
- * Execution types are re-exported from the map-reduce framework.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
+ * Pipeline YAML configuration types.
+ * Used by the compiler to translate legacy pipeline YAML into workflow DAG configs.
  */
 
 import type { OutputFormat as MROutputFormat, PromptItem as MRPromptItem } from '../map-reduce/jobs/prompt-map-job';
 import type { ToolCallCacheConfig } from '../memory/tool-call-cache-types';
-
-// Re-export shared AI types from canonical location
-export type {
-    AIInvoker,
-    AIInvokerOptions,
-    AIInvokerResult,
-    ProcessTracker,
-    SessionMetadata,
-    JobProgress,
-    PromptItem
-} from '../ai/types';
-
-// Re-export execution types still in map-reduce (until deletion)
-export type {
-    ExecutorOptions,
-    MapReduceResult
-} from '../map-reduce';
-
-export type {
-    PromptMapResult,
-    PromptMapInput,
-    PromptMapOutput,
-    PromptMapSummary,
-    PromptMapJobOptions,
-    OutputFormat
-} from '../map-reduce';
 
 /**
  * Single AI job configuration (alternative to map-reduce pipeline)
@@ -447,76 +417,4 @@ export interface FilterResult {
     excluded: MRPromptItem[];
     /** Filter statistics */
     stats: FilterStats;
-}
-
-// ============================================================================
-// Pipeline Phase Types (for DAG visualization)
-// ============================================================================
-
-/** Pipeline execution phase. Mirrors the inline union in PipelineExecutionError.phase. */
-export type PipelinePhase = 'input' | 'filter' | 'map' | 'reduce' | 'job';
-
-/** Status of a pipeline phase. */
-export type PipelinePhaseStatus = 'started' | 'completed' | 'failed';
-
-/** Event emitted when a pipeline phase starts, completes, or fails. */
-export interface PipelinePhaseEvent {
-    phase: PipelinePhase;
-    status: PipelinePhaseStatus;
-    /** ISO 8601 timestamp */
-    timestamp: string;
-    /** Present when status is 'completed' or 'failed' */
-    durationMs?: number;
-    /** Present when status is 'failed' */
-    error?: string;
-    /** Items entering this phase */
-    itemCount?: number;
-}
-
-/** Progress event emitted during a pipeline phase (e.g., map processing items). */
-export interface PipelineProgressEvent {
-    phase: PipelinePhase;
-    totalItems: number;
-    completedItems: number;
-    failedItems: number;
-    /** 0-100 */
-    percentage: number;
-    message?: string;
-}
-
-/** Event emitted when an individual map item's child process changes state. */
-export interface ItemProcessEventData {
-    /** Zero-based index of the item within the map input array. */
-    itemIndex: number;
-    /** Process ID of the child process handling this item. */
-    processId: string;
-    /** Current status of the item process. */
-    status: 'running' | 'completed' | 'failed' | 'cancelled';
-    /** Pipeline phase the item is in (typically 'map'). */
-    phase: PipelinePhase;
-    /** Short label for UI display (e.g. first CSV column value). */
-    itemLabel?: string;
-    /** Error message when status is 'failed'. */
-    error?: string;
-}
-
-/** Post-execution metadata for a single pipeline phase. */
-export interface PipelinePhaseInfo {
-    phase: PipelinePhase;
-    status: PipelinePhaseStatus;
-    /** ISO 8601 */
-    startedAt: string;
-    /** ISO 8601 */
-    completedAt?: string;
-    durationMs?: number;
-    itemCount?: number;
-    error?: string;
-}
-
-/** Metadata attached to completed pipeline process records. */
-export interface PipelineProcessMetadata {
-    pipelinePhases: PipelinePhaseInfo[];
-    phaseTimings: Record<PipelinePhase, number>;
-    inputItemCount?: number;
-    filterStats?: FilterStats;
 }
