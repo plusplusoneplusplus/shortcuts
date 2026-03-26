@@ -6,7 +6,7 @@
  *   POST /api/repos/:repoId/memory/notes
  *   DELETE /api/repos/:repoId/memory/feed/:id
  *   GET  /api/repos/:repoId/memory/stats
- *   POST /api/repos/:repoId/memory/aggregate (SSE)
+ *   GET  /api/repos/:repoId/memory/aggregate (SSE)
  *   POST /api/repos/:repoId/memory/aggregate/accept
  *   POST /api/repos/:repoId/memory/aggregate/revert
  */
@@ -419,18 +419,17 @@ describe('GET /api/repos/:repoId/memory/stats', () => {
     });
 });
 
-// ── POST /api/repos/:repoId/memory/aggregate (SSE) ────────────────────────────
+// ── GET /api/repos/:repoId/memory/aggregate (SSE) ────────────────────────────
+// Regression: endpoint must be GET (EventSource only supports GET), accept
+// sources as comma-separated query param, map 'user'→notes/'ai'→observations,
+// and emit 'chunk'/'diff'/'done' SSE events (not 'progress'/'complete').
 
-describe('POST /api/repos/:repoId/memory/aggregate', () => {
+describe('GET /api/repos/:repoId/memory/aggregate', () => {
     it('returns SSE error event when AI invoker is not configured', async () => {
         const s = makeServer(tmpDir, { aiInvoker: undefined });
         const url = await startServer(s);
 
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
-        });
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`);
 
         expect(res.headers.get('content-type')).toContain('text/event-stream');
         const text = await res.text();
@@ -439,25 +438,20 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
         await stopServer(s);
     });
 
-    it('returns SSE complete with no data reason when nothing to aggregate', async () => {
+    it('returns SSE done event when nothing to aggregate', async () => {
         const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'consolidated' });
         const s = makeServer(tmpDir, { aiInvoker: mockAI });
         const url = await startServer(s);
 
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
-        });
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`);
 
         const text = await res.text();
-        expect(text).toContain('event: complete');
-        expect(text).toContain('no data');
+        expect(text).toContain('event: done');
         expect(mockAI).not.toHaveBeenCalled();
         await stopServer(s);
     });
 
-    it('calls AI and returns complete event with consolidated and diff', async () => {
+    it('calls AI and emits chunk/diff/done events on success', async () => {
         const newContent = '# Consolidated\n- fact one';
         const mockAI = vi.fn().mockResolvedValue({ success: true, response: newContent });
 
@@ -468,20 +462,78 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
         const s = makeServer(tmpDir, { aiInvoker: mockAI });
         const url = await startServer(s);
 
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sources: ['notes'] }),
-        });
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
 
         const text = await res.text();
-        expect(text).toContain('event: complete');
+        expect(text).toContain('event: chunk');
+        expect(text).toContain('event: diff');
+        expect(text).toContain('event: done');
         expect(text).toContain('fact one');
         expect(mockAI).toHaveBeenCalledOnce();
         await stopServer(s);
     });
 
-    it('passes model parameter to AI invoker', async () => {
+    it('maps source alias "user" to notes', async () => {
+        const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        noteStore.create({ content: 'use TypeScript', tags: [], source: 'manual' });
+
+        const s = makeServer(tmpDir, { aiInvoker: mockAI });
+        const url = await startServer(s);
+
+        // 'user' alias should load the note
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
+        await res.text(); // consume stream to ensure handler completes
+        expect(mockAI).toHaveBeenCalledOnce();
+        const prompt: string = mockAI.mock.calls[0][0];
+        expect(prompt).toContain('use TypeScript');
+        await stopServer(s);
+    });
+
+    it('maps source alias "ai" to observations', async () => {
+        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
+        writeMemoryConfig(tmpDir, config);
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
+        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
+        await pipelineStore.writeRaw('repo', repoHash, { pipeline: 'analyze', timestamp: new Date().toISOString() }, 'old fact');
+
+        const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
+        const s = makeServer(tmpDir, { aiInvoker: mockAI });
+        const url = await startServer(s);
+
+        // 'ai' alias should load the observation
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=ai`);
+        await res.text(); // consume stream to ensure handler completes
+        expect(mockAI).toHaveBeenCalledOnce();
+        const prompt: string = mockAI.mock.calls[0][0];
+        expect(prompt).toContain('old fact');
+        await stopServer(s);
+    });
+
+    it('defaults to both user and ai sources when sources param is absent', async () => {
+        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
+        writeMemoryConfig(tmpDir, config);
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
+        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
+        await pipelineStore.writeRaw('repo', repoHash, { pipeline: 'p', timestamp: new Date().toISOString() }, 'obs fact');
+
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        noteStore.create({ content: 'note fact', tags: [], source: 'manual' });
+
+        const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
+        const s = makeServer(tmpDir, { aiInvoker: mockAI });
+        const url = await startServer(s);
+
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`);
+        await res.text(); // consume stream to ensure handler completes
+        expect(mockAI).toHaveBeenCalledOnce();
+        const prompt: string = mockAI.mock.calls[0][0];
+        expect(prompt).toContain('obs fact');
+        expect(prompt).toContain('note fact');
+        await stopServer(s);
+    });
+
+    it('passes model query param to AI invoker', async () => {
         const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
         const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
         noteStore.create({ content: 'note', tags: [], source: 'manual' });
@@ -489,12 +541,7 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
         const s = makeServer(tmpDir, { aiInvoker: mockAI });
         const url = await startServer(s);
 
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'gpt-4', sources: ['notes'] }),
-        });
-        // Consume body to ensure the SSE handler completes before asserting
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user&model=gpt-4`);
         await res.text();
 
         expect(mockAI).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ model: 'gpt-4' }));
@@ -509,11 +556,7 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
         const s = makeServer(tmpDir, { aiInvoker: mockAI });
         const url = await startServer(s);
 
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sources: ['notes'] }),
-        });
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
 
         const text = await res.text();
         expect(text).toContain('event: error');
@@ -533,11 +576,7 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
         const s = makeServer(tmpDir, { aiInvoker: mockAI });
         const url = await startServer(s);
 
-        await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sources: ['notes'] }),
-        });
+        await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
 
         // Give time for async writes
         await new Promise(r => setTimeout(r, 100));
@@ -547,6 +586,33 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
         const consolidated = await pipelineStore.readConsolidated('repo', repoHash);
         expect(consolidated).toBe(newContent);
         await stopServer(s);
+    });
+
+    it('diff event contains unified-diff text with +/- prefixes', async () => {
+        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
+        writeMemoryConfig(tmpDir, config);
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir });
+        const repoHash = pipelineStore.computeRepoHash(REPO_PATH);
+        await pipelineStore.writeConsolidated('repo', '- old fact', repoHash);
+
+        const newContent = '- new fact';
+        const mockAI = vi.fn().mockResolvedValue({ success: true, response: newContent });
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        noteStore.create({ content: 'note', tags: [], source: 'manual' });
+
+        const s = makeServer(tmpDir, { aiInvoker: mockAI });
+        const url = await startServer(s);
+
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
+        const text = await res.text();
+        await stopServer(s);
+
+        // diff event should have raw text lines (not JSON), parseable by client's parseDiff()
+        const diffEventMatch = text.match(/event: diff\ndata: (.*?)(?:\n\n|$)/s);
+        expect(diffEventMatch).not.toBeNull();
+        // The diff text should contain +/- prefixed lines
+        const diffData = diffEventMatch![1];
+        expect(diffData).toMatch(/^[+\- ]/m);
     });
 });
 

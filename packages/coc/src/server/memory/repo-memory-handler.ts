@@ -386,10 +386,14 @@ export function registerRepoMemoryRoutes(
         },
     });
 
-    // -- POST /api/repos/:repoId/memory/aggregate ----------------------------
+    // -- GET /api/repos/:repoId/memory/aggregate ----------------------------
+    // Uses GET so browsers can open it via EventSource (which only supports GET).
+    // Sources and model are passed as query params: ?sources=user,ai&model=...
+    // Source aliases: 'user' → notes, 'ai' → observations.
+    // SSE events emitted: chunk (raw text), diff (unified-diff text), done, error.
 
     routes.push({
-        method: 'POST',
+        method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/memory\/aggregate$/,
         handler: async (req, res, match) => {
             const workspaceId = decodeURIComponent(match![1]);
@@ -401,27 +405,46 @@ export function registerRepoMemoryRoutes(
             res.setHeader('X-Accel-Buffering', 'no');
             res.flushHeaders();
 
-            const sendEvent = (event: string, data: unknown): void => sendSseEvent(res, event, data);
+            // Raw SSE sender — data written as-is (no JSON encoding) so that
+            // EventSource clients receive plain text in e.data.
+            const sendSseRaw = (event: string, data: string): void => {
+                const dataLines = data === ''
+                    ? 'data: '
+                    : data.split('\n').map(l => `data: ${l}`).join('\n');
+                res.write(`event: ${event}\n${dataLines}\n\n`);
+            };
 
             try {
                 if (!aiInvoker) {
-                    sendEvent('error', { message: 'AI invoker not configured' });
+                    sendSseRaw('error', 'AI invoker not configured');
                     res.end();
                     return;
                 }
 
-                const body = await readJsonBody<{ sources?: string[]; model?: string }>(req);
-                const sources: string[] = Array.isArray(body.sources) ? body.sources : ['observations', 'notes'];
-                const model: string | undefined = typeof body.model === 'string' ? body.model : undefined;
+                // Parse sources and model from query string
+                const parsedUrl = url.parse(req.url ?? '', true);
+                const sourcesParam = typeof parsedUrl.query.sources === 'string'
+                    ? parsedUrl.query.sources
+                    : 'user,ai';
+                const model: string | undefined = typeof parsedUrl.query.model === 'string'
+                    ? parsedUrl.query.model
+                    : undefined;
+
+                // Map client-facing aliases to internal names
+                const sources = sourcesParam
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean)
+                    .map(s => (s === 'user' ? 'notes' : s === 'ai' ? 'observations' : s));
 
                 const repoPath = await getRepoRootPath(store, workspaceId);
                 if (!repoPath) {
-                    sendEvent('error', { message: `Repo not found: ${workspaceId}` });
+                    sendSseRaw('error', `Repo not found: ${workspaceId}`);
                     res.end();
                     return;
                 }
 
-                sendEvent('progress', { step: 'loading', message: 'Loading memory data...' });
+                sendSseRaw('chunk', 'Loading memory data...\n');
 
                 const pipelineStore = getPipelineStore(dataDir);
                 const repoHash = pipelineStore.computeRepoHash(repoPath);
@@ -449,7 +472,9 @@ export function registerRepoMemoryRoutes(
                 }
 
                 if (observations.length === 0 && notes.length === 0) {
-                    sendEvent('complete', { consolidated: null, diff: [], reason: 'no data' });
+                    sendSseRaw('chunk', '');
+                    sendSseRaw('diff', '');
+                    sendSseRaw('done', '');
                     res.end();
                     return;
                 }
@@ -489,11 +514,11 @@ export function registerRepoMemoryRoutes(
 
                 const prompt = promptParts.join('\n\n');
 
-                sendEvent('progress', { step: 'generating', message: 'Running AI consolidation...' });
+                sendSseRaw('chunk', 'Running AI consolidation...\n');
 
                 const result = await aiInvoker(prompt, { model });
                 if (!result.success) {
-                    sendEvent('error', { message: result.error ?? 'AI call failed' });
+                    sendSseRaw('error', result.error ?? 'AI call failed');
                     res.end();
                     return;
                 }
@@ -506,13 +531,18 @@ export function registerRepoMemoryRoutes(
                     lastAggregation: new Date().toISOString(),
                 });
 
-                // Compute diff vs previous
-                const diff = computeDiff(previous ?? '', newConsolidated);
+                // Format diff as unified-diff text for client-side parseDiff()
+                const diffLines = computeDiff(previous ?? '', newConsolidated);
+                const diffText = diffLines
+                    .map(l => (l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' ') + l.text)
+                    .join('\n');
 
-                sendEvent('complete', { consolidated: newConsolidated, diff });
+                sendSseRaw('chunk', newConsolidated);
+                sendSseRaw('diff', diffText);
+                sendSseRaw('done', '');
                 res.end();
             } catch (err) {
-                sendEvent('error', { message: err instanceof Error ? err.message : String(err) });
+                sendSseRaw('error', err instanceof Error ? err.message : String(err));
                 res.end();
             }
         },
