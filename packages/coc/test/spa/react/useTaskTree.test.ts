@@ -12,11 +12,13 @@ import {
     folderToNodes,
     isGitMetadataFolder,
     filterGitMetadataFolders,
+    filterFolderTree,
     filterTaskItems,
     getTaskNodePath,
     type TaskFolder,
     type TaskDocumentGroup,
     type TaskDocument,
+    type TaskStatusValue,
 } from '../../../src/server/spa/client/react/hooks/useTaskTree';
 import { rebuildColumnsFromKeys } from '../../../src/server/spa/client/react/tasks/TaskTree';
 
@@ -516,6 +518,104 @@ describe('getTaskNodePath', () => {
     it('returns null for TaskFolder', () => {
         const folder: TaskFolder = { name: 'f', relativePath: 'f', children: [], documentGroups: [], singleDocuments: [] };
         expect(getTaskNodePath(folder)).toBeNull();
+    });
+});
+
+
+
+// ── filterFolderTree — archive exclusion ────────────────────────────────
+
+describe('filterFolderTree — archive exclusion', () => {
+    const archiveDoc: TaskDocument = {
+        baseName: 'old-task',
+        fileName: 'old-task.plan.md',
+        status: 'in-progress',
+        isArchived: true,
+    };
+
+    const archiveFolder: TaskFolder = {
+        name: 'archive',
+        relativePath: 'archive',
+        children: [],
+        documentGroups: [],
+        singleDocuments: [archiveDoc],
+    };
+
+    const activeDoc: TaskDocument = {
+        baseName: 'active-task',
+        fileName: 'active-task.plan.md',
+        status: 'in-progress',
+        isArchived: false,
+    };
+
+    const activeFolder: TaskFolder = {
+        name: 'feature',
+        relativePath: 'feature',
+        children: [],
+        documentGroups: [],
+        singleDocuments: [activeDoc],
+    };
+
+    const root: TaskFolder = {
+        name: 'tasks',
+        relativePath: '',
+        children: [activeFolder, archiveFolder],
+        documentGroups: [],
+        singleDocuments: [],
+    };
+
+    it('excludes archive folder when a status filter is active', () => {
+        const filter: TaskStatusValue[] = ['in-progress'];
+        const result = filterFolderTree(root, filter);
+        expect(result).not.toBeNull();
+        expect(result!.children.map(c => c.name)).toEqual(['feature']);
+    });
+
+    it('keeps archive folder when no status filter is active', () => {
+        const result = filterFolderTree(root, []);
+        expect(result).not.toBeNull();
+        expect(result!.children.map(c => c.name)).toEqual(['feature', 'archive']);
+    });
+
+    it('excludes nested archive folder when filter is active', () => {
+        const nestedArchive: TaskFolder = {
+            name: 'archive',
+            relativePath: 'feature/archive',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [archiveDoc],
+        };
+        const parentWithNestedArchive: TaskFolder = {
+            ...activeFolder,
+            children: [nestedArchive],
+        };
+        const rootWithNested: TaskFolder = {
+            ...root,
+            children: [parentWithNestedArchive],
+        };
+
+        const filter: TaskStatusValue[] = ['in-progress'];
+        const result = filterFolderTree(rootWithNested, filter);
+        expect(result).not.toBeNull();
+        expect(result!.children[0].children).toHaveLength(0);
+    });
+
+    it('returns null when only archive folder has matching docs', () => {
+        const emptyActive: TaskFolder = {
+            ...activeFolder,
+            singleDocuments: [],
+        };
+        const rootOnlyArchive: TaskFolder = {
+            name: 'tasks',
+            relativePath: '',
+            children: [emptyActive, archiveFolder],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+
+        const filter: TaskStatusValue[] = ['in-progress'];
+        const result = filterFolderTree(rootOnlyArchive, filter);
+        expect(result).toBeNull();
     });
 });
 

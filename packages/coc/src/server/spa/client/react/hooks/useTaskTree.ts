@@ -219,6 +219,7 @@ export function isDocumentMatchingFilter(doc: { status?: string }, filter: TaskS
  */
 export function filterFolderTree(folder: TaskFolder, filter: TaskStatusValue[]): TaskFolder | null {
     if (filter.length === 0) return folder;
+    if (folder.name === 'archive') return null;
 
     const filteredChildren = folder.children
         .map(child => filterFolderTree(child, filter))
