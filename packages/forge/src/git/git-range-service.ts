@@ -73,6 +73,9 @@ export class GitRangeService {
      * @returns Default remote branch name or null if not found
      */
     getDefaultRemoteBranch(repoRoot: string): string | null {
+        if (!fs.existsSync(repoRoot)) {
+            return null;
+        }
         // Check cache first
         const cached = this.defaultBranchCache.get(repoRoot);
         if (cached && Date.now() - cached.timestamp < GitRangeService.DEFAULT_BRANCH_CACHE_TTL) {
