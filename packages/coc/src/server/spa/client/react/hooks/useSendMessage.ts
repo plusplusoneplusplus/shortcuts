@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { getApiBase } from '../utils/config';
 import { clearDraft } from './useDraftStore';
+import { useChatPrefs } from '../context/ChatPreferencesContext';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { QueuedMessage } from '../utils/chatUtils';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
@@ -64,6 +65,7 @@ export function useSendMessage({
     flushQueueRef: React.MutableRefObject<(() => void) | null>;
     closeFollowUpStream: () => void;
 } {
+    const { archivedChatIds, unarchiveChat } = useChatPrefs();
     const followUpEventSourceRef = useRef<EventSource | null>(null);
     const flushQueueRef = useRef<(() => void) | null>(null);
 
@@ -158,6 +160,10 @@ export function useSendMessage({
         const rawContent = (overrideContent ?? followUpInputRef.current).trim();
         if (!rawContent || !processId || inputDisabled) return;
 
+        if (archivedChatIds.has(taskId)) {
+            unarchiveChat(taskId);
+        }
+
         const { skills: extractedSkills } = slashCommands.parseAndExtract(rawContent);
 
         setSuggestions([]);
@@ -241,7 +247,7 @@ export function useSendMessage({
             setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
             setTimeout(() => { flushQueueRef.current?.(); }, 0);
         }
-    }, [processId, taskId, inputDisabled, sending, selectedMode, images]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, flushQueueRef, closeFollowUpStream };
 }
