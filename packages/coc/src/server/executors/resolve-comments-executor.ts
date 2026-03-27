@@ -54,11 +54,13 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
     async executeTask(task: QueuedTask): Promise<ChatModeExecutionResult & { revisedContent?: string; commentIds: string[] }> {
         const payload = task.payload as unknown as ChatPayload;
         const rc = payload.context?.resolveComments;
+        const rdc = payload.context?.resolveDiffComments;
         const aiPrompt = payload.prompt;
         const processId = `queue_${task.id}`;
 
-        const commentCount = rc ? rc.commentIds.length : 0;
-        const targetFile = rc?.filePath || rc?.documentUri || 'document';
+        const payloadCommentIds = rc?.commentIds ?? rdc?.commentIds ?? [];
+        const commentCount = payloadCommentIds.length;
+        const targetFile = rc?.filePath || rc?.documentUri || rdc?.filePath || 'document';
         try {
             await this.store.updateProcess(processId, {
                 fullPrompt: aiPrompt,
@@ -73,7 +75,7 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
 
             const getResolvedIds = this.resolvedIdGetters.get(processId);
             const resolvedIds = getResolvedIds ? getResolvedIds() : [];
-            const commentIds = resolvedIds.length > 0 ? resolvedIds : (rc?.commentIds ?? []);
+            const commentIds = resolvedIds.length > 0 ? resolvedIds : payloadCommentIds;
 
             // Server-side resolution: persist comment status and broadcast WS events
             if (this.dataDir && rc?.wsId && commentIds.length > 0) {
@@ -89,6 +91,34 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
                                     wsServer.broadcastFileEvent(rc.filePath, {
                                         type: 'comment-resolved',
                                         filePath: rc.filePath,
+                                        commentId: id,
+                                    });
+                                }
+                            } catch {
+                                // Non-fatal: best-effort resolution
+                            }
+                        })
+                    );
+                } catch {
+                    // Non-fatal: server-side resolution is best-effort
+                }
+            }
+
+            // Server-side resolution for diff comments
+            if (this.dataDir && rdc?.wsId && commentIds.length > 0) {
+                try {
+                    const { DiffCommentsManager } = await import('../diff-comments-manager');
+                    const mgr = new DiffCommentsManager(this.dataDir);
+                    const wsServer = this.getWsServer?.();
+                    await Promise.all(
+                        commentIds.map(async (id) => {
+                            try {
+                                await mgr.updateComment(rdc.wsId, rdc.storageKey, id, { status: 'resolved' });
+                                if (wsServer) {
+                                    wsServer.broadcastProcessEvent({
+                                        type: 'diff-comment-updated',
+                                        action: 'resolved',
+                                        storageKey: rdc.storageKey,
                                         commentId: id,
                                     });
                                 }
