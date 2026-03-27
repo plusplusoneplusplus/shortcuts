@@ -195,7 +195,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         method: 'GET',
         pattern: itemPattern,
         handler: async (_req, res, match) => {
-            const [, wsId, taskPath, commentId] = match!;
+            const [, wsId, rawTaskPath, commentId] = match!;
+            const taskPath = decodeURIComponent(rawTaskPath);
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
@@ -218,7 +219,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         method: 'GET',
         pattern: collectionPattern,
         handler: async (_req, res, match) => {
-            const [, wsId, taskPath] = match!;
+            const [, wsId, rawTaskPath] = match!;
+            const taskPath = decodeURIComponent(rawTaskPath);
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
@@ -247,7 +249,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         method: 'POST',
         pattern: replyPattern,
         handler: async (req, res, match) => {
-            const [, wsId, taskPath, commentId] = match!;
+            const [, wsId, rawTaskPath, commentId] = match!;
+            const taskPath = decodeURIComponent(rawTaskPath);
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
@@ -280,7 +283,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         method: 'POST',
         pattern: askAiPattern,
         handler: async (req, res, match) => {
-            const [, wsId, taskPath, commentId] = match!;
+            const [, wsId, rawTaskPath, commentId] = match!;
+            const taskPath = decodeURIComponent(rawTaskPath);
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
@@ -366,7 +370,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         method: 'POST',
         pattern: batchResolvePattern,
         handler: async (req, res, match) => {
-            const [, wsId, taskPath] = match!;
+            const [, wsId, rawTaskPath] = match!;
+            const taskPath = decodeURIComponent(rawTaskPath);
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
@@ -410,7 +415,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         method: 'POST',
         pattern: collectionPattern,
         handler: async (req, res, match) => {
-            const [, wsId, taskPath] = match!;
+            const [, wsId, rawTaskPath] = match!;
+            const taskPath = decodeURIComponent(rawTaskPath);
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
@@ -439,7 +445,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         method: 'PATCH',
         pattern: itemPattern,
         handler: async (req, res, match) => {
-            const [, wsId, taskPath, commentId] = match!;
+            const [, wsId, rawTaskPath, commentId] = match!;
+            const taskPath = decodeURIComponent(rawTaskPath);
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
@@ -464,7 +471,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         method: 'DELETE',
         pattern: itemPattern,
         handler: async (_req, res, match) => {
-            const [, wsId, taskPath, commentId] = match!;
+            const [, wsId, rawTaskPath, commentId] = match!;
+            const taskPath = decodeURIComponent(rawTaskPath);
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }

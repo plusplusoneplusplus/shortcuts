@@ -422,18 +422,79 @@ describe('batch-resolve endpoints', () => {
     });
 
     // ------------------------------------------------------------------
-    // Route registration order
+    // URL-encoded taskPath (regression: decodeURIComponent)
     // ------------------------------------------------------------------
-    describe('route registration order', () => {
-        it('batchResolvePattern matches before collectionPattern for batch-resolve path', async () => {
-            await createComment();
-            // POST to batch-resolve should NOT be interpreted as "create comment"
-            const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
-            // Should get batch-resolve response (202 queued), not "create comment" response
+    describe('URL-encoded taskPath', () => {
+        const ENCODED_TASK_PATH = 'coc%2Fgit-tab-enhancements.plan.md';
+        const DECODED_TASK_PATH = 'coc/git-tab-enhancements.plan.md';
+
+        function encodedCommentsUrl() {
+            return `${baseUrl}/api/comments/${WS_ID}/${ENCODED_TASK_PATH}`;
+        }
+
+        it('creates and retrieves comments when taskPath is URL-encoded', async () => {
+            // Create via encoded URL
+            const createRes = await postJSON(encodedCommentsUrl(), makeCommentData());
+            expect(createRes.status).toBe(201);
+            const created = JSON.parse(createRes.body).comment;
+            expect(created.id).toBeDefined();
+
+            // List via encoded URL — should find the comment
+            const listRes = await request(encodedCommentsUrl());
+            expect(listRes.status).toBe(200);
+            const listed = JSON.parse(listRes.body).comments;
+            expect(listed).toHaveLength(1);
+            expect(listed[0].id).toBe(created.id);
+
+            // GET single via encoded URL
+            const getRes = await request(`${encodedCommentsUrl()}/${created.id}`);
+            expect(getRes.status).toBe(200);
+            expect(JSON.parse(getRes.body).comment.id).toBe(created.id);
+        });
+
+        it('batch-resolve uses decoded taskPath in enqueued payload', async () => {
+            // Create a comment using encoded URL
+            await postJSON(encodedCommentsUrl(), makeCommentData());
+
+            const res = await postJSON(`${encodedCommentsUrl()}/batch-resolve`, {
+                documentContent: DOC_CONTENT,
+            });
             expect(res.status).toBe(202);
             const body = JSON.parse(res.body);
-            expect(body.taskId).toBeDefined();
-            expect(body.comment).toBeUndefined();
+
+            // Verify the enqueued task contains the decoded path
+            const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
+            const taskBody = JSON.parse(taskRes.body);
+            expect(taskBody.task.payload.context.resolveComments.filePath).toBe(DECODED_TASK_PATH);
+            // The prompt should contain the decoded path, not percent-encoded
+            expect(taskBody.task.payload.prompt).not.toContain('%2F');
+            expect(taskBody.task.payload.prompt).toContain(DECODED_TASK_PATH);
+        });
+
+        it('PATCH update works with encoded taskPath', async () => {
+            const createRes = await postJSON(encodedCommentsUrl(), makeCommentData());
+            const commentId = JSON.parse(createRes.body).comment.id;
+
+            const patchRes = await request(`${encodedCommentsUrl()}/${commentId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status: 'resolved' }),
+            });
+            expect(patchRes.status).toBe(200);
+            expect(JSON.parse(patchRes.body).comment.status).toBe('resolved');
+        });
+
+        it('DELETE works with encoded taskPath', async () => {
+            const createRes = await postJSON(encodedCommentsUrl(), makeCommentData());
+            const commentId = JSON.parse(createRes.body).comment.id;
+
+            const delRes = await request(`${encodedCommentsUrl()}/${commentId}`, {
+                method: 'DELETE',
+            });
+            expect(delRes.status).toBe(204);
+
+            // Confirm it's gone
+            const getRes = await request(`${encodedCommentsUrl()}/${commentId}`);
+            expect(getRes.status).toBe(404);
         });
     });
 });
