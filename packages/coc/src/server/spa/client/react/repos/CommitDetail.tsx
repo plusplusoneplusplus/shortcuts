@@ -161,7 +161,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
-            clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
+            clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
+            resolveWithAI, fixWithAI } = useDiffComments(workspaceId, diffContext);
 
     // Commit-level comments (only active when !filePath and !rangeMode)
     const {
@@ -202,6 +203,16 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         },
         [askAI],
     );
+
+    const handleResolveAllWithAI = useCallback(() => {
+        if (!diff) return;
+        void resolveWithAI(diff);
+    }, [resolveWithAI, diff]);
+
+    const handleFixWithAI = useCallback((id: string) => {
+        if (!diff) return;
+        void fixWithAI(id, diff);
+    }, [fixWithAI, diff]);
 
     const handleAskAIDiff = useCallback(
         (selection: DiffCommentSelection, selectedText: string) => {
@@ -568,6 +579,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                         onDelete={(id) => { void deleteComment(id); }}
                         onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
                         onAskAI={handleAskAI}
+                        onResolveAllWithAI={handleResolveAllWithAI}
+                        onFixWithAI={handleFixWithAI}
                         onCommentClick={handleSidebarCommentClick}
                         aiLoadingIds={aiLoadingIds}
                         aiErrors={aiErrors}
