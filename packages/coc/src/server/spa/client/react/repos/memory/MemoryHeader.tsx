@@ -1,5 +1,5 @@
 /**
- * MemoryHeader — displays memory stats and action buttons.
+ * MemoryHeader — displays memory stats, action buttons, and consolidation status pill.
  */
 
 import React from 'react';
@@ -9,6 +9,7 @@ interface MemoryHeaderProps {
     observationCount: number;
     noteCount: number;
     consolidatedAt: string | null;
+    consolidationStatus?: 'idle' | 'queued' | 'running';
     onAddNote: () => void;
     onAggregate: () => void;
     onViewConsolidated?: () => void;
@@ -18,6 +19,7 @@ export function MemoryHeader({
     observationCount,
     noteCount,
     consolidatedAt,
+    consolidationStatus,
     onAddNote,
     onAggregate,
     onViewConsolidated,
@@ -26,6 +28,8 @@ export function MemoryHeader({
     const consolidatedLabel = consolidatedAt
         ? formatRelativeTime(consolidatedAt)
         : 'never';
+
+    const isActive = consolidationStatus === 'queued' || consolidationStatus === 'running';
 
     return (
         <div className="mb-3">
@@ -52,13 +56,28 @@ export function MemoryHeader({
                 >
                     + Add Note
                 </button>
-                <button
-                    onClick={onAggregate}
-                    className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
-                    data-testid="memory-aggregate-btn"
-                >
-                    Aggregate ▾
-                </button>
+                {isActive ? (
+                    <button
+                        onClick={onAggregate}
+                        className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1.5 transition-colors ${
+                            consolidationStatus === 'queued'
+                                ? 'bg-[#e8a317]/15 text-[#a97a0d] dark:text-[#e8a317] border border-[#e8a317]/30'
+                                : 'bg-[#0078d4]/15 text-[#0078d4] border border-[#0078d4]/30'
+                        }`}
+                        data-testid="memory-aggregate-btn"
+                    >
+                        <span className={`inline-block w-2.5 h-2.5 border-2 border-current border-t-transparent rounded-full animate-spin`} />
+                        {consolidationStatus === 'queued' ? 'Queued…' : 'Consolidating…'}
+                    </button>
+                ) : (
+                    <button
+                        onClick={onAggregate}
+                        className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
+                        data-testid="memory-aggregate-btn"
+                    >
+                        Aggregate ▾
+                    </button>
+                )}
             </div>
             <div className="mt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" />
         </div>

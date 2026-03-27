@@ -1,20 +1,30 @@
 /**
- * AggregatePanel — SSE-streamed memory aggregation with review/accept/revert.
+ * AggregatePanel — queue-based memory aggregation with review/accept/revert.
  *
- * Phases: idle → streaming → review → done
+ * Phases: idle → submitting → queued → streaming → review → done
+ *
+ * The panel enqueues a memory-aggregate task via POST, then streams output
+ * from the standard process SSE endpoint. Supports cross-tab awareness:
+ * if a consolidation is already running, the panel picks it up automatically.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { memoryApi } from './memoryApi';
 import { getApiBase } from '../../utils/config';
 
 interface AggregatePanelProps {
     repoId: string;
+    /** Server-reported consolidation status (from stats). */
+    consolidationStatus?: 'idle' | 'queued' | 'running';
+    /** Active processId from server stats (for cross-tab awareness). */
+    consolidationProcessId?: string;
+    /** Active taskId from server stats (for cancellation). */
+    consolidationTaskId?: string;
     onClose: () => void;
     onDone: () => void;
 }
 
-type AggregatePhase = 'idle' | 'streaming' | 'review' | 'done';
+type AggregatePhase = 'idle' | 'submitting' | 'queued' | 'streaming' | 'review' | 'done';
 
 interface DiffLine {
     type: 'add' | 'remove' | 'unchanged';
@@ -29,7 +39,14 @@ function parseDiff(raw: string): DiffLine[] {
     });
 }
 
-export function AggregatePanel({ repoId, onClose, onDone }: AggregatePanelProps) {
+export function AggregatePanel({
+    repoId,
+    consolidationStatus,
+    consolidationProcessId,
+    consolidationTaskId,
+    onClose,
+    onDone,
+}: AggregatePanelProps) {
     const [phase, setPhase] = useState<AggregatePhase>('idle');
     const [includeNotes, setIncludeNotes] = useState(true);
     const [includeAi, setIncludeAi] = useState(true);
@@ -39,8 +56,11 @@ export function AggregatePanel({ repoId, onClose, onDone }: AggregatePanelProps)
     const [error, setError] = useState<string | null>(null);
     const [accepting, setAccepting] = useState(false);
     const [reverting, setReverting] = useState(false);
+    const [processId, setProcessId] = useState<string | null>(null);
+    const [taskId, setTaskId] = useState<string | null>(null);
     const esRef = useRef<EventSource | null>(null);
     const outputRef = useRef<HTMLPreElement>(null);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Auto-scroll stream output
     useEffect(() => {
@@ -53,21 +73,30 @@ export function AggregatePanel({ repoId, onClose, onDone }: AggregatePanelProps)
     useEffect(() => {
         return () => {
             esRef.current?.close();
+            if (pollRef.current) clearInterval(pollRef.current);
         };
     }, []);
 
-    const handleRun = () => {
-        const sources: string[] = [];
-        if (includeNotes) sources.push('user');
-        if (includeAi) sources.push('ai');
-        if (sources.length === 0) sources.push('user', 'ai');
+    // Cross-tab awareness: pick up running/queued tasks on mount
+    useEffect(() => {
+        if (phase !== 'idle') return;
+        if (consolidationStatus === 'running' && consolidationProcessId) {
+            setProcessId(consolidationProcessId);
+            setTaskId(consolidationTaskId ?? null);
+            setPhase('streaming');
+        } else if (consolidationStatus === 'queued' && consolidationProcessId) {
+            setProcessId(consolidationProcessId);
+            setTaskId(consolidationTaskId ?? null);
+            setPhase('queued');
+        }
+    }, [consolidationStatus, consolidationProcessId, consolidationTaskId, phase]);
 
-        setPhase('streaming');
-        setStreamOutput('');
-        setError(null);
+    // Start SSE streaming when entering streaming phase
+    const startStreaming = useCallback((pid: string) => {
+        esRef.current?.close();
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
 
-        const params = new URLSearchParams({ sources: sources.join(','), model });
-        const url = `${getApiBase()}/repos/${encodeURIComponent(repoId)}/memory/aggregate?${params}`;
+        const url = `${getApiBase()}/processes/${encodeURIComponent(pid)}/stream`;
         const es = new EventSource(url);
         esRef.current = es;
 
@@ -75,22 +104,104 @@ export function AggregatePanel({ repoId, onClose, onDone }: AggregatePanelProps)
             setStreamOutput(prev => prev + e.data);
         });
 
-        es.addEventListener('diff', (e: MessageEvent) => {
-            setDiffLines(parseDiff(e.data));
-        });
-
-        es.addEventListener('done', () => {
+        es.addEventListener('complete', () => {
             es.close();
             esRef.current = null;
-            setPhase('review');
+            // Fetch the process result to get diff + consolidated
+            fetchProcessResult(pid);
         });
 
         es.onerror = () => {
             es.close();
             esRef.current = null;
-            setError('Aggregation failed. Please try again.');
-            setPhase('idle');
+            // Process may have completed before we connected — check result
+            fetchProcessResult(pid);
         };
+    }, []);
+
+    useEffect(() => {
+        if (phase === 'streaming' && processId) {
+            startStreaming(processId);
+        }
+    }, [phase, processId, startStreaming]);
+
+    // Poll stats in queued phase to detect transition to running
+    useEffect(() => {
+        if (phase !== 'queued') return;
+        const poll = setInterval(async () => {
+            try {
+                const stats = await memoryApi.getStats(repoId);
+                if (stats.consolidationStatus === 'running') {
+                    setPhase('streaming');
+                } else if (!stats.consolidationStatus || stats.consolidationStatus === 'idle') {
+                    // Task completed or was cancelled while queued
+                    setPhase('idle');
+                }
+            } catch { /* ignore poll errors */ }
+        }, 3000);
+        pollRef.current = poll;
+        return () => { clearInterval(poll); pollRef.current = null; };
+    }, [phase, repoId]);
+
+    const fetchProcessResult = async (pid: string) => {
+        try {
+            const res = await fetch(`${getApiBase()}/processes/${encodeURIComponent(pid)}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const proc = await res.json();
+            if (proc.status === 'completed' && proc.result) {
+                const resultData = typeof proc.result === 'string' ? JSON.parse(proc.result) : proc.result;
+                if (resultData.diff) setDiffLines(parseDiff(resultData.diff));
+                if (resultData.consolidated) setStreamOutput(resultData.consolidated);
+                setPhase('review');
+            } else if (proc.status === 'failed') {
+                setError(proc.error ?? 'Aggregation failed');
+                setPhase('idle');
+            } else {
+                // Still running — reconnect SSE
+                setPhase('streaming');
+            }
+        } catch (e: any) {
+            setError(e?.message ?? 'Failed to fetch result');
+            setPhase('idle');
+        }
+    };
+
+    const handleRun = async () => {
+        const sources: string[] = [];
+        if (includeNotes) sources.push('user');
+        if (includeAi) sources.push('ai');
+        if (sources.length === 0) sources.push('user', 'ai');
+
+        setPhase('submitting');
+        setStreamOutput('');
+        setError(null);
+
+        try {
+            const result = await memoryApi.aggregate(repoId, sources, model);
+            if (result.status === 'already-running') {
+                // Another tab/client already started — attach to it
+                setProcessId(result.processId);
+                setTaskId(result.taskId);
+                setPhase('streaming');
+                return;
+            }
+            setProcessId(result.processId);
+            setTaskId(result.taskId);
+            setPhase('queued');
+        } catch (e: any) {
+            setError(e?.message ?? 'Failed to enqueue');
+            setPhase('idle');
+        }
+    };
+
+    const handleCancel = async () => {
+        if (!taskId) return;
+        try {
+            await fetch(`${getApiBase()}/queue/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+        } catch { /* ignore */ }
+        esRef.current?.close();
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        setPhase('idle');
     };
 
     const handleAccept = async () => {
@@ -181,6 +292,28 @@ export function AggregatePanel({ repoId, onClose, onDone }: AggregatePanelProps)
                             data-testid="aggregate-run-btn"
                         >
                             Run ▶
+                        </button>
+                    </div>
+                </>
+            )}
+
+            {phase === 'submitting' && (
+                <div className="text-xs text-[#848484] py-2 text-center">Submitting…</div>
+            )}
+
+            {phase === 'queued' && (
+                <>
+                    <div className="text-xs text-[#848484] py-2 text-center flex items-center justify-center gap-2" data-testid="aggregate-queued">
+                        <span className="inline-block w-3 h-3 border-2 border-[#e8a317] border-t-transparent rounded-full animate-spin" />
+                        Waiting in queue…
+                    </div>
+                    <div className="flex justify-end">
+                        <button
+                            onClick={handleCancel}
+                            className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
+                            data-testid="aggregate-cancel-btn"
+                        >
+                            Cancel
                         </button>
                     </div>
                 </>

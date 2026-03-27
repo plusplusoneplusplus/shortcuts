@@ -1,5 +1,5 @@
 import type { ChatPayload, ChatMode } from './task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasReplicationContext } from './task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, isMemoryAggregatePayload, hasTaskGenerationContext, hasResolveCommentsContext, hasReplicationContext } from './task-types';
 import { applyFollowUpToTask } from './shared/queue-utils';
 import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, resolveToolCallCacheOptions } from '@plusplusoneplusplus/forge';
@@ -16,6 +16,7 @@ import { PlanExecutor } from './executors/plan-executor';
 import { AutopilotExecutor } from './executors/autopilot-executor';
 import { TaskGenerationExecutor } from './executors/task-generation-executor';
 import { ResolveCommentsExecutor } from './executors/resolve-comments-executor';
+import { MemoryAggregateExecutor } from './memory/memory-aggregate-executor';
 import { ProcessLifecycleRunner } from './executors/process-lifecycle-runner';
 import { resolveSkillConfig } from './executors/skill-config-resolver';
 import { generateTitleIfNeeded as generateTitleIfNeededFn } from './executors/title-generator';
@@ -51,6 +52,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly autopilotExecutor: AutopilotExecutor;
     private readonly taskGenerationExecutor: TaskGenerationExecutor;
     private readonly resolveCommentsExecutor: ResolveCommentsExecutor;
+    private readonly memoryAggregateExecutor: MemoryAggregateExecutor;
     private readonly runner: ProcessLifecycleRunner;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
@@ -71,6 +73,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.autopilotExecutor = new AutopilotExecutor(store, chatOpts, this.dataDir);
         this.taskGenerationExecutor = new TaskGenerationExecutor(store, chatOpts, this.dataDir);
         this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, options.getWsServer, this.dataDir);
+        this.memoryAggregateExecutor = new MemoryAggregateExecutor(store, this.dataDir ?? '');
         this.runner = new ProcessLifecycleRunner(store, this.dataDir, onTitle);
     }
 
@@ -85,6 +88,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
+        if (isMemoryAggregatePayload(task.payload)) {
+            return this.memoryAggregateExecutor.execute(task);
+        }
         return this.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm, imgs) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs), executeByTypeFn: (t, p) => this.executeByType(t, p), getWorkingDirectoryFn: (t) => this.getWorkingDirectory(t) });
     }
 
@@ -146,7 +152,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 }
 
 export function defaultIsExclusive(task: QueuedTask): boolean {
-    if (task.type === 'run-workflow' || task.type === 'run-script') return true;
+    if (task.type === 'run-workflow' || task.type === 'run-script' || task.type === 'memory-aggregate') return true;
     if (isChatPayload(task.payload)) { const mode = (task.payload as any).mode; return mode === 'autopilot'; }
     return true;
 }

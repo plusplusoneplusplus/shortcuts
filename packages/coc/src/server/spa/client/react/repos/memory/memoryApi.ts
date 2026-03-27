@@ -20,6 +20,9 @@ export interface MemoryStats {
     observationCount: number;
     noteCount: number;
     consolidatedAt: string | null;
+    consolidationStatus?: 'idle' | 'queued' | 'running';
+    consolidationTaskId?: string;
+    consolidationProcessId?: string;
 }
 
 export interface FeedResponse {
@@ -63,11 +66,19 @@ export const memoryApi = {
         );
     },
 
-    /** Returns an EventSource for SSE streaming from the aggregate endpoint. */
-    aggregate(repoId: string, sources: string[], model: string): EventSource {
-        const params = new URLSearchParams({ sources: sources.join(','), model });
-        const url = `${getApiBase()}/repos/${encodeURIComponent(repoId)}/memory/aggregate?${params}`;
-        return new EventSource(url);
+    /** Enqueue a memory-aggregate task. Returns { taskId, processId } or throws on 409. */
+    async aggregate(repoId: string, sources: string[], model: string): Promise<{ taskId: string; processId: string; status?: string }> {
+        const res = await fetch(`${getApiBase()}/repos/${encodeURIComponent(repoId)}/memory/aggregate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sources, model }),
+        });
+        const data = await res.json();
+        if (res.status === 409) {
+            return { taskId: data.taskId, processId: data.processId, status: 'already-running' };
+        }
+        if (!res.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
+        return data;
     },
 
     acceptAggregate(repoId: string): Promise<void> {

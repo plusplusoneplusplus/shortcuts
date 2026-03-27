@@ -22,7 +22,7 @@ interface RepoMemorySectionProps {
 
 export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
     const [feed, setFeed] = useState<FeedItem[]>([]);
-    const [stats, setStats] = useState<MemoryStats>({ observationCount: 0, noteCount: 0, consolidatedAt: null });
+    const [stats, setStats] = useState<MemoryStats>({ observationCount: 0, noteCount: 0, consolidatedAt: null, consolidationStatus: 'idle' });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
@@ -94,6 +94,7 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
                 observationCount={stats.observationCount}
                 noteCount={stats.noteCount}
                 consolidatedAt={stats.consolidatedAt}
+                consolidationStatus={stats.consolidationStatus}
                 onAddNote={() => { setIsAddingNote(v => !v); setIsAggregating(false); setIsViewingConsolidated(false); }}
                 onAggregate={() => { setIsAggregating(v => !v); setIsAddingNote(false); setIsViewingConsolidated(false); }}
                 onViewConsolidated={() => { setIsViewingConsolidated(v => !v); setIsAddingNote(false); setIsAggregating(false); }}
@@ -109,6 +110,9 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
             {isAggregating && (
                 <AggregatePanel
                     repoId={repoId}
+                    consolidationStatus={stats.consolidationStatus}
+                    consolidationProcessId={stats.consolidationProcessId}
+                    consolidationTaskId={stats.consolidationTaskId}
                     onClose={() => setIsAggregating(false)}
                     onDone={() => { setIsAggregating(false); setIsViewingConsolidated(false); refresh(); }}
                 />

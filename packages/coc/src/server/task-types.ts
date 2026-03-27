@@ -118,11 +118,18 @@ export interface RunScriptPayload {
     scheduleId?: string;
 }
 
+export interface MemoryAggregatePayload {
+    readonly kind: 'memory-aggregate';
+    repoId: string;
+    sources: ('notes' | 'observations')[];
+    model?: string;
+}
+
 // ============================================================================
 // Payload Union
 // ============================================================================
 
-export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload;
+export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | MemoryAggregatePayload;
 
 // ============================================================================
 // Type Guards
@@ -142,6 +149,10 @@ export function isRunWorkflowPayload(payload: Record<string, unknown>): payload 
 
 export function isRunScriptPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunScriptPayload {
     return payload.kind === 'run-script';
+}
+
+export function isMemoryAggregatePayload(payload: Record<string, unknown>): payload is Record<string, unknown> & MemoryAggregatePayload {
+    return payload.kind === 'memory-aggregate';
 }
 
 /** Check whether a chat payload carries task-generation context. */

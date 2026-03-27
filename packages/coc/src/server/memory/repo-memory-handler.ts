@@ -9,11 +9,10 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
-import type { ProcessStore, AIInvoker } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, AIInvoker, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { FileMemoryStore as PipelineMemoryStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
@@ -50,6 +49,8 @@ export interface RepoMemoryRouteOptions {
     store: ProcessStore;
     /** AI invoker for the aggregate endpoint. When absent the endpoint returns 503. */
     aiInvoker?: AIInvoker;
+    /** Queue facade for enqueuing memory-aggregate tasks. When absent aggregate returns 503. */
+    queueFacade?: TaskQueueManager;
 }
 
 // ============================================================================
@@ -70,10 +71,6 @@ function getPipelineStore(dataDir: string, workspaceId: string): PipelineMemoryS
 async function getRepoRootPath(store: ProcessStore, workspaceId: string): Promise<string | undefined> {
     const workspaces = await store.getWorkspaces();
     return workspaces.find(w => w.id === workspaceId)?.rootPath;
-}
-
-function sendSseEvent(res: http.ServerResponse, event: string, data: unknown): void {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
 /** Backup path for consolidated.md before aggregation (enables revert). */
@@ -138,14 +135,14 @@ export function computeDiff(prev: string, next: string): DiffLine[] {
  *   GET  /api/repos/:repoId/memory/consolidated      — read consolidated.md content
  *   POST /api/repos/:repoId/memory/aggregate/accept  — accept aggregation (clean backup)
  *   POST /api/repos/:repoId/memory/aggregate/revert  — revert to pre-aggregation state
- *   POST /api/repos/:repoId/memory/aggregate         — run AI aggregation (SSE)
+ *   POST /api/repos/:repoId/memory/aggregate         — enqueue AI aggregation (returns taskId/processId)
  */
 export function registerRepoMemoryRoutes(
     routes: Route[],
     dataDir: string,
     options: RepoMemoryRouteOptions,
 ): void {
-    const { store, aiInvoker } = options;
+    const { store, queueFacade } = options;
 
     // -- GET /api/repos/:repoId/memory/feed ----------------------------------
 
@@ -318,7 +315,32 @@ export function registerRepoMemoryRoutes(
                 const noteStore = getNoteStore(dataDir, workspaceId);
                 const { total: noteCount } = noteStore.list({ pageSize: 1 });
 
-                sendJson(res, { observationCount, noteCount, consolidatedAt });
+                // Query queue for active memory-aggregate task
+                let consolidationStatus: 'idle' | 'queued' | 'running' = 'idle';
+                let consolidationTaskId: string | undefined;
+                let consolidationProcessId: string | undefined;
+                if (queueFacade) {
+                    const queued = queueFacade.getQueued();
+                    const running = queueFacade.getRunning();
+                    const all = [...queued, ...running];
+                    const active = all.find(
+                        t => t.type === 'memory-aggregate' && (t.payload as any).repoId === workspaceId,
+                    );
+                    if (active) {
+                        consolidationStatus = active.status === 'running' ? 'running' : 'queued';
+                        consolidationTaskId = active.id;
+                        consolidationProcessId = active.processId ?? `queue_${active.id}`;
+                    }
+                }
+
+                sendJson(res, {
+                    observationCount,
+                    noteCount,
+                    consolidatedAt,
+                    consolidationStatus,
+                    consolidationTaskId,
+                    consolidationProcessId,
+                });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }
@@ -412,163 +434,74 @@ export function registerRepoMemoryRoutes(
         },
     });
 
-    // -- GET /api/repos/:repoId/memory/aggregate ----------------------------
-    // Uses GET so browsers can open it via EventSource (which only supports GET).
-    // Sources and model are passed as query params: ?sources=user,ai&model=...
-    // Source aliases: 'user' → notes, 'ai' → observations.
-    // SSE events emitted: chunk (raw text), diff (unified-diff text), done, error.
+    // -- POST /api/repos/:repoId/memory/aggregate -----------------------------
+    // Enqueues a memory-aggregate task. Returns 202 with { taskId, processId }.
+    // Returns 409 if a consolidation is already queued/running for this repo.
 
     routes.push({
-        method: 'GET',
+        method: 'POST',
         pattern: /^\/api\/repos\/([^/]+)\/memory\/aggregate$/,
         handler: async (req, res, match) => {
             const workspaceId = decodeURIComponent(match![1]);
 
-            // Set SSE headers
-            res.setHeader('Content-Type', 'text/event-stream');
-            res.setHeader('Cache-Control', 'no-cache');
-            res.setHeader('Connection', 'keep-alive');
-            res.setHeader('X-Accel-Buffering', 'no');
-            res.flushHeaders();
-
-            // Raw SSE sender — data written as-is (no JSON encoding) so that
-            // EventSource clients receive plain text in e.data.
-            const sendSseRaw = (event: string, data: string): void => {
-                const dataLines = data === ''
-                    ? 'data: '
-                    : data.split('\n').map(l => `data: ${l}`).join('\n');
-                res.write(`event: ${event}\n${dataLines}\n\n`);
-            };
-
             try {
-                if (!aiInvoker) {
-                    sendSseRaw('error', 'AI invoker not configured');
-                    res.end();
+                if (!queueFacade) {
+                    send500(res, 'Queue not configured');
                     return;
                 }
-
-                // Parse sources and model from query string
-                const parsedUrl = url.parse(req.url ?? '', true);
-                const sourcesParam = typeof parsedUrl.query.sources === 'string'
-                    ? parsedUrl.query.sources
-                    : 'user,ai';
-                const model: string | undefined = typeof parsedUrl.query.model === 'string'
-                    ? parsedUrl.query.model
-                    : undefined;
-
-                // Map client-facing aliases to internal names
-                const sources = sourcesParam
-                    .split(',')
-                    .map(s => s.trim())
-                    .filter(Boolean)
-                    .map(s => (s === 'user' ? 'notes' : s === 'ai' ? 'observations' : s));
 
                 const repoPath = await getRepoRootPath(store, workspaceId);
                 if (!repoPath) {
-                    sendSseRaw('error', `Repo not found: ${workspaceId}`);
-                    res.end();
+                    send404(res, `Repo not found: ${workspaceId}`);
                     return;
                 }
 
-                sendSseRaw('chunk', 'Loading memory data...\n');
-
-                const pipelineStore = getPipelineStore(dataDir, workspaceId);
-
-                // Load observations
-                let observations: Array<{ pipeline: string; content: string }> = [];
-                if (sources.includes('observations')) {
-                    const filenames = await pipelineStore.listRaw('repo', undefined);
-                    const rawObs = await Promise.all(
-                        filenames.map(f => pipelineStore.readRaw('repo', undefined, f)),
-                    );
-                    observations = rawObs
-                        .filter((o): o is NonNullable<typeof o> => o !== undefined)
-                        .map(o => ({ pipeline: o.metadata.pipeline, content: o.content }));
-                }
-
-                // Load user notes
-                let notes: Array<{ content: string; tags: string[] }> = [];
-                if (sources.includes('notes')) {
-                    const noteStore = getNoteStore(dataDir, workspaceId);
-                    const { entries } = noteStore.list({ pageSize: 10000 });
-                    notes = entries
-                        .map(e => ({ content: noteStore.get(e.id)?.content ?? '', tags: e.tags }))
-                        .filter(n => n.content !== '');
-                }
-
-                if (observations.length === 0 && notes.length === 0) {
-                    sendSseRaw('chunk', '');
-                    sendSseRaw('diff', '');
-                    sendSseRaw('done', '');
-                    res.end();
-                    return;
-                }
-
-                // Read existing consolidated and save backup
-                const previous = await pipelineStore.readConsolidated('repo');
-                if (previous !== null) {
-                    const prevPath = consolidatedPrevPath(dataDir, workspaceId);
-                    fs.mkdirSync(path.dirname(prevPath), { recursive: true });
-                    fs.writeFileSync(prevPath, previous, 'utf-8');
-                }
-
-                // Build prompt
-                const promptParts: string[] = [];
-                if (previous) {
-                    promptParts.push('## Existing Memory\n' + previous);
-                }
-                if (notes.length > 0) {
-                    const noteLines = notes
-                        .map(n => `- ${n.content}${n.tags.length > 0 ? ` [tags: ${n.tags.join(', ')}]` : ''}`)
-                        .join('\n');
-                    promptParts.push('## User Notes (treat as authoritative)\n' + noteLines);
-                }
-                if (observations.length > 0) {
-                    const obsLines = observations.map(o => `- ${o.pipeline}: ${o.content}`).join('\n');
-                    promptParts.push('## AI Observations\n' + obsLines);
-                }
-                promptParts.push(
-                    'Produce an updated memory document following these rules:\n' +
-                    '- Deduplicate: merge similar or redundant facts\n' +
-                    '- Resolve conflicts: user notes override AI observations\n' +
-                    '- Prune: drop facts no longer relevant\n' +
-                    '- Categorize: group by topic (conventions, architecture, patterns, tools, gotchas)\n' +
-                    '- Keep it concise: target <100 facts total\n' +
-                    '- Use markdown with clear section headers',
+                // Check for existing active task
+                const queued = queueFacade.getQueued();
+                const running = queueFacade.getRunning();
+                const active = [...queued, ...running].find(
+                    t => t.type === 'memory-aggregate' && (t.payload as any).repoId === workspaceId,
                 );
-
-                const prompt = promptParts.join('\n\n');
-
-                sendSseRaw('chunk', 'Running AI consolidation...\n');
-
-                const result = await aiInvoker(prompt, { model });
-                if (!result.success) {
-                    sendSseRaw('error', result.error ?? 'AI call failed');
-                    res.end();
+                if (active) {
+                    sendJson(res, {
+                        status: 'already-running',
+                        taskId: active.id,
+                        processId: active.processId ?? `queue_${active.id}`,
+                    }, 409);
                     return;
                 }
 
-                const newConsolidated = result.response ?? '';
+                const body = await readJsonBody<{
+                    sources?: string[];
+                    model?: string;
+                }>(req);
 
-                // Write new consolidated.md
-                await pipelineStore.writeConsolidated('repo', newConsolidated);
-                await pipelineStore.updateIndex('repo', undefined, {
-                    lastAggregation: new Date().toISOString(),
+                // Map client-facing aliases to internal names
+                const rawSources = Array.isArray(body.sources) && body.sources.length > 0
+                    ? body.sources
+                    : ['user', 'ai'];
+                const sources = rawSources.map(s =>
+                    s === 'user' ? 'notes' : s === 'ai' ? 'observations' : s,
+                ) as ('notes' | 'observations')[];
+
+                const taskId = queueFacade.enqueue({
+                    type: 'memory-aggregate',
+                    repoId: workspaceId,
+                    payload: {
+                        kind: 'memory-aggregate' as const,
+                        repoId: workspaceId,
+                        sources,
+                        model: body.model,
+                    },
+                    priority: 'normal' as const,
+                    config: {},
+                    concurrencyMode: 'exclusive' as const,
+                    displayName: 'Memory Consolidation',
                 });
 
-                // Format diff as unified-diff text for client-side parseDiff()
-                const diffLines = computeDiff(previous ?? '', newConsolidated);
-                const diffText = diffLines
-                    .map(l => (l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' ') + l.text)
-                    .join('\n');
-
-                sendSseRaw('chunk', newConsolidated);
-                sendSseRaw('diff', diffText);
-                sendSseRaw('done', '');
-                res.end();
+                sendJson(res, { taskId, processId: `queue_${taskId}` }, 202);
             } catch (err) {
-                sendSseRaw('error', err instanceof Error ? err.message : String(err));
-                res.end();
+                send500(res, err instanceof Error ? err.message : String(err));
             }
         },
     });

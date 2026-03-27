@@ -6,7 +6,7 @@
  *   POST /api/repos/:repoId/memory/notes
  *   DELETE /api/repos/:repoId/memory/feed/:id
  *   GET  /api/repos/:repoId/memory/stats
- *   GET  /api/repos/:repoId/memory/aggregate (SSE)
+ *   POST /api/repos/:repoId/memory/aggregate (enqueue)
  *   POST /api/repos/:repoId/memory/aggregate/accept
  *   POST /api/repos/:repoId/memory/aggregate/revert
  */
@@ -417,6 +417,39 @@ describe('GET /api/repos/:repoId/memory/stats', () => {
         expect(status).toBe(200);
         expect(body.observationCount).toBe(0);
     });
+
+    it('returns consolidationStatus idle when no active tasks', async () => {
+        const queueFacade = {
+            getQueued: vi.fn().mockReturnValue([]),
+            getRunning: vi.fn().mockReturnValue([]),
+        } as any;
+        const s = makeServer(tmpDir, { queueFacade });
+        const url = await startServer(s);
+        const { body } = await apiGet(`${url}/api/repos/${WORKSPACE_ID}/memory/stats`);
+        await stopServer(s);
+        expect(body.consolidationStatus).toBe('idle');
+    });
+
+    it('returns consolidationStatus running when task is active', async () => {
+        const runningTask = {
+            id: 'task-1',
+            type: 'memory-aggregate',
+            status: 'running',
+            payload: { kind: 'memory-aggregate', repoId: WORKSPACE_ID },
+            processId: 'queue_task-1',
+        };
+        const queueFacade = {
+            getQueued: vi.fn().mockReturnValue([]),
+            getRunning: vi.fn().mockReturnValue([runningTask]),
+        } as any;
+        const s = makeServer(tmpDir, { queueFacade });
+        const url = await startServer(s);
+        const { body } = await apiGet(`${url}/api/repos/${WORKSPACE_ID}/memory/stats`);
+        await stopServer(s);
+        expect(body.consolidationStatus).toBe('running');
+        expect(body.consolidationTaskId).toBe('task-1');
+        expect(body.consolidationProcessId).toBe('queue_task-1');
+    });
 });
 
 // ── GET /api/repos/:repoId/memory/consolidated ───────────────────────────────
@@ -452,200 +485,139 @@ describe('GET /api/repos/:repoId/memory/consolidated', () => {
     });
 });
 
-// ── GET /api/repos/:repoId/memory/aggregate (SSE) ────────────────────────────
-// Regression: endpoint must be GET (EventSource only supports GET), accept
-// sources as comma-separated query param, map 'user'→notes/'ai'→observations,
-// and emit 'chunk'/'diff'/'done' SSE events (not 'progress'/'complete').
+// ── POST /api/repos/:repoId/memory/aggregate ─────────────────────────────────
+// Enqueues a memory-aggregate task via the queue facade. Returns 202 with
+// { taskId, processId } or 409 if already running.
 
-describe('GET /api/repos/:repoId/memory/aggregate', () => {
-    it('returns SSE error event when AI invoker is not configured', async () => {
-        const s = makeServer(tmpDir, { aiInvoker: undefined });
-        const url = await startServer(s);
+describe('POST /api/repos/:repoId/memory/aggregate', () => {
+    function makeQueueFacade(overrides?: {
+        enqueuedTasks?: any[];
+        queuedTasks?: any[];
+        runningTasks?: any[];
+    }) {
+        const enqueuedTasks = overrides?.enqueuedTasks ?? [];
+        let idCounter = 0;
+        return {
+            enqueue: vi.fn().mockImplementation(() => {
+                const id = `task-${++idCounter}`;
+                enqueuedTasks.push({ id });
+                return id;
+            }),
+            getQueued: vi.fn().mockReturnValue(overrides?.queuedTasks ?? []),
+            getRunning: vi.fn().mockReturnValue(overrides?.runningTasks ?? []),
+        } as any;
+    }
 
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`);
-
-        expect(res.headers.get('content-type')).toContain('text/event-stream');
-        const text = await res.text();
-        expect(text).toContain('event: error');
-        expect(text).toContain('AI invoker not configured');
-        await stopServer(s);
-    });
-
-    it('returns SSE done event when nothing to aggregate', async () => {
-        const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'consolidated' });
-        const s = makeServer(tmpDir, { aiInvoker: mockAI });
-        const url = await startServer(s);
-
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`);
-
-        const text = await res.text();
-        expect(text).toContain('event: done');
-        expect(mockAI).not.toHaveBeenCalled();
-        await stopServer(s);
-    });
-
-    it('calls AI and emits chunk/diff/done events on success', async () => {
-        const newContent = '# Consolidated\n- fact one';
-        const mockAI = vi.fn().mockResolvedValue({ success: true, response: newContent });
-
-        // Seed a note
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
-        noteStore.create({ content: 'use TypeScript', tags: ['lang'], source: 'manual' });
-
-        const s = makeServer(tmpDir, { aiInvoker: mockAI });
-        const url = await startServer(s);
-
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
-
-        const text = await res.text();
-        expect(text).toContain('event: chunk');
-        expect(text).toContain('event: diff');
-        expect(text).toContain('event: done');
-        expect(text).toContain('fact one');
-        expect(mockAI).toHaveBeenCalledOnce();
-        await stopServer(s);
-    });
-
-    it('maps source alias "user" to notes', async () => {
-        const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
-        noteStore.create({ content: 'use TypeScript', tags: [], source: 'manual' });
-
-        const s = makeServer(tmpDir, { aiInvoker: mockAI });
-        const url = await startServer(s);
-
-        // 'user' alias should load the note
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
-        await res.text(); // consume stream to ensure handler completes
-        expect(mockAI).toHaveBeenCalledOnce();
-        const prompt: string = mockAI.mock.calls[0][0];
-        expect(prompt).toContain('use TypeScript');
-        await stopServer(s);
-    });
-
-    it('maps source alias "ai" to observations', async () => {
-        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
-        writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
-        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'analyze', timestamp: new Date().toISOString() }, 'old fact');
-
-        const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
-        const s = makeServer(tmpDir, { aiInvoker: mockAI });
-        const url = await startServer(s);
-
-        // 'ai' alias should load the observation
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=ai`);
-        await res.text(); // consume stream to ensure handler completes
-        expect(mockAI).toHaveBeenCalledOnce();
-        const prompt: string = mockAI.mock.calls[0][0];
-        expect(prompt).toContain('old fact');
-        await stopServer(s);
-    });
-
-    it('defaults to both user and ai sources when sources param is absent', async () => {
-        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
-        writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
-        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'p', timestamp: new Date().toISOString() }, 'obs fact');
-
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
-        noteStore.create({ content: 'note fact', tags: [], source: 'manual' });
-
-        const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
-        const s = makeServer(tmpDir, { aiInvoker: mockAI });
-        const url = await startServer(s);
-
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`);
-        await res.text(); // consume stream to ensure handler completes
-        expect(mockAI).toHaveBeenCalledOnce();
-        const prompt: string = mockAI.mock.calls[0][0];
-        expect(prompt).toContain('obs fact');
-        expect(prompt).toContain('note fact');
-        await stopServer(s);
-    });
-
-    it('passes model query param to AI invoker', async () => {
-        const mockAI = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
+    it('returns 202 with taskId and processId when enqueued', async () => {
         const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
         noteStore.create({ content: 'note', tags: [], source: 'manual' });
 
-        const s = makeServer(tmpDir, { aiInvoker: mockAI });
+        const queueFacade = makeQueueFacade();
+        const s = makeServer(tmpDir, { queueFacade });
         const url = await startServer(s);
 
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user&model=gpt-4`);
-        await res.text();
+        const { status, body } = await apiPost(
+            `${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`,
+            { sources: ['user'], model: 'gpt-4' },
+        );
 
-        expect(mockAI).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ model: 'gpt-4' }));
+        expect(status).toBe(202);
+        expect(body.taskId).toBeDefined();
+        expect(body.processId).toMatch(/^queue_/);
+        expect(queueFacade.enqueue).toHaveBeenCalledOnce();
         await stopServer(s);
     });
 
-    it('returns SSE error when AI call fails', async () => {
-        const mockAI = vi.fn().mockResolvedValue({ success: false, error: 'AI unavailable' });
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
-        noteStore.create({ content: 'note', tags: [], source: 'manual' });
-
-        const s = makeServer(tmpDir, { aiInvoker: mockAI });
+    it('returns 409 when consolidation is already running', async () => {
+        const runningTask = {
+            id: 'existing-task',
+            type: 'memory-aggregate',
+            status: 'running',
+            payload: { kind: 'memory-aggregate', repoId: WORKSPACE_ID },
+            processId: 'queue_existing-task',
+        };
+        const queueFacade = makeQueueFacade({ runningTasks: [runningTask] });
+        const s = makeServer(tmpDir, { queueFacade });
         const url = await startServer(s);
 
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
+        const { status, body } = await apiPost(
+            `${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`,
+            { sources: ['user'] },
+        );
 
-        const text = await res.text();
-        expect(text).toContain('event: error');
-        expect(text).toContain('AI unavailable');
+        expect(status).toBe(409);
+        expect(body.status).toBe('already-running');
+        expect(body.taskId).toBe('existing-task');
+        expect(queueFacade.enqueue).not.toHaveBeenCalled();
         await stopServer(s);
     });
 
-    it('writes consolidated.md after successful aggregation', async () => {
-        const newContent = '# Memory\n- typescript preferred';
-        const mockAI = vi.fn().mockResolvedValue({ success: true, response: newContent });
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
-        noteStore.create({ content: 'note', tags: [], source: 'manual' });
-
-        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
-        writeMemoryConfig(tmpDir, config);
-
-        const s = makeServer(tmpDir, { aiInvoker: mockAI });
+    it('returns 500 when queue is not configured', async () => {
+        const s = makeServer(tmpDir, { queueFacade: undefined });
         const url = await startServer(s);
 
-        await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
+        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sources: ['user'] }),
+        });
 
-        // Give time for async writes
-        await new Promise(r => setTimeout(r, 100));
-
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
-        const consolidated = await pipelineStore.readConsolidated('repo');
-        expect(consolidated).toBe(newContent);
+        expect(res.status).toBe(500);
         await stopServer(s);
     });
 
-    it('diff event contains unified-diff text with +/- prefixes', async () => {
-        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
-        writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
-        await pipelineStore.writeConsolidated('repo', '- old fact');
-
-        const newContent = '- new fact';
-        const mockAI = vi.fn().mockResolvedValue({ success: true, response: newContent });
+    it('maps source aliases user→notes and ai→observations in payload', async () => {
         const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
         noteStore.create({ content: 'note', tags: [], source: 'manual' });
 
-        const s = makeServer(tmpDir, { aiInvoker: mockAI });
+        const queueFacade = makeQueueFacade();
+        const s = makeServer(tmpDir, { queueFacade });
         const url = await startServer(s);
 
-        const res = await fetch(`${url}/api/repos/${WORKSPACE_ID}/memory/aggregate?sources=user`);
-        const text = await res.text();
-        await stopServer(s);
+        await apiPost(
+            `${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`,
+            { sources: ['user', 'ai'] },
+        );
 
-        // diff event should have raw text lines (not JSON), parseable by client's parseDiff()
-        const diffEventMatch = text.match(/event: diff\ndata: (.*?)(?:\n\n|$)/s);
-        expect(diffEventMatch).not.toBeNull();
-        // The diff text should contain +/- prefixed lines
-        const diffData = diffEventMatch![1];
-        expect(diffData).toMatch(/^[+\- ]/m);
+        const payload = queueFacade.enqueue.mock.calls[0][0].payload;
+        expect(payload.sources).toEqual(['notes', 'observations']);
+        await stopServer(s);
+    });
+
+    it('defaults to both sources when none specified', async () => {
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        noteStore.create({ content: 'note', tags: [], source: 'manual' });
+
+        const queueFacade = makeQueueFacade();
+        const s = makeServer(tmpDir, { queueFacade });
+        const url = await startServer(s);
+
+        await apiPost(
+            `${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`,
+            {},
+        );
+
+        const payload = queueFacade.enqueue.mock.calls[0][0].payload;
+        expect(payload.sources).toEqual(['notes', 'observations']);
+        await stopServer(s);
+    });
+
+    it('passes model to payload', async () => {
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        noteStore.create({ content: 'note', tags: [], source: 'manual' });
+
+        const queueFacade = makeQueueFacade();
+        const s = makeServer(tmpDir, { queueFacade });
+        const url = await startServer(s);
+
+        await apiPost(
+            `${url}/api/repos/${WORKSPACE_ID}/memory/aggregate`,
+            { sources: ['user'], model: 'gpt-4' },
+        );
+
+        const payload = queueFacade.enqueue.mock.calls[0][0].payload;
+        expect(payload.model).toBe('gpt-4');
+        await stopServer(s);
     });
 });
 
