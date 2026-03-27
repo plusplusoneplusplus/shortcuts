@@ -1226,6 +1226,151 @@ describe('EnqueueDialog', () => {
 });
 
 // ============================================================================
+// EnqueueDialog — default tab selection based on templates
+// ============================================================================
+
+describe('EnqueueDialog default tab', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    function setupFetchWithTemplates(skillTemplates: any[]) {
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skillTemplates }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+    }
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('defaults to Templates tab when task-mode templates exist in task mode', async () => {
+        setupFetchWithTemplates([
+            { id: 't1', name: 'My Task Template', model: '', mode: 'task', skills: ['impl'] },
+        ]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" mode="task" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        // Wait for templates to load and tab to auto-switch
+        await waitFor(() => {
+            const templatesBtn = screen.getByText(/^Templates/);
+            expect(templatesBtn.className).toContain('border-[#0078d4]');
+        });
+    });
+
+    it('defaults to Templates tab when ask-mode templates exist in ask mode', async () => {
+        setupFetchWithTemplates([
+            { id: 'a1', name: 'My Ask Template', model: '', mode: 'ask', skills: [] },
+        ]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" mode="ask" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
+
+        await waitFor(() => {
+            const templatesBtn = screen.getByText(/^Templates/);
+            expect(templatesBtn.className).toContain('border-[#0078d4]');
+        });
+    });
+
+    it('defaults to Advanced tab when no templates match the current mode', async () => {
+        // Only ask-mode templates, but dialog is in task mode
+        setupFetchWithTemplates([
+            { id: 'a1', name: 'Ask Only', model: '', mode: 'ask', skills: [] },
+        ]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" mode="task" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        // Give templates time to load
+        await waitFor(() => {
+            const advancedBtn = screen.getByText('Advanced');
+            expect(advancedBtn.className).toContain('border-[#0078d4]');
+        });
+    });
+
+    it('defaults to Advanced tab when there are no templates at all', async () => {
+        setupFetchWithTemplates([]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" mode="task" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        await waitFor(() => {
+            const advancedBtn = screen.getByText('Advanced');
+            expect(advancedBtn.className).toContain('border-[#0078d4]');
+        });
+    });
+
+    it('respects manual tab switch after auto-switch', async () => {
+        setupFetchWithTemplates([
+            { id: 't1', name: 'Task Template', model: '', mode: 'task', skills: ['impl'] },
+        ]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" mode="task" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        // Wait for auto-switch to templates
+        await waitFor(() => {
+            const templatesBtn = screen.getByText(/^Templates/);
+            expect(templatesBtn.className).toContain('border-[#0078d4]');
+        });
+
+        // Manually switch to Advanced
+        fireEvent.click(screen.getByText('Advanced'));
+        expect(screen.getByText('Advanced').className).toContain('border-[#0078d4]');
+
+        // Should stay on Advanced (no forced re-switch)
+        await new Promise(r => setTimeout(r, 100));
+        expect(screen.getByText('Advanced').className).toContain('border-[#0078d4]');
+    });
+});
+
+// ============================================================================
 // EnqueueDialog — minimize / restore
 // ============================================================================
 

@@ -51,6 +51,7 @@ export function EnqueueDialog() {
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
     const [activeTab, setActiveTab] = useState<'templates' | 'advanced'>('advanced');
+    const hasAutoSwitchedTab = useRef(false);
     const { models: savedModels, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
     const { templates, saveTemplate, deleteTemplate, loaded: templatesLoaded } = useSkillTemplates(workspaceId || undefined);
     const { models: modelInfos } = useModels();
@@ -298,6 +299,25 @@ export function EnqueueDialog() {
             handleSubmit();
         }
     }, [submitting, handleSubmit, slashCommands, handleSlashSelect]);
+
+    // Auto-switch to templates tab when mode-filtered templates exist (one-time per dialog open)
+    useEffect(() => {
+        if (!templatesLoaded || hasAutoSwitchedTab.current) return;
+        hasAutoSwitchedTab.current = true;
+        const currentMode = isAskMode ? 'ask' : 'task';
+        const filtered = templates.filter(t => t.mode === currentMode);
+        if (filtered.length > 0) {
+            setActiveTab('templates');
+        }
+    }, [templatesLoaded, templates, isAskMode]);
+
+    // Reset auto-switch guard and tab when dialog reopens
+    useEffect(() => {
+        if (queueState.showDialog) {
+            hasAutoSwitchedTab.current = false;
+            setActiveTab('advanced');
+        }
+    }, [queueState.showDialog]);
 
     // Reset minimized state when dialog closes externally
     useEffect(() => {
