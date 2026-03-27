@@ -17,10 +17,13 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
     clearDraft: vi.fn(),
 }));
 
+const mockUnarchiveChat = vi.fn();
+let mockArchivedChatIds = new Set<string>();
+
 vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
     useChatPrefs: () => ({
-        archivedChatIds: new Set<string>(),
-        unarchiveChat: vi.fn(),
+        archivedChatIds: mockArchivedChatIds,
+        unarchiveChat: mockUnarchiveChat,
         pinnedChatIds: new Set<string>(),
         pinChat: vi.fn(),
         unpinChat: vi.fn(),
@@ -75,6 +78,8 @@ function makeOptions(overrides: Partial<UseSendMessageOptions> = {}): UseSendMes
 describe('useSendMessage', () => {
     beforeEach(() => {
         fetchMock.mockReset();
+        mockUnarchiveChat.mockReset();
+        mockArchivedChatIds = new Set<string>();
         stubNoEventSource();
         vi.useFakeTimers();
     });
@@ -188,5 +193,27 @@ describe('useSendMessage', () => {
             await result.current.sendFollowUp('hello');
         });
         expect(setSending).toHaveBeenCalledWith(true);
+    });
+
+    it('auto-unarchives chat when sending a follow-up on an archived chat', async () => {
+        mockArchivedChatIds = new Set(['task-1']);
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions();
+        opts.followUpInputRef.current = 'hello';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(mockUnarchiveChat).toHaveBeenCalledWith('task-1');
+    });
+
+    it('does not call unarchiveChat when the chat is not archived', async () => {
+        mockArchivedChatIds = new Set<string>();
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions();
+        opts.followUpInputRef.current = 'hello';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(mockUnarchiveChat).not.toHaveBeenCalled();
     });
 });
