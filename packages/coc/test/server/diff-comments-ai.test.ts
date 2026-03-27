@@ -55,7 +55,6 @@ describe('buildDiffBatchResolvePrompt', () => {
             selectedText: 'const x = 1;',
             comment: 'Should be let',
             author: 'alice',
-            category: 'style',
             tags: ['nit', 'readability'],
             aiResponse: 'Previous AI said something',
             replies: [{ text: 'I agree', author: 'bob', createdAt: '2024-01-01' }],
@@ -66,7 +65,6 @@ describe('buildDiffBatchResolvePrompt', () => {
         expect(result).toContain('"const x = 1;"');
         expect(result).toContain('"Should be let"');
         expect(result).toContain('alice');
-        expect(result).toContain('style');
         expect(result).toContain('nit, readability');
         expect(result).toContain('Previous AI said something');
         expect(result).toContain('bob: I agree');

@@ -117,7 +117,8 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
                                 if (wsServer) {
                                     wsServer.broadcastProcessEvent({
                                         type: 'diff-comment-updated',
-                                        action: 'resolved',
+                                        action: 'updated',
+                                        workspaceId: rdc.wsId,
                                         storageKey: rdc.storageKey,
                                         commentId: id,
                                     });

@@ -141,7 +141,6 @@ describe('buildDiffBatchResolvePrompt integration', () => {
             makeDiffComment({
                 id: 'dc-1',
                 author: 'alice',
-                category: 'bug',
                 tags: ['critical'],
                 aiResponse: 'Previous analysis',
                 replies: [{ text: 'Agreed', author: 'bob', createdAt: '2024-01-02' }],
@@ -165,7 +164,6 @@ describe('buildDiffBatchResolvePrompt integration', () => {
         expect(prompt).toContain('`dc-1`');
         expect(prompt).toContain('`dc-2`');
         expect(prompt).toContain('alice');
-        expect(prompt).toContain('bug');
         expect(prompt).toContain('critical');
         expect(prompt).toContain('Previous analysis');
         expect(prompt).toContain('bob: Agreed');

@@ -101,9 +101,6 @@ export function buildDiffBatchResolvePrompt(
         if (author) {
             prompt += `- **Author**: ${author}\n`;
         }
-        if (c.category?.trim()) {
-            prompt += `- **Category**: ${c.category.trim()}\n`;
-        }
         if (Array.isArray(c.tags) && c.tags.length > 0) {
             const tags = c.tags.map(tag => tag.trim()).filter(Boolean);
             if (tags.length > 0) {
