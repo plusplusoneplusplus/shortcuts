@@ -246,10 +246,42 @@ describe('FileProcessStore.appendConversationTurn', () => {
             { filterStreaming: true },
         );
 
-        // The final assistant turn should recover turnIndex=3 from the removed streaming turn
-        expect(result!.turn.turnIndex).toBe(3);
+        // The stale streaming turnIndex=3 is discarded because a user turn at turnIndex=4
+        // was appended after it (cancel + new follow-up). Fallback = max(4, 4+1) = 5.
+        expect(result!.turn.turnIndex).toBe(5);
         // Streaming turn should be replaced, so 5 turns total: 4 non-streaming + 1 new
         expect(result!.allTurns).toHaveLength(5);
-        expect(result!.allTurns.map(t => t.turnIndex)).toEqual([0, 1, 2, 4, 3]);
+        expect(result!.allTurns.map(t => t.turnIndex)).toEqual([0, 1, 2, 4, 5]);
+    });
+
+    it('recovers stableTurnIndex when no user turn was appended after streaming turn', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        // Normal case: streaming assistant is the last turn, no new user turn after it
+        const p = makeProcess('p-normal-stable', {
+            conversationTurns: [
+                { role: 'user', content: 'q1', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'a1', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                { role: 'user', content: 'q2', timestamp: new Date(), turnIndex: 2, timeline: [] },
+                { role: 'assistant', content: 'streaming...', timestamp: new Date(), turnIndex: 3, timeline: [], streaming: true },
+            ],
+        });
+        await store.addProcess(p);
+
+        const result = await store.appendConversationTurn(
+            'p-normal-stable',
+            (idx) => ({
+                role: 'assistant',
+                content: 'final answer',
+                timestamp: new Date(),
+                turnIndex: idx,
+                timeline: [],
+            }),
+            { filterStreaming: true },
+        );
+
+        // stableTurnIndex=3 is valid (> maxExistingIndex=2), so it should be recovered
+        expect(result!.turn.turnIndex).toBe(3);
+        expect(result!.allTurns).toHaveLength(4);
+        expect(result!.allTurns.map(t => t.turnIndex)).toEqual([0, 1, 2, 3]);
     });
 });

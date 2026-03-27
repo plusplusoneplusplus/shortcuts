@@ -415,8 +415,15 @@ export function ProcessDetail() {
                     <div className="text-[#848484] text-sm">No conversation data available.</div>
                 ) : (
                     <div className="space-y-3" ref={turnsContainerRef}>
-                        {turns.map((turn, i) => (
-                            <ConversationTurnBubble key={i} turn={turn} processType={metadataProcess?.type} wsId={wsId ?? undefined} />
+                        {[...turns].sort((a, b) => {
+                            const ai = a.turnIndex;
+                            const bi = b.turnIndex;
+                            if (ai == null && bi == null) return 0;
+                            if (ai == null) return 1;
+                            if (bi == null) return -1;
+                            return ai - bi;
+                        }).map((turn, i) => (
+                            <ConversationTurnBubble key={turn.turnIndex ?? i} turn={turn} processType={metadataProcess?.type} wsId={wsId ?? undefined} />
                         ))}
                     </div>
                 )}

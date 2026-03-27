@@ -361,9 +361,21 @@ export class FileProcessStore implements ProcessStore {
                     }
                 }
                 turns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
+
+                // Guard: discard stale stableTurnIndex if a new user turn was appended
+                // after the streaming turn (cancel + new follow-up race condition).
+                if (stableTurnIndex !== undefined) {
+                    const maxExistingIndex = Math.max(...turns.map(t => t.turnIndex ?? -1));
+                    if (stableTurnIndex <= maxExistingIndex) {
+                        stableTurnIndex = undefined;
+                    }
+                }
             }
 
-            const turn = makeTurn(stableTurnIndex ?? turns.length);
+            const fallbackIndex = options?.filterStreaming
+                ? Math.max(turns.length, Math.max(...turns.map(t => t.turnIndex ?? -1)) + 1)
+                : turns.length;
+            const turn = makeTurn(stableTurnIndex ?? fallbackIndex);
             const allTurns = [...turns, turn];
 
             const extraUpdates = typeof options?.additionalUpdates === 'function'
