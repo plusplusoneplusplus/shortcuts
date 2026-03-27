@@ -156,6 +156,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             onNew={() => { setShowCreate(true); if (isMobile) setMobileShowDetail(true); }}
             loading={loading}
             onMove={handleMove}
+            onRefresh={fetchSchedules}
         />
     );
 

@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../hooks/useApi';
-import { SkillListItem } from '../../shared';
+import { Button, SkillListItem } from '../../shared';
 import type { SkillInfo } from '../../shared';
 
 
@@ -96,7 +96,12 @@ export function SkillsInstalledPanel() {
 
     return (
         <div className="p-3">
-            <div className="text-xs text-[#848484] mb-2">{skills.length} global skill(s) installed</div>
+            <div className="flex items-center justify-between mb-2">
+                <div className="text-xs text-[#848484]">{skills.length} global skill(s) installed</div>
+                <Button variant="ghost" size="sm" onClick={() => { loadSkills(); loadConfig(); }} disabled={loading} title="Refresh Installed Skills" data-testid="skills-installed-refresh-btn">
+                    <span className={loading ? 'inline-block animate-spin' : 'inline-block'}>↻</span> Refresh
+                </Button>
+            </div>
             <ul className="flex flex-col gap-2">
                 {skills.map(skill => (
                     <SkillListItem

@@ -871,7 +871,10 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
                         expanded={workflowsExpanded}
                         onToggle={() => setWorkflowsExpanded(v => !v)}
                         actionButton={
-                            <Button variant="secondary" size="sm" onClick={() => setShowAddDialog(true)}>+ New</Button>
+                            <div className="flex items-center gap-1">
+                                <Button variant="ghost" size="sm" onClick={fetchTemplates} title="Refresh Workflows" data-testid="workflows-refresh-btn">↻</Button>
+                                <Button variant="secondary" size="sm" onClick={() => setShowAddDialog(true)}>+ New</Button>
+                            </div>
                         }
                         testId="workflows-section"
                     >
@@ -918,14 +921,17 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
                         expanded={templatesExpanded}
                         onToggle={() => setTemplatesExpanded(v => !v)}
                         actionButton={
-                            <Button size="sm" onClick={() => {
-                                dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
-                                setShowTemplateCreate(true);
-                                setEditingTemplateName(null);
-                                setSelectedTemplateName(null);
-                            }} data-testid="templates-new-btn">
-                                + New
-                            </Button>
+                            <div className="flex items-center gap-1">
+                                <Button variant="ghost" size="sm" onClick={fetchTemplates} title="Refresh Templates" data-testid="templates-refresh-btn">↻</Button>
+                                <Button size="sm" onClick={() => {
+                                    dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+                                    setShowTemplateCreate(true);
+                                    setEditingTemplateName(null);
+                                    setSelectedTemplateName(null);
+                                }} data-testid="templates-new-btn">
+                                    + New
+                                </Button>
+                            </div>
                         }
                         testId="templates-section"
                     >

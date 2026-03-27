@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../hooks/useApi';
+import { Button } from '../../shared';
 
 interface BundledSkill {
     name: string;
@@ -121,6 +122,11 @@ export function SkillsBundledPanel() {
 
     return (
         <div className="p-3 flex flex-col gap-4">
+            <div className="flex items-center justify-end">
+                <Button variant="ghost" size="sm" onClick={loadBundled} disabled={loading} title="Refresh Gallery" data-testid="skills-gallery-refresh-btn">
+                    <span className={loading ? 'inline-block animate-spin' : 'inline-block'}>↻</span> Refresh
+                </Button>
+            </div>
             {/* Source toggle */}
             <div className="flex items-center gap-2">
                 <button

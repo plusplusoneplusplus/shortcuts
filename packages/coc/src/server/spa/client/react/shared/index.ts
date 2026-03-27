@@ -40,3 +40,5 @@ export { SkillListItem } from './SkillListItem';
 export type { SkillListItemProps } from './SkillListItem';
 export { RichTextInput } from './RichTextInput';
 export type { RichTextInputProps, RichTextInputHandle } from './RichTextInput';
+export { SectionHeader } from './SectionHeader';
+export type { SectionHeaderProps } from './SectionHeader';

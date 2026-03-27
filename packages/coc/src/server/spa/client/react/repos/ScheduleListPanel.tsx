@@ -11,6 +11,7 @@ interface ScheduleListPanelProps {
     onNew: () => void;
     loading: boolean;
     onMove?: (scheduleId: string, destination: 'user' | 'repo') => Promise<void>;
+    onRefresh?: () => void;
 }
 
 function ScheduleItem({ schedule, isActive, onSelect, onDragStart }: { schedule: Schedule; isActive: boolean; onSelect: (id: string) => void; onDragStart?: (e: React.DragEvent, schedule: Schedule) => void }) {
@@ -66,7 +67,7 @@ function ScheduleItem({ schedule, isActive, onSelect, onDragStart }: { schedule:
     );
 }
 
-export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, loading: _loading, onMove }: ScheduleListPanelProps) {
+export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, loading: _loading, onMove, onRefresh }: ScheduleListPanelProps) {
     const [userCollapsed, setUserCollapsed] = useState(false);
     const [repoCollapsed, setRepoCollapsed] = useState(false);
     const [dropTarget, setDropTarget] = useState<'user' | 'repo' | null>(null);
@@ -127,9 +128,16 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
                     <span>{userCollapsed ? '▶' : '▼'}</span>
                     MY SCHEDULES{userSchedules.length > 0 ? ` (${userSchedules.length})` : ''}
                 </button>
-                <Button variant="primary" size="sm" onClick={onNew} data-testid="new-schedule-btn">
-                    + New
-                </Button>
+                <div className="flex items-center gap-1">
+                    {onRefresh && (
+                        <Button variant="ghost" size="sm" onClick={onRefresh} title="Refresh Schedules" data-testid="schedules-refresh-btn">
+                            ↻
+                        </Button>
+                    )}
+                    <Button variant="primary" size="sm" onClick={onNew} data-testid="new-schedule-btn">
+                        + New
+                    </Button>
+                </div>
             </div>
 
             {!userCollapsed && (

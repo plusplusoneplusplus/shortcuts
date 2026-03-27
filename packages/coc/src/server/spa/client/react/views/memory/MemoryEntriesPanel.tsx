@@ -93,6 +93,16 @@ export function MemoryEntriesPanel() {
         <div className="p-4 space-y-4">
             {/* Search and tag filter */}
             <div className="flex gap-2 flex-wrap">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => fetchEntries(searchQuery, tagFilter, page)}
+                    disabled={loading}
+                    title="Refresh Memory Entries"
+                    data-testid="memory-entries-refresh-btn"
+                >
+                    <span className={loading ? 'inline-block animate-spin' : 'inline-block'}>↻</span> Refresh
+                </Button>
                 <input
                     type="text"
                     placeholder="Search entries…"

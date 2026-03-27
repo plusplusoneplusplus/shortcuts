@@ -126,4 +126,31 @@ describe('SkillsInstalledPanel', () => {
         // Delete confirm prompt should be gone
         expect(screen.getByTestId('skills-installed-delete-btn-my-skill')).toBeTruthy();
     });
+
+    it('renders refresh button', async () => {
+        (fetchApi as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce({ skills: [makeSkill('s1')] })
+            .mockResolvedValueOnce({ globalDisabledSkills: [] });
+        render(<SkillsInstalledPanel />);
+        await waitFor(() => {
+            expect(screen.getByTestId('skills-installed-refresh-btn')).toBeTruthy();
+        });
+    });
+
+    it('calls loadSkills and loadConfig when refresh button is clicked', async () => {
+        (fetchApi as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce({ skills: [makeSkill('s1')] })
+            .mockResolvedValueOnce({ globalDisabledSkills: [] })
+            .mockResolvedValueOnce({ skills: [makeSkill('s1'), makeSkill('s2')] })
+            .mockResolvedValueOnce({ globalDisabledSkills: [] });
+        render(<SkillsInstalledPanel />);
+        await waitFor(() => {
+            expect(screen.getByTestId('skills-installed-refresh-btn')).toBeTruthy();
+        });
+        const callsBefore = (fetchApi as ReturnType<typeof vi.fn>).mock.calls.length;
+        fireEvent.click(screen.getByTestId('skills-installed-refresh-btn'));
+        await waitFor(() => {
+            expect((fetchApi as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsBefore);
+        });
+    });
 });

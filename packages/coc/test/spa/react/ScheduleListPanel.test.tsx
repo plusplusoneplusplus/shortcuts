@@ -169,4 +169,39 @@ describe('ScheduleListPanel — two-section UI', () => {
         renderPanel([USER_SCHEDULE]);
         expect(screen.getByText('No repo schedules found.')).toBeTruthy();
     });
+
+    it('renders refresh button when onRefresh is provided', () => {
+        const onRefresh = vi.fn();
+        render(
+            <Wrap>
+                <ScheduleListPanel
+                    schedules={[USER_SCHEDULE]}
+                    selectedId={null}
+                    onSelect={vi.fn()}
+                    onNew={vi.fn()}
+                    loading={false}
+                    onRefresh={onRefresh}
+                />
+            </Wrap>
+        );
+        expect(screen.getByTestId('schedules-refresh-btn')).toBeTruthy();
+    });
+
+    it('calls onRefresh when refresh button is clicked', () => {
+        const onRefresh = vi.fn();
+        render(
+            <Wrap>
+                <ScheduleListPanel
+                    schedules={[USER_SCHEDULE]}
+                    selectedId={null}
+                    onSelect={vi.fn()}
+                    onNew={vi.fn()}
+                    loading={false}
+                    onRefresh={onRefresh}
+                />
+            </Wrap>
+        );
+        fireEvent.click(screen.getByTestId('schedules-refresh-btn'));
+        expect(onRefresh).toHaveBeenCalled();
+    });
 });

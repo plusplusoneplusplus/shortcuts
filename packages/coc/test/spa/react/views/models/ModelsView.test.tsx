@@ -183,4 +183,18 @@ describe('ModelsView', () => {
         render(<ModelsView />);
         expect(screen.getByTestId('models-enabled-count').textContent).toContain('…');
     });
+
+    it('renders a refresh button', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn());
+        render(<ModelsView />);
+        expect(screen.getByTestId('models-refresh-btn')).toBeTruthy();
+    });
+
+    it('calls reload when refresh button is clicked', () => {
+        const reload = vi.fn();
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ reload }));
+        render(<ModelsView />);
+        fireEvent.click(screen.getByTestId('models-refresh-btn'));
+        expect(reload).toHaveBeenCalled();
+    });
 });

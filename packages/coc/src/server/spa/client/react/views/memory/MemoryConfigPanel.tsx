@@ -2,7 +2,7 @@
  * MemoryConfigPanel — view and save memory storage configuration.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../utils/config';
 import { Button, Card, Spinner } from '../../shared';
 import { ExploreCachePanel } from './ExploreCachePanel';
@@ -32,12 +32,12 @@ export function MemoryConfigPanel() {
     const [autoInject, setAutoInject] = useState(false);
     const [recordingEnabled, setRecordingEnabled] = useState(false);
 
-    useEffect(() => {
-        let cancelled = false;
+    const fetchConfig = useCallback(() => {
+        setLoading(true);
+        setError(null);
         fetch(`${getApiBase()}/memory/config`)
             .then(r => r.json())
             .then((data: MemoryConfig) => {
-                if (cancelled) return;
                 setConfig(data);
                 setStorageDir(data.storageDir);
                 setBackend(data.backend);
@@ -47,11 +47,14 @@ export function MemoryConfigPanel() {
                 setRecordingEnabled(data.recording?.enabled ?? false);
             })
             .catch(err => {
-                if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+                setError(err instanceof Error ? err.message : String(err));
             })
-            .finally(() => { if (!cancelled) setLoading(false); });
-        return () => { cancelled = true; };
+            .finally(() => setLoading(false));
     }, []);
+
+    useEffect(() => {
+        fetchConfig();
+    }, [fetchConfig]);
 
     const handleSave = async () => {
         setSaving(true);
@@ -96,6 +99,12 @@ export function MemoryConfigPanel() {
     return (
         <div className="p-4 max-w-xl space-y-4">
             <Card className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Memory Configuration</span>
+                    <Button variant="ghost" size="sm" onClick={fetchConfig} disabled={loading} title="Refresh Memory Config" data-testid="memory-config-refresh-btn">
+                        <span className={loading ? 'inline-block animate-spin' : 'inline-block'}>↻</span> Refresh
+                    </Button>
+                </div>
                 {/* Storage location */}
                 <div className="space-y-1">
                     <label className="block text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">

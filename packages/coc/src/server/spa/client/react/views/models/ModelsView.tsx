@@ -3,6 +3,7 @@
  */
 import React, { useState, useMemo } from 'react';
 import { useModelConfig, type ModelInfo } from '../../hooks/useModels';
+import { Button } from '../../shared';
 
 type CapFilter = 'all' | 'vision' | 'reasoning';
 
@@ -146,6 +147,9 @@ export function ModelsView() {
                 </select>
                 <span className="text-xs text-[#888] whitespace-nowrap" data-testid="models-count">{filtered.length} model{filtered.length !== 1 ? 's' : ''}</span>
                 <span className="text-xs text-[#888] whitespace-nowrap" data-testid="models-enabled-count">{enabledCount} of {models.length} enabled{saving ? ' …' : ''}</span>
+                <Button variant="ghost" size="sm" onClick={reload} title="Refresh Models" data-testid="models-refresh-btn">
+                    ↻ Refresh
+                </Button>
             </div>
 
             {filtered.length === 0 ? (

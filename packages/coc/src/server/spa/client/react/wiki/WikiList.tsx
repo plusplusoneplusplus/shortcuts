@@ -79,6 +79,14 @@ export function WikiList() {
     const [addOpen, setAddOpen] = useState(false);
     const [editWiki, setEditWiki] = useState<WikiData | null>(null);
     const [deleteWiki, setDeleteWiki] = useState<WikiData | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const handleRefresh = useCallback(() => {
+        setRefreshing(true);
+        reload();
+        // reload is sync/void in useWiki — clear after short delay
+        setTimeout(() => setRefreshing(false), 600);
+    }, [reload]);
 
     const selectWiki = useCallback((wikiId: string) => {
         const savedTab = state.wikiTabState[wikiId];
@@ -108,7 +116,12 @@ export function WikiList() {
         <div className="p-4 space-y-4" id="view-wiki">
             <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Wikis</h2>
-                <Button size="sm" id="wiki-list-add-btn" onClick={() => setAddOpen(true)}>+ Add Wiki</Button>
+                <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={refreshing} title="Refresh Wikis" data-testid="wiki-list-refresh-btn">
+                        <span className={cn(refreshing && 'animate-spin')}>↻</span> Refresh
+                    </Button>
+                    <Button size="sm" id="wiki-list-add-btn" onClick={() => setAddOpen(true)}>+ Add Wiki</Button>
+                </div>
             </div>
 
             {wikis.length === 0 ? (

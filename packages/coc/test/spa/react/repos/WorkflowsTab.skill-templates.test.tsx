@@ -221,4 +221,23 @@ describe('AI Chat Templates section', () => {
         // The right panel shows skill template detail, not a workflow — confirming dispatch happened
         expect(screen.queryByTestId('templates-empty-detail')).toBeNull();
     });
+
+    it('renders workflows refresh button', async () => {
+        await renderWorkflowsTab();
+        expect(screen.getByTestId('workflows-refresh-btn')).toBeTruthy();
+    });
+
+    it('renders templates refresh button', async () => {
+        await renderWorkflowsTab();
+        expect(screen.getByTestId('templates-refresh-btn')).toBeTruthy();
+    });
+
+    it('clicking templates refresh calls fetchApi for templates', async () => {
+        await renderWorkflowsTab();
+        const callsBefore = mockFetchApi.mock.calls.length;
+        fireEvent.click(screen.getByTestId('templates-refresh-btn'));
+        await waitFor(() => {
+            expect(mockFetchApi.mock.calls.length).toBeGreaterThan(callsBefore);
+        });
+    });
 });

@@ -102,4 +102,18 @@ describe('WikiList', () => {
             expect.objectContaining({ type: 'SELECT_WIKI', wikiId: 'wiki-1' })
         );
     });
+
+    it('renders a refresh button', () => {
+        (useWiki as ReturnType<typeof vi.fn>).mockReturnValue({ wikis: [makeWiki()], reload: vi.fn() });
+        render(<WikiList />);
+        expect(screen.getByTestId('wiki-list-refresh-btn')).toBeTruthy();
+    });
+
+    it('calls reload when refresh button is clicked', () => {
+        const reload = vi.fn();
+        (useWiki as ReturnType<typeof vi.fn>).mockReturnValue({ wikis: [makeWiki()], reload });
+        render(<WikiList />);
+        fireEvent.click(screen.getByTestId('wiki-list-refresh-btn'));
+        expect(reload).toHaveBeenCalled();
+    });
 });

@@ -164,4 +164,32 @@ describe('MemoryEntriesPanel', () => {
             expect(hasQuery).toBe(true);
         });
     });
+
+    it('renders a refresh button', async () => {
+        (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve(makeListResponse([makeEntry('e1')])),
+        });
+        render(<MemoryEntriesPanel />);
+        await waitFor(() => {
+            expect(screen.getByTestId('memory-entries-refresh-btn')).toBeTruthy();
+        });
+    });
+
+    it('calls fetch again when refresh button is clicked', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve(makeListResponse([makeEntry('e1')])),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+        render(<MemoryEntriesPanel />);
+        await waitFor(() => {
+            expect(screen.getByTestId('memory-entries-refresh-btn')).toBeTruthy();
+        });
+        const callsBefore = mockFetch.mock.calls.length;
+        fireEvent.click(screen.getByTestId('memory-entries-refresh-btn'));
+        await waitFor(() => {
+            expect(mockFetch.mock.calls.length).toBeGreaterThan(callsBefore);
+        });
+    });
 });
