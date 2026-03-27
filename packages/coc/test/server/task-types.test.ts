@@ -14,6 +14,7 @@ import {
     isRunScriptPayload,
     hasTaskGenerationContext,
     hasResolveCommentsContext,
+    hasResolveDiffCommentsContext,
     hasReplicationContext,
 } from '../../src/server/task-types';
 import type {
@@ -201,6 +202,35 @@ describe('hasResolveCommentsContext', () => {
 });
 
 // ============================================================================
+// hasResolveDiffCommentsContext
+// ============================================================================
+
+describe('hasResolveDiffCommentsContext', () => {
+    it('returns true for chat payload with context.resolveDiffComments', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'Resolve diff',
+            context: { resolveDiffComments: { storageKey: 'abc', commentIds: ['c1'], diffContent: 'diff', filePath: '/f', wsId: 'ws1' } },
+        };
+        expect(hasResolveDiffCommentsContext(payload)).toBe(true);
+    });
+
+    it('returns false for chat payload without resolveDiffComments', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello' };
+        expect(hasResolveDiffCommentsContext(payload)).toBe(false);
+    });
+
+    it('returns false for non-chat payload', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'run-script',
+            script: 'echo',
+            context: { resolveDiffComments: { storageKey: 'abc', commentIds: ['c1'], diffContent: 'diff', filePath: '/f', wsId: 'ws1' } },
+        };
+        expect(hasResolveDiffCommentsContext(payload)).toBe(false);
+    });
+});
+
+// ============================================================================
 // hasReplicationContext
 // ============================================================================
 
@@ -281,6 +311,11 @@ describe('type narrowing', () => {
             prompt: 'resolve',
             context: { resolveComments: { documentUri: '/d', commentIds: ['c1'], documentContent: 'x', filePath: '/f' } },
         };
+        const resolveDiffPayload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'resolve diff',
+            context: { resolveDiffComments: { storageKey: 'abc', commentIds: ['c1'], diffContent: 'diff', filePath: '/f', wsId: 'ws1' } },
+        };
         const replicatePayload: Record<string, unknown> = {
             kind: 'chat',
             prompt: 'replicate',
@@ -289,14 +324,22 @@ describe('type narrowing', () => {
 
         expect(hasTaskGenerationContext(taskGenPayload)).toBe(true);
         expect(hasResolveCommentsContext(taskGenPayload)).toBe(false);
+        expect(hasResolveDiffCommentsContext(taskGenPayload)).toBe(false);
         expect(hasReplicationContext(taskGenPayload)).toBe(false);
 
         expect(hasResolveCommentsContext(resolvePayload)).toBe(true);
         expect(hasTaskGenerationContext(resolvePayload)).toBe(false);
+        expect(hasResolveDiffCommentsContext(resolvePayload)).toBe(false);
         expect(hasReplicationContext(resolvePayload)).toBe(false);
+
+        expect(hasResolveDiffCommentsContext(resolveDiffPayload)).toBe(true);
+        expect(hasTaskGenerationContext(resolveDiffPayload)).toBe(false);
+        expect(hasResolveCommentsContext(resolveDiffPayload)).toBe(false);
+        expect(hasReplicationContext(resolveDiffPayload)).toBe(false);
 
         expect(hasReplicationContext(replicatePayload)).toBe(true);
         expect(hasTaskGenerationContext(replicatePayload)).toBe(false);
         expect(hasResolveCommentsContext(replicatePayload)).toBe(false);
+        expect(hasResolveDiffCommentsContext(replicatePayload)).toBe(false);
     });
 });
