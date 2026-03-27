@@ -49,6 +49,9 @@ export interface UseDiffCommentsReturn {
     resolveComment: (id: string) => Promise<DiffComment>;
     unresolveComment: (id: string) => Promise<DiffComment>;
     askAI: (id: string, options?: AskAIOptions) => Promise<void>;
+    resolveWithAI: (diffContent: string) => Promise<{ totalCount: number }>;
+    fixWithAI: (id: string, diffContent: string) => Promise<void>;
+    copyResolvePrompt: (diffContent: string) => void;
     aiLoadingIds: Set<string>;
     aiErrors: Map<string, string>;
     clearAiError: (id: string) => void;
@@ -396,6 +399,110 @@ export function useDiffComments(
     }, []); // commentsRef and contextRef are always up-to-date
 
     // ------------------------------------------------------------------
+    // resolveWithAI — batch resolve all open comments via AI
+    // ------------------------------------------------------------------
+
+    const resolveWithAI = useCallback(async (diffContent: string): Promise<{ totalCount: number }> => {
+        const ctx = contextRef.current;
+        if (!ctx) throw new Error('No diff context');
+        setResolving(true);
+        try {
+            const response = await fetch(
+                `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}/batch-resolve`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ context: ctx, diffContent }),
+                }
+            );
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || 'Batch resolve failed');
+            }
+            const data = await response.json();
+            if (data.taskId) {
+                await pollTaskResult(data.taskId as string);
+            }
+            await fetchComments();
+            return { totalCount: data.totalCount ?? 0 };
+        } finally {
+            if (mountedRef.current) setResolving(false);
+        }
+    }, [wsId, fetchComments]);
+
+    // ------------------------------------------------------------------
+    // fixWithAI — resolve a single comment via AI
+    // ------------------------------------------------------------------
+
+    const fixWithAI = useCallback(async (id: string, diffContent: string): Promise<void> => {
+        const ctx = contextRef.current;
+        if (!ctx) return;
+        setAiLoadingIds(prev => new Set(prev).add(id));
+        setResolvingCommentId(id);
+        try {
+            const storageKey = await computeStorageKey(ctx);
+            const url = buildDiffCommentUrl(wsId, storageKey, id) + '/ask-ai';
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ commandId: 'resolve', diffContent }),
+            });
+            if (!response.ok) throw new Error('Fix with AI failed');
+            const data = await response.json();
+            if (data.taskId) {
+                await pollTaskResult(data.taskId as string);
+            }
+            await fetchComments();
+        } catch (err) {
+            if (mountedRef.current) {
+                const msg = err instanceof Error ? err.message : 'Fix with AI failed';
+                setAiErrors(prev => new Map(prev).set(id, msg));
+            }
+        } finally {
+            if (mountedRef.current) {
+                setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+                setResolvingCommentId(null);
+            }
+        }
+    }, [wsId, fetchComments]);
+
+    // ------------------------------------------------------------------
+    // copyResolvePrompt — copy a resolve prompt to clipboard
+    // ------------------------------------------------------------------
+
+    const copyResolvePrompt = useCallback((diffContent: string): void => {
+        const ctx = contextRef.current;
+        if (!commentsRef.current.length || !ctx) return;
+
+        const openComments = commentsRef.current.filter(c => c.status === 'open');
+        if (openComments.length === 0) return;
+
+        const commentsBlock = openComments
+            .map((c, i) =>
+                `### Comment ${i + 1} (id: ${c.id})\n` +
+                `- **Selected Text**: "${c.selectedText}"\n` +
+                `- **Comment**: "${c.comment}"`
+            )
+            .join('\n\n');
+
+        const refRange = ctx.newRef === 'working-tree'
+            ? `working tree changes`
+            : `${ctx.oldRef} → ${ctx.newRef}`;
+
+        const prompt =
+            `# Diff Comment Resolution Request\n\n` +
+            `File: \`${ctx.filePath}\` (${refRange})\n\n` +
+            `## Diff Content\n\n\`\`\`diff\n${diffContent}\n\`\`\`\n\n` +
+            `## Open Comments\n\n${commentsBlock}\n\n` +
+            `## Instructions\n\n` +
+            `1. Analyze each comment in the context of the diff.\n` +
+            `2. For each comment, explain whether the code change is correct or what improvement could be made.\n` +
+            `3. Call \`resolve_comment(commentId, summary)\` for each addressed comment.\n`;
+
+        void navigator.clipboard.writeText(prompt);
+    }, []);
+
+    // ------------------------------------------------------------------
     // refresh
     // ------------------------------------------------------------------
 
@@ -441,6 +548,9 @@ export function useDiffComments(
         resolveComment,
         unresolveComment,
         askAI,
+        resolveWithAI,
+        fixWithAI,
+        copyResolvePrompt,
         aiLoadingIds,
         aiErrors,
         clearAiError,
