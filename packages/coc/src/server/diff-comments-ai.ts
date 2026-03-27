@@ -55,3 +55,81 @@ export function buildDiffAIPrompt(comment: DiffComment, question: string): strin
 
 /** Re-export DEFAULT_AI_COMMANDS so the handler doesn't need a separate forge import for it. */
 export { DEFAULT_AI_COMMANDS };
+
+/**
+ * Build a batch-resolve prompt for diff comments.
+ *
+ * Unlike task-comment resolve (which asks AI to output a revised document),
+ * diff-comment resolve asks AI only for analysis/summary per comment.
+ * The AI calls `resolve_comment(id, summary)` for each addressed comment.
+ */
+export function buildDiffBatchResolvePrompt(
+    comments: DiffComment[],
+    diffContent: string,
+    filePath: string,
+    oldRef: string,
+    newRef: string,
+): string {
+    const openComments = comments
+        .filter(c => c.status === 'open')
+        .sort((a, b) => (a.selection?.diffLineStart ?? 0) - (b.selection?.diffLineStart ?? 0));
+
+    if (openComments.length === 0) {
+        return '';
+    }
+
+    let prompt = '# Diff Comment Resolution Request\n\n';
+    prompt += `You are reviewing comments on a code diff for file \`${filePath}\` (${oldRef} → ${newRef}).\n\n`;
+
+    prompt += '## Diff Content\n\n';
+    prompt += '```diff\n';
+    prompt += diffContent;
+    prompt += '\n```\n\n';
+
+    prompt += '## Open Comments\n\n';
+
+    openComments.forEach((c, i) => {
+        prompt += `### Comment ${i + 1}`;
+        if (c.selection?.diffLineStart != null) {
+            prompt += ` (Diff line ${c.selection.diffLineStart})`;
+        }
+        prompt += '\n\n';
+        prompt += `- **ID**: \`${c.id}\`\n`;
+        prompt += `- **Selected Text**: "${c.selectedText}"\n`;
+        prompt += `- **Comment**: "${c.comment}"\n`;
+        const author = c.author?.trim();
+        if (author) {
+            prompt += `- **Author**: ${author}\n`;
+        }
+        if (c.category?.trim()) {
+            prompt += `- **Category**: ${c.category.trim()}\n`;
+        }
+        if (Array.isArray(c.tags) && c.tags.length > 0) {
+            const tags = c.tags.map(tag => tag.trim()).filter(Boolean);
+            if (tags.length > 0) {
+                prompt += `- **Tags**: ${tags.join(', ')}\n`;
+            }
+        }
+        if (c.aiResponse?.trim()) {
+            prompt += `- **Previous AI Response**: ${c.aiResponse}\n`;
+        }
+        if (Array.isArray(c.replies) && c.replies.length > 0) {
+            const replies = c.replies
+                .filter(reply => reply.text?.trim())
+                .map(reply => `${reply.author || 'Anonymous'}: ${reply.text}`);
+            if (replies.length > 0) {
+                prompt += `- **Replies**:\n`;
+                replies.forEach(r => { prompt += `  > ${r}\n`; });
+            }
+        }
+        prompt += '\n';
+    });
+
+    prompt += '## Instructions\n\n';
+    prompt += '1. Analyze each comment in the context of the diff shown above.\n';
+    prompt += '2. For each comment you can address, explain whether the code change is correct, what improvement could be made, or why the concern is already handled.\n';
+    prompt += '3. Call `resolve_comment(commentId, summary)` for each comment you address.\n';
+    prompt += '4. Do NOT call `resolve_comment` for comments you cannot address.\n';
+
+    return prompt;
+}
