@@ -471,4 +471,180 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             sendJSON(res, 200, { hash: result.hash });
         },
     });
+
+    // ------------------------------------------------------------------
+    // Repo state (merge/rebase/cherry-pick detection)
+    // ------------------------------------------------------------------
+
+    // GET /api/workspaces/:id/git/repo-state — Detect in-progress operations
+    routes.push({
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/repo-state$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const repoState = branchService.getRepoState(ws.rootPath);
+            sendJSON(res, 200, repoState);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // Rebase continue / abort
+    // ------------------------------------------------------------------
+
+    // POST /api/workspaces/:id/git/rebase-continue
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/rebase-continue$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            const jobId = `rebase-continue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const job: GitOpJob = {
+                id: jobId, workspaceId: id, op: 'rebase-continue',
+                status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
+            };
+            await gitOpsStore.create(job);
+            sendJSON(res, 202, { jobId });
+
+            branchService.rebaseContinue(ws.rootPath).then(async (result) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: result.success ? 'success' : 'failed',
+                    finishedAt: new Date().toISOString(), error: result.error,
+                });
+                gitCache.invalidateMutable(id);
+                getWsServer?.()?.broadcastGitChanged(id, 'rebase-continue');
+            }).catch(async (err) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: 'failed', finishedAt: new Date().toISOString(),
+                    error: err instanceof Error ? err.message : 'Unknown error',
+                });
+                getWsServer?.()?.broadcastGitChanged(id, 'rebase-continue');
+            });
+        },
+    });
+
+    // POST /api/workspaces/:id/git/rebase-abort
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/rebase-abort$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+            const result = await branchService.rebaseAbort(ws.rootPath);
+            if (!result.success) {
+                return handleAPIError(res, badRequest(result.error || 'Failed to abort rebase'));
+            }
+            gitCache.invalidateMutable(id);
+            getWsServer?.()?.broadcastGitChanged(id, 'rebase-abort');
+            sendJSON(res, 200, { success: true });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // Merge continue / abort
+    // ------------------------------------------------------------------
+
+    // POST /api/workspaces/:id/git/merge-continue
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/merge-continue$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            const jobId = `merge-continue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const job: GitOpJob = {
+                id: jobId, workspaceId: id, op: 'merge-continue',
+                status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
+            };
+            await gitOpsStore.create(job);
+            sendJSON(res, 202, { jobId });
+
+            branchService.mergeContinue(ws.rootPath).then(async (result) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: result.success ? 'success' : 'failed',
+                    finishedAt: new Date().toISOString(), error: result.error,
+                });
+                gitCache.invalidateMutable(id);
+                getWsServer?.()?.broadcastGitChanged(id, 'merge-continue');
+            }).catch(async (err) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: 'failed', finishedAt: new Date().toISOString(),
+                    error: err instanceof Error ? err.message : 'Unknown error',
+                });
+                getWsServer?.()?.broadcastGitChanged(id, 'merge-continue');
+            });
+        },
+    });
+
+    // POST /api/workspaces/:id/git/merge-abort
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/merge-abort$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+            const result = await branchService.mergeAbort(ws.rootPath);
+            if (!result.success) {
+                return handleAPIError(res, badRequest(result.error || 'Failed to abort merge'));
+            }
+            gitCache.invalidateMutable(id);
+            getWsServer?.()?.broadcastGitChanged(id, 'merge-abort');
+            sendJSON(res, 200, { success: true });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // Rebase reorder (drag-and-drop commit reorder)
+    // ------------------------------------------------------------------
+
+    // POST /api/workspaces/:id/git/rebase-reorder
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/rebase-reorder$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            if (!Array.isArray(body.commits) || body.commits.length === 0) {
+                return handleAPIError(res, missingFields(['commits']));
+            }
+
+            const running = await gitOpsStore.getRunning(id, 'rebase-reorder');
+            if (running.length > 0) {
+                return handleAPIError(res, conflict('A rebase-reorder operation is already running'));
+            }
+
+            const jobId = `rebase-reorder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const job: GitOpJob = {
+                id: jobId, workspaceId: id, op: 'rebase-reorder',
+                status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
+            };
+            await gitOpsStore.create(job);
+            sendJSON(res, 202, { jobId });
+
+            branchService.rebaseReorder(ws.rootPath, body.commits).then(async (result) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: result.success ? 'success' : 'failed',
+                    finishedAt: new Date().toISOString(), error: result.error,
+                });
+                gitCache.invalidateMutable(id);
+                getWsServer?.()?.broadcastGitChanged(id, 'rebase-reorder');
+            }).catch(async (err) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: 'failed', finishedAt: new Date().toISOString(),
+                    error: err instanceof Error ? err.message : 'Unknown error',
+                });
+                getWsServer?.()?.broadcastGitChanged(id, 'rebase-reorder');
+            });
+        },
+    });
 }

@@ -6,7 +6,7 @@
  */
 
 import * as url from 'url';
-import { WorkingTreeService } from '@plusplusoneplusplus/forge';
+import { WorkingTreeService, BranchService } from '@plusplusoneplusplus/forge';
 import { sendJSON } from '../api-handler';
 import { handleAPIError, missingFields } from '../errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
@@ -15,8 +15,9 @@ import type { ApiRouteContext } from './api-shared';
 export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     const { routes, store, getWsServer } = ctx;
     const workingTreeService = new WorkingTreeService();
+    const branchService = new BranchService();
 
-    // GET /api/workspaces/:id/git/changes — All working-tree changes
+    // GET /api/workspaces/:id/git/changes — All working-tree changes + repo state
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes$/,
@@ -25,7 +26,8 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
 
             const changes = await workingTreeService.getAllChanges(ws.rootPath);
-            sendJSON(res, 200, { changes });
+            const repoState = branchService.getRepoState(ws.rootPath);
+            sendJSON(res, 200, { changes, repoState });
         },
     });
 

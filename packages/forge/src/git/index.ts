@@ -20,6 +20,8 @@ export {
     BranchListOptions,
     PaginatedBranchResult,
     GitOperationResult,
+    RepoOperationType,
+    RepoState,
 } from './types';
 
 export {

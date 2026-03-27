@@ -59,9 +59,13 @@ interface CommitListProps {
     showEmpty?: boolean;
     emptyMessage?: string;
     unpushedCount?: number;
+    /** Enable drag-and-drop reordering for unpushed commits. */
+    reorderable?: boolean;
+    /** Called when commits are reordered via drag-and-drop. Receives new order (display order). */
+    onReorder?: (newOrder: GitCommitItem[]) => void;
 }
 
-export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     const [anchorHash, setAnchorHash] = useState<string | null>(null);
@@ -77,7 +81,11 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Fetch active comment counts for the currently expanded commit
+    // Drag-and-drop reorder state
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+    // Fetch active comment countsfor the currently expanded commit
     const commentCounts = useFileCommentCounts(
         workspaceId ?? '',
         expandedHash ? `${expandedHash}^` : null,
@@ -258,6 +266,45 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
         setTooltipAnchorRect(null);
     }, []);
 
+    // Drag-and-drop handlers for commit reordering
+    const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+        setDragIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(index));
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDragOverIndex(index);
+    }, []);
+
+    const handleDragEnd = useCallback(() => {
+        setDragIndex(null);
+        setDragOverIndex(null);
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent, dropIndex: number) => {
+        e.preventDefault();
+        if (dragIndex === null || dragIndex === dropIndex) {
+            setDragIndex(null);
+            setDragOverIndex(null);
+            return;
+        }
+        // Only reorder within unpushed commits
+        if (dragIndex >= unpushedCount || dropIndex >= unpushedCount) {
+            setDragIndex(null);
+            setDragOverIndex(null);
+            return;
+        }
+        const newCommits = [...commits];
+        const [moved] = newCommits.splice(dragIndex, 1);
+        newCommits.splice(dropIndex, 0, moved);
+        onReorder?.(newCommits);
+        setDragIndex(null);
+        setDragOverIndex(null);
+    }, [dragIndex, commits, unpushedCount, onReorder]);
+
     // Dismiss tooltip on touch start (handles hybrid devices that switch from mouse to touch)
     useEffect(() => {
         const onTouchStart = () => {
@@ -321,8 +368,18 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                         const isFilesLoading = filesLoading === commit.hash;
                         const isUnpushed = unpushedCount > 0 && index < unpushedCount;
                         const showSeparator = unpushedCount > 0 && index === unpushedCount;
+                        const canDrag = reorderable && isUnpushed;
+                        const isDragOver = dragOverIndex === index && dragIndex !== index;
                         return (
-                            <div key={commit.hash}>
+                            <div
+                                key={commit.hash}
+                                draggable={canDrag}
+                                onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
+                                onDragOver={canDrag ? (e) => handleDragOver(e, index) : undefined}
+                                onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
+                                onDragEnd={canDrag ? handleDragEnd : undefined}
+                                className={dragIndex === index ? 'opacity-40' : isDragOver ? 'border-t-2 border-t-[#007acc]' : ''}
+                            >
                                 {showSeparator && (
                                     <div
                                         className="px-3 py-1 text-[11px] text-[#f57c00] dark:text-[#ffb74d] border-b border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fff8f0] dark:bg-[#2a1f00] flex items-center gap-1"
@@ -343,6 +400,9 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                     onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
                                     data-testid={`commit-row-${commit.shortHash}`}
                                 >
+                                    {canDrag && (
+                                        <span className="text-[10px] mt-0.5 flex-shrink-0 cursor-grab text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]" title="Drag to reorder">⠿</span>
+                                    )}
                                     <span className="text-[10px] mt-0.5 flex-shrink-0">{isUnpushed ? '●' : '○'}</span>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-start gap-2">

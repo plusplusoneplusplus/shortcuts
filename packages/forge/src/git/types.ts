@@ -258,3 +258,13 @@ export interface GitOperationResult {
     success: boolean;
     error?: string;
 }
+
+/**
+ * Current state of the repository (merge/rebase/cherry-pick in progress).
+ */
+export type RepoOperationType = 'none' | 'merge' | 'rebase' | 'cherry-pick';
+
+export interface RepoState {
+    operation: RepoOperationType;
+    conflictFiles: string[];
+}

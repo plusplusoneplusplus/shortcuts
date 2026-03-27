@@ -7,6 +7,7 @@ import { execSync } from 'child_process';
 import { execAsync } from '../../src/utils/exec-utils';
 import { BranchService } from '../../src/git/branch-service';
 import { setLogger, nullLogger } from '../../src/logger';
+import * as fs from 'fs';
 
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
@@ -15,6 +16,17 @@ vi.mock('child_process', () => ({
 vi.mock('../../src/utils/exec-utils', () => ({
     execAsync: vi.fn(),
 }));
+
+vi.mock('fs', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('fs')>();
+    return {
+        ...actual,
+        existsSync: vi.fn(),
+        mkdtempSync: vi.fn(),
+        writeFileSync: vi.fn(),
+        rmSync: vi.fn(),
+    };
+});
 
 const mockedExecSync = execSync as Mock;
 const mockedExecAsync = execAsync as Mock;
@@ -906,5 +918,244 @@ describe('BranchService.rebaseAutosquash', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('Unknown error');
+    });
+});
+
+// ── getRepoState ──────────────────────────────────────────────────
+describe('BranchService.getRepoState', () => {
+    const mockedExistsSync = fs.existsSync as Mock;
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns operation=none when no sentinel files exist', () => {
+        mockedExecSync.mockReturnValueOnce('.git\n'); // rev-parse --git-dir
+        mockedExistsSync.mockReturnValue(false);
+
+        const result = service.getRepoState('/repo');
+
+        expect(result).toEqual({ operation: 'none', conflictFiles: [] });
+    });
+
+    it('returns operation=rebase when rebase-merge dir exists', () => {
+        mockedExecSync
+            .mockReturnValueOnce('.git\n') // rev-parse --git-dir
+            .mockReturnValueOnce('file1.ts\nfile2.ts\n'); // diff --name-only
+        mockedExistsSync.mockImplementation((p: string) =>
+            typeof p === 'string' && p.includes('rebase-merge'));
+
+        const result = service.getRepoState('/repo');
+
+        expect(result.operation).toBe('rebase');
+        expect(result.conflictFiles).toEqual(['file1.ts', 'file2.ts']);
+    });
+
+    it('returns operation=merge when MERGE_HEAD exists', () => {
+        mockedExecSync
+            .mockReturnValueOnce('.git\n')
+            .mockReturnValueOnce('src/app.ts\n');
+        mockedExistsSync.mockImplementation((p: string) =>
+            typeof p === 'string' && p.includes('MERGE_HEAD'));
+
+        const result = service.getRepoState('/repo');
+
+        expect(result.operation).toBe('merge');
+        expect(result.conflictFiles).toEqual(['src/app.ts']);
+    });
+
+    it('returns operation=cherry-pick when CHERRY_PICK_HEAD exists', () => {
+        mockedExecSync
+            .mockReturnValueOnce('.git\n')
+            .mockReturnValueOnce('index.ts\n');
+        mockedExistsSync.mockImplementation((p: string) =>
+            typeof p === 'string' && p.includes('CHERRY_PICK_HEAD'));
+
+        const result = service.getRepoState('/repo');
+
+        expect(result.operation).toBe('cherry-pick');
+        expect(result.conflictFiles).toEqual(['index.ts']);
+    });
+
+    it('returns operation=none with empty conflictFiles on error', () => {
+        mockedExecSync.mockImplementationOnce(() => { throw new Error('not a git repo'); });
+
+        const result = service.getRepoState('/not-a-repo');
+
+        expect(result).toEqual({ operation: 'none', conflictFiles: [] });
+    });
+});
+
+// ── rebaseContinue ────────────────────────────────────────────────
+describe('BranchService.rebaseContinue', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns success when rebase continue succeeds', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.rebaseContinue('/repo');
+
+        expect(result.success).toBe(true);
+        expect(result.error).toBeUndefined();
+    });
+
+    it('returns failure with error message on failure', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('rebase conflict'));
+
+        const result = await service.rebaseContinue('/repo');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('rebase conflict');
+    });
+});
+
+// ── rebaseAbort ───────────────────────────────────────────────────
+describe('BranchService.rebaseAbort', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns success when rebase abort succeeds', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.rebaseAbort('/repo');
+
+        expect(result.success).toBe(true);
+        expect(result.error).toBeUndefined();
+    });
+
+    it('returns failure with error message on failure', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('no rebase in progress'));
+
+        const result = await service.rebaseAbort('/repo');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('no rebase in progress');
+    });
+});
+
+// ── mergeContinue ─────────────────────────────────────────────────
+describe('BranchService.mergeContinue', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns success when merge continue succeeds', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.mergeContinue('/repo');
+
+        expect(result.success).toBe(true);
+        expect(result.error).toBeUndefined();
+    });
+
+    it('returns failure with error message on failure', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('merge conflict'));
+
+        const result = await service.mergeContinue('/repo');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('merge conflict');
+    });
+});
+
+// ── mergeAbort ────────────────────────────────────────────────────
+describe('BranchService.mergeAbort', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns success when merge abort succeeds', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.mergeAbort('/repo');
+
+        expect(result.success).toBe(true);
+        expect(result.error).toBeUndefined();
+    });
+
+    it('returns failure with error message on failure', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('no merge in progress'));
+
+        const result = await service.mergeAbort('/repo');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('no merge in progress');
+    });
+});
+
+// ── rebaseReorder ─────────────────────────────────────────────────
+describe('BranchService.rebaseReorder', () => {
+    let service: BranchService;
+    const mockedMkdtempSync = fs.mkdtempSync as Mock;
+    const mockedWriteFileSync = fs.writeFileSync as Mock;
+    const mockedRmSync = fs.rmSync as Mock;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns error for empty commit array', async () => {
+        const result = await service.rebaseReorder('/repo', []);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('No commits to reorder');
+    });
+
+    it('calls git rebase -i with GIT_SEQUENCE_EDITOR on success', async () => {
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reorder-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecSync.mockReturnValueOnce('abc0000\n'); // rev-parse parent
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.rebaseReorder('/repo', ['abc1111', 'abc2222']);
+
+        expect(result.success).toBe(true);
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            expect.stringContaining('git rebase -i'),
+            expect.objectContaining({
+                cwd: '/repo',
+                timeout: 600000,
+                env: expect.objectContaining({
+                    GIT_SEQUENCE_EDITOR: expect.any(String),
+                }),
+            })
+        );
+    });
+
+    it('returns failure with error message on failure', async () => {
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reorder-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedExecSync.mockReturnValueOnce('abc0000\n');
+        mockedExecAsync.mockRejectedValueOnce(new Error('rebase failed'));
+
+        const result = await service.rebaseReorder('/repo', ['abc1111']);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('rebase failed');
     });
 });

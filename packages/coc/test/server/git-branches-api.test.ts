@@ -50,6 +50,12 @@ const mockMergeBranch = vi.fn();
 const mockStashChanges = vi.fn();
 const mockPopStash = vi.fn();
 const mockRebaseAutosquash = vi.fn();
+const mockGetRepoState = vi.fn();
+const mockRebaseContinue = vi.fn();
+const mockRebaseAbort = vi.fn();
+const mockMergeContinue = vi.fn();
+const mockMergeAbort = vi.fn();
+const mockRebaseReorder = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -71,6 +77,12 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             stashChanges: mockStashChanges,
             popStash: mockPopStash,
             rebaseAutosquash: mockRebaseAutosquash,
+            getRepoState: mockGetRepoState,
+            rebaseContinue: mockRebaseContinue,
+            rebaseAbort: mockRebaseAbort,
+            mergeContinue: mockMergeContinue,
+            mergeAbort: mockMergeAbort,
+            rebaseReorder: mockRebaseReorder,
         })),
     };
 });
@@ -195,6 +207,12 @@ describe('Git Branches API endpoints', () => {
         mockMergeBranch.mockReset();
         mockStashChanges.mockReset();
         mockPopStash.mockReset();
+        mockGetRepoState.mockReset();
+        mockRebaseContinue.mockReset();
+        mockRebaseAbort.mockReset();
+        mockMergeContinue.mockReset();
+        mockMergeAbort.mockReset();
+        mockRebaseReorder.mockReset();
     });
 
     // -----------------------------------------------------------------------
@@ -1097,6 +1115,164 @@ describe('Git Branches API endpoints', () => {
                 method: 'POST',
             });
             expect(res.status).toBe(404);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/git/repo-state — Repo state
+    // -----------------------------------------------------------------------
+
+    describe('GET /api/workspaces/:id/git/repo-state', () => {
+        it('should return repo state from BranchService.getRepoState', async () => {
+            mockGetRepoState.mockReturnValue({ operation: 'rebase', conflictFiles: ['file1.ts'] });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/repo-state`);
+            const json = res.json();
+
+            expect(res.status).toBe(200);
+            expect(json).toEqual({ operation: 'rebase', conflictFiles: ['file1.ts'] });
+            expect(mockGetRepoState).toHaveBeenCalledWith(WORKSPACE_ROOT);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/rebase-continue — Rebase continue
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/rebase-continue', () => {
+        it('should return 202 with jobId', async () => {
+            mockRebaseContinue.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-continue`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(202);
+            const data = res.json();
+            expect(data.jobId).toBeDefined();
+            expect(typeof data.jobId).toBe('string');
+            await new Promise(resolve => setTimeout(resolve, 200));
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/rebase-abort — Rebase abort
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/rebase-abort', () => {
+        it('should return 200 with success on success', async () => {
+            mockRebaseAbort.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-abort`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+        });
+
+        it('should return 400 on failure', async () => {
+            mockRebaseAbort.mockResolvedValue({ success: false, error: 'no rebase in progress' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-abort`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(400);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/merge-continue — Merge continue
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/merge-continue', () => {
+        it('should return 202 with jobId', async () => {
+            mockMergeContinue.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/merge-continue`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(202);
+            const data = res.json();
+            expect(data.jobId).toBeDefined();
+            expect(typeof data.jobId).toBe('string');
+            await new Promise(resolve => setTimeout(resolve, 200));
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/merge-abort — Merge abort
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/merge-abort', () => {
+        it('should return 200 with success on success', async () => {
+            mockMergeAbort.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/merge-abort`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+        });
+
+        it('should return 400 on failure', async () => {
+            mockMergeAbort.mockResolvedValue({ success: false, error: 'no merge in progress' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/merge-abort`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(400);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/rebase-reorder — Rebase reorder
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/rebase-reorder', () => {
+        it('should return 202 with jobId for valid commits array', async () => {
+            mockRebaseReorder.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-reorder`, {
+                method: 'POST',
+                body: JSON.stringify({ commits: ['abc111', 'abc222'] }),
+            });
+
+            expect(res.status).toBe(202);
+            const data = res.json();
+            expect(data.jobId).toBeDefined();
+            expect(typeof data.jobId).toBe('string');
+            await new Promise(resolve => setTimeout(resolve, 200));
+        });
+
+        it('should return 400 when commits field is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-reorder`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 409 when a rebase-reorder is already running', async () => {
+            mockRebaseReorder.mockReturnValue(new Promise(() => {})); // never resolves
+
+            const res1 = await request(`${base()}/api/workspaces/ws-ops-test/git/rebase-reorder`, {
+                method: 'POST',
+                body: JSON.stringify({ commits: ['abc111'] }),
+            });
+            expect(res1.status).toBe(202);
+
+            const res2 = await request(`${base()}/api/workspaces/ws-ops-test/git/rebase-reorder`, {
+                method: 'POST',
+                body: JSON.stringify({ commits: ['abc222'] }),
+            });
+            expect(res2.status).toBe(409);
+            expect(res2.json().code).toBe('CONFLICT');
         });
     });
 });

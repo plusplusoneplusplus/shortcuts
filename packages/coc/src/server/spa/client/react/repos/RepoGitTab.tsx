@@ -100,6 +100,18 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
 
+    // Repo state (merge/rebase/cherry-pick in progress)
+    const [repoState, setRepoState] = useState<{ operation: string; conflictFiles: string[] } | null>(null);
+
+    // Reorder state: pendingReorder holds the new commit order before user confirms
+    const [pendingReorder, setPendingReorder] = useState<GitCommitItem[] | null>(null);
+
+    const fetchRepoState = useCallback(() => {
+        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/repo-state`)
+            .then(data => setRepoState(data))
+            .catch(() => setRepoState(null));
+    }, [workspaceId]);
+
     const fetchCommits = useCallback((refresh = false, skipOffset = 0, search = '') => {
         // For the initial page with no search, check/update the client-side cache.
         if (skipOffset === 0 && !search) {
@@ -209,6 +221,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setLoading(true);
         setError(null);
         setSkip(0);
+        fetchRepoState();
         Promise.all([fetchCommits(), fetchBranchRange()])
             .then(([loaded, rangeInfo]) => {
                 if (initialCommitHash === 'branch-range') {
@@ -271,6 +284,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setActionError(null);
         setSkip(0);
         setWorkingChangesRefreshKey(k => k + 1);
+        fetchRepoState();
         const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : rightPanelView?.type === 'commit-file' ? rightPanelView.hash : null;
         if (prevSelectedHash) {
             clearCacheForHash(prevSelectedHash);
@@ -771,6 +785,175 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
     }, [contextMenu, workspaceId, branchRangeData, branchName, state.workspaces, closeContextMenu]);
 
+    const handleSquashCommits = useCallback(async () => {
+        if (!contextMenu || contextMenu.type !== 'multi-commit' || !contextMenu.commits?.length) return;
+        const selectedCommits = [...contextMenu.commits];
+        closeContextMenu();
+
+        if (selectedCommits.length < 2) return;
+
+        // Contiguity check: all selected commits must be consecutive in the unpushed list
+        const indices = selectedCommits
+            .map(c => {
+                const idx = commits.indexOf(c);
+                return idx >= 0 && idx < unpushedCount ? idx : -1;
+            })
+            .filter(i => i !== -1)
+            .sort((a, b) => a - b);
+
+        if (indices.length !== selectedCommits.length) {
+            setEnqueueToast('Squash failed: all selected commits must be unpushed');
+            setTimeout(() => setEnqueueToast(null), 5000);
+            return;
+        }
+        for (let i = 1; i < indices.length; i++) {
+            if (indices[i] !== indices[i - 1] + 1) {
+                setEnqueueToast('Squash failed: selected commits must be contiguous');
+                setTimeout(() => setEnqueueToast(null), 5000);
+                return;
+            }
+        }
+
+        // Sort oldest-first for the prompt (unpushed list is newest-first)
+        const oldestFirst = [...selectedCommits].reverse();
+        const commitList = oldestFirst
+            .map(c => `- ${c.hash} ${c.subject}`)
+            .join('\n');
+        const promptContent = `Squash the following ${oldestFirst.length} commits into a single commit. Preserve the intent of all changes.\n\nCommits (oldest first):\n${commitList}\n\nWrite a clear combined commit message summarizing all changes.`;
+
+        try {
+            const ws = state.workspaces.find((w: any) => w.id === workspaceId);
+            await fetch(getApiBase() + '/queue/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'chat',
+                    priority: 'normal',
+                    displayName: `Squash ${selectedCommits.length} commits`,
+                    payload: {
+                        kind: 'chat',
+                        mode: 'autopilot',
+                        prompt: promptContent,
+                        workingDirectory: ws?.rootPath || '',
+                    },
+                }),
+            });
+            setEnqueueToast(`Squash task enqueued (${selectedCommits.length} commits)`);
+            setTimeout(() => setEnqueueToast(null), 3000);
+        } catch (err: any) {
+            setEnqueueToast(`Failed to enqueue squash: ${err.message || 'Unknown error'}`);
+            setTimeout(() => setEnqueueToast(null), 5000);
+        }
+    }, [contextMenu, commits, unpushedCount, workspaceId, state.workspaces, closeContextMenu]);
+
+    // Conflict banner handlers
+    const handleConflictResolveAI = useCallback(async () => {
+        if (!repoState || repoState.operation === 'none') return;
+        const files = repoState.conflictFiles.map(f => `- ${f}`).join('\n');
+        const continueCmd = repoState.operation === 'cherry-pick'
+            ? 'git cherry-pick --continue'
+            : repoState.operation === 'rebase'
+                ? 'git rebase --continue'
+                : 'git merge --continue';
+        const promptContent = `The repository has a ${repoState.operation} in progress with conflicts in the following files:\n<files>\n${files}\n</files>\n\nFor each conflicted file, resolve the conflict markers (<<<<<<< / ======= / >>>>>>>) by choosing the best resolution that preserves both sides' intent. Then stage the resolved files with \`git add\`. After staging all resolved files, run \`${continueCmd}\`. If new conflicts arise, repeat the resolution and continue cycle until the entire operation completes successfully.`;
+        try {
+            const ws = state.workspaces.find((w: any) => w.id === workspaceId);
+            await fetch(getApiBase() + '/queue/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'chat',
+                    priority: 'normal',
+                    displayName: `Resolve ${repoState.operation} conflicts`,
+                    payload: {
+                        kind: 'chat',
+                        mode: 'autopilot',
+                        prompt: promptContent,
+                        workingDirectory: ws?.rootPath || '',
+                    },
+                }),
+            });
+            setEnqueueToast('Conflict resolution task enqueued');
+            setTimeout(() => setEnqueueToast(null), 3000);
+        } catch (err: any) {
+            setEnqueueToast(`Failed: ${err.message || 'Unknown error'}`);
+            setTimeout(() => setEnqueueToast(null), 5000);
+        }
+    }, [repoState, workspaceId, state.workspaces]);
+
+    const handleConflictContinue = useCallback(async () => {
+        if (!repoState || repoState.operation === 'none') return;
+        const endpoint = repoState.operation === 'merge' ? 'merge-continue' : 'rebase-continue';
+        try {
+            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/${endpoint}`, {
+                method: 'POST',
+            });
+            setEnqueueToast(`${repoState.operation} continue started`);
+            setTimeout(() => setEnqueueToast(null), 3000);
+            setTimeout(refreshAll, 2000);
+        } catch (err: any) {
+            setActionError(`Continue failed: ${err.message || 'Unknown error'}`);
+        }
+    }, [repoState, workspaceId, refreshAll]);
+
+    const handleConflictAbort = useCallback(async () => {
+        if (!repoState || repoState.operation === 'none') return;
+        if (!confirm(`Abort the in-progress ${repoState.operation}? This will discard conflict resolutions.`)) return;
+        const endpoint = repoState.operation === 'merge' ? 'merge-abort' : 'rebase-abort';
+        try {
+            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/${endpoint}`, {
+                method: 'POST',
+            });
+            refreshAll();
+        } catch (err: any) {
+            setActionError(`Abort failed: ${err.message || 'Unknown error'}`);
+        }
+    }, [repoState, workspaceId, refreshAll]);
+
+    // Reorder handlers
+    const handleReorderCommits = useCallback((newOrder: GitCommitItem[]) => {
+        setPendingReorder(newOrder);
+    }, []);
+
+    const handleApplyReorder = useCallback(async () => {
+        if (!pendingReorder) return;
+        // Extract unpushed commits in the new display order, reversed to oldest-first for the API
+        const reorderedUnpushed = pendingReorder.slice(0, unpushedCount);
+        const commitHashes = [...reorderedUnpushed].reverse().map(c => c.hash);
+        try {
+            const resp = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/rebase-reorder`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ commits: commitHashes }),
+            });
+            setEnqueueToast('Reorder started');
+            setTimeout(() => setEnqueueToast(null), 3000);
+            setPendingReorder(null);
+            // Poll for completion similar to rebase-autosquash
+            if (resp?.jobId) {
+                const poll = setInterval(async () => {
+                    try {
+                        const job = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/${resp.jobId}`);
+                        if (job?.status === 'success' || job?.status === 'failed') {
+                            clearInterval(poll);
+                            if (job.status === 'failed') {
+                                setActionError(job.error || 'Reorder failed');
+                            }
+                            refreshAll();
+                        }
+                    } catch { clearInterval(poll); }
+                }, 3000);
+            }
+        } catch (err: any) {
+            setActionError(`Reorder failed: ${err.message || 'Unknown error'}`);
+            setPendingReorder(null);
+        }
+    }, [pendingReorder, unpushedCount, workspaceId, refreshAll]);
+
+    const handleCancelReorder = useCallback(() => {
+        setPendingReorder(null);
+    }, []);
+
     const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!contextMenu) return [];
         const items: ContextMenuItem[] = [];
@@ -833,6 +1016,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 .join('\n');
             const initialPrompt = `${selectedCommits.length} commits selected:\n${commitList}`;
 
+            if (selectedCommits.length >= 2) {
+                items.push({
+                    label: `Squash ${selectedCommits.length} Commits`,
+                    icon: '📦',
+                    onClick: () => { void handleSquashCommits(); },
+                });
+            }
             items.push({
                 label: 'Ask AI', icon: '🤖', onClick: () => {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
@@ -874,7 +1064,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, handleEnqueueSkill, handleBranchAskAI, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId]);
+    }, [contextMenu, skills, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId]);
 
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -937,7 +1127,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     ) : (
         <CommitList
             title="History"
-            commits={commits}
+            commits={pendingReorder || commits}
             unpushedCount={searchQuery ? 0 : unpushedCount}
             selectedHash={selectedCommit?.hash}
             selectedHashes={selectedHashes}
@@ -948,6 +1138,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             onFileSelect={handleCommitFileSelect}
             onCommitContextMenu={handleCommitContextMenu}
             workspaceId={workspaceId}
+            reorderable={!searchQuery && unpushedCount > 1}
+            onReorder={handleReorderCommits}
         />
     );
 
@@ -1109,6 +1301,66 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     refreshKey={workingChangesRefreshKey}
                     onAllCommentsClick={handleAllWorkingCommentsClick}
                 />
+                {repoState && repoState.operation !== 'none' && (
+                    <div
+                        className="mx-2 my-2 p-3 rounded border border-[#e5a100] dark:border-[#cca700] bg-[#fff3cd] dark:bg-[#3d3522] text-xs"
+                        data-testid="conflict-banner"
+                    >
+                        <div className="font-semibold text-[#856404] dark:text-[#e5c07b] mb-1">
+                            ⚠️ {repoState.operation.charAt(0).toUpperCase() + repoState.operation.slice(1)} in progress
+                            {repoState.conflictFiles.length > 0 && ` — ${repoState.conflictFiles.length} conflict file${repoState.conflictFiles.length !== 1 ? 's' : ''}`}
+                        </div>
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                            <button
+                                onClick={handleConflictResolveAI}
+                                className="px-2 py-1 rounded text-xs font-medium bg-[#007acc] text-white hover:bg-[#005fa3]"
+                                data-testid="conflict-resolve-ai-btn"
+                            >
+                                Resolve with AI ⚡
+                            </button>
+                            <button
+                                onClick={handleConflictContinue}
+                                className="px-2 py-1 rounded text-xs font-medium bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#333] dark:text-[#ccc] hover:bg-[#ccc] dark:hover:bg-[#555]"
+                                data-testid="conflict-continue-btn"
+                            >
+                                Continue
+                            </button>
+                            <button
+                                onClick={handleConflictAbort}
+                                className="px-2 py-1 rounded text-xs font-medium bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#d32f2f] hover:bg-[#ccc] dark:hover:bg-[#555]"
+                                data-testid="conflict-abort-btn"
+                            >
+                                Abort
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {pendingReorder && (
+                    <div
+                        className="mx-2 my-2 p-3 rounded border border-[#0078d4] dark:border-[#3794ff] bg-[#e8f0fe] dark:bg-[#1a2744] text-xs flex items-center justify-between"
+                        data-testid="reorder-confirmation-bar"
+                    >
+                        <span className="text-[#333] dark:text-[#ccc]">
+                            Reorder {unpushedCount} unpushed commit{unpushedCount !== 1 ? 's' : ''}?
+                        </span>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleApplyReorder}
+                                className="px-2 py-1 rounded text-xs font-medium bg-[#007acc] text-white hover:bg-[#005fa3]"
+                                data-testid="reorder-apply-btn"
+                            >
+                                Apply
+                            </button>
+                            <button
+                                onClick={handleCancelReorder}
+                                className="px-2 py-1 rounded text-xs font-medium bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#333] dark:text-[#ccc] hover:bg-[#ccc] dark:hover:bg-[#555]"
+                                data-testid="reorder-cancel-btn"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {commitListPanel}
                 {hasMore && (
                     <div className="px-4 py-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">

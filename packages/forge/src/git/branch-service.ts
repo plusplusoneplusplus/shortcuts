@@ -8,6 +8,8 @@
  */
 
 import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import { execAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
 import {
@@ -16,6 +18,7 @@ import {
     BranchListOptions,
     PaginatedBranchResult,
     GitOperationResult,
+    RepoState,
 } from './types';
 
 /**
@@ -730,6 +733,155 @@ export class BranchService {
             return output.trim().length > 0;
         } catch {
             return false;
+        }
+    }
+
+    /**
+     * Detect the current repository state (merge/rebase/cherry-pick in progress).
+     * Checks git sentinel files to determine the active operation.
+     */
+    getRepoState(repoRoot: string): RepoState {
+        try {
+            // Resolve .git dir (handles worktrees where .git is a file pointing elsewhere)
+            const gitDir = this.execGitSync('git rev-parse --git-dir', { cwd: repoRoot }).trim();
+            const resolvedGitDir = path.isAbsolute(gitDir) ? gitDir : path.join(repoRoot, gitDir);
+
+            let operation: RepoState['operation'] = 'none';
+            if (fs.existsSync(path.join(resolvedGitDir, 'rebase-merge')) ||
+                fs.existsSync(path.join(resolvedGitDir, 'rebase-apply'))) {
+                operation = 'rebase';
+            } else if (fs.existsSync(path.join(resolvedGitDir, 'MERGE_HEAD'))) {
+                operation = 'merge';
+            } else if (fs.existsSync(path.join(resolvedGitDir, 'CHERRY_PICK_HEAD'))) {
+                operation = 'cherry-pick';
+            }
+
+            let conflictFiles: string[] = [];
+            if (operation !== 'none') {
+                try {
+                    const output = this.execGitSync('git diff --name-only --diff-filter=U', { cwd: repoRoot });
+                    conflictFiles = output.trim().split('\n').filter(Boolean);
+                } catch {
+                    // Ignore — no conflicts
+                }
+            }
+
+            return { operation, conflictFiles };
+        } catch {
+            return { operation: 'none', conflictFiles: [] };
+        }
+    }
+
+    /**
+     * Continue an in-progress rebase.
+     */
+    async rebaseContinue(repoRoot: string): Promise<GitOperationResult> {
+        try {
+            await this.execGitAsync('git rebase --continue', {
+                cwd: repoRoot,
+                timeout: 600000,
+                env: { GIT_EDITOR: 'true' },
+            });
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to continue rebase', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
+     * Abort an in-progress rebase.
+     */
+    async rebaseAbort(repoRoot: string): Promise<GitOperationResult> {
+        try {
+            await this.execGitAsync('git rebase --abort', { cwd: repoRoot });
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to abort rebase', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
+     * Continue an in-progress merge (commits the merge).
+     */
+    async mergeContinue(repoRoot: string): Promise<GitOperationResult> {
+        try {
+            await this.execGitAsync('git merge --continue', {
+                cwd: repoRoot,
+                timeout: 600000,
+                env: { GIT_EDITOR: 'true' },
+            });
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to continue merge', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
+     * Abort an in-progress merge.
+     */
+    async mergeAbort(repoRoot: string): Promise<GitOperationResult> {
+        try {
+            await this.execGitAsync('git merge --abort', { cwd: repoRoot });
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to abort merge', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
+     * Reorder unpushed commits via non-interactive rebase.
+     * @param repoRoot Repository root path
+     * @param commitOrder Array of commit hashes in desired new order (oldest first)
+     */
+    async rebaseReorder(repoRoot: string, commitOrder: string[]): Promise<GitOperationResult> {
+        if (!commitOrder.length) {
+            return { success: false, error: 'No commits to reorder' };
+        }
+        try {
+            // Build the todo list for the rebase
+            const todoContent = commitOrder.map(hash => `pick ${hash}`).join('\n') + '\n';
+            const tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-reorder-'));
+            const todoPath = path.join(tmpDir, 'todo');
+            fs.writeFileSync(todoPath, todoContent, 'utf-8');
+
+            // Create a script that replaces the rebase todo with our custom order
+            let seqEditor: string;
+            if (process.platform === 'win32') {
+                const scriptPath = path.join(tmpDir, 'editor.cmd');
+                // On Windows, write a batch script that copies our todo file over the rebase todo
+                fs.writeFileSync(scriptPath, `@copy /Y "${todoPath.replace(/\\/g, '\\\\')}" %1 >nul\n`, 'utf-8');
+                seqEditor = scriptPath;
+            } else {
+                const scriptPath = path.join(tmpDir, 'editor.sh');
+                fs.writeFileSync(scriptPath, `#!/bin/sh\ncp "${todoPath}" "$1"\n`, { mode: 0o755 });
+                seqEditor = scriptPath;
+            }
+
+            // Find the base commit (parent of the oldest commit in the order)
+            const baseHash = this.execGitSync(`git rev-parse ${commitOrder[0]}~1`, { cwd: repoRoot }).trim();
+
+            await this.execGitAsync(`git rebase -i ${baseHash}`, {
+                cwd: repoRoot,
+                timeout: 600000,
+                env: { GIT_SEQUENCE_EDITOR: seqEditor },
+            });
+
+            // Clean up temp files
+            try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
+
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to reorder commits', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
         }
     }
 
