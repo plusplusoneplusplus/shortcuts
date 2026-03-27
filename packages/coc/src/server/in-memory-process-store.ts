@@ -9,6 +9,7 @@
 
 import { EventEmitter } from 'events';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, TimelineItem } from '@plusplusoneplusplus/forge';
 
 export function createStubStore(): ProcessStore {
     const processes = new Map<string, AIProcess>();
@@ -30,6 +31,9 @@ export function createStubStore(): ProcessStore {
             changeCallback?.({ type: 'process-added', process: proc });
         },
         updateProcess: async (id, updates) => {
+            if ('conversationTurns' in updates) {
+                throw new Error('Use appendConversationTurn/upsertStreamingTurn/updateTurnContent to modify conversationTurns');
+            }
             const existing = processes.get(id);
             if (!existing) return;
             const merged = { ...existing, ...updates };
@@ -74,6 +78,59 @@ export function createStubStore(): ProcessStore {
         emitProcessEvent: (id, event) => {
             const emitter = getOrCreateEmitter(id);
             emitter.emit('output', event);
+        },
+        appendConversationTurn: async (processId, makeTurn, options) => {
+            const existing = processes.get(processId);
+            if (!existing) return undefined;
+            let turns = existing.conversationTurns ?? [];
+            if (options?.filterStreaming) {
+                turns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
+            }
+            const turnIndex = turns.length;
+            const turn = makeTurn(turnIndex);
+            const allTurns = [...turns, turn];
+            const extraUpdates = typeof options?.additionalUpdates === 'function'
+                ? options.additionalUpdates(existing)
+                : (options?.additionalUpdates ?? {});
+            const merged = { ...existing, ...extraUpdates, conversationTurns: allTurns };
+            processes.set(processId, merged);
+            changeCallback?.({ type: 'process-updated', process: merged });
+            return { turn, allTurns };
+        },
+        upsertStreamingTurn: async (processId, content, streaming, timeline) => {
+            const existing = processes.get(processId);
+            if (!existing) return;
+            const turns = existing.conversationTurns ?? [];
+            let streamingIdx = -1;
+            for (let i = turns.length - 1; i >= 0; i--) {
+                if (turns[i].role === 'assistant' && turns[i].streaming) { streamingIdx = i; break; }
+            }
+            let updatedTurns: ConversationTurn[];
+            if (streamingIdx !== -1) {
+                updatedTurns = turns.map((turn, i) =>
+                    i === streamingIdx
+                        ? { ...turn, content, streaming: streaming || undefined, ...(timeline ? { timeline } : {}) }
+                        : turn
+                );
+            } else {
+                updatedTurns = [...turns, {
+                    role: 'assistant' as const, content, timestamp: new Date(),
+                    turnIndex: turns.length, streaming: streaming || undefined, timeline: timeline ?? [],
+                }];
+            }
+            const merged = { ...existing, conversationTurns: updatedTurns };
+            processes.set(processId, merged);
+            changeCallback?.({ type: 'process-updated', process: merged });
+        },
+        updateTurnContent: async (processId, turnIndex, content) => {
+            const existing = processes.get(processId);
+            if (!existing) return;
+            const turns = existing.conversationTurns ?? [];
+            if (turnIndex < 0 || turnIndex >= turns.length) return;
+            const updatedTurns = turns.map((turn, i) => i === turnIndex ? { ...turn, content } : turn);
+            const merged = { ...existing, conversationTurns: updatedTurns };
+            processes.set(processId, merged);
+            changeCallback?.({ type: 'process-updated', process: merged });
         },
     };
 

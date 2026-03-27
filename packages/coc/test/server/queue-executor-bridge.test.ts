@@ -181,15 +181,10 @@ describe('CLITaskExecutor', () => {
             expect(addedProcess.status).toBe('running');
             expect(addedProcess.fullPrompt).toContain('Explain this code');
 
-            // Verify process was marked completed
-            expect(store.updateProcess).toHaveBeenCalledWith('queue_task-1', expect.objectContaining({
-                status: 'completed',
-            }));
-            expect(store.emitProcessComplete).toHaveBeenCalledWith(
-                'queue_task-1',
-                'completed',
-                expect.stringMatching(/\d+ms/)
-            );
+            // Verify process was marked completed (via appendConversationTurn additionalUpdates)
+            expect(store.appendConversationTurn).toHaveBeenCalled();
+            const proc = store.processes.get('queue_task-1');
+            expect(proc?.status).toBe('completed');
         });
 
         it('should use displayName as prompt fallback for ask-mode chat', async () => {
@@ -273,10 +268,10 @@ describe('CLITaskExecutor', () => {
             expect(addedProcess.status).toBe('running');
             expect(addedProcess.fullPrompt).toContain('What does this repo do?');
 
-            // Verify process was marked completed
-            expect(store.updateProcess).toHaveBeenCalledWith('queue_chat-1', expect.objectContaining({
-                status: 'completed',
-            }));
+            // Verify process was marked completed (via appendConversationTurn additionalUpdates)
+            expect(store.appendConversationTurn).toHaveBeenCalled();
+            const proc = store.processes.get('queue_chat-1');
+            expect(proc?.status).toBe('completed');
         });
 
         it('should use displayName as prompt fallback for chat', async () => {
@@ -2992,10 +2987,8 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         expect(updated!.conversationTurns).toHaveLength(4); // 2 initial + 1 user + 1 assistant
         expect(updated!.conversationTurns![3].content).toBe('(No text response)');
         expect(updated!.status).toBe('completed');
-        // Empty string is falsy → result: undefined
-        expect(store.updateProcess).toHaveBeenCalledWith('proc-empty', expect.objectContaining({
-            result: undefined,
-        }));
+        // Empty string is falsy → result stored as empty/undefined
+        expect(updated!.result).toBeUndefined();
     });
 
     it('should append error turn when sendFollowUp throws (session expired)', async () => {
@@ -3476,20 +3469,13 @@ describe('conversation history persistence during streaming', () => {
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-first-chunk', 'test');
 
-        // Verify updateProcess was called with a streaming assistant turn
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
-            const updates = call[1];
-            return updates.conversationTurns?.some(
-                (t: any) => t.role === 'assistant' && t.streaming === true
-            );
-        });
-        expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(1);
-        const firstFlush = streamingFlushCalls[0][1];
-        const assistantTurn = firstFlush.conversationTurns.find(
-            (t: any) => t.role === 'assistant' && t.streaming === true
+        // Verify upsertStreamingTurn was called with streaming content
+        const streamingFlushCalls = (store.upsertStreamingTurn as any).mock.calls.filter(
+            (call: any[]) => call[2] === true  // third arg is 'streaming' boolean
         );
-        expect(assistantTurn.content).toBe('first chunk');
+        expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(1);
+        // upsertStreamingTurn(processId, content, streaming, timeline?)
+        expect(streamingFlushCalls[0][1]).toBe('first chunk');
     });
 
     it('should flush every 50 chunks', async () => {
@@ -3508,25 +3494,17 @@ describe('conversation history persistence during streaming', () => {
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-50chunks', 'test');
 
-        // Count streaming flushes (updateProcess calls with streaming: true turns)
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
-            const updates = call[1];
-            return updates.conversationTurns?.some(
-                (t: any) => t.role === 'assistant' && t.streaming === true
-            );
-        });
+        // Count streaming flushes (upsertStreamingTurn calls with streaming=true)
+        const streamingFlushCalls = (store.upsertStreamingTurn as any).mock.calls.filter(
+            (call: any[]) => call[2] === true  // third arg is 'streaming' boolean
+        );
         // 3 streaming flushes: first chunk (time-based), chunk 51 (count), chunk 101 (count)
         expect(streamingFlushCalls.length).toBe(3);
 
-        // Final completion call should have streaming=undefined
-        const completionCalls = updateCalls.filter((call: any[]) => {
-            const updates = call[1];
-            return updates.status === 'completed';
-        });
-        expect(completionCalls.length).toBeGreaterThanOrEqual(1);
-        const finalTurns = completionCalls[completionCalls.length - 1][1].conversationTurns;
-        const finalAssistant = finalTurns?.find((t: any) => t.role === 'assistant');
+        // Final process state should have streaming=undefined on assistant turn
+        const finalProc = await store.getProcess('proc-50chunks');
+        const finalAssistant = finalProc!.conversationTurns!.find((t: any) => t.role === 'assistant' && !t.streaming);
+        expect(finalAssistant).toBeDefined();
         expect(finalAssistant?.streaming).toBeUndefined();
     });
 
@@ -3549,24 +3527,17 @@ describe('conversation history persistence during streaming', () => {
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-5sec', 'test');
 
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
-            const updates = call[1];
-            return updates.conversationTurns?.some(
-                (t: any) => t.role === 'assistant' && t.streaming === true
-            );
-        });
+        const streamingFlushCalls = (store.upsertStreamingTurn as any).mock.calls.filter(
+            (call: any[]) => call[2] === true  // third arg is 'streaming' boolean
+        );
         // First chunk triggers time-based flush (lastFlushTime=0),
         // then ~5 seconds later another time-based flush
         expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(2);
 
         // Verify content grows between flushes
-        const firstContent = streamingFlushCalls[0][1].conversationTurns.find(
-            (t: any) => t.role === 'assistant' && t.streaming
-        ).content;
-        const lastContent = streamingFlushCalls[streamingFlushCalls.length - 1][1].conversationTurns.find(
-            (t: any) => t.role === 'assistant' && t.streaming
-        ).content;
+        // upsertStreamingTurn(processId, content, streaming, timeline?)
+        const firstContent = streamingFlushCalls[0][1];
+        const lastContent = streamingFlushCalls[streamingFlushCalls.length - 1][1];
         expect(lastContent.length).toBeGreaterThan(firstContent.length);
 
         vi.useRealTimers();
@@ -3588,23 +3559,16 @@ describe('conversation history persistence during streaming', () => {
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-update-turn', 'test');
 
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
-            const updates = call[1];
-            return updates.conversationTurns?.some(
-                (t: any) => t.role === 'assistant' && t.streaming === true
-            );
-        });
+        const streamingFlushCalls = (store.upsertStreamingTurn as any).mock.calls.filter(
+            (call: any[]) => call[2] === true  // third arg is 'streaming' boolean
+        );
         // At least 2 streaming flushes (first chunk + count-based at 51)
         expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(2);
 
         // Verify later flushes have more content than earlier ones
-        const firstContent = streamingFlushCalls[0][1].conversationTurns.find(
-            (t: any) => t.role === 'assistant' && t.streaming
-        ).content;
-        const lastContent = streamingFlushCalls[streamingFlushCalls.length - 1][1].conversationTurns.find(
-            (t: any) => t.role === 'assistant' && t.streaming
-        ).content;
+        // upsertStreamingTurn(processId, content, streaming, timeline?)
+        const firstContent = streamingFlushCalls[0][1];
+        const lastContent = streamingFlushCalls[streamingFlushCalls.length - 1][1];
         expect(lastContent.length).toBeGreaterThan(firstContent.length);
     });
 
@@ -3636,14 +3600,15 @@ describe('conversation history persistence during streaming', () => {
         await store.addProcess(process);
 
         (store.updateProcess as any).mockImplementation(async (id: string, updates: any) => {
-            // Fail streaming flushes, succeed for completion updates
-            if (updates.conversationTurns?.some((t: any) => t.streaming === true)) {
-                throw new Error('Store write failed');
-            }
             const existing = store.processes.get(id);
             if (existing) {
                 store.processes.set(id, { ...existing, ...updates });
             }
+        });
+
+        // Fail streaming flushes via upsertStreamingTurn, succeed for other updates
+        (store.upsertStreamingTurn as any).mockImplementation(async () => {
+            throw new Error('Store write failed');
         });
 
         mockSendMessage.mockImplementation(async (opts: any) => {
@@ -3767,12 +3732,12 @@ describe('createQueueExecutorBridge', () => {
         expect(history).toHaveLength(1);
         expect(history[0].status).toBe('completed');
 
-        // Process should be in store
+        // Process should be in store (status set via appendConversationTurn additionalUpdates)
         expect(store.addProcess).toHaveBeenCalled();
-        expect(store.updateProcess).toHaveBeenCalledWith(
-            expect.stringContaining('queue_'),
-            expect.objectContaining({ status: 'completed' })
-        );
+        expect(store.appendConversationTurn).toHaveBeenCalled();
+        const procs = Array.from(store.processes.values());
+        const completedProc = procs.find(p => p.id.startsWith('queue_') && p.status === 'completed');
+        expect(completedProc).toBeDefined();
 
         executor.dispose();
     });
@@ -4742,25 +4707,20 @@ describe('tool event emission via onToolEvent', () => {
 
         await executor.execute(task);
 
-        // The intermediate flush should have persisted an assistant turn with timeline
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
-            const updates = call[1];
-            return updates.conversationTurns?.some(
-                (t: any) => t.role === 'assistant' && t.streaming === true
-            );
-        });
+        // The intermediate flush should have persisted an assistant turn with timeline via upsertStreamingTurn
+        const streamingFlushCalls = (store.upsertStreamingTurn as any).mock.calls.filter(
+            (call: any[]) => call[2] === true  // third arg is 'streaming' boolean
+        );
         // At least one streaming flush should have occurred from tool events
         expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(1);
 
-        // The flushed assistant turn should have timeline items even with empty content
-        const firstFlush = streamingFlushCalls[0][1].conversationTurns.find(
-            (t: any) => t.role === 'assistant' && t.streaming
-        );
-        expect(firstFlush).toBeDefined();
-        expect(firstFlush.content).toBe('');
-        expect(firstFlush.timeline.length).toBeGreaterThan(0);
-        expect(firstFlush.timeline.some((item: any) => item.type === 'tool-start' || item.type === 'tool-complete')).toBe(true);
+        // upsertStreamingTurn(processId, content, streaming, timeline?)
+        // The flushed content should be empty, but timeline should have items
+        expect(streamingFlushCalls[0][1]).toBe('');
+        const flushedTimeline = streamingFlushCalls[0][3];
+        expect(flushedTimeline).toBeDefined();
+        expect(flushedTimeline.length).toBeGreaterThan(0);
+        expect(flushedTimeline.some((item: any) => item.type === 'tool-start' || item.type === 'tool-complete')).toBe(true);
 
         // Final completion should also have timeline
         const finalProcess = await store.getProcess('queue_task-tool-only-flush');
@@ -4787,22 +4747,16 @@ describe('tool event emission via onToolEvent', () => {
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-tool-flush', 'run tests');
 
-        // Verify intermediate streaming flush happened with timeline
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
-            const updates = call[1];
-            return updates.conversationTurns?.some(
-                (t: any) => t.role === 'assistant' && t.streaming === true
-            );
-        });
+        // Verify intermediate streaming flush happened with timeline via upsertStreamingTurn
+        const streamingFlushCalls = (store.upsertStreamingTurn as any).mock.calls.filter(
+            (call: any[]) => call[2] === true  // third arg is 'streaming' boolean
+        );
         expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(1);
 
-        // The flushed turn should have timeline items
-        const flushedTurn = streamingFlushCalls[0][1].conversationTurns.find(
-            (t: any) => t.role === 'assistant' && t.streaming
-        );
-        expect(flushedTurn).toBeDefined();
-        expect(flushedTurn.timeline.length).toBeGreaterThan(0);
+        // upsertStreamingTurn(processId, content, streaming, timeline?)
+        const flushedTimeline = streamingFlushCalls[0][3];
+        expect(flushedTimeline).toBeDefined();
+        expect(flushedTimeline.length).toBeGreaterThan(0);
     });
 });
 
@@ -4847,21 +4801,16 @@ describe('conversation persistence mid-stream', () => {
         const executor1 = new CLITaskExecutor(store);
         await executor1.executeFollowUp('proc-restart', 'start streaming');
 
-        // Verify that streaming content was flushed to the store during streaming
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
-            const updates = call[1];
-            return updates.conversationTurns?.some(
-                (t: any) => t.role === 'assistant' && t.streaming === true
-            );
-        });
+        // Verify that streaming content was flushed via upsertStreamingTurn
+        const streamingFlushCalls = (store.upsertStreamingTurn as any).mock.calls.filter(
+            (call: any[]) => call[2] === true  // third arg is 'streaming' boolean
+        );
         // At least one streaming flush should have occurred during the 3 seconds
         expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(1);
 
+        // upsertStreamingTurn(processId, content, streaming, timeline?)
         // The flushed content should include chunk data
-        const flushedTurns = streamingFlushCalls[0][1].conversationTurns;
-        const streamingTurn = flushedTurns.find((t: any) => t.role === 'assistant' && t.streaming);
-        expect(streamingTurn.content).toContain('chunk0');
+        expect(streamingFlushCalls[0][1]).toContain('chunk0');
 
         // Simulate "server restart": read persisted state from same store with new executor
         const executor2 = new CLITaskExecutor(store);
@@ -5302,21 +5251,15 @@ describe('timeline population during execution', () => {
 
         await executor.execute(task);
 
-        // Verify updateProcess was called with conversation turns containing timeline
-        expect(store.updateProcess).toHaveBeenCalledWith(
-            'queue_task-tl-persist',
-            expect.objectContaining({
-                conversationTurns: expect.arrayContaining([
-                    expect.objectContaining({
-                        role: 'assistant',
-                        timeline: expect.arrayContaining([
-                            expect.objectContaining({ type: 'content', content: 'data' }),
-                            expect.objectContaining({ type: 'tool-start' }),
-                        ]),
-                    }),
-                ]),
-            })
-        );
+        // Verify conversation turns contain timeline (via appendConversationTurn, check final state)
+        const proc = await store.getProcess('queue_task-tl-persist');
+        expect(proc).toBeDefined();
+        const assistantTurn = proc!.conversationTurns!.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+        expect(assistantTurn!.timeline).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'content', content: 'data' }),
+            expect.objectContaining({ type: 'tool-start' }),
+        ]));
     });
 
     it('should populate timeline for follow-up messages', async () => {
@@ -7437,10 +7380,9 @@ describe('ToolCallCapture integration', () => {
 
             await executor.execute(task);
 
-            const updateCalls = (store.updateProcess as any).mock.calls;
-            const tokenLimitCall = updateCalls.find((call: any[]) => call[1]?.tokenLimit !== undefined);
-            expect(tokenLimitCall).toBeDefined();
-            expect(tokenLimitCall[1].tokenLimit).toBe(50_000);
+            // tokenLimit is now set via appendConversationTurn additionalUpdates, check final state
+            const updatedProc = store.processes.get('proc-overwrite');
+            expect(updatedProc?.tokenLimit).toBe(50_000);
         });
     });
 });

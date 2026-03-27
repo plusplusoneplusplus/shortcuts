@@ -7,7 +7,7 @@
  */
 
 import { vi } from 'vitest';
-import type { ProcessStore, AIProcess, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, AIProcess, WorkspaceInfo, ConversationTurn, TimelineItem } from '@plusplusoneplusplus/forge';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -110,6 +110,53 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             completions.set(id, { status, duration });
         }),
         emitProcessEvent: vi.fn((_id: string, _event: any) => {}),
+        appendConversationTurn: vi.fn(async (processId: string, makeTurn: (turnIndex: number) => ConversationTurn, options?: any) => {
+            const existing = processes.get(processId);
+            if (!existing) return undefined;
+            let turns = existing.conversationTurns ?? [];
+            if (options?.filterStreaming) {
+                turns = turns.filter((t: ConversationTurn) => !(t.role === 'assistant' && t.streaming));
+            }
+            const turnIndex = turns.length;
+            const turn = makeTurn(turnIndex);
+            const allTurns = [...turns, turn];
+            const extraUpdates = typeof options?.additionalUpdates === 'function'
+                ? options.additionalUpdates(existing)
+                : (options?.additionalUpdates ?? {});
+            processes.set(processId, { ...existing, ...extraUpdates, conversationTurns: allTurns });
+            return { turn, allTurns };
+        }),
+        upsertStreamingTurn: vi.fn(async (processId: string, content: string, streaming: boolean, timeline?: TimelineItem[]) => {
+            const existing = processes.get(processId);
+            if (!existing) return;
+            const turns = existing.conversationTurns ?? [];
+            let streamingIdx = -1;
+            for (let i = turns.length - 1; i >= 0; i--) {
+                if (turns[i].role === 'assistant' && turns[i].streaming) { streamingIdx = i; break; }
+            }
+            let updatedTurns: ConversationTurn[];
+            if (streamingIdx !== -1) {
+                updatedTurns = turns.map((turn: ConversationTurn, i: number) =>
+                    i === streamingIdx
+                        ? { ...turn, content, streaming: streaming || undefined, ...(timeline ? { timeline } : {}) }
+                        : turn
+                );
+            } else {
+                updatedTurns = [...turns, {
+                    role: 'assistant' as const, content, timestamp: new Date(),
+                    turnIndex: turns.length, streaming: streaming || undefined, timeline: timeline ?? [],
+                }];
+            }
+            processes.set(processId, { ...existing, conversationTurns: updatedTurns });
+        }),
+        updateTurnContent: vi.fn(async (processId: string, turnIndex: number, content: string) => {
+            const existing = processes.get(processId);
+            if (!existing) return;
+            const turns = existing.conversationTurns ?? [];
+            if (turnIndex < 0 || turnIndex >= turns.length) return;
+            const updatedTurns = turns.map((turn: ConversationTurn, i: number) => i === turnIndex ? { ...turn, content } : turn);
+            processes.set(processId, { ...existing, conversationTurns: updatedTurns });
+        }),
         getProcessSummaries: vi.fn(async (filter?: { status?: string | string[]; limit?: number; offset?: number }) => {
             let result = Array.from(processes.values());
             if (filter?.status) {

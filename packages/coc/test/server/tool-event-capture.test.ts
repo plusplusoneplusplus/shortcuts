@@ -365,14 +365,14 @@ describe('Tool Event Capture', () => {
 
         await executor.execute(task);
 
-        // Verify updateProcess was called with conversationTurns containing toolCalls
-        expect(store.updateProcess).toHaveBeenCalled();
-        const updateCalls = (store.updateProcess as ReturnType<typeof vi.fn>).mock.calls;
-        const lastUpdate = updateCalls[updateCalls.length - 1];
-        const updates = lastUpdate[1] as Partial<AIProcess>;
-        expect(updates.conversationTurns).toBeDefined();
+        // Verify appendConversationTurn was called to persist the assistant turn with toolCalls
+        expect(store.appendConversationTurn).toHaveBeenCalled();
+        const appendCalls = (store.appendConversationTurn as ReturnType<typeof vi.fn>).mock.calls;
+        const lastAppend = appendCalls[appendCalls.length - 1];
+        // appendConversationTurn(processId, makeTurn, options) — invoke makeTurn to get the turn
+        const makeTurnFn = lastAppend[1] as (turnIndex: number) => ConversationTurn;
+        const assistantTurn = makeTurnFn(1);
 
-        const assistantTurn = updates.conversationTurns!.find(t => t.role === 'assistant');
         expect(assistantTurn?.toolCalls).toBeDefined();
         expect(assistantTurn!.toolCalls![0].id).toBe('persist-1');
         expect(assistantTurn!.toolCalls![0].args).toEqual({ path: '/a.ts', old_str: 'foo', new_str: 'bar' });

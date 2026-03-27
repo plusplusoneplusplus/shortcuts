@@ -19,6 +19,7 @@ import {
     AIProcess,
     AIProcessStatus,
     ConversationTurn,
+    TimelineItem,
     SerializedAIProcess,
     serializeProcess,
     deserializeProcess,
@@ -289,6 +290,9 @@ export class FileProcessStore implements ProcessStore {
     }
 
     async updateProcess(id: string, updates: Partial<AIProcess>): Promise<void> {
+        if ('conversationTurns' in updates) {
+            throw new Error('Use appendConversationTurn/upsertStreamingTurn/updateTurnContent to modify conversationTurns');
+        }
         let updated: AIProcess | undefined;
         await this.enqueueWrite(async () => {
             const workspaceId = await this.findWorkspaceIdForProcess(id);
@@ -405,6 +409,128 @@ export class FileProcessStore implements ProcessStore {
         }
 
         return appendResult;
+    }
+
+    /**
+     * Atomically upsert a streaming assistant turn inside the write queue.
+     * If a streaming assistant turn already exists, updates it in-place.
+     * Otherwise, appends a new assistant turn.
+     */
+    async upsertStreamingTurn(
+        processId: string,
+        content: string,
+        streaming: boolean,
+        timeline?: TimelineItem[],
+    ): Promise<void> {
+        let updatedProcess: AIProcess | undefined;
+
+        await this.enqueueWrite(async () => {
+            const workspaceId = await this.findWorkspaceIdForProcess(processId);
+            if (workspaceId === undefined) { return; }
+
+            const entry = await this.readProcessFile(workspaceId, processId);
+            if (!entry) { return; }
+
+            const existing = deserializeProcess(entry.process);
+            const turns = existing.conversationTurns ?? [];
+
+            // Search backwards for existing streaming assistant turn
+            let streamingIdx = -1;
+            for (let i = turns.length - 1; i >= 0; i--) {
+                if (turns[i].role === 'assistant' && turns[i].streaming) {
+                    streamingIdx = i;
+                    break;
+                }
+            }
+
+            let updatedTurns: ConversationTurn[];
+            if (streamingIdx !== -1) {
+                updatedTurns = turns.map((turn, i) =>
+                    i === streamingIdx
+                        ? { ...turn, content, streaming: streaming || undefined, ...(timeline ? { timeline } : {}) }
+                        : turn
+                );
+            } else {
+                updatedTurns = [
+                    ...turns,
+                    {
+                        role: 'assistant' as const,
+                        content,
+                        timestamp: new Date(),
+                        turnIndex: turns.length,
+                        streaming: streaming || undefined,
+                        timeline: timeline ?? [],
+                    },
+                ];
+            }
+
+            const merged: AIProcess = { ...existing, conversationTurns: updatedTurns };
+            const newEntry: StoredProcessEntry = {
+                workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
+                process: serializeProcess(merged),
+            };
+            await this.writeProcessFile(workspaceId, processId, newEntry);
+
+            const index = await this.readIndex(workspaceId);
+            const idx = index.findIndex(e => e.id === processId);
+            if (idx !== -1) {
+                index[idx] = this.toIndexEntry(newEntry);
+                await this.writeIndex(workspaceId, index);
+            }
+
+            updatedProcess = merged;
+        });
+
+        if (updatedProcess) {
+            this.onProcessChange?.({ type: 'process-updated', process: updatedProcess });
+        }
+    }
+
+    /**
+     * Atomically update the content of a conversation turn at a specific index.
+     */
+    async updateTurnContent(
+        processId: string,
+        turnIndex: number,
+        content: string,
+    ): Promise<void> {
+        let updatedProcess: AIProcess | undefined;
+
+        await this.enqueueWrite(async () => {
+            const workspaceId = await this.findWorkspaceIdForProcess(processId);
+            if (workspaceId === undefined) { return; }
+
+            const entry = await this.readProcessFile(workspaceId, processId);
+            if (!entry) { return; }
+
+            const existing = deserializeProcess(entry.process);
+            const turns = existing.conversationTurns ?? [];
+            if (turnIndex < 0 || turnIndex >= turns.length) { return; }
+
+            const updatedTurns = turns.map((turn, i) =>
+                i === turnIndex ? { ...turn, content } : turn
+            );
+
+            const merged: AIProcess = { ...existing, conversationTurns: updatedTurns };
+            const newEntry: StoredProcessEntry = {
+                workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
+                process: serializeProcess(merged),
+            };
+            await this.writeProcessFile(workspaceId, processId, newEntry);
+
+            const index = await this.readIndex(workspaceId);
+            const idx = index.findIndex(e => e.id === processId);
+            if (idx !== -1) {
+                index[idx] = this.toIndexEntry(newEntry);
+                await this.writeIndex(workspaceId, index);
+            }
+
+            updatedProcess = merged;
+        });
+
+        if (updatedProcess) {
+            this.onProcessChange?.({ type: 'process-updated', process: updatedProcess });
+        }
     }
 
     async removeProcess(id: string): Promise<void> {

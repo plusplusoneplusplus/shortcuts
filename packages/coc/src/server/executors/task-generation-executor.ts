@@ -137,16 +137,7 @@ export class TaskGenerationExecutor extends ChatBaseExecutor {
                 fullPrompt: aiPrompt,
                 promptPreview: enrichedPreview,
             });
-            const existing = await this.store.getProcess(
-                processId,
-                (task.payload as any)?.workspaceId as string | undefined,
-            );
-            if (existing?.conversationTurns?.[0]) {
-                existing.conversationTurns[0].content = aiPrompt;
-                await this.store.updateProcess(processId, {
-                    conversationTurns: existing.conversationTurns,
-                });
-            }
+            await this.store.updateTurnContent(processId, 0, aiPrompt);
         } catch {
             // Non-fatal: store may be a stub
         }

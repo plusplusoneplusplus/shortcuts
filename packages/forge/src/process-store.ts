@@ -7,7 +7,7 @@
  * No VS Code dependencies - can be used in CLI tools and other environments.
  */
 
-import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn } from './ai/process-types';
+import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn, TimelineItem } from './ai/process-types';
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline-types';
 import type { TokenUsage } from './copilot-sdk-wrapper/types';
 
@@ -283,7 +283,7 @@ export interface ProcessStore {
      *   May be a plain object or a function receiving the current process for dynamic computation.
      * @returns The new turn and the full updated turns array, or undefined if process not found.
      */
-    appendConversationTurn?(
+    appendConversationTurn(
         processId: string,
         makeTurn: (turnIndex: number) => ConversationTurn,
         options?: {
@@ -293,4 +293,37 @@ export interface ProcessStore {
                 | ((current: AIProcess) => Partial<Omit<AIProcess, 'conversationTurns'>>);
         }
     ): Promise<{ turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined>;
+
+    /**
+     * Atomically upsert a streaming assistant turn inside the write queue.
+     * If a streaming assistant turn already exists, updates it in-place.
+     * Otherwise, appends a new assistant turn. Prevents read-outside-lock races
+     * that caused lost user turns in the old flushConversationTurn pattern.
+     *
+     * @param processId - Target process ID.
+     * @param content - Current streamed content.
+     * @param streaming - Whether the turn is still streaming.
+     * @param timeline - Current timeline snapshot.
+     */
+    upsertStreamingTurn(
+        processId: string,
+        content: string,
+        streaming: boolean,
+        timeline?: TimelineItem[],
+    ): Promise<void>;
+
+    /**
+     * Atomically update the content of a conversation turn at a specific index.
+     * Used for prompt backfill (e.g., enriching the initial user turn content
+     * after task generation resolves the full prompt).
+     *
+     * @param processId - Target process ID.
+     * @param turnIndex - Array index of the turn to update.
+     * @param content - New content for the turn.
+     */
+    updateTurnContent(
+        processId: string,
+        turnIndex: number,
+        content: string,
+    ): Promise<void>;
 }

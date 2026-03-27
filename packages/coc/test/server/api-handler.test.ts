@@ -1623,9 +1623,9 @@ describe('API Handler', () => {
             const srv = await startServer();
             const proc = makeProcess({ id: 'tc-default' });
             await postJSON(`${srv.url}/api/processes`, proc);
-
-            // Inject conversation turns with tool calls directly via store
-            await srv.store.updateProcess('tc-default', {
+            // Use addProcess to set conversationTurns (API POST doesn't accept them)
+            await srv.store.addProcess({
+                ...await srv.store.getProcess('tc-default')!,
                 conversationTurns: [
                     {
                         role: 'assistant',
@@ -1645,7 +1645,7 @@ describe('API Handler', () => {
                         timeline: [],
                     },
                 ],
-            });
+            } as any);
 
             const res = await request(`${srv.url}/api/processes/tc-default`);
             expect(res.status).toBe(200);
@@ -1658,8 +1658,8 @@ describe('API Handler', () => {
             const srv = await startServer();
             const proc = makeProcess({ id: 'tc-exclude' });
             await postJSON(`${srv.url}/api/processes`, proc);
-
-            await srv.store.updateProcess('tc-exclude', {
+            await srv.store.addProcess({
+                ...await srv.store.getProcess('tc-exclude')!,
                 conversationTurns: [
                     {
                         role: 'assistant',
@@ -1670,7 +1670,7 @@ describe('API Handler', () => {
                         timeline: [],
                     },
                 ],
-            });
+            } as any);
 
             const res = await request(`${srv.url}/api/processes/tc-exclude?exclude=toolCalls`);
             expect(res.status).toBe(200);
@@ -1684,8 +1684,8 @@ describe('API Handler', () => {
             const srv = await startServer();
             const proc = makeProcess({ id: 'tc-list-exclude' });
             await postJSON(`${srv.url}/api/processes`, proc);
-
-            await srv.store.updateProcess('tc-list-exclude', {
+            await srv.store.addProcess({
+                ...await srv.store.getProcess('tc-list-exclude')!,
                 conversationTurns: [
                     {
                         role: 'assistant',
@@ -1696,7 +1696,7 @@ describe('API Handler', () => {
                         timeline: [],
                     },
                 ],
-            });
+            } as any);
 
             const res = await request(`${srv.url}/api/processes?exclude=toolCalls`);
             expect(res.status).toBe(200);
@@ -1711,8 +1711,8 @@ describe('API Handler', () => {
             const srv = await startServer();
             const proc = makeProcess({ id: 'tc-preserve' });
             await postJSON(`${srv.url}/api/processes`, proc);
-
-            await srv.store.updateProcess('tc-preserve', {
+            await srv.store.addProcess({
+                ...await srv.store.getProcess('tc-preserve')!,
                 conversationTurns: [
                     {
                         role: 'assistant',
@@ -1730,7 +1730,7 @@ describe('API Handler', () => {
                         timeline: [],
                     },
                 ],
-            });
+            } as any);
 
             const res = await request(`${srv.url}/api/processes/tc-preserve?exclude=toolCalls`);
             expect(res.status).toBe(200);

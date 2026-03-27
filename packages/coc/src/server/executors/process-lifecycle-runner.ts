@@ -199,7 +199,36 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 images: payloadImages?.length > 0 ? payloadImages : undefined,
             },
         ];
-        process.conversationTurns = initialTurns;
+
+        // Cold resume: prepend historical turns before creating the process
+        const resumedFrom = (task.payload as any)?.resumedFrom;
+        if (resumedFrom && typeof resumedFrom === 'string') {
+            try {
+                const oldProcess = await this.store.getProcess(
+                    resumedFrom,
+                    (task.payload as any)?.workspaceId as string | undefined,
+                );
+                if (oldProcess?.conversationTurns?.length) {
+                    const historicalTurns: ConversationTurn[] = oldProcess.conversationTurns.map((t, i) => ({
+                        ...t,
+                        historical: true,
+                        turnIndex: i,
+                    }));
+                    const offset = historicalTurns.length;
+                    process.conversationTurns = [
+                        ...historicalTurns,
+                        ...initialTurns.map((t, i) => ({ ...t, turnIndex: offset + i })),
+                    ];
+                } else {
+                    process.conversationTurns = initialTurns;
+                }
+            } catch {
+                // Non-fatal: old process may be gone
+                process.conversationTurns = initialTurns;
+            }
+        } else {
+            process.conversationTurns = initialTurns;
+        }
 
         // Record initial prompt to memory (skip scheduled/template-generated runs)
         const isScheduledRun = isChatPayload(task.payload) && !!task.payload.context?.scheduleId;
@@ -229,75 +258,46 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             const finalTimeline = (result as any)?.timeline
                 ?? mergeConsecutiveContentItems(this.sessions.get(processId)?.timelineBuffer || []);
 
-            const currentProcess = await this.store.getProcess(
-                processId,
-                (task.payload as any)?.workspaceId as string | undefined,
-            );
-            const existingTurns = currentProcess?.conversationTurns?.length
-                ? currentProcess.conversationTurns
-                : initialTurns;
-
-            const finalTurns: ConversationTurn[] = [
-                existingTurns[0],
-                {
-                    role: 'assistant',
-                    content: responseText,
-                    timestamp: new Date(),
-                    turnIndex: 1,
-                    toolCalls: (result as any)?.toolCalls || undefined,
-                    timeline: finalTimeline,
-                    suggestions: (result as any)?.pendingSuggestions ?? this.sessions.get(processId)?.pendingSuggestions,
-                },
-            ];
-
-            // Cold resume: prepend historical turns from the original session
-            const resumedFrom = (task.payload as any)?.resumedFrom;
-            let combinedTurns = finalTurns;
-            if (resumedFrom && typeof resumedFrom === 'string') {
-                try {
-                    const oldProcess = await this.store.getProcess(
-                        resumedFrom,
-                        (task.payload as any)?.workspaceId as string | undefined,
-                    );
-                    if (oldProcess?.conversationTurns?.length) {
-                        const historicalTurns: ConversationTurn[] = oldProcess.conversationTurns.map((t, i) => ({
-                            ...t,
-                            historical: true,
-                            turnIndex: i,
-                        }));
-                        const offset = historicalTurns.length;
-                        combinedTurns = [
-                            ...historicalTurns,
-                            ...finalTurns.map((t, i) => ({ ...t, turnIndex: offset + i })),
-                        ];
-                    }
-                } catch {
-                    // Non-fatal: old process may be gone
-                }
-            }
-
             try {
+                const appendResult = await this.store.appendConversationTurn(
+                    processId,
+                    (turnIndex) => ({
+                        role: 'assistant' as const,
+                        content: responseText,
+                        timestamp: new Date(),
+                        turnIndex,
+                        toolCalls: (result as any)?.toolCalls || undefined,
+                        timeline: finalTimeline,
+                        suggestions: (result as any)?.pendingSuggestions ?? this.sessions.get(processId)?.pendingSuggestions,
+                    }),
+                    {
+                        filterStreaming: true,
+                        additionalUpdates: (current) => {
+                            if (TERMINAL_STATUSES.has(current.status)) return {};
+                            return {
+                                status: 'completed' as const,
+                                endTime: new Date(),
+                                result: typeof result === 'string' ? result : JSON.stringify(result),
+                                ...(sessionId ? { sdkSessionId: sessionId } : {}),
+                            };
+                        },
+                    },
+                );
+
+                const combinedTurns = appendResult?.allTurns ?? process.conversationTurns ?? initialTurns;
+
                 const currentProc = await this.store.getProcess(
                     processId,
                     (task.payload as any)?.workspaceId as string | undefined,
                 );
                 if (!TERMINAL_STATUSES.has(currentProc?.status ?? '')) {
-                    await this.store.updateProcess(processId, {
-                        status: 'completed',
-                        endTime: new Date(),
-                        result: typeof result === 'string' ? result : JSON.stringify(result),
-                        ...(sessionId ? { sdkSessionId: sessionId } : {}),
-                        conversationTurns: combinedTurns,
-                    });
                     this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
                 }
+
+                setTimeout(() => this.onGenerateTitle(processId, combinedTurns), 0);
             } catch {
                 // Non-fatal
             }
-
-            // Schedule title generation as a macrotask so it runs AFTER the queue
-            // executor fires taskCompleted and after the caller's synchronous code.
-            setTimeout(() => this.onGenerateTitle(processId, combinedTurns), 0);
 
             return { success: true, result, durationMs: Date.now() - startTime };
         } catch (error) {
@@ -310,13 +310,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     processId,
                     (task.payload as any)?.workspaceId as string | undefined,
                 );
-                const existingTurns = currentProcess?.conversationTurns || initialTurns;
                 if (!TERMINAL_STATUSES.has(currentProcess?.status ?? '')) {
                     await this.store.updateProcess(processId, {
                         status: 'failed',
                         endTime: new Date(),
                         error: errorMsg,
-                        conversationTurns: existingTurns,
                     });
                     this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
                 }

@@ -139,47 +139,7 @@ export abstract class BaseExecutor {
         const timelineSnapshot = mergeConsecutiveContentItems([...(session?.timelineBuffer || [])]);
 
         try {
-            const currentProcess = await this.store.getProcess(processId);
-            if (!currentProcess) return;
-
-            const existingTurns = currentProcess.conversationTurns || [];
-
-            // Search for existing streaming assistant turn anywhere in the array,
-            // not just the last position — a user follow-up may have been appended after it.
-            let streamingIdx = -1;
-            for (let i = existingTurns.length - 1; i >= 0; i--) {
-                if (existingTurns[i].role === 'assistant' && existingTurns[i].streaming) {
-                    streamingIdx = i;
-                    break;
-                }
-            }
-
-            let updatedTurns;
-            if (streamingIdx !== -1) {
-                // Update existing streaming assistant turn in-place
-                updatedTurns = existingTurns.map((turn, i) =>
-                    i === streamingIdx
-                        ? { ...turn, content: buffer ?? '', streaming: streaming || undefined, timeline: timelineSnapshot }
-                        : turn
-                );
-            } else {
-                // No streaming turn exists yet — append new assistant turn
-                updatedTurns = [
-                    ...existingTurns,
-                    {
-                        role: 'assistant' as const,
-                        content: buffer ?? '',
-                        timestamp: new Date(),
-                        turnIndex: existingTurns.length,
-                        streaming: streaming || undefined,
-                        timeline: timelineSnapshot,
-                    },
-                ];
-            }
-
-            await this.store.updateProcess(processId, {
-                conversationTurns: updatedTurns,
-            });
+            await this.store.upsertStreamingTurn(processId, buffer ?? '', streaming, timelineSnapshot);
         } catch {
             // Non-fatal: don't fail the task because of flush
         }

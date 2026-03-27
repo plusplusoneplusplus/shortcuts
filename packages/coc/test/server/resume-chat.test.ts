@@ -198,11 +198,13 @@ describe('POST /api/queue/:id/resume-chat', () => {
         await new Promise(r => setTimeout(r, 500));
 
         // Directly update process to simulate expired state with no turns
-        await store.updateProcess(processId, {
+        const existing1 = await store.getProcess(processId);
+        await store.addProcess({
+            ...existing1!,
             status: 'failed',
             conversationTurns: [],
             sdkSessionId: 'expired-session',
-        });
+        } as any);
 
         const res = await postJSON(`${srv.url}/api/queue/${encodeURIComponent(taskId)}/resume-chat`);
         // May be 409 (no conversation) or something else depending on timing
@@ -218,14 +220,16 @@ describe('POST /api/queue/:id/resume-chat', () => {
         // Wait for task execution, then simulate completed + expired state
         await new Promise(r => setTimeout(r, 1000));
 
-        await store.updateProcess(processId, {
+        const existing2 = await store.getProcess(processId);
+        await store.addProcess({
+            ...existing2!,
             status: 'completed',
             sdkSessionId: 'dead-session-id',
             conversationTurns: [
                 makeTurn('user', 'Hello', 0),
                 makeTurn('assistant', 'Hi there!', 1),
             ],
-        });
+        } as any);
 
         const res = await postJSON(`${srv.url}/api/queue/${encodeURIComponent(taskId)}/resume-chat`);
 

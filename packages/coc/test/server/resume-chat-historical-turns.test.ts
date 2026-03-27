@@ -100,14 +100,12 @@ describe('CLITaskExecutor — Historical Turn Prepending', () => {
         const result = await executor.execute(task);
         expect(result.success).toBe(true);
 
-        // Verify updateProcess was called with combined turns
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const completionCall = updateCalls.find(
-            (call: any[]) => call[0] === 'queue_resume-task-1' && call[1]?.status === 'completed'
-        );
-        expect(completionCall).toBeDefined();
+        // Verify conversation turns via final process state
+        const proc = store.processes.get('queue_resume-task-1');
+        expect(proc).toBeDefined();
+        expect(proc!.status).toBe('completed');
 
-        const updatedTurns: ConversationTurn[] = completionCall[1].conversationTurns;
+        const updatedTurns = proc!.conversationTurns!;
 
         // Should have 4 historical + 2 new turns = 6 total
         expect(updatedTurns.length).toBe(6);
@@ -159,13 +157,11 @@ describe('CLITaskExecutor — Historical Turn Prepending', () => {
         const result = await executor.execute(task);
         expect(result.success).toBe(true);
 
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const completionCall = updateCalls.find(
-            (call: any[]) => call[0] === 'queue_normal-task-1' && call[1]?.status === 'completed'
-        );
-        expect(completionCall).toBeDefined();
+        const proc = store.processes.get('queue_normal-task-1');
+        expect(proc).toBeDefined();
+        expect(proc!.status).toBe('completed');
 
-        const updatedTurns: ConversationTurn[] = completionCall[1].conversationTurns;
+        const updatedTurns = proc!.conversationTurns!;
 
         // Should have exactly 2 turns (user + assistant) — no historical
         expect(updatedTurns.length).toBe(2);
@@ -195,13 +191,11 @@ describe('CLITaskExecutor — Historical Turn Prepending', () => {
         const result = await executor.execute(task);
         expect(result.success).toBe(true);
 
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const completionCall = updateCalls.find(
-            (call: any[]) => call[0] === 'queue_resume-missing-1' && call[1]?.status === 'completed'
-        );
-        expect(completionCall).toBeDefined();
+        const proc = store.processes.get('queue_resume-missing-1');
+        expect(proc).toBeDefined();
+        expect(proc!.status).toBe('completed');
 
-        const updatedTurns: ConversationTurn[] = completionCall[1].conversationTurns;
+        const updatedTurns = proc!.conversationTurns!;
 
         // Should have only 2 turns — no historical prepended
         expect(updatedTurns.length).toBe(2);
@@ -232,13 +226,11 @@ describe('CLITaskExecutor — Historical Turn Prepending', () => {
         const result = await executor.execute(task);
         expect(result.success).toBe(true);
 
-        const updateCalls = (store.updateProcess as any).mock.calls;
-        const completionCall = updateCalls.find(
-            (call: any[]) => call[0] === 'queue_resume-empty-1' && call[1]?.status === 'completed'
-        );
-        expect(completionCall).toBeDefined();
+        const proc = store.processes.get('queue_resume-empty-1');
+        expect(proc).toBeDefined();
+        expect(proc!.status).toBe('completed');
 
-        const updatedTurns: ConversationTurn[] = completionCall[1].conversationTurns;
+        const updatedTurns = proc!.conversationTurns!;
 
         // Empty old turns → no historical, just 2 new turns
         expect(updatedTurns.length).toBe(2);
