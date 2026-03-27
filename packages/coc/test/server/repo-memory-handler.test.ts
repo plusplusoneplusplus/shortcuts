@@ -183,7 +183,7 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
 
     it('includes user notes in feed', async () => {
         // Create a note in the repo-scoped store
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'notes')));
         noteStore.create({ content: 'test note', tags: ['api'], source: 'manual' });
 
         const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed`);
@@ -201,7 +201,7 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
         // Write an observation directly to the pipeline memory store
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
         await pipelineStore.writeRaw('repo', undefined, {
             pipeline: 'code-review',
@@ -221,7 +221,7 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
     it('merges and sorts by createdAt descending', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
 
         // Older observation
@@ -231,7 +231,7 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
         }, 'old fact');
 
         // Newer note
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'notes')));
         noteStore.create({ content: 'new note', tags: [], source: 'manual' });
 
         const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed`);
@@ -336,7 +336,7 @@ describe('DELETE /api/repos/:repoId/memory/feed/:id', () => {
     it('deletes an observation', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
         const filename = await pipelineStore.writeRaw('repo', undefined, {
             pipeline: 'test-pipeline',
@@ -384,9 +384,9 @@ describe('GET /api/repos/:repoId/memory/stats', () => {
     it('counts observations correctly', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
-        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'p1', timestamp: new Date().toISOString() }, 'obs 1');
+        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'p1',timestamp: new Date().toISOString() }, 'obs 1');
         await pipelineStore.writeRaw('repo', undefined, { pipeline: 'p2', timestamp: new Date().toISOString() }, 'obs 2');
 
         const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/stats`);
@@ -396,7 +396,7 @@ describe('GET /api/repos/:repoId/memory/stats', () => {
     it('returns consolidatedAt from pipeline memory index', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
         const ts = '2026-03-01T10:00:00.000Z';
         await pipelineStore.updateIndex('repo', undefined, { lastAggregation: ts });
@@ -475,7 +475,7 @@ describe('GET /api/repos/:repoId/memory/consolidated', () => {
     it('returns consolidated content when it exists', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
         await pipelineStore.writeConsolidated('repo', '# Memory\n- fact 1\n- fact 2');
 
@@ -509,7 +509,7 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
     }
 
     it('returns 202 with taskId and processId when enqueued', async () => {
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'notes')));
         noteStore.create({ content: 'note', tags: [], source: 'manual' });
 
         const queueFacade = makeQueueFacade();
@@ -567,7 +567,7 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
     });
 
     it('maps source aliases user→notes and ai→observations in payload', async () => {
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'notes')));
         noteStore.create({ content: 'note', tags: [], source: 'manual' });
 
         const queueFacade = makeQueueFacade();
@@ -585,7 +585,7 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
     });
 
     it('defaults to both sources when none specified', async () => {
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'notes')));
         noteStore.create({ content: 'note', tags: [], source: 'manual' });
 
         const queueFacade = makeQueueFacade();
@@ -603,7 +603,7 @@ describe('POST /api/repos/:repoId/memory/aggregate', () => {
     });
 
     it('passes model to payload', async () => {
-        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory'));
+        const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'notes')));
         noteStore.create({ content: 'note', tags: [], source: 'manual' });
 
         const queueFacade = makeQueueFacade();
@@ -635,7 +635,7 @@ describe('POST /api/repos/:repoId/memory/aggregate/accept', () => {
 
     it('removes the backup file on accept', async () => {
         // Create a fake backup
-        const memDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const memDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         fs.mkdirSync(memDir, { recursive: true });
         const prevPath = path.join(memDir, 'consolidated.prev.md');
         fs.writeFileSync(prevPath, 'old content', 'utf-8');
@@ -660,14 +660,14 @@ describe('POST /api/repos/:repoId/memory/aggregate/revert', () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
 
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
 
         // Write current consolidated
         await pipelineStore.writeConsolidated('repo', '# New version');
 
         // Create backup
-        const memDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const memDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         fs.mkdirSync(memDir, { recursive: true });
         fs.writeFileSync(path.join(memDir, 'consolidated.prev.md'), '# Old version', 'utf-8');
 
@@ -687,7 +687,7 @@ describe('POST /api/repos/:repoId/memory/aggregate/revert', () => {
 
     it('returns 404 when workspace not found', async () => {
         // Create backup but workspace is not in store
-        const memDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const memDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         fs.mkdirSync(memDir, { recursive: true });
         fs.writeFileSync(path.join(memDir, 'consolidated.prev.md'), 'old', 'utf-8');
 

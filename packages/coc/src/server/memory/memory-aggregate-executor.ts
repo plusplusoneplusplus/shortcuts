@@ -23,18 +23,18 @@ import { computeDiff } from './repo-memory-handler';
 const inProgress = new Set<string>();
 
 function getNoteStore(dataDir: string, workspaceId: string): FileMemoryStore {
-    const noteDir = getRepoDataPath(dataDir, workspaceId, 'memory');
+    const noteDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'notes'));
     return new FileMemoryStore(noteDir);
 }
 
 function getPipelineStore(dataDir: string, workspaceId: string): PipelineMemoryStore {
     const config = readMemoryConfig(dataDir);
-    const repoDir = getRepoDataPath(dataDir, workspaceId, 'memory');
+    const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline'));
     return new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
 }
 
 function consolidatedPrevPath(dataDir: string, workspaceId: string): string {
-    return path.join(getRepoDataPath(dataDir, workspaceId, 'memory'), 'consolidated.prev.md');
+    return path.join(getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline')), 'consolidated.prev.md');
 }
 
 export class MemoryAggregateExecutor {

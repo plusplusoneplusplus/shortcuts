@@ -58,13 +58,13 @@ export interface RepoMemoryRouteOptions {
 // ============================================================================
 
 function getNoteStore(dataDir: string, workspaceId: string): FileMemoryStore {
-    const noteDir = getRepoDataPath(dataDir, workspaceId, 'memory');
+    const noteDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'notes'));
     return new FileMemoryStore(noteDir);
 }
 
 function getPipelineStore(dataDir: string, workspaceId: string): PipelineMemoryStore {
     const config = readMemoryConfig(dataDir);
-    const repoDir = getRepoDataPath(dataDir, workspaceId, 'memory');
+    const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline'));
     return new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
 }
 
@@ -75,7 +75,7 @@ async function getRepoRootPath(store: ProcessStore, workspaceId: string): Promis
 
 /** Backup path for consolidated.md before aggregation (enables revert). */
 function consolidatedPrevPath(dataDir: string, workspaceId: string): string {
-    return path.join(getRepoDataPath(dataDir, workspaceId, 'memory'), 'consolidated.prev.md');
+    return path.join(getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline')), 'consolidated.prev.md');
 }
 
 /**

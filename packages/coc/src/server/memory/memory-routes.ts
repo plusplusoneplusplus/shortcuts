@@ -268,7 +268,7 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
     const getObservationStore = (workspaceId?: string): PipelineMemoryStore => {
         const config = readMemoryConfig(dataDir);
         if (workspaceId) {
-            const repoDir = getRepoDataPath(dataDir, workspaceId, 'memory');
+            const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline'));
             return new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
         }
         return new PipelineMemoryStore({ dataDir: config.storageDir });

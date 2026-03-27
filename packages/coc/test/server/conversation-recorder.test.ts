@@ -27,7 +27,7 @@ describe('recordUserMessage', () => {
         // Default config has recording.enabled = false
         recordUserMessage(tmpDir, workspaceId, 'hello');
 
-        const memoryDir = path.join(tmpDir, 'repos', workspaceId, 'memory');
+        const memoryDir = path.join(tmpDir, 'repos', workspaceId, 'memory', 'notes');
         expect(fs.existsSync(memoryDir)).toBe(false);
     });
 
@@ -40,7 +40,7 @@ describe('recordUserMessage', () => {
 
         recordUserMessage(tmpDir, workspaceId, 'test message');
 
-        const memoryDir = path.join(tmpDir, 'repos', workspaceId, 'memory');
+        const memoryDir = path.join(tmpDir, 'repos', workspaceId, 'memory', 'notes');
         const store = new FileMemoryStore(memoryDir);
         const result = store.list({ pageSize: 100 });
 
@@ -57,7 +57,7 @@ describe('recordUserMessage', () => {
 
         recordUserMessage(tmpDir, workspaceId, 'My detailed question about code');
 
-        const memoryDir = path.join(tmpDir, 'repos', workspaceId, 'memory');
+        const memoryDir = path.join(tmpDir, 'repos', workspaceId, 'memory', 'notes');
         const store = new FileMemoryStore(memoryDir);
         const result = store.list({ pageSize: 100 });
         const entry = store.get(result.entries[0].id);
@@ -78,7 +78,7 @@ describe('recordUserMessage', () => {
         recordUserMessage(tmpDir, workspaceId, 'first message');
         recordUserMessage(tmpDir, workspaceId, 'second message');
 
-        const memoryDir = path.join(tmpDir, 'repos', workspaceId, 'memory');
+        const memoryDir = path.join(tmpDir, 'repos', workspaceId, 'memory', 'notes');
         const store = new FileMemoryStore(memoryDir);
         const result = store.list({ pageSize: 100 });
 

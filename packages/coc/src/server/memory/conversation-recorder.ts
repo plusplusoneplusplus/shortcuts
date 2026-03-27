@@ -5,6 +5,7 @@
  * Uses the same FileMemoryStore + repo-scoped path as manual notes.
  */
 
+import * as path from 'path';
 import { readMemoryConfig } from './memory-config-handler';
 import { FileMemoryStore } from './memory-store';
 import { getRepoDataPath } from '../paths';
@@ -21,7 +22,7 @@ export function recordUserMessage(
     const config = readMemoryConfig(dataDir);
     if (!config.recording.enabled) return;
 
-    const noteDir = getRepoDataPath(dataDir, workspaceId, 'memory');
+    const noteDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'notes'));
     const store = new FileMemoryStore(noteDir);
     store.create({ content, source: 'conversation', tags: [] });
 }

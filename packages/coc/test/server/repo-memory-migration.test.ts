@@ -13,7 +13,7 @@ import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { computeRepoHash } from '@plusplusoneplusplus/forge';
 import { writeMemoryConfig, DEFAULT_MEMORY_CONFIG } from '../../src/server/memory/memory-config-handler';
-import { migrateRepoMemory } from '../../src/server/memory/repo-memory-migration';
+import { migrateRepoMemory, migrateMemoryToSubfolders } from '../../src/server/memory/repo-memory-migration';
 import { getRepoDataPath } from '../../src/server/paths';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ describe('migrateRepoMemory', () => {
         expect(result.skippedUnmatched).toBe(0);
 
         // Verify files at new location
-        const newDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const newDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         expect(fs.readFileSync(path.join(newDir, 'consolidated.md'), 'utf-8')).toBe('# Facts\n- fact 1');
         expect(fs.readFileSync(path.join(newDir, 'index.json'), 'utf-8')).toContain('lastAggregation');
         expect(fs.readFileSync(path.join(newDir, 'raw', '2026-01-01T00-00-00.000Z-test.md'), 'utf-8')).toContain('raw fact');
@@ -112,7 +112,7 @@ describe('migrateRepoMemory', () => {
         fs.writeFileSync(path.join(oldDir, 'consolidated.md'), 'old version', 'utf-8');
 
         // Pre-create destination with different content
-        const newDir = getRepoDataPath(tmpDir, WORKSPACE_ID, 'memory');
+        const newDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
         fs.mkdirSync(newDir, { recursive: true });
         fs.writeFileSync(path.join(newDir, 'consolidated.md'), 'existing content', 'utf-8');
 
@@ -230,5 +230,126 @@ describe('migrateRepoMemory', () => {
 
         const detail = result.details.find(d => d.hash === hash)!;
         expect(detail.filesCopied).toBe(4); // consolidated.md + index.json + 2 raw
+    });
+});
+
+// ── migrateMemoryToSubfolders ─────────────────────────────────────────────────
+
+describe('migrateMemoryToSubfolders', () => {
+    it('returns empty result when repos dir does not exist', async () => {
+        const result = await migrateMemoryToSubfolders(tmpDir);
+        expect(result.migrated).toBe(0);
+        expect(result.skipped).toBe(0);
+    });
+
+    it('separates array index.json (notes) and UUID files into notes/', async () => {
+        const wsId = 'ws-sub-1';
+        const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
+        fs.mkdirSync(memDir, { recursive: true });
+
+        // Note files
+        const noteId = '12345678-1234-1234-1234-123456789abc';
+        fs.writeFileSync(path.join(memDir, `${noteId}.json`), '{"content":"hello"}', 'utf-8');
+        fs.writeFileSync(path.join(memDir, 'index.json'), JSON.stringify([{ id: noteId }]), 'utf-8');
+
+        const result = await migrateMemoryToSubfolders(tmpDir);
+        expect(result.migrated).toBe(1);
+
+        // Note file moved
+        expect(fs.existsSync(path.join(memDir, 'notes', `${noteId}.json`))).toBe(true);
+        expect(fs.existsSync(path.join(memDir, `${noteId}.json`))).toBe(false);
+        // Note index written
+        const noteIndex = JSON.parse(fs.readFileSync(path.join(memDir, 'notes', 'index.json'), 'utf-8'));
+        expect(Array.isArray(noteIndex)).toBe(true);
+        // Old index.json removed
+        expect(fs.existsSync(path.join(memDir, 'index.json'))).toBe(false);
+        // Marker written
+        expect(fs.existsSync(path.join(memDir, '.memory-separated'))).toBe(true);
+    });
+
+    it('separates object index.json (pipeline) and pipeline files into pipeline/', async () => {
+        const wsId = 'ws-sub-2';
+        const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
+        const rawDir = path.join(memDir, 'raw');
+        fs.mkdirSync(rawDir, { recursive: true });
+
+        fs.writeFileSync(path.join(rawDir, 'obs.md'), '# fact', 'utf-8');
+        fs.writeFileSync(path.join(memDir, 'consolidated.md'), '# consolidated', 'utf-8');
+        fs.writeFileSync(path.join(memDir, 'consolidated.prev.md'), '# prev', 'utf-8');
+        fs.writeFileSync(
+            path.join(memDir, 'index.json'),
+            JSON.stringify({ lastAggregation: '2026-01-01T00:00:00Z', rawCount: 1, factCount: 1, categories: [] }),
+            'utf-8',
+        );
+
+        const result = await migrateMemoryToSubfolders(tmpDir);
+        expect(result.migrated).toBe(1);
+
+        // Pipeline files moved
+        expect(fs.existsSync(path.join(memDir, 'pipeline', 'raw', 'obs.md'))).toBe(true);
+        expect(fs.existsSync(path.join(memDir, 'pipeline', 'consolidated.md'))).toBe(true);
+        expect(fs.existsSync(path.join(memDir, 'pipeline', 'consolidated.prev.md'))).toBe(true);
+        // Pipeline index
+        const pipelineIndex = JSON.parse(fs.readFileSync(path.join(memDir, 'pipeline', 'index.json'), 'utf-8'));
+        expect(pipelineIndex.lastAggregation).toBe('2026-01-01T00:00:00Z');
+        // Old files cleaned up
+        expect(fs.existsSync(path.join(memDir, 'raw'))).toBe(false);
+        expect(fs.existsSync(path.join(memDir, 'consolidated.md'))).toBe(false);
+        expect(fs.existsSync(path.join(memDir, 'index.json'))).toBe(false);
+    });
+
+    it('skips already-separated directories (has marker)', async () => {
+        const wsId = 'ws-sub-3';
+        const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
+        fs.mkdirSync(memDir, { recursive: true });
+        fs.writeFileSync(path.join(memDir, '.memory-separated'), '2026-01-01', 'utf-8');
+
+        const result = await migrateMemoryToSubfolders(tmpDir);
+        expect(result.skipped).toBe(1);
+        expect(result.migrated).toBe(0);
+    });
+
+    it('is idempotent — running twice does not fail', async () => {
+        const wsId = 'ws-sub-4';
+        const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
+        fs.mkdirSync(memDir, { recursive: true });
+        fs.writeFileSync(path.join(memDir, 'consolidated.md'), '# data', 'utf-8');
+        fs.writeFileSync(
+            path.join(memDir, 'index.json'),
+            JSON.stringify({ lastAggregation: null, rawCount: 0, factCount: 0, categories: [] }),
+            'utf-8',
+        );
+
+        const r1 = await migrateMemoryToSubfolders(tmpDir);
+        expect(r1.migrated).toBe(1);
+
+        const r2 = await migrateMemoryToSubfolders(tmpDir);
+        expect(r2.migrated).toBe(0);
+        expect(r2.skipped).toBe(1);
+    });
+
+    it('handles corrupted index.json gracefully', async () => {
+        const wsId = 'ws-sub-5';
+        const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
+        fs.mkdirSync(memDir, { recursive: true });
+        fs.writeFileSync(path.join(memDir, 'index.json'), '{invalid json', 'utf-8');
+        fs.writeFileSync(path.join(memDir, 'consolidated.md'), '# data', 'utf-8');
+
+        const result = await migrateMemoryToSubfolders(tmpDir);
+        expect(result.migrated).toBe(1);
+        // consolidated.md should still be moved to pipeline
+        expect(fs.existsSync(path.join(memDir, 'pipeline', 'consolidated.md'))).toBe(true);
+        // Corrupted index.json stays in place (not moved to either subfolder)
+        expect(fs.existsSync(path.join(memDir, 'index.json'))).toBe(true);
+    });
+
+    it('skips workspaces without a memory directory', async () => {
+        const wsId = 'ws-sub-6';
+        fs.mkdirSync(path.join(tmpDir, 'repos', wsId), { recursive: true });
+        // No memory/ dir
+
+        const result = await migrateMemoryToSubfolders(tmpDir);
+        expect(result.migrated).toBe(0);
+        expect(result.skipped).toBe(0);
     });
 });
