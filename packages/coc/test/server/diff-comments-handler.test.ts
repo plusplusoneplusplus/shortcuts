@@ -1274,3 +1274,203 @@ describe('Diff Comments WebSocket Broadcasts', () => {
         await new Promise<void>((resolve) => localServer.close(() => resolve()));
     });
 });
+
+// ============================================================================
+// Resolve AI Tests (single + batch)
+// ============================================================================
+
+describe('Diff Comments Resolve AI Routes', () => {
+    let tmpDir: string;
+    let httpServer: http.Server;
+    let baseUrl: string;
+    let mockEnqueue: ReturnType<typeof vi.fn>;
+    let routes: import('@plusplusoneplusplus/coc-server').Route[];
+
+    const WS_ID = 'ws-resolve';
+
+    beforeEach(async () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-diff-resolve-'));
+        routes = [];
+        mockEnqueue = vi.fn().mockResolvedValue('task-123');
+
+        const mockBridge = {
+            getOrCreateBridge: vi.fn(),
+            registry: {
+                getQueueForRepo: vi.fn().mockReturnValue({
+                    enqueue: mockEnqueue,
+                }),
+            },
+        } as any;
+
+        const { registerDiffCommentsRoutes } = await import('../../src/server/diff-comments-handler');
+        registerDiffCommentsRoutes(routes, tmpDir, mockBridge, undefined, () => undefined);
+
+        httpServer = http.createServer(async (req, res) => {
+            const url = req.url || '';
+            const method = req.method || 'GET';
+            for (const route of routes) {
+                if (route.method && route.method !== method) continue;
+                const match = url.match(route.pattern);
+                if (match) {
+                    await route.handler(req, res, match);
+                    return;
+                }
+            }
+            res.writeHead(404);
+            res.end();
+        });
+
+        await new Promise<void>((resolve) => {
+            httpServer.listen(0, '127.0.0.1', () => resolve());
+        });
+        const addr = httpServer.address() as import('net').AddressInfo;
+        baseUrl = `http://127.0.0.1:${addr.port}`;
+    });
+
+    afterEach(async () => {
+        await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    function collectionUrl() {
+        return `${baseUrl}/api/diff-comments/${WS_ID}`;
+    }
+
+    function askAiUrl(key: string, id: string) {
+        return `${baseUrl}/api/diff-comments/${WS_ID}/${key}/${id}/ask-ai`;
+    }
+
+    function batchResolveUrl() {
+        return `${baseUrl}/api/diff-comments/${WS_ID}/batch-resolve`;
+    }
+
+    function makePostBody(ctxOverrides: Partial<DiffCommentContext> = {}) {
+        const context = makeContext(ctxOverrides);
+        return {
+            context,
+            selection: { diffLineStart: 0, diffLineEnd: 2, side: 'added', startColumn: 0, endColumn: 10 },
+            selectedText: 'const x = 1;',
+            comment: 'Should be let',
+            status: 'open',
+        };
+    }
+
+    describe('POST /ask-ai with commandId=resolve', () => {
+        it('returns 202 with taskId on success', async () => {
+            const createRes = await postJSON(collectionUrl(), makePostBody());
+            const { comment } = JSON.parse(createRes.body);
+            const manager = new DiffCommentsManager(tmpDir);
+            const key = manager.hashContext(makeContext());
+
+            const res = await postJSON(askAiUrl(key, comment.id), {
+                commandId: 'resolve',
+                diffContent: '--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1 +1 @@\n-old\n+new',
+            });
+
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBe('task-123');
+        });
+
+        it('returns 400 when diffContent is missing', async () => {
+            const createRes = await postJSON(collectionUrl(), makePostBody());
+            const { comment } = JSON.parse(createRes.body);
+            const manager = new DiffCommentsManager(tmpDir);
+            const key = manager.hashContext(makeContext());
+
+            const res = await postJSON(askAiUrl(key, comment.id), {
+                commandId: 'resolve',
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('diffContent');
+        });
+
+        it('returns 503 when queue enqueue returns undefined', async () => {
+            mockEnqueue.mockResolvedValueOnce(undefined);
+
+            const createRes = await postJSON(collectionUrl(), makePostBody());
+            const { comment } = JSON.parse(createRes.body);
+            const manager = new DiffCommentsManager(tmpDir);
+            const key = manager.hashContext(makeContext());
+
+            const res = await postJSON(askAiUrl(key, comment.id), {
+                commandId: 'resolve',
+                diffContent: 'some diff',
+            });
+
+            expect(res.status).toBe(503);
+        });
+    });
+
+    describe('POST /batch-resolve', () => {
+        it('returns 202 with taskId and totalCount on success', async () => {
+            // Create two open comments
+            await postJSON(collectionUrl(), makePostBody());
+            await postJSON(collectionUrl(), {
+                ...makePostBody(),
+                comment: 'Another comment',
+            });
+
+            const res = await postJSON(batchResolveUrl(), {
+                context: makeContext(),
+                diffContent: '--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1 +1 @@\n-old\n+new',
+            });
+
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBe('task-123');
+            expect(body.totalCount).toBe(2);
+        });
+
+        it('returns 400 when no open comments exist', async () => {
+            const res = await postJSON(batchResolveUrl(), {
+                context: makeContext(),
+                diffContent: 'some diff',
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('No open comments');
+        });
+
+        it('returns 400 when context is missing', async () => {
+            const res = await postJSON(batchResolveUrl(), {
+                diffContent: 'some diff',
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when diffContent is missing', async () => {
+            const res = await postJSON(batchResolveUrl(), {
+                context: makeContext(),
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('diffContent');
+        });
+
+        it('enqueues correct payload shape', async () => {
+            await postJSON(collectionUrl(), makePostBody());
+
+            await postJSON(batchResolveUrl(), {
+                context: makeContext(),
+                diffContent: 'the diff',
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.type).toBe('chat');
+            expect(input.payload.kind).toBe('chat');
+            expect(input.payload.mode).toBe('autopilot');
+            expect(input.payload.tools).toContain('resolve-comments');
+            expect(input.payload.context.resolveDiffComments).toBeDefined();
+            expect(input.payload.context.resolveDiffComments.filePath).toBe('src/index.ts');
+            expect(input.payload.context.resolveDiffComments.wsId).toBe(WS_ID);
+            expect(input.payload.context.resolveDiffComments.commentIds).toHaveLength(1);
+        });
+    });
+});

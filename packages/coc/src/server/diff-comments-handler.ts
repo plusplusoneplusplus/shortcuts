@@ -17,11 +17,11 @@
 import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 import type { ProcessWebSocketServer } from './websocket';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { isValidWorkspaceId } from './base-comments-manager';
 import { DiffCommentsManager, isValidStorageKey, isValidContext } from './diff-comments-manager';
-import { buildDiffEnrichedPrompt, buildDiffAIPrompt, DEFAULT_AI_COMMANDS } from './diff-comments-ai';
+import { buildDiffEnrichedPrompt, buildDiffAIPrompt, buildDiffBatchResolvePrompt, DEFAULT_AI_COMMANDS } from './diff-comments-ai';
 import { invokeCommentAI } from './comments-ai-helpers';
 
 // Re-export types and classes so existing importers don't break
@@ -52,6 +52,9 @@ const replyPattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/([0-9a-f]{64})\/(
 
 // /api/diff-comments/:wsId/:storageKey/:id/ask-ai
 const askAiPattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/([0-9a-f]{64})\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/ask-ai$/;
+
+// /api/diff-comments/:wsId/batch-resolve
+const batchResolvePattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/batch-resolve$/;
 
 // ============================================================================
 // Route Registration
@@ -87,6 +90,53 @@ export function registerDiffCommentsRoutes(
     getWsServer?: () => ProcessWebSocketServer | undefined
 ): void {
     const manager = new DiffCommentsManager(dataDir);
+
+    async function resolveWorkspaceRootPath(wsId: string): Promise<string | undefined> {
+        if (!store) return undefined;
+        try {
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find((w: any) => w.id === wsId.trim());
+            return ws?.rootPath;
+        } catch {
+            return undefined;
+        }
+    }
+
+    async function enqueueDiffResolveTask(
+        wsId: string,
+        storageKey: string,
+        commentIds: string[],
+        prompt: string,
+        diffContent: string,
+        filePath: string,
+    ): Promise<string | undefined> {
+        const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
+        bridge.getOrCreateBridge(wsRootPath);
+        const queueManager = bridge.registry.getQueueForRepo(wsRootPath);
+        const input: CreateTaskInput = {
+            type: 'chat',
+            priority: 'normal',
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt,
+                tools: ['resolve-comments'],
+                workingDirectory: wsRootPath,
+                context: {
+                    resolveDiffComments: {
+                        storageKey,
+                        commentIds,
+                        diffContent,
+                        filePath,
+                        wsId,
+                    },
+                },
+            },
+            config: {},
+            displayName: `Resolve diff comments: ${filePath}`,
+        };
+        return queueManager.enqueue(input);
+    }
 
     // ------------------------------------------------------------------
     // GET /api/diff-comment-counts/:wsId — comment counts per storage key
@@ -412,6 +462,33 @@ export function registerDiffCommentsRoutes(
                 const commandId: string | undefined = body.commandId;
                 const customQuestion: string | undefined = body.customQuestion;
 
+                // Resolve branch — async enqueue, returns 202
+                if (commandId === 'resolve') {
+                    const diffContent: string | undefined = body.diffContent;
+                    if (!diffContent || typeof diffContent !== 'string') {
+                        return sendError(res, 400, 'Missing required field: diffContent');
+                    }
+                    const prompt = buildDiffBatchResolvePrompt(
+                        [comment], diffContent,
+                        comment.context.filePath, comment.context.oldRef, comment.context.newRef
+                    );
+                    if (!prompt) {
+                        return sendError(res, 400, 'Comment is not open');
+                    }
+                    try {
+                        const taskId = await enqueueDiffResolveTask(
+                            wsId, storageKey, [comment.id], prompt, diffContent, comment.context.filePath
+                        );
+                        if (taskId) {
+                            return sendJSON(res, 202, { taskId });
+                        }
+                    } catch {
+                        // Fall through to error response
+                    }
+                    return sendError(res, 503, 'Queue unavailable: unable to enqueue resolve task');
+                }
+
+                // Non-resolve commands (Clarify, Go Deeper, Custom) — sync path
                 let prompt: string;
                 if (commandId) {
                     const command = DEFAULT_AI_COMMANDS.find(c => c.id === commandId);
@@ -451,6 +528,59 @@ export function registerDiffCommentsRoutes(
                 sendJSON(res, 200, { aiResponse, reply });
             } catch {
                 sendError(res, 500, 'Failed to process AI request');
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/diff-comments/:wsId/batch-resolve — batch resolve all open comments
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: batchResolvePattern,
+        handler: async (req, res, match) => {
+            const [, wsId] = match!;
+            if (!isValidWorkspaceId(wsId)) {
+                return sendError(res, 400, 'Invalid workspace ID');
+            }
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+            try {
+                const context = body.context;
+                const diffContent: string | undefined = body.diffContent;
+                if (!context || !isValidContext(context)) {
+                    return sendError(res, 400, 'Missing or invalid context');
+                }
+                if (!diffContent || typeof diffContent !== 'string') {
+                    return sendError(res, 400, 'Missing required field: diffContent');
+                }
+                const storageKey = manager.hashContext(context);
+                const allComments = await manager.getComments(wsId, storageKey);
+                const openComments = allComments.filter(c => c.status === 'open');
+                if (openComments.length === 0) {
+                    return sendError(res, 400, 'No open comments to resolve');
+                }
+                const prompt = buildDiffBatchResolvePrompt(
+                    openComments, diffContent, context.filePath, context.oldRef, context.newRef
+                );
+                const commentIds = openComments.map(c => c.id);
+                try {
+                    const taskId = await enqueueDiffResolveTask(
+                        wsId, storageKey, commentIds, prompt, diffContent, context.filePath
+                    );
+                    if (taskId) {
+                        return sendJSON(res, 202, { taskId, totalCount: openComments.length });
+                    }
+                } catch {
+                    // Fall through to error response
+                }
+                return sendError(res, 503, 'Queue unavailable: unable to enqueue resolve task');
+            } catch {
+                sendError(res, 500, 'Failed to process batch resolve request');
             }
         },
     });
