@@ -30,13 +30,15 @@ vi.mock('fs', async () => {
 const capturedOptions: any[] = [];
 const mockClientInstance = { start: vi.fn(), stop: vi.fn(), createSession: vi.fn() };
 
-vi.mock('@github/copilot-sdk', () => ({
-    CopilotClient: class MockCopilotClient {
-        constructor(options?: any) {
-            capturedOptions.push(options);
-            Object.assign(this, mockClientInstance);
-        }
-    },
+class MockCopilotClient {
+    constructor(options?: any) {
+        capturedOptions.push(options);
+        Object.assign(this, mockClientInstance);
+    }
+}
+
+vi.mock('../../src/copilot-sdk-wrapper/sdk-esm-loader', () => ({
+    getCachedCopilotSdk: () => ({ CopilotClient: MockCopilotClient }),
 }));
 
 // ---------------------------------------------------------------------------

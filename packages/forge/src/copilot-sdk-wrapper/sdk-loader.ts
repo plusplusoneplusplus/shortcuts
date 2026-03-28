@@ -2,23 +2,34 @@
  * SDK Loader
  *
  * Provides a synchronous availability check for @github/copilot-sdk.
- * The SDK is a direct npm dependency — no dynamic loading needed.
+ * The SDK is ESM-only (no `"require"` export condition), so neither
+ * `require.resolve('@github/copilot-sdk')` nor subpath resolution works.
+ * We walk up from __dirname looking for the package in node_modules.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 /**
- * Check whether `@github/copilot-sdk` is resolvable from the current
- * Node.js module graph.  Returns the resolved entry-point path on
- * success, or `undefined` when the package is not installed.
+ * Check whether `@github/copilot-sdk` is installed and locatable.
+ * Returns the package directory path on success, or `undefined`
+ * when the package is not installed.
  *
- * @param resolveFn - Override for `require.resolve` (useful in tests).
+ * @param startDir - Directory to start searching from (defaults to this file's directory).
  */
 export function findSdkBinaryPath(
-    resolveFn?: (id: string) => string,
+    startDir?: string,
 ): string | undefined {
-    const resolve = resolveFn ?? ((id: string) => require.resolve(id));
-    try {
-        return resolve('@github/copilot-sdk');
-    } catch {
-        return undefined;
+    let dir = startDir ?? __dirname;
+    while (true) {
+        const candidate = path.join(dir, 'node_modules', '@github', 'copilot-sdk');
+        const pkgJson = path.join(candidate, 'package.json');
+        if (fs.existsSync(pkgJson)) {
+            return candidate;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
     }
+    return undefined;
 }

@@ -1,24 +1,47 @@
 /**
  * Unit tests for sdk-loader.ts
  *
- * Tests the availability check via require.resolve.
+ * Tests the filesystem-based availability check for the ESM-only SDK.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import { findSdkBinaryPath } from '../../src/copilot-sdk-wrapper/sdk-loader';
 
 describe('findSdkBinaryPath', () => {
-    it('returns undefined when require.resolve throws', () => {
-        const resolveFn = vi.fn().mockImplementation(() => { throw new Error('MODULE_NOT_FOUND'); });
-        const result = findSdkBinaryPath(resolveFn);
+    it('returns undefined when the SDK is not in any ancestor node_modules', () => {
+        const result = findSdkBinaryPath(os.tmpdir());
         expect(result).toBeUndefined();
     });
 
-    it('returns the resolved path when require.resolve succeeds', () => {
-        const resolveFn = vi.fn().mockReturnValue('/some/node_modules/@github/copilot-sdk/dist/index.js');
-        const result = findSdkBinaryPath(resolveFn);
-        expect(result).toBe('/some/node_modules/@github/copilot-sdk/dist/index.js');
-        expect(resolveFn).toHaveBeenCalledWith('@github/copilot-sdk');
+    it('finds the SDK when starting from a directory that has it in node_modules', () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-loader-test-'));
+        const sdkDir = path.join(tmpDir, 'node_modules', '@github', 'copilot-sdk');
+        fs.mkdirSync(sdkDir, { recursive: true });
+        fs.writeFileSync(path.join(sdkDir, 'package.json'), '{}');
+        try {
+            const result = findSdkBinaryPath(tmpDir);
+            expect(result).toBe(sdkDir);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    it('walks up to find the SDK in a parent node_modules', () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-loader-test-'));
+        const sdkDir = path.join(tmpDir, 'node_modules', '@github', 'copilot-sdk');
+        fs.mkdirSync(sdkDir, { recursive: true });
+        fs.writeFileSync(path.join(sdkDir, 'package.json'), '{}');
+        const nested = path.join(tmpDir, 'packages', 'forge', 'dist');
+        fs.mkdirSync(nested, { recursive: true });
+        try {
+            const result = findSdkBinaryPath(nested);
+            expect(result).toBe(sdkDir);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
     });
 
     it('returns a string or undefined without throwing regardless of environment', () => {

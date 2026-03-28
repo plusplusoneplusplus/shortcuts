@@ -12,6 +12,13 @@ import type { ToolCall } from '../ai/process-types';
 // SDK Tool Types — re-exported from @github/copilot-sdk
 // ============================================================================
 
+import type {
+    ToolHandler as _ToolHandler,
+    ZodSchema as _ZodSchema,
+    Tool as _Tool,
+    PermissionHandler as _PermissionHandler,
+} from '@github/copilot-sdk';
+
 export type {
     ToolResultObject,
     ToolInvocation,
@@ -23,7 +30,26 @@ export type {
     PermissionHandler,
 } from '@github/copilot-sdk';
 
-export { defineTool, approveAll } from '@github/copilot-sdk';
+/**
+ * Local implementation of the SDK's `defineTool` helper.
+ * The SDK version is `function defineTool(name, config) { return { name, ...config }; }`
+ * — a pure data-merge with no SDK runtime dependency. Re-implemented here so
+ * it can be called synchronously without loading the ESM-only SDK module.
+ */
+export function defineTool<T = unknown>(
+    name: string,
+    config: { description?: string; parameters?: _ZodSchema<T> | Record<string, unknown>; handler: _ToolHandler<T> },
+): _Tool<T> {
+    return { name, ...config };
+}
+
+/**
+ * Local implementation of the SDK's `approveAll` permission handler.
+ * The SDK version is `const approveAll = () => ({ kind: "approved" })`.
+ */
+export const approveAll: _PermissionHandler = () => ({ kind: 'approved' });
+
+export { loadCopilotSdk } from './sdk-esm-loader';
 
 /**
  * Result type for a tool invocation.

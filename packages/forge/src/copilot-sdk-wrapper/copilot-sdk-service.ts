@@ -14,8 +14,9 @@
  * @see image-converter.ts   — image-file → data-URL conversion
  */
 
-import { CopilotClient } from '@github/copilot-sdk';
+import type { CopilotClient } from '@github/copilot-sdk';
 import { findSdkBinaryPath } from './sdk-loader';
+import { loadCopilotSdk } from './sdk-esm-loader';
 import { getAIServiceLogger } from '../ai-logger';
 import { createSdkClient } from './sdk-client-factory';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
@@ -101,6 +102,14 @@ export class CopilotSDKService {
         if (!sdkPath) {
             this.availabilityCache = { available: false, error: 'Copilot SDK not found. Please ensure @github/copilot-sdk is installed.' };
             aiLog.debug('SDK not found');
+            return this.availabilityCache;
+        }
+        try {
+            await loadCopilotSdk();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.availabilityCache = { available: false, error: `Failed to load Copilot SDK: ${msg}` };
+            aiLog.error({ err }, 'Failed to load Copilot SDK ESM module');
             return this.availabilityCache;
         }
         this.streamErrorGuard.install();
