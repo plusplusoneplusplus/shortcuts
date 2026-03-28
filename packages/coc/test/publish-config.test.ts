@@ -8,9 +8,9 @@ const repoRoot = resolve(cocRoot, '..', '..');
 describe('coc publish configuration', () => {
   const pkg = JSON.parse(readFileSync(resolve(cocRoot, 'package.json'), 'utf-8'));
 
-  it('should declare forge in bundledDependencies', () => {
-    expect(pkg.bundledDependencies).toBeDefined();
-    expect(pkg.bundledDependencies).toContain('@plusplusoneplusplus/forge');
+  it('should not bundle forge (consumed as a normal npm dependency)', () => {
+    expect(pkg.bundledDependencies).toBeUndefined();
+    expect(pkg.bundleDependencies).toBeUndefined();
   });
 
   it('should have public publishConfig', () => {

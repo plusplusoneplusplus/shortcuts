@@ -8,14 +8,12 @@
     "coc": "./dist/index.js"
   },
   "files": [
-    "dist",
-    "node_modules/@plusplusoneplusplus/forge"
+    "dist"
   ],
   "scripts": {
     "build:client": "node scripts/build-client.mjs",
     "build:copy-client": "node -e \"const fs=require('fs');const p=require('path');function cp(s,d){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s))fs.copyFileSync(p.join(s,f),p.join(d,f));}cp(p.join('src','server','spa','client','dist'),p.join('dist','server','spa','client','dist'));\"",
     "build": "npm run build:client && tsc && npm run build:copy-client && node -e \"require('fs').copyFileSync('src/server/openapi.yaml','dist/server/openapi.yaml')\" && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
-    "prepack": "node scripts/bundle-forge.js",
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "npx playwright test --config test/e2e/playwright.config.ts",
@@ -25,7 +23,7 @@
     "@github/copilot-sdk": "^0.2.0",
     "@monaco-editor/react": "^4.7.0",
     "@octokit/rest": "^22.0.1",
-    "@plusplusoneplusplus/forge": "1.0.0",
+    "@plusplusoneplusplus/forge": "^1.0.0",
     "azure-devops-node-api": "^14.1.0",
     "commander": "^12.1.0",
     "diff": "^5.2.0",
@@ -61,16 +59,10 @@
     "typescript": "^5.3.0",
     "vitest": "^1.0.0"
   },
-  "bundledDependencies": [
-    "@plusplusoneplusplus/forge"
-  ],
   "publishConfig": {
     "access": "public"
   },
   "engines": {
     "node": ">=20"
-  },
-  "bundleDependencies": [
-    "@plusplusoneplusplus/forge"
-  ]
+  }
 }
