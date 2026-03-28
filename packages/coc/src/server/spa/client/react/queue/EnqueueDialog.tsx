@@ -300,24 +300,20 @@ export function EnqueueDialog() {
         }
     }, [submitting, handleSubmit, slashCommands, handleSlashSelect]);
 
-    // Auto-switch to templates tab when mode-filtered templates exist (one-time per dialog open)
+    // When the dialog opens (or templates finish loading while open),
+    // pick the default tab: Templates if mode-filtered templates exist, else Advanced.
+    // The ref guard ensures this runs only once per dialog open so manual tab switches stick.
     useEffect(() => {
+        if (!queueState.showDialog) {
+            hasAutoSwitchedTab.current = false;
+            return;
+        }
         if (!templatesLoaded || hasAutoSwitchedTab.current) return;
         hasAutoSwitchedTab.current = true;
         const currentMode = isAskMode ? 'ask' : 'task';
         const filtered = templates.filter(t => t.mode === currentMode);
-        if (filtered.length > 0) {
-            setActiveTab('templates');
-        }
-    }, [templatesLoaded, templates, isAskMode]);
-
-    // Reset auto-switch guard and tab when dialog reopens
-    useEffect(() => {
-        if (queueState.showDialog) {
-            hasAutoSwitchedTab.current = false;
-            setActiveTab('advanced');
-        }
-    }, [queueState.showDialog]);
+        setActiveTab(filtered.length > 0 ? 'templates' : 'advanced');
+    }, [queueState.showDialog, templatesLoaded, templates, isAskMode]);
 
     // Reset minimized state when dialog closes externally
     useEffect(() => {

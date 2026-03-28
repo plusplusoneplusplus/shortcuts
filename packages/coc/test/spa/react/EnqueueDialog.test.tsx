@@ -1341,6 +1341,51 @@ describe('EnqueueDialog default tab', () => {
         });
     });
 
+    it('defaults to Templates tab again after close and reopen', async () => {
+        setupFetchWithTemplates([
+            { id: 't1', name: 'Task Template', model: '', mode: 'task', skills: ['impl'] },
+        ]);
+
+        function ReopenHelper() {
+            const { dispatch } = useQueue();
+            return (
+                <>
+                    <button data-testid="close-dialog" onClick={() => dispatch({ type: 'CLOSE_DIALOG' })}>Close</button>
+                    <button data-testid="reopen-dialog" onClick={() => dispatch({ type: 'OPEN_DIALOG', workspaceId: 'ws1', mode: 'task' })}>Reopen</button>
+                </>
+            );
+        }
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" mode="task" />
+                <ReopenHelper />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        // First open: should auto-switch to Templates
+        await waitFor(() => {
+            const templatesBtn = screen.getByText(/^Templates/);
+            expect(templatesBtn.className).toContain('border-[#0078d4]');
+        });
+
+        // Close the dialog
+        fireEvent.click(screen.getByTestId('close-dialog'));
+        await waitFor(() => expect(screen.queryByText('Enqueue AI Task')).toBeNull());
+
+        // Reopen the dialog
+        fireEvent.click(screen.getByTestId('reopen-dialog'));
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        // Should auto-switch to Templates again (regression: was stuck on Advanced)
+        await waitFor(() => {
+            const templatesBtn = screen.getByText(/^Templates/);
+            expect(templatesBtn.className).toContain('border-[#0078d4]');
+        });
+    });
+
     it('respects manual tab switch after auto-switch', async () => {
         setupFetchWithTemplates([
             { id: 't1', name: 'Task Template', model: '', mode: 'task', skills: ['impl'] },
