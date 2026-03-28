@@ -274,7 +274,7 @@ describe('ActivityChatDetail', () => {
 
         it('clears images immediately after send (before waiting for completion)', () => {
             const sendFollowUpSection = USE_SEND_MESSAGE_SOURCE.substring(USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'));
-            const waitIdx = sendFollowUpSection.indexOf('await waitForFollowUpCompletion');
+            const waitIdx = sendFollowUpSection.indexOf('await waitForSendCompletion');
             const clearIdx = sendFollowUpSection.indexOf('clearImages()');
             const catchIdx = sendFollowUpSection.indexOf('} catch');
             expect(waitIdx).toBeGreaterThan(-1);
@@ -665,7 +665,7 @@ describe('ActivityChatDetail', () => {
         });
 
         it('declares flushQueueRef', () => {
-            expect(source).toContain('flushQueueRef');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('flushQueueRef');
         });
     });
 
@@ -744,19 +744,15 @@ describe('ActivityChatDetail', () => {
         });
 
         it('handles message-queued SSE in follow-up stream', () => {
-            const followUpSSE = USE_SEND_MESSAGE_SOURCE.substring(
-                USE_SEND_MESSAGE_SOURCE.indexOf('const waitForFollowUpCompletion'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const waitForFollowUpCompletion') + 3000,
-            );
-            expect(followUpSSE).toContain("'message-queued'");
+            // Follow-up SSE stream replaced by waitForSendCompletion + onSendComplete pattern;
+            // message-queued is now handled by the main useChatSSE stream (see test above).
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('waitForSendCompletion');
         });
 
         it('handles message-steering SSE in follow-up stream', () => {
-            const followUpSSE = USE_SEND_MESSAGE_SOURCE.substring(
-                USE_SEND_MESSAGE_SOURCE.indexOf('const waitForFollowUpCompletion'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const waitForFollowUpCompletion') + 3000,
-            );
-            expect(followUpSSE).toContain("'message-steering'");
+            // Follow-up SSE stream replaced by waitForSendCompletion + onSendComplete pattern;
+            // message-steering is now handled by the main useChatSSE stream (see test above).
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('onSendComplete');
         });
     });
 

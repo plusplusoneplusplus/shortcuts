@@ -618,7 +618,7 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
     }
 
     getProcessCounts(): ProcessCounts {
-        const counts: ProcessCounts = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
+        const counts: ProcessCounts = { queued: 0, running: 0, cancelling: 0, completed: 0, failed: 0, cancelled: 0 };
         for (const process of this.processes.values()) {
             counts[process.status]++;
         }

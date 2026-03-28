@@ -72,7 +72,7 @@ function makeOptions(overrides: Partial<Parameters<typeof useChatSSE>[0]> = {}):
         setSessionCurrentTokens: vi.fn(),
         setTurnsAndRef: vi.fn(),
         refreshConversation: vi.fn().mockResolvedValue(undefined),
-        flushQueueRef: { current: null },
+        onSendComplete: vi.fn(),
         ...overrides,
     };
 }

@@ -248,6 +248,7 @@ suite('AI Process Document Provider Tests', () => {
             const statuses: Record<AIProcessStatus, string> = {
                 'queued': '⏳',
                 'running': '🔄',
+                'cancelling': '⏸️',
                 'completed': '✅',
                 'failed': '❌',
                 'cancelled': '🚫'

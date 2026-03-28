@@ -599,7 +599,7 @@ describe('buildAutoFolderLocationBlock', () => {
     it('should explicitly exclude .copilot/session-state from save location', () => {
         const block = buildAutoFolderLocationBlock('/tmp/tasks', ['coc']);
         expect(block).toContain('.copilot/session-state');
-        expect(block).toContain('Do NOT save');
+        expect(block).toContain('NEVER save to');
     });
 });
 

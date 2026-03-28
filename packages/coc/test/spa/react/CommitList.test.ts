@@ -196,7 +196,7 @@ describe('CommitList', () => {
         });
 
         it('calls onFileSelect when a file is clicked', () => {
-            expect(fileTreeSource).toContain('onFileSelect?.(commitHash, node.path)');
+            expect(fileTreeSource).toContain('onFileSelect(commitHash, node.path)');
         });
 
         it('applies selected highlight when selectedFile matches the commit + file path', () => {

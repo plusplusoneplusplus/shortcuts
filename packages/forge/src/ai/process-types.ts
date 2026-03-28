@@ -707,6 +707,7 @@ export interface ProcessEvent {
 export interface ProcessCounts {
     queued: number;
     running: number;
+    cancelling: number;
     completed: number;
     failed: number;
     cancelled: number;

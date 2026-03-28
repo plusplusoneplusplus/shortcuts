@@ -6607,7 +6607,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(callOpts.tools).toHaveLength(1);
     });
 
-    it('should NOT include suggest_follow_ups tool for follow-up messages (only first turn gets it)', async () => {
+    it('should include suggest_follow_ups tool for follow-up messages (all turns get it)', async () => {
         const process = createCompletedProcessWithSession('queue_suggest-fu-1', 'sess-fu-1');
         store.processes.set(process.id, process);
 
@@ -6616,10 +6616,11 @@ describe('suggest_follow_ups tool wiring', () => {
 
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
-        expect(callOpts.tools).toBeUndefined();
+        expect(callOpts.tools).toBeDefined();
+        expect(callOpts.tools).toHaveLength(1);
     });
 
-    it('should NOT append follow-up suggestion instruction to follow-up messages', async () => {
+    it('should append follow-up suggestion instruction to follow-up messages', async () => {
         const process = createCompletedProcessWithSession('queue_suggest-fu-noinstr', 'sess-fu-noinstr');
         store.processes.set(process.id, process);
 
@@ -6628,7 +6629,7 @@ describe('suggest_follow_ups tool wiring', () => {
 
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const sentMessage = mockSendMessage.mock.calls[0][0].prompt;
-        expect(sentMessage).not.toContain('When suggesting follow-ups');
+        expect(sentMessage).toContain('When suggesting follow-ups');
     });
 
     it('should include suggest_follow_ups tool on first turn with no prior assistant turns', async () => {
