@@ -398,21 +398,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const turnIndex = proc.conversationTurns?.length ?? 0;
             await store.updateProcess(id, { status: 'running' });
 
-            // Delegate AI execution to the queue executor bridge
-            let messageContent = body.content as string;
-            if (Array.isArray(body.skillNames) && body.skillNames.length > 0) {
-                const validSkills = body.skillNames.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0);
-                if (validSkills.length > 0) {
-                    let cleanPrompt = messageContent;
-                    for (const skill of validSkills) {
-                        cleanPrompt = cleanPrompt.replace(
-                            new RegExp(`(?:^|\\s)\\/${skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'gi'),
-                            ' '
-                        );
-                    }
-                    messageContent = cleanPrompt.replace(/\s+/g, ' ').trim();
-                }
-            }
+            // Pass content through as-is — /skill tokens are kept in the prompt
+            // so the AI SDK receives the full user intent (e.g. "/impl fix the bug").
+            const messageContent = (body.content as string);
 
             if (bridge.enqueue) {
                 const displayName = truncateDisplayName(messageContent.trim());
