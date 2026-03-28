@@ -111,10 +111,10 @@ export function buildCreateTaskPrompt(description: string, targetPath: string): 
     targetPath = toForwardSlashes(targetPath);
     const important = buildImportantSection(
         targetPath,
-        ['- Create a single .plan.md file'],
-        ['You MUST NOT implement the task, you are only responsible for creating the plan file.']
+        ['- Create a single .plan.md file or multiple .plan.md files (if applicable)'],
+        ['You MUST NOT implement the task, you are only responsible for creating the plan files.']
     );
-    return `Can you draft a plan given user's ask: ${description}
+    return `Can you draft plan(s) for the given user's ask: ${description}
 
 ${important}`;
 }
@@ -448,7 +448,7 @@ export function buildAutoFolderLocationBlock(tasksRoot: string, existingFolders:
     return `- Save location: \`${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md\`
 - Existing folder options: ${folderList}
 - Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
-- Do NOT save to \`.copilot/session-state/\`, your session workspace, or any temporary directory.`;
+- NEVER save to \`~/.copilot/session-state/\`, your session workspace, or any temporary directory.`;
 }
 
 /**
