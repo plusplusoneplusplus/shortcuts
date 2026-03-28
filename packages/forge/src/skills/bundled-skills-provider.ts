@@ -32,6 +32,11 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         name: 'summarize-chats',
         description: 'Summarize CoC conversation process records, highlighting key topics, decisions, action items, and unresolved questions',
         relativePath: 'summarize-chats'
+    },
+    {
+        name: 'rethink',
+        description: 'Review a bug fix proposal and evaluate whether it is the cleanest solution, considering root cause alignment, simplicity, consistency, technical debt, side effects, and idiomatic alternatives',
+        relativePath: 'rethink'
     }
 ];
 
