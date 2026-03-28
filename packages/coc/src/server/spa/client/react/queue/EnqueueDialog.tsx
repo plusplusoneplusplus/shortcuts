@@ -167,10 +167,7 @@ export function EnqueueDialog() {
 
     const handleSaveTemplate = useCallback(() => {
         const mode = isAskMode ? 'ask' : 'task';
-        const parts: string[] = [mode];
-        if (selectedSkills.length > 0) parts.push(selectedSkills.join('+'));
-        if (model) parts.push(`[${model}]`);
-        saveTemplate({ name: parts.join(': '), model: model || '', mode, skills: selectedSkills });
+        saveTemplate({ model: model || '', mode, skills: selectedSkills });
     }, [isAskMode, model, selectedSkills, saveTemplate]);
 
     const handleSubmit = useCallback(async () => {
