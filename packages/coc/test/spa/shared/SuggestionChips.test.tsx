@@ -43,7 +43,20 @@ describe('SuggestionChips', () => {
         const buttons = screen.getAllByTestId('suggestion-chip');
         fireEvent.click(buttons[1]);
         expect(onSelect).toHaveBeenCalledOnce();
-        expect(onSelect).toHaveBeenCalledWith('Beta');
+        expect(onSelect).toHaveBeenCalledWith('Beta', expect.any(Object));
+    });
+
+    it('forwards the mouse event to onSelect so callers can check modifier keys', () => {
+        const onSelect = vi.fn();
+        render(
+            <SuggestionChips suggestions={['Test']} onSelect={onSelect} />
+        );
+        const button = screen.getByTestId('suggestion-chip');
+        fireEvent.click(button, { ctrlKey: true });
+        expect(onSelect).toHaveBeenCalledOnce();
+        const event = onSelect.mock.calls[0][1];
+        expect(event).toBeDefined();
+        expect(event.ctrlKey).toBe(true);
     });
 
     it('applies disabled styling when disabled is true', () => {

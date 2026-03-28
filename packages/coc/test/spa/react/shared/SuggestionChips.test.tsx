@@ -27,13 +27,23 @@ describe('SuggestionChips', () => {
         expect(screen.getByText('Option C')).toBeTruthy();
     });
 
-    it('calls onSelect with the chip text when clicked', () => {
+    it('calls onSelect with the chip text and event when clicked', () => {
         const onSelect = vi.fn();
         render(
             <SuggestionChips suggestions={['Pick me']} onSelect={onSelect} />
         );
         fireEvent.click(screen.getByTestId('suggestion-chip'));
-        expect(onSelect).toHaveBeenCalledWith('Pick me');
+        expect(onSelect).toHaveBeenCalledWith('Pick me', expect.any(Object));
+    });
+
+    it('forwards modifier keys via the mouse event', () => {
+        const onSelect = vi.fn();
+        render(
+            <SuggestionChips suggestions={['Pick me']} onSelect={onSelect} />
+        );
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
+        const event = onSelect.mock.calls[0][1];
+        expect(event.ctrlKey).toBe(true);
     });
 
     it('applies pointer-events-none and opacity-50 when disabled', () => {

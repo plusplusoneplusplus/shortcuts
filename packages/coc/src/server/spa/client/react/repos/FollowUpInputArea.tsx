@@ -107,7 +107,15 @@ export function FollowUpInputArea({
             {suggestions.length > 0 && !sending && task?.status !== 'running' && (
                 <SuggestionChips
                     suggestions={suggestions}
-                    onSelect={(text) => { void onSend(text); }}
+                    onSelect={(text, e) => {
+                        if (e.ctrlKey || e.metaKey) {
+                            setFollowUpInput(text);
+                            richTextRef.current?.setValue(text);
+                            richTextRef.current?.focus();
+                        } else {
+                            void onSend(text);
+                        }
+                    }}
                     disabled={inputDisabled}
                 />
             )}

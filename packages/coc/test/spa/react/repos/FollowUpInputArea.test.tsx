@@ -151,6 +151,50 @@ describe('FollowUpInputArea — cursor regression', () => {
         expect(tracker.calls).toHaveLength(0);
     });
 
+    it('normal click on suggestion chip calls onSend', () => {
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        const props = makeProps({
+            suggestions: ['Run tests'],
+            onSend,
+        });
+        render(<FollowUpInputArea {...props} />);
+        fireEvent.click(screen.getByTestId('suggestion-chip'));
+        expect(onSend).toHaveBeenCalledWith('Run tests');
+    });
+
+    it('Ctrl+click on suggestion chip populates input instead of sending', () => {
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        const setFollowUpInput = vi.fn();
+        const richTextRef = createRef<RichTextInputHandle>();
+        const props = makeProps({
+            richTextRef,
+            suggestions: ['Run tests'],
+            onSend,
+            setFollowUpInput,
+        });
+        render(<FollowUpInputArea {...props} />);
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { ctrlKey: true });
+        expect(onSend).not.toHaveBeenCalled();
+        expect(setFollowUpInput).toHaveBeenCalledWith('Run tests');
+        expect(tracker.calls).toContainEqual(['Run tests', undefined]);
+    });
+
+    it('Meta+click on suggestion chip populates input (macOS parity)', () => {
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        const setFollowUpInput = vi.fn();
+        const richTextRef = createRef<RichTextInputHandle>();
+        const props = makeProps({
+            richTextRef,
+            suggestions: ['Run tests'],
+            onSend,
+            setFollowUpInput,
+        });
+        render(<FollowUpInputArea {...props} />);
+        fireEvent.click(screen.getByTestId('suggestion-chip'), { metaKey: true });
+        expect(onSend).not.toHaveBeenCalled();
+        expect(setFollowUpInput).toHaveBeenCalledWith('Run tests');
+    });
+
     it('useEffect DOES sync DOM when followUpInput changes externally (no Tab/skill)', async () => {
         const richTextRef = createRef<RichTextInputHandle>();
         const props = makeProps({ richTextRef, followUpInput: '' });
