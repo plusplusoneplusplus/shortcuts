@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.6
+
+### Patch Changes
+
+- 62faf71: Publish the packages in separate ones.
+- Updated dependencies [62faf71]
+  - @plusplusoneplusplus/forge@1.0.1
+
 All notable changes to the CoC (Copilot of Copilot) CLI will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -8,9 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2026-02-17
 
 ### Breaking Changes
+
 - **Removed review page feature**: The `/review/:processId` endpoint and review UI have been removed. Task results now open directly in the task viewer with inline commenting support.
 
 ### Added
+
 - **Task commenting**: Add inline comments directly on task results in the viewer
   - Keyboard shortcut: `Cmd/Ctrl+Shift+M` to add comments on selected text
   - Comment categories: Bug, Question, Suggestion, Praise, Nitpick, General
@@ -20,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - AI integration: Generate prompts from comments
 
 ### Migration Guide
+
 - Previous review page URLs (`/review/:processId`) will no longer work
 - Use the task viewer directly for reviewing results
 - Comments are stored locally per workspace — no data migration needed as old review data was session-only
@@ -28,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-01-11
 
 ### Added
+
 - Initial release of CoC CLI
 - `coc run <path>` — Execute a pipeline from a YAML file or package directory
 - `coc validate <path>` — Validate pipeline YAML without executing
