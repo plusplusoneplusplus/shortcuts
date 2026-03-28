@@ -37,6 +37,11 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         name: 'rethink',
         description: 'Review a bug fix proposal and evaluate whether it is the cleanest solution, considering root cause alignment, simplicity, consistency, technical debt, side effects, and idiomatic alternatives',
         relativePath: 'rethink'
+    },
+    {
+        name: 'code-refactoring',
+        description: 'Automated code refactoring suggestion that drafts a refactoring plan for critical, high-value technical debt issues',
+        relativePath: 'code-refactoring'
     }
 ];
 
