@@ -6,13 +6,16 @@
  * collapsible directories and depth-based indentation.
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 
 // ----- Types -----
 
 interface FileChange {
     status: string;
     path: string;
+    additions?: number;
+    deletions?: number;
+    oldPath?: string;
 }
 
 interface DirNode {
@@ -27,6 +30,9 @@ interface FileNode {
     name: string;
     path: string;
     status: string;
+    additions?: number;
+    deletions?: number;
+    oldPath?: string;
 }
 
 type TreeNode = DirNode | FileNode;
@@ -82,10 +88,28 @@ export function buildFileTree(files: FileChange[]): TreeNode[] {
             name: segments[segments.length - 1],
             path: file.path,
             status: file.status,
+            ...(file.additions !== undefined && { additions: file.additions }),
+            ...(file.deletions !== undefined && { deletions: file.deletions }),
+            ...(file.oldPath && { oldPath: file.oldPath }),
         });
     }
 
     return root;
+}
+
+// ----- Status helpers -----
+
+const WORD_TO_CHAR: Record<string, string> = {
+    added: 'A',
+    modified: 'M',
+    deleted: 'D',
+    renamed: 'R',
+    copied: 'C',
+};
+
+/** Normalize a word status (e.g. "added") to a single char ("A"). Already-single-char values pass through. */
+export function normalizeStatus(status: string): string {
+    return WORD_TO_CHAR[status] ?? status;
 }
 
 // ----- Status styling (mirrors CommitList) -----
@@ -110,10 +134,20 @@ const STATUS_LABELS: Record<string, string> = {
 interface FileTreeViewProps {
     nodes: TreeNode[];
     depth?: number;
-    commitHash: string;
+    commitHash?: string;
     selectedFile?: { hash: string; filePath: string } | null;
     onFileSelect?: (hash: string, filePath: string) => void;
+    /** Simple file select callback for branch-change mode (no commit hash). */
+    onFileSelectSimple?: (filePath: string) => void;
+    /** Currently selected file path (branch-change mode). */
+    selectedFilePath?: string | null;
     fileCommentMap: Map<string, number>;
+    /** Prefix for comment badge data-testid (default: "commit-file-comment-badge"). */
+    commentBadgeTestIdPrefix?: string;
+    /** Prefix for file button data-testid (default: "commit-file"). */
+    fileTestIdPrefix?: string;
+    /** Render extra content below a file entry (e.g. inline diff). */
+    renderFileExtra?: (node: FileNode) => React.ReactNode;
 }
 
 export function FileTreeView({
@@ -122,7 +156,12 @@ export function FileTreeView({
     commitHash,
     selectedFile,
     onFileSelect,
+    onFileSelectSimple,
+    selectedFilePath,
     fileCommentMap,
+    commentBadgeTestIdPrefix = 'commit-file-comment-badge',
+    fileTestIdPrefix = 'commit-file',
+    renderFileExtra,
 }: FileTreeViewProps) {
     return (
         <div className="flex flex-col gap-0.5" data-testid={depth === 0 ? 'commit-file-list' : undefined}>
@@ -135,7 +174,12 @@ export function FileTreeView({
                         commitHash={commitHash}
                         selectedFile={selectedFile}
                         onFileSelect={onFileSelect}
+                        onFileSelectSimple={onFileSelectSimple}
+                        selectedFilePath={selectedFilePath}
                         fileCommentMap={fileCommentMap}
+                        commentBadgeTestIdPrefix={commentBadgeTestIdPrefix}
+                        fileTestIdPrefix={fileTestIdPrefix}
+                        renderFileExtra={renderFileExtra}
                     />
                 ) : (
                     <FileEntry
@@ -145,7 +189,12 @@ export function FileTreeView({
                         commitHash={commitHash}
                         selectedFile={selectedFile}
                         onFileSelect={onFileSelect}
+                        onFileSelectSimple={onFileSelectSimple}
+                        selectedFilePath={selectedFilePath}
                         fileCommentMap={fileCommentMap}
+                        commentBadgeTestIdPrefix={commentBadgeTestIdPrefix}
+                        fileTestIdPrefix={fileTestIdPrefix}
+                        renderFileExtra={renderFileExtra}
                     />
                 ),
             )}
@@ -159,14 +208,24 @@ function DirEntry({
     commitHash,
     selectedFile,
     onFileSelect,
+    onFileSelectSimple,
+    selectedFilePath,
     fileCommentMap,
+    commentBadgeTestIdPrefix,
+    fileTestIdPrefix,
+    renderFileExtra,
 }: {
     node: DirNode;
     depth: number;
-    commitHash: string;
+    commitHash?: string;
     selectedFile?: { hash: string; filePath: string } | null;
     onFileSelect?: (hash: string, filePath: string) => void;
+    onFileSelectSimple?: (filePath: string) => void;
+    selectedFilePath?: string | null;
     fileCommentMap: Map<string, number>;
+    commentBadgeTestIdPrefix?: string;
+    fileTestIdPrefix?: string;
+    renderFileExtra?: (node: FileNode) => React.ReactNode;
 }) {
     const [open, setOpen] = useState(true);
 
@@ -192,7 +251,12 @@ function DirEntry({
                     commitHash={commitHash}
                     selectedFile={selectedFile}
                     onFileSelect={onFileSelect}
+                    onFileSelectSimple={onFileSelectSimple}
+                    selectedFilePath={selectedFilePath}
                     fileCommentMap={fileCommentMap}
+                    commentBadgeTestIdPrefix={commentBadgeTestIdPrefix}
+                    fileTestIdPrefix={fileTestIdPrefix}
+                    renderFileExtra={renderFileExtra}
                 />
             )}
         </div>
@@ -205,48 +269,76 @@ function FileEntry({
     commitHash,
     selectedFile,
     onFileSelect,
+    onFileSelectSimple,
+    selectedFilePath,
     fileCommentMap,
+    commentBadgeTestIdPrefix = 'commit-file-comment-badge',
+    fileTestIdPrefix = 'commit-file',
+    renderFileExtra,
 }: {
     node: FileNode;
     depth: number;
-    commitHash: string;
+    commitHash?: string;
     selectedFile?: { hash: string; filePath: string } | null;
     onFileSelect?: (hash: string, filePath: string) => void;
+    onFileSelectSimple?: (filePath: string) => void;
+    selectedFilePath?: string | null;
     fileCommentMap: Map<string, number>;
+    commentBadgeTestIdPrefix?: string;
+    fileTestIdPrefix?: string;
+    renderFileExtra?: (node: FileNode) => React.ReactNode;
 }) {
-    const isActiveFile = selectedFile?.hash === commitHash && selectedFile?.filePath === node.path;
+    const isActiveFile = onFileSelectSimple
+        ? selectedFilePath === node.path
+        : (selectedFile?.hash === commitHash && selectedFile?.filePath === node.path);
     const count = fileCommentMap.get(node.path) ?? 0;
+    const displayStatus = normalizeStatus(node.status);
 
     return (
-        <button
-            className={`flex items-center gap-2 text-[11px] py-0.5 px-1 rounded text-left w-full transition-colors ${
-                isActiveFile
-                    ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10'
-                    : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
-            }`}
-            style={{ paddingLeft: `${depth * 12 + 4}px` }}
-            onClick={(e) => {
-                e.stopPropagation();
-                onFileSelect?.(commitHash, node.path);
-            }}
-            data-testid={`commit-file-${node.path}`}
-        >
-            {count > 0 && (
-                <span
-                    className="text-xs text-[#848484] flex-shrink-0"
-                    title={`${count} active comment${count > 1 ? 's' : ''}`}
-                    data-testid={`commit-file-comment-badge-${node.path}`}
-                >
-                    💬{count}
-                </span>
-            )}
-            <span
-                className={`font-mono font-bold w-3 text-center flex-shrink-0 ${STATUS_COLORS[node.status] || 'text-[#848484]'}`}
-                title={STATUS_LABELS[node.status] || node.status}
+        <div>
+            <button
+                className={`flex items-center gap-2 text-[11px] py-0.5 px-1 rounded text-left w-full transition-colors ${
+                    isActiveFile
+                        ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10'
+                        : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
+                }`}
+                style={{ paddingLeft: `${depth * 12 + 4}px` }}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (onFileSelectSimple) {
+                        onFileSelectSimple(node.path);
+                    } else if (onFileSelect && commitHash) {
+                        onFileSelect(commitHash, node.path);
+                    }
+                }}
+                data-testid={`${fileTestIdPrefix}-${node.path}`}
             >
-                {node.status}
-            </span>
-            <span className="text-[#1e1e1e] dark:text-[#ccc]">{node.name}</span>
-        </button>
+                {count > 0 && (
+                    <span
+                        className="text-xs text-[#848484] flex-shrink-0"
+                        title={`${count} active comment${count > 1 ? 's' : ''}`}
+                        data-testid={`${commentBadgeTestIdPrefix}-${node.path}`}
+                    >
+                        💬{count}
+                    </span>
+                )}
+                <span
+                    className={`font-mono font-bold w-3 text-center flex-shrink-0 ${STATUS_COLORS[displayStatus] || 'text-[#848484]'}`}
+                    title={STATUS_LABELS[displayStatus] || node.status}
+                >
+                    {displayStatus}
+                </span>
+                <span className="text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 truncate" title={node.oldPath ? `${node.oldPath} → ${node.path}` : undefined}>
+                    {node.name}
+                </span>
+                {node.additions !== undefined && (
+                    <span className="text-[#16825d] text-xs flex-shrink-0">+{node.additions}</span>
+                )}
+                {node.deletions !== undefined && (
+                    <span className="text-[#d32f2f] text-xs flex-shrink-0">−{node.deletions}</span>
+                )}
+            </button>
+            {renderFileExtra?.(node)}
+        </div>
     );
 }

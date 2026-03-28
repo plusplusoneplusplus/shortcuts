@@ -9,11 +9,12 @@
  * shared with GitPanelHeader. This component receives the data as a prop.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, TruncatedPath } from '../shared';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
+import { buildFileTree, compactFolders, FileTreeView } from './FileTree';
 
 export interface BranchRangeInfo {
     baseRef: string;
@@ -73,6 +74,50 @@ const STATUS_LABELS: Record<string, string> = {
 
 const DIFF_LINE_LIMIT = 500;
 
+type BranchFilesViewMode = 'flat' | 'tree';
+const VIEW_MODE_KEY = 'coc-branch-files-view-mode';
+
+function readViewMode(): BranchFilesViewMode {
+    try {
+        const v = localStorage.getItem(VIEW_MODE_KEY);
+        if (v === 'flat' || v === 'tree') return v;
+    } catch { /* ignore */ }
+    return 'tree';
+}
+
+function BranchFilesViewToggle({ mode, onChange }: { mode: BranchFilesViewMode; onChange: (m: BranchFilesViewMode) => void }) {
+    const BUTTONS: { value: BranchFilesViewMode; label: string }[] = [
+        { value: 'flat', label: '☰ Flat' },
+        { value: 'tree', label: '🌲 Tree' },
+    ];
+    return (
+        <div
+            className="inline-flex rounded border border-[#d0d7de] dark:border-[#30363d] overflow-hidden text-xs"
+            role="group"
+            aria-label="File list view mode"
+            data-testid="branch-files-view-toggle"
+        >
+            {BUTTONS.map(({ value, label }, i) => (
+                <button
+                    key={value}
+                    onClick={(e) => { e.stopPropagation(); onChange(value); }}
+                    aria-pressed={mode === value}
+                    data-testid={`branch-files-view-toggle-${value}`}
+                    className={[
+                        'px-2 py-0.5 transition-colors',
+                        i > 0 ? 'border-l border-[#d0d7de] dark:border-[#30363d]' : '',
+                        mode === value
+                            ? 'bg-[#0550ae] dark:bg-[#79c0ff] text-white dark:text-black font-medium'
+                            : 'bg-white dark:bg-[#161b22] text-[#6e7681] hover:bg-[#f3f4f6] dark:hover:bg-[#21262d]',
+                    ].join(' ')}
+                >
+                    {label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDefaultBranch, onFileSelect, selectedFile, onBranchContextMenu, onBranchRangeSelect }: BranchChangesProps) {
     const rangeInfo = branchRangeData ?? null;
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
@@ -84,6 +129,12 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
     const [fileDiffLoading, setFileDiffLoading] = useState(false);
     const [fileDiffError, setFileDiffError] = useState<string | null>(null);
     const [showFullDiff, setShowFullDiff] = useState(false);
+    const [viewMode, setViewModeState] = useState<BranchFilesViewMode>(readViewMode);
+
+    const setViewMode = useCallback((m: BranchFilesViewMode) => {
+        try { localStorage.setItem(VIEW_MODE_KEY, m); } catch { /* ignore */ }
+        setViewModeState(m);
+    }, []);
 
     // Fetch active comment counts for all files in this branch range
     const commentCounts = useFileCommentCounts(workspaceId, 'branch-base', 'branch-head');
@@ -246,68 +297,103 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                             {filesError}
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-0.5">
-                            {files.map((file, i) => (
-                                <div key={i}>
-                                    <button
-                                        className={`w-full flex items-center gap-2 text-xs py-1 px-1 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors text-left ${
-                                            selectedFile === file.path ? 'bg-[#e8e8e8] dark:bg-[#37373d] ring-1 ring-[#0078d4] dark:ring-[#3794ff]' : ''
-                                        }`}
-                                        onClick={() => handleFileClick(file.path)}
-                                        data-testid={`branch-file-row-${file.path}`}
-                                    >
-                                        {!onFileSelect && (
-                                            <span className="text-[10px] text-[#848484]">
-                                                {expandedFile === file.path ? '▼' : '▶'}
-                                            </span>
-                                        )}
-                                        {(() => {
-                                            const count = fileCommentMap.get(file.path) ?? 0;
-                                            return count > 0 ? (
+                        <>
+                            <div className="flex justify-end mb-1">
+                                <BranchFilesViewToggle mode={viewMode} onChange={setViewMode} />
+                            </div>
+                            {viewMode === 'tree' ? (
+                                <FileTreeView
+                                    nodes={compactFolders(buildFileTree(files))}
+                                    onFileSelectSimple={handleFileClick}
+                                    selectedFilePath={selectedFile}
+                                    fileCommentMap={fileCommentMap}
+                                    commentBadgeTestIdPrefix="branch-file-comment-badge"
+                                    fileTestIdPrefix="branch-file-row"
+                                    renderFileExtra={(node) => (
+                                        <>
+                                            {!onFileSelect && expandedFile === node.path && (
+                                                <div className="pl-6 pr-2 py-2" data-testid={`branch-file-diff-${node.path}`}>
+                                                    {fileDiffLoading ? (
+                                                        <div className="flex items-center gap-2 text-xs text-[#848484]">
+                                                            <Spinner size="sm" /> Loading diff...
+                                                        </div>
+                                                    ) : fileDiffError ? (
+                                                        <div className="text-xs text-[#d32f2f] dark:text-[#f48771]">
+                                                            Failed to load diff
+                                                        </div>
+                                                    ) : (
+                                                        renderDiffContent()
+                                                    )}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                />
+                            ) : (
+                                <div className="flex flex-col gap-0.5">
+                                    {files.map((file, i) => (
+                                        <div key={i}>
+                                            <button
+                                                className={`w-full flex items-center gap-2 text-xs py-1 px-1 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors text-left ${
+                                                    selectedFile === file.path ? 'bg-[#e8e8e8] dark:bg-[#37373d] ring-1 ring-[#0078d4] dark:ring-[#3794ff]' : ''
+                                                }`}
+                                                onClick={() => handleFileClick(file.path)}
+                                                data-testid={`branch-file-row-${file.path}`}
+                                            >
+                                                {!onFileSelect && (
+                                                    <span className="text-[10px] text-[#848484]">
+                                                        {expandedFile === file.path ? '▼' : '▶'}
+                                                    </span>
+                                                )}
+                                                {(() => {
+                                                    const count = fileCommentMap.get(file.path) ?? 0;
+                                                    return count > 0 ? (
+                                                        <span
+                                                            className="text-xs text-[#848484] mr-0.5 flex-shrink-0"
+                                                            title={`${count} active comment${count > 1 ? 's' : ''}`}
+                                                            data-testid={`branch-file-comment-badge-${file.path}`}
+                                                        >
+                                                            💬{count}
+                                                        </span>
+                                                    ) : null;
+                                                })()}
                                                 <span
-                                                    className="text-xs text-[#848484] mr-0.5 flex-shrink-0"
-                                                    title={`${count} active comment${count > 1 ? 's' : ''}`}
-                                                    data-testid={`branch-file-comment-badge-${file.path}`}
+                                                    className={`font-mono font-bold w-4 text-center ${STATUS_COLORS[file.status] || 'text-[#848484]'}`}
+                                                    title={STATUS_LABELS[file.status] || file.status}
                                                 >
-                                                    💬{count}
+                                                    {STATUS_CHARS[file.status] || '?'}
                                                 </span>
-                                            ) : null;
-                                        })()}
-                                        <span
-                                            className={`font-mono font-bold w-4 text-center ${STATUS_COLORS[file.status] || 'text-[#848484]'}`}
-                                            title={STATUS_LABELS[file.status] || file.status}
-                                        >
-                                            {STATUS_CHARS[file.status] || '?'}
-                                        </span>
-                                        {file.oldPath ? (
-                                            <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 truncate" title={`${file.oldPath} → ${file.path}`}>
-                                                {file.oldPath} → {file.path}
-                                            </span>
-                                        ) : (
-                                            <TruncatedPath path={file.path} className="text-[#1e1e1e] dark:text-[#ccc] flex-1" />
-                                        )}
-                                        <span className="text-[#16825d] text-xs flex-shrink-0">+{file.additions}</span>
-                                        <span className="text-[#d32f2f] text-xs flex-shrink-0">−{file.deletions}</span>
-                                    </button>
+                                                {file.oldPath ? (
+                                                    <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 truncate" title={`${file.oldPath} → ${file.path}`}>
+                                                        {file.oldPath} → {file.path}
+                                                    </span>
+                                                ) : (
+                                                    <TruncatedPath path={file.path} className="text-[#1e1e1e] dark:text-[#ccc] flex-1" />
+                                                )}
+                                                <span className="text-[#16825d] text-xs flex-shrink-0">+{file.additions}</span>
+                                                <span className="text-[#d32f2f] text-xs flex-shrink-0">−{file.deletions}</span>
+                                            </button>
 
-                                    {!onFileSelect && expandedFile === file.path && (
-                                        <div className="pl-6 pr-2 py-2" data-testid={`branch-file-diff-${file.path}`}>
-                                            {fileDiffLoading ? (
-                                                <div className="flex items-center gap-2 text-xs text-[#848484]">
-                                                    <Spinner size="sm" /> Loading diff...
+                                            {!onFileSelect && expandedFile === file.path && (
+                                                <div className="pl-6 pr-2 py-2" data-testid={`branch-file-diff-${file.path}`}>
+                                                    {fileDiffLoading ? (
+                                                        <div className="flex items-center gap-2 text-xs text-[#848484]">
+                                                            <Spinner size="sm" /> Loading diff...
+                                                        </div>
+                                                    ) : fileDiffError ? (
+                                                        <div className="text-xs text-[#d32f2f] dark:text-[#f48771]">
+                                                            Failed to load diff
+                                                        </div>
+                                                    ) : (
+                                                        renderDiffContent()
+                                                    )}
                                                 </div>
-                                            ) : fileDiffError ? (
-                                                <div className="text-xs text-[#d32f2f] dark:text-[#f48771]">
-                                                    Failed to load diff
-                                                </div>
-                                            ) : (
-                                                renderDiffContent()
                                             )}
                                         </div>
-                                    )}
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            )}
+                        </>
                     )}
                 </div>
             )}
