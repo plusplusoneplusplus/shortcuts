@@ -21,6 +21,7 @@ import { RepoMemorySection } from './memory/RepoMemorySection';
 import { useRepos } from '../context/ReposContext';
 import { useScriptTemplates } from '../hooks/useScriptTemplates';
 import type { ScriptTemplate } from '../hooks/useScriptTemplates';
+import { TasksSettingsSection } from './TasksSettingsSection';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -37,6 +38,7 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'instructions', label: 'Custom Instructions', icon: '📝' },
     { id: 'memory', label: 'Memory', icon: '🧠' },
     { id: 'run-script-template', label: 'Run Script Templates', icon: '📜' },
+    { id: 'tasks', label: 'Tasks', icon: '📁' },
 ];
 
 // ── Info section types ──────────────────────────────────────────────────────
@@ -609,6 +611,9 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 )}
                 {activeSection === 'run-script-template' && (
                     <RunScriptTemplatesSection workspaceId={workspaceId} />
+                )}
+                {activeSection === 'tasks' && (
+                    <TasksSettingsSection workspaceId={workspaceId} />
                 )}
             </div>
         </div>
