@@ -4036,9 +4036,13 @@
     "coc:link": "cd packages/forge && npm run build && npm link && cd ../coc && npm run build && npm link && rm -rf node_modules/@plusplusoneplusplus/forge",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
     "vsce:package": "vsce package",
-    "vsce:publish": "vsce publish"
+    "vsce:publish": "vsce publish",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "publish-packages": "npm run build -w packages/forge && npm run build -w packages/coc && npm run build:bundle -w packages/deep-wiki && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.30.0",
     "@types/diff": "^5.2.1",
     "@types/glob": "^8.0.0",
     "@types/js-yaml": "^4.0.9",
@@ -4059,8 +4063,8 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
-    "@plusplusoneplusplus/forge": "file:packages/forge",
     "@github/copilot-sdk": "^0.2.0",
+    "@plusplusoneplusplus/forge": "file:packages/forge",
     "diff": "^5.2.0",
     "js-yaml": "^4.1.0"
   },
