@@ -225,6 +225,16 @@ export interface IModelListClient {
  * @returns Array of ModelInfo objects from the SDK.
  */
 export async function fetchModelsFromClient(client: IModelListClient): Promise<ModelInfo[]> {
+    // Pre-emptively suppress EPIPE re-throws from the SDK's connectViaStdio() stdin
+    // error handler. When the CLI exits unexpectedly (e.g., in test environments
+    // where VS Code's process.execPath is used to spawn the CLI, causing argument
+    // parsing failures), writing to its stdin raises EPIPE. The SDK re-throws that
+    // error inside the stdin 'error' listener unless forceStopping is true, which
+    // makes it an uncaughtException that bypasses normal promise-rejection handling.
+    // Setting forceStopping=true here prevents the re-throw; write failures still
+    // propagate as rejected Promises and are absorbed by StreamErrorGuard.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).forceStopping = true;
     try {
         await client.start();
         return await client.listModels();
