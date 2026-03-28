@@ -75,7 +75,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Queue routes receive the bridge directly for per-repo routing
     registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath);
-    registerTaskRoutes(routes, store, dataDir);
+    registerTaskRoutes(routes, store, dataDir, (workspaceId) => {
+        getWsServer().broadcastProcessEvent({
+            type: 'tasks-changed',
+            workspaceId,
+            timestamp: Date.now(),
+        });
+    });
     registerTaskWriteRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);
     registerWorkflowWriteRoutes(routes, store, (workspaceId) => {

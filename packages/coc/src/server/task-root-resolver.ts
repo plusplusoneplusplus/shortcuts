@@ -41,3 +41,22 @@ export async function ensureTaskRoot(options: TaskRootOptions): Promise<TaskRoot
     await fs.mkdir(info.absolutePath, { recursive: true });
     return info;
 }
+
+/**
+ * Resolve all task roots: the primary repo-scoped root plus any additional paths.
+ * Returns an array of { absolutePath, label } for each valid root.
+ */
+export function resolveAllTaskRoots(
+    options: TaskRootOptions,
+    additionalPaths: string[],
+): { absolutePath: string; label: string }[] {
+    const primary = resolveTaskRoot(options);
+    const roots: { absolutePath: string; label: string }[] = [
+        { absolutePath: primary.absolutePath, label: path.basename(primary.absolutePath) },
+    ];
+    for (const p of additionalPaths) {
+        const abs = path.isAbsolute(p) ? path.resolve(p) : path.resolve(options.rootPath, p);
+        roots.push({ absolutePath: abs, label: path.basename(abs) });
+    }
+    return roots;
+}

@@ -82,6 +82,71 @@ export function buildArchiveFolderNode(archiveDir: string): TaskFolder {
 }
 
 // ============================================================================
+// Multi-Folder Merge Helper
+// ============================================================================
+
+/**
+ * Merge multiple TaskFolder trees under a synthetic virtual root.
+ * Each folder becomes a top-level child with its label used as the name.
+ * Single-folder case should NOT use this — return the folder directly.
+ */
+export function mergeTaskFoldersAsVirtualRoot(
+    folders: { folder: TaskFolder; label: string }[],
+): TaskFolder {
+    return {
+        name: 'Tasks',
+        folderPath: '',
+        relativePath: '',
+        isArchived: false,
+        children: folders.map(({ folder, label }) => ({
+            ...folder,
+            name: label,
+        })),
+        tasks: [],
+        documentGroups: [],
+        singleDocuments: [],
+    };
+}
+
+// ============================================================================
+// Tasks Settings Persistence
+// ============================================================================
+
+export interface TasksSettings {
+    folderPaths: string[];
+}
+
+const TASKS_SETTINGS_FILE = 'tasks-settings.json';
+
+/**
+ * Read per-workspace tasks settings (folderPaths).
+ * Returns default (empty folderPaths) if file doesn't exist.
+ */
+export async function readTasksSettings(dataDir: string, workspaceId: string): Promise<TasksSettings> {
+    const { getRepoDataPath } = await import('./paths');
+    const filePath = getRepoDataPath(dataDir, workspaceId, TASKS_SETTINGS_FILE);
+    try {
+        const raw = await fs.promises.readFile(filePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.folderPaths)) {
+            return { folderPaths: parsed.folderPaths };
+        }
+    } catch { /* file doesn't exist or invalid — return default */ }
+    return { folderPaths: [] };
+}
+
+/**
+ * Write per-workspace tasks settings.
+ */
+export async function writeTasksSettings(dataDir: string, workspaceId: string, settings: TasksSettings): Promise<void> {
+    const { getRepoDataPath } = await import('./paths');
+    const filePath = getRepoDataPath(dataDir, workspaceId, TASKS_SETTINGS_FILE);
+    const dir = path.dirname(filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(filePath, JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+// ============================================================================
 // Path Security Helper
 // ============================================================================
 

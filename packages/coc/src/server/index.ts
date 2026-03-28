@@ -232,7 +232,7 @@ export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailur
 // Tasks
 export type { ChatPayload } from './task-types';
 export { isChatPayload, hasTaskGenerationContext } from './task-types';
-export { resolveTaskRoot, ensureTaskRoot } from './task-root-resolver';
+export { resolveTaskRoot, ensureTaskRoot, resolveAllTaskRoots } from './task-root-resolver';
 export type { TaskRootInfo, TaskRootOptions } from './task-root-resolver';
 export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments-handler';
 export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';

@@ -16,8 +16,8 @@ import { getFullTaskHierarchy, isWithinDirectory } from '@plusplusoneplusplus/fo
 import { sendJSON, sendError } from './api-handler';
 import { resolveWorkspaceOrFail } from './shared/handler-utils';
 import type { Route } from './types';
-import { resolveTaskRoot } from './task-root-resolver';
-import { isWithinTrustedReadOnlyDir, DEFAULT_SETTINGS, buildArchiveFolderNode } from './tasks-handler-utils';
+import { resolveTaskRoot, resolveAllTaskRoots } from './task-root-resolver';
+import { isWithinTrustedReadOnlyDir, DEFAULT_SETTINGS, buildArchiveFolderNode, mergeTaskFoldersAsVirtualRoot, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
 
 // ============================================================================
 // Route Registration
@@ -27,7 +27,7 @@ import { isWithinTrustedReadOnlyDir, DEFAULT_SETTINGS, buildArchiveFolderNode } 
  * Register all task read-only API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir: string): void {
+export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir: string, onTasksChanged?: (workspaceId: string) => void): void {
 
     // ------------------------------------------------------------------
     // GET /api/workspaces/:id/files/preview — File content preview
@@ -248,10 +248,63 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             if (!ws) return;
 
             const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
+            const tasksSettings = await readTasksSettings(dataDir, ws.id);
             sendJSON(res, 200, {
                 ...DEFAULT_SETTINGS,
                 folderPath: taskRoot.absolutePath,
                 taskRootPath: taskRoot.absolutePath,
+                folderPaths: tasksSettings.folderPaths,
+            });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // PATCH /api/workspaces/:id/tasks/settings — Update task settings
+    // (must be registered before the general /tasks route)
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/settings$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            let body = '';
+            req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+            req.on('end', async () => {
+                try {
+                    const parsed = JSON.parse(body);
+                    if (!parsed || !Array.isArray(parsed.folderPaths)) {
+                        return sendError(res, 400, 'Body must contain folderPaths: string[]');
+                    }
+                    const folderPaths: string[] = parsed.folderPaths;
+
+                    // Validate each path
+                    for (const p of folderPaths) {
+                        if (typeof p !== 'string' || p.trim() === '') {
+                            return sendError(res, 400, 'Each folderPath must be a non-empty string');
+                        }
+                        const abs = path.isAbsolute(p) ? path.resolve(p) : path.resolve(ws.rootPath, p);
+                        if (!isWithinDirectory(abs, ws.rootPath) && !isWithinTrustedReadOnlyDir(abs, dataDir)) {
+                            return sendError(res, 403, `Path outside trusted directories: ${p}`);
+                        }
+                    }
+
+                    await writeTasksSettings(dataDir, ws.id, { folderPaths });
+
+                    // Notify UI via WebSocket
+                    if (onTasksChanged) {
+                        onTasksChanged(ws.id);
+                    }
+
+                    const tasksSettings = await readTasksSettings(dataDir, ws.id);
+                    sendJSON(res, 200, { folderPaths: tasksSettings.folderPaths });
+                } catch (err: any) {
+                    if (err instanceof SyntaxError) {
+                        return sendError(res, 400, 'Invalid JSON body');
+                    }
+                    return sendError(res, 500, 'Failed to save settings: ' + (err.message || 'Unknown error'));
+                }
             });
         },
     });
@@ -270,29 +323,61 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
                 ? parsed.query.folder
                 : undefined;
+            const taskRootOpts = { dataDir, rootPath: ws.rootPath, workspaceId: ws.id };
             const resolvedFolder = folder
                 ? path.resolve(ws.rootPath, folder)
-                : resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+                : resolveTaskRoot(taskRootOpts).absolutePath;
             const includeArchiveFolder= parsed.query.showArchived === 'true';
 
             try {
-                const hierarchy = await getFullTaskHierarchy(resolvedFolder);
+                // Read additional folder paths from settings
+                const tasksSettings = await readTasksSettings(dataDir, ws.id);
+                const additionalPaths = folder ? [] : tasksSettings.folderPaths;
 
-                // When showArchived=true, include archive/ as a visible subfolder
-                if (includeArchiveFolder) {
-                    const tasksFolder = resolvedFolder;
-                    const archiveDir = path.join(tasksFolder, 'archive');
-                    try {
-                        const stat = await fs.promises.stat(archiveDir);
-                        if (stat.isDirectory()) {
-                            const archiveNode = buildArchiveFolderNode(archiveDir);
-                            hierarchy.children = hierarchy.children || [];
-                            hierarchy.children.push(archiveNode);
-                        }
-                    } catch { /* archive folder doesn't exist — skip */ }
+                // Helper: scan a single folder and optionally append archive node
+                const scanFolder = async (folderPath: string) => {
+                    const hierarchy = await getFullTaskHierarchy(folderPath);
+                    if (includeArchiveFolder) {
+                        const archiveDir = path.join(folderPath, 'archive');
+                        try {
+                            const stat = await fs.promises.stat(archiveDir);
+                            if (stat.isDirectory()) {
+                                const archiveNode = buildArchiveFolderNode(archiveDir);
+                                hierarchy.children = hierarchy.children || [];
+                                hierarchy.children.push(archiveNode);
+                            }
+                        } catch { /* archive folder doesn't exist — skip */ }
+                    }
+                    return hierarchy;
+                };
+
+                if (additionalPaths.length > 0) {
+                    // Multi-folder: resolve all roots and merge
+                    const allRoots = resolveAllTaskRoots(taskRootOpts, additionalPaths);
+                    const scanned = await Promise.all(
+                        allRoots.map(async (root) => {
+                            try {
+                                // Skip folders that don't exist on disk
+                                const stat = await fs.promises.stat(root.absolutePath);
+                                if (!stat.isDirectory()) return null;
+                                const folder = await scanFolder(root.absolutePath);
+                                return { folder, label: root.label };
+                            } catch {
+                                return null;
+                            }
+                        }),
+                    );
+                    const validFolders = scanned.filter((s): s is NonNullable<typeof s> => s !== null);
+                    if (validFolders.length === 1) {
+                        sendJSON(res, 200, validFolders[0].folder);
+                    } else {
+                        sendJSON(res, 200, mergeTaskFoldersAsVirtualRoot(validFolders));
+                    }
+                } else {
+                    // Single folder (default behaviour)
+                    const hierarchy = await scanFolder(resolvedFolder);
+                    sendJSON(res, 200, hierarchy);
                 }
-
-                sendJSON(res, 200, hierarchy);
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to scan tasks: ' + (err.message || 'Unknown error'));
             }

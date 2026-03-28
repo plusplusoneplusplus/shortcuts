@@ -102,6 +102,8 @@ export interface TasksViewerSettings {
     enabled: boolean;
     /** Path to tasks folder relative to workspace root */
     folderPath: string;
+    /** Additional absolute or workspace-relative paths to merge into the task view */
+    folderPaths?: string[];
     showArchived: boolean;
     /** Whether to show tasks marked as 'future' in the Tasks Viewer */
     showFuture: boolean;
