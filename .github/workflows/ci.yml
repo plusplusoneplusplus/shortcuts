@@ -37,14 +37,6 @@ jobs:
         run: npm run test:run
         working-directory: packages/forge
 
-      - name: Build coc-server package
-        run: npm run build
-        working-directory: packages/coc-server
-
-      - name: Run coc-server tests
-        run: npm run test:run
-        working-directory: packages/coc-server
-
       - name: Build coc SPA client bundle
         run: npm run build:client
         working-directory: packages/coc
@@ -111,10 +103,6 @@ jobs:
       - name: Build forge package
         run: npm run build
         working-directory: packages/forge
-
-      - name: Build coc-server package
-        run: npm run build
-        working-directory: packages/coc-server
 
       - name: Package extension
         run: npm run vsce:package
