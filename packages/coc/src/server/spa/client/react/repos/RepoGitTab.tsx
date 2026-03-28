@@ -1016,6 +1016,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 .join('\n');
             const initialPrompt = `${selectedCommits.length} commits selected:\n${commitList}`;
 
+            items.push({
+                label: 'Copy Commits Info',
+                icon: '📋',
+                onClick: () => { navigator.clipboard.writeText(commitList); },
+            });
             if (selectedCommits.length >= 2) {
                 items.push({
                     label: `Squash ${selectedCommits.length} Commits`,
