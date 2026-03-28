@@ -128,13 +128,17 @@ export class MemoryAggregateExecutor {
                 promptParts.push('## AI Observations\n' + obsLines);
             }
             promptParts.push(
-                'Produce an updated memory document following these rules:\n' +
+                '## Instructions\n' +
+                'Produce an updated memory document. Output ONLY the document itself — no preamble, no commentary, no summary of your process.\n' +
+                'Start your response directly with the first markdown section header.\n\n' +
+                'Rules:\n' +
                 '- Deduplicate: merge similar or redundant facts\n' +
                 '- Resolve conflicts: user notes override AI observations\n' +
                 '- Prune: drop facts no longer relevant\n' +
                 '- Categorize: group by topic (conventions, architecture, patterns, tools, gotchas)\n' +
                 '- Keep it concise: target <100 facts total\n' +
-                '- Use markdown with clear section headers',
+                '- Use markdown with clear section headers\n' +
+                '- Each fact must be a bullet point (`- `) under a section header',
             );
 
             const prompt = promptParts.join('\n\n');

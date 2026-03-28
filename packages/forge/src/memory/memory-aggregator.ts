@@ -124,13 +124,18 @@ export class MemoryAggregator {
             `## New Observations (${observations.length} sessions)`,
             rawSection,
             '',
-            'Produce an updated memory document following these rules:',
+            '## Instructions',
+            'Produce an updated memory document. Output ONLY the document itself — no preamble, no commentary, no summary of your process.',
+            'Start your response directly with the first markdown section header.',
+            '',
+            'Rules:',
             '- Deduplicate: merge similar or redundant facts',
             '- Resolve conflicts: newer observations override older ones',
             '- Prune: drop facts that appear no longer relevant',
             '- Categorize: group by topic (conventions, architecture, patterns, tools, gotchas)',
             '- Keep it concise: target <100 facts total',
             '- Use markdown with clear section headers',
+            '- Each fact must be a bullet point (`- `) under a section header',
         ].join('\n');
     }
 }

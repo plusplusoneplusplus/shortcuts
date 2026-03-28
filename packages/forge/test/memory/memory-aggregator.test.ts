@@ -110,6 +110,19 @@ describe('MemoryAggregator', () => {
             expect(prompt).toContain('## New Observations (2 sessions)');
         });
 
+        it('prompt includes output-format constraints to prevent meta-commentary', async () => {
+            vi.mocked(mockStore.listRaw).mockResolvedValue(['a.md']);
+            vi.mocked(mockStore.readRaw).mockResolvedValue(makeRawObservation('a.md', 'obs'));
+
+            await aggregator.aggregate(mockAI, 'system');
+
+            const prompt = vi.mocked(mockAI).mock.calls[0][0];
+            expect(prompt).toContain('Output ONLY the document itself');
+            expect(prompt).toContain('no preamble, no commentary, no summary of your process');
+            expect(prompt).toContain('Start your response directly with the first markdown section header');
+            expect(prompt).toContain('Each fact must be a bullet point');
+        });
+
         it('includes existing consolidated in prompt', async () => {
             vi.mocked(mockStore.listRaw).mockResolvedValue(['a.md']);
             vi.mocked(mockStore.readRaw).mockResolvedValue(makeRawObservation('a.md', 'new'));
