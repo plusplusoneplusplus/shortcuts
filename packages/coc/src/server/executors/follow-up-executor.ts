@@ -184,8 +184,7 @@ export class FollowUpExecutor extends BaseExecutor {
                 { additionalUpdates: { status: 'running' } },
             );
 
-            const isFirstTurn = !(process.conversationTurns?.some(t => t.role === 'assistant'));
-            const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled && isFirstTurn, this.followUpSuggestions.count);
+            const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
             const followUpMessage = followUpSuffix ? `${message}${followUpSuffix}` : message;
             const agentMode = toAgentMode(currentMode);
 

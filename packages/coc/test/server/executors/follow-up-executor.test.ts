@@ -374,4 +374,28 @@ describe('FollowUpExecutor', () => {
         expect(userTurn).toBeDefined();
         expect(userTurn!.images).toEqual(images);
     });
+
+    // -------------------------------------------------------------------------
+    // Regression: suggest_follow_ups tool must be available on every turn
+    // -------------------------------------------------------------------------
+
+    it('provides suggest_follow_ups tool on follow-up turns (not only first turn)', async () => {
+        const proc = makeProcess({
+            id: 'proc-suggest',
+            conversationTurns: [
+                { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'Hi there', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            ],
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            followUpSuggestions: { enabled: true, count: 3 },
+        });
+        await executor.executeFollowUp('proc-suggest', 'another question');
+
+        // buildFollowUpSuggestionsAddon must be called with enabled=true even
+        // when there are already assistant turns in the conversation.
+        expect(mockBuildFollowUpSuggestionsAddon).toHaveBeenCalledWith(true, 3);
+    });
 });
