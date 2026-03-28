@@ -9,6 +9,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Dialog } from '../../shared/Dialog';
 import { memoryApi } from './memoryApi';
 import { getApiBase } from '../../utils/config';
 
@@ -229,162 +230,172 @@ export function AggregatePanel({
         }
     };
 
-    return (
-        <div
-            className="mb-3 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-3 bg-[#fafafa] dark:bg-[#1e1e1e]"
-            data-testid="aggregate-panel"
-        >
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Aggregate</span>
-                <button
-                    onClick={onClose}
-                    className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm leading-none"
-                    aria-label="Close aggregate panel"
-                    data-testid="aggregate-close-btn"
-                >
-                    ×
-                </button>
-            </div>
+    const isRunning = phase === 'queued' || phase === 'streaming';
 
-            {phase === 'idle' && (
+    const footerContent = (() => {
+        if (phase === 'idle') {
+            return (
                 <>
-                    <div className="flex items-center gap-4 mb-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={includeNotes}
-                                onChange={e => setIncludeNotes(e.target.checked)}
-                                data-testid="aggregate-include-notes"
-                            />
-                            Your notes
-                        </label>
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={includeAi}
-                                onChange={e => setIncludeAi(e.target.checked)}
-                                data-testid="aggregate-include-ai"
-                            />
-                            AI observations
-                        </label>
-                        <div className="flex items-center gap-1.5 ml-auto">
-                            <span className="text-[#848484]">Model:</span>
-                            <input
-                                type="text"
-                                value={model}
-                                onChange={e => setModel(e.target.value)}
-                                className="text-[11px] px-1.5 py-0.5 border border-[#c8c8c8] dark:border-[#555] rounded bg-transparent focus:outline-none focus:border-[#0078d4] w-40"
-                                data-testid="aggregate-model-input"
-                            />
-                        </div>
-                    </div>
-                    {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
-                    <div className="flex justify-end gap-2">
-                        <button
-                            onClick={onClose}
-                            className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
-                        >
-                            Close
-                        </button>
-                        <button
-                            onClick={handleRun}
-                            className="text-xs px-2.5 py-1 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors"
-                            data-testid="aggregate-run-btn"
-                        >
-                            Run ▶
-                        </button>
-                    </div>
+                    <button
+                        onClick={onClose}
+                        className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
+                    >
+                        Close
+                    </button>
+                    <button
+                        onClick={handleRun}
+                        className="text-xs px-2.5 py-1 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors"
+                        data-testid="aggregate-run-btn"
+                    >
+                        Run ▶
+                    </button>
                 </>
-            )}
-
-            {phase === 'submitting' && (
-                <div className="text-xs text-[#848484] py-2 text-center">Submitting…</div>
-            )}
-
-            {phase === 'queued' && (
+            );
+        }
+        if (phase === 'queued') {
+            return (
+                <button
+                    onClick={handleCancel}
+                    className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
+                    data-testid="aggregate-cancel-btn"
+                >
+                    Cancel
+                </button>
+            );
+        }
+        if (phase === 'streaming') {
+            return (
+                <button
+                    disabled
+                    className="text-xs px-2.5 py-1 rounded bg-[#0078d4]/60 text-white cursor-not-allowed"
+                >
+                    Running…
+                </button>
+            );
+        }
+        if (phase === 'review') {
+            return (
                 <>
+                    <button
+                        onClick={handleRevert}
+                        disabled={reverting}
+                        className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors disabled:opacity-50"
+                        data-testid="aggregate-revert-btn"
+                    >
+                        {reverting ? 'Reverting…' : 'Revert'}
+                    </button>
+                    <button
+                        onClick={handleAccept}
+                        disabled={accepting}
+                        className="text-xs px-2.5 py-1 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors disabled:opacity-50"
+                        data-testid="aggregate-accept-btn"
+                    >
+                        {accepting ? 'Accepting…' : 'Accept ✓'}
+                    </button>
+                </>
+            );
+        }
+        return null;
+    })();
+
+    return (
+        <Dialog
+            open={true}
+            onClose={onClose}
+            title="Aggregate Memory"
+            className="max-w-[672px]"
+            id="aggregate-panel"
+            disableClose={isRunning}
+            onMinimize={isRunning ? onClose : undefined}
+            footer={footerContent}
+        >
+            <div data-testid="aggregate-panel">
+                {phase === 'idle' && (
+                    <>
+                        <div className="flex items-center gap-4 mb-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={includeNotes}
+                                    onChange={e => setIncludeNotes(e.target.checked)}
+                                    data-testid="aggregate-include-notes"
+                                />
+                                Your notes
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={includeAi}
+                                    onChange={e => setIncludeAi(e.target.checked)}
+                                    data-testid="aggregate-include-ai"
+                                />
+                                AI observations
+                            </label>
+                            <div className="flex items-center gap-1.5 ml-auto">
+                                <span className="text-[#848484]">Model:</span>
+                                <input
+                                    type="text"
+                                    value={model}
+                                    onChange={e => setModel(e.target.value)}
+                                    className="text-[11px] px-1.5 py-0.5 border border-[#c8c8c8] dark:border-[#555] rounded bg-transparent focus:outline-none focus:border-[#0078d4] w-40"
+                                    data-testid="aggregate-model-input"
+                                />
+                            </div>
+                        </div>
+                        {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
+                    </>
+                )}
+
+                {phase === 'submitting' && (
+                    <div className="text-xs text-[#848484] py-2 text-center">Submitting…</div>
+                )}
+
+                {phase === 'queued' && (
                     <div className="text-xs text-[#848484] py-2 text-center flex items-center justify-center gap-2" data-testid="aggregate-queued">
                         <span className="inline-block w-3 h-3 border-2 border-[#e8a317] border-t-transparent rounded-full animate-spin" />
                         Waiting in queue…
                     </div>
-                    <div className="flex justify-end">
-                        <button
-                            onClick={handleCancel}
-                            className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
-                            data-testid="aggregate-cancel-btn"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </>
-            )}
+                )}
 
-            {phase === 'streaming' && (
-                <>
+                {phase === 'streaming' && (
                     <pre
                         ref={outputRef}
-                        className="text-[11px] font-mono text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap mb-2"
+                        className="text-[11px] font-mono text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] rounded p-2 max-h-64 overflow-y-auto whitespace-pre-wrap"
                         data-testid="aggregate-stream-output"
                     >
                         {streamOutput || 'Running…'}
                     </pre>
-                    <div className="flex justify-end">
-                        <button
-                            disabled
-                            className="text-xs px-2.5 py-1 rounded bg-[#0078d4]/60 text-white cursor-not-allowed"
-                        >
-                            Running…
-                        </button>
-                    </div>
-                </>
-            )}
+                )}
 
-            {phase === 'review' && (
-                <>
-                    <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Result</div>
-                    <div
-                        className="text-[11px] font-mono bg-[#f3f3f3] dark:bg-[#252526] rounded p-2 max-h-56 overflow-y-auto mb-2"
-                        data-testid="aggregate-diff"
-                    >
-                        {diffLines.length > 0 ? diffLines.map((line, i) => (
-                            <div
-                                key={i}
-                                className={
-                                    line.type === 'add'
-                                        ? 'text-green-600 dark:text-green-400'
-                                        : line.type === 'remove'
-                                            ? 'text-red-500 line-through opacity-70'
-                                            : 'text-[#1e1e1e] dark:text-[#cccccc]'
-                                }
-                            >
-                                {line.type === 'add' ? '+ ' : line.type === 'remove' ? '- ' : '  '}
-                                {line.text}
-                            </div>
-                        )) : (
-                            <pre className="whitespace-pre-wrap text-[#1e1e1e] dark:text-[#cccccc]">{streamOutput}</pre>
-                        )}
-                    </div>
-                    {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
-                    <div className="flex justify-end gap-2">
-                        <button
-                            onClick={handleRevert}
-                            disabled={reverting}
-                            className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors disabled:opacity-50"
-                            data-testid="aggregate-revert-btn"
+                {phase === 'review' && (
+                    <>
+                        <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Result</div>
+                        <div
+                            className="text-[11px] font-mono bg-[#f3f3f3] dark:bg-[#252526] rounded p-2 max-h-72 overflow-y-auto"
+                            data-testid="aggregate-diff"
                         >
-                            {reverting ? 'Reverting…' : 'Revert'}
-                        </button>
-                        <button
-                            onClick={handleAccept}
-                            disabled={accepting}
-                            className="text-xs px-2.5 py-1 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors disabled:opacity-50"
-                            data-testid="aggregate-accept-btn"
-                        >
-                            {accepting ? 'Accepting…' : 'Accept ✓'}
-                        </button>
-                    </div>
-                </>
-            )}
-        </div>
+                            {diffLines.length > 0 ? diffLines.map((line, i) => (
+                                <div
+                                    key={i}
+                                    className={
+                                        line.type === 'add'
+                                            ? 'text-green-600 dark:text-green-400'
+                                            : line.type === 'remove'
+                                                ? 'text-red-500 line-through opacity-70'
+                                                : 'text-[#1e1e1e] dark:text-[#cccccc]'
+                                    }
+                                >
+                                    {line.type === 'add' ? '+ ' : line.type === 'remove' ? '- ' : '  '}
+                                    {line.text}
+                                </div>
+                            )) : (
+                                <pre className="whitespace-pre-wrap text-[#1e1e1e] dark:text-[#cccccc]">{streamOutput}</pre>
+                            )}
+                        </div>
+                        {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+                    </>
+                )}
+            </div>
+        </Dialog>
     );
 }

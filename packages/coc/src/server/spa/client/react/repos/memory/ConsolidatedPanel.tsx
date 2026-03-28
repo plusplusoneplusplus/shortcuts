@@ -4,6 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { Dialog } from '../../shared/Dialog';
 import { memoryApi } from './memoryApi';
 
 interface ConsolidatedPanelProps {
@@ -44,19 +45,18 @@ export function ConsolidatedPanel({ repoId, onClose }: ConsolidatedPanelProps) {
     };
 
     return (
-        <div
-            className="mb-3 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md bg-[#f5f5f5] dark:bg-[#1e1e1e] overflow-hidden"
-            data-testid="consolidated-panel"
-        >
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <span className="text-xs font-medium text-[#616161] dark:text-[#999]">
-                    Consolidated Memory
-                </span>
-                <div className="flex items-center gap-1.5">
+        <Dialog
+            open={true}
+            onClose={onClose}
+            title="Consolidated Memory"
+            className="max-w-[672px]"
+            id="consolidated-panel"
+            footer={
+                <>
                     {content && (
                         <button
                             onClick={handleCopy}
-                            className="text-xs px-2 py-0.5 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
+                            className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
                             data-testid="consolidated-copy-btn"
                         >
                             {copied ? 'Copied!' : 'Copy'}
@@ -64,14 +64,15 @@ export function ConsolidatedPanel({ repoId, onClose }: ConsolidatedPanelProps) {
                     )}
                     <button
                         onClick={onClose}
-                        className="text-xs px-2 py-0.5 rounded text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
+                        className="text-xs px-2.5 py-1 rounded border border-[#848484]/50 text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] transition-colors"
                         data-testid="consolidated-close-btn"
                     >
-                        ✕
+                        Close
                     </button>
-                </div>
-            </div>
-            <div className="px-3 py-2 max-h-80 overflow-y-auto">
+                </>
+            }
+        >
+            <div data-testid="consolidated-panel" className="max-h-[60vh] overflow-y-auto">
                 {loading ? (
                     <div className="text-xs text-[#848484] py-2" data-testid="consolidated-loading">
                         Loading…
@@ -89,6 +90,6 @@ export function ConsolidatedPanel({ repoId, onClose }: ConsolidatedPanelProps) {
                     </pre>
                 )}
             </div>
-        </div>
+        </Dialog>
     );
 }
