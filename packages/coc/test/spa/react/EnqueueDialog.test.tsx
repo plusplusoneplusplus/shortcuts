@@ -1413,6 +1413,29 @@ describe('EnqueueDialog default tab', () => {
         await new Promise(r => setTimeout(r, 100));
         expect(screen.getByText('Advanced').className).toContain('border-[#0078d4]');
     });
+
+    it('Templates tab count only includes templates matching the current mode', async () => {
+        // 2 task templates + 1 ask template; dialog opens in ask mode → count should be 1
+        setupFetchWithTemplates([
+            { id: 't1', name: 'Task A', model: '', mode: 'task', skills: [] },
+            { id: 't2', name: 'Task B', model: '', mode: 'task', skills: [] },
+            { id: 'a1', name: 'Ask A', model: '', mode: 'ask', skills: [] },
+        ]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" mode="ask" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
+
+        // Wait for templates to load, then verify the count reflects only ask-mode templates
+        await waitFor(() => {
+            const templatesBtn = screen.getByText(/^Templates/);
+            expect(templatesBtn.textContent).toBe('Templates (1)');
+        });
+    });
 });
 
 // ============================================================================

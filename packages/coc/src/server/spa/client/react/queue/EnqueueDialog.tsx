@@ -383,8 +383,9 @@ export function EnqueueDialog() {
 
             {/* Lower section tab bar: Templates | Advanced */}
             <div className="flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                {(['templates', 'advanced'] as const).map(tab => (
-                    <button
+                {(['templates', 'advanced'] as const).map(tab => {
+                    const modeFilteredCount = templates.filter(t => t.mode === (isAskMode ? 'ask' : 'task')).length;
+                    return (<button
                         key={tab}
                         type="button"
                         onClick={() => setActiveTab(tab)}
@@ -394,9 +395,9 @@ export function EnqueueDialog() {
                                 : 'border-transparent text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
                         }`}
                     >
-                        {tab === 'templates' ? `Templates${templates.length > 0 ? ` (${templates.length})` : ''}` : 'Advanced'}
-                    </button>
-                ))}
+                        {tab === 'templates' ? `Templates${modeFilteredCount > 0 ? ` (${modeFilteredCount})` : ''}` : 'Advanced'}
+                    </button>);
+                })}
             </div>
 
             {/* Lower section content */}
