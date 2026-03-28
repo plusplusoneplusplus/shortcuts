@@ -15,16 +15,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from './api-handler';
+import { resolveWorkspaceOrFail } from './shared/handler-utils';
 import type { Route } from './types';
-
-// ============================================================================
-// Workspace resolution helper
-// ============================================================================
-
-async function resolveWorkspace(store: ProcessStore, id: string) {
-    const workspaces = await store.getWorkspaces();
-    return workspaces.find(w => w.id === id);
-}
 
 // ============================================================================
 // Types
@@ -58,14 +50,12 @@ export function registerReplicateApplyRoutes(
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/replicate\/([^/]+)\/apply$/,
         handler: async (_req, res, match) => {
-            const workspaceId = decodeURIComponent(match![1]);
             const processId = decodeURIComponent(match![2]);
 
             // 1. Resolve workspace to get repo root
-            const ws = await resolveWorkspace(store, workspaceId);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const workspaceId = ws.id;
             const repoRoot = ws.rootPath;
 
             // 2. Load the completed process

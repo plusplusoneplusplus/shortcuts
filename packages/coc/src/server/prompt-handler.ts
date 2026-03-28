@@ -11,17 +11,9 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { findSkills } from '@plusplusoneplusplus/forge';
-import { sendJSON, sendError } from './api-handler';
+import { sendJSON } from './api-handler';
+import { resolveWorkspaceOrFail } from './shared/handler-utils';
 import type { Route } from './types';
-
-// ============================================================================
-// Workspace resolution helper
-// ============================================================================
-
-async function resolveWorkspace(store: ProcessStore, id: string) {
-    const workspaces = await store.getWorkspaces();
-    return workspaces.find(w => w.id === id);
-}
 
 // ============================================================================
 // Route Registration
@@ -40,11 +32,8 @@ export function registerPromptRoutes(routes: Route[], store: ProcessStore): void
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             try {
                 const skills = await findSkills(ws.rootPath);

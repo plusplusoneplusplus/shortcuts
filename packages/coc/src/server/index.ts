@@ -200,8 +200,11 @@ export type { DashboardOptions } from './spa';
 export { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from './global-workspace';
 
 // Queue
-export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from './queue-executor-bridge';
+export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive, DEFAULT_FOLLOW_UP_SUGGESTIONS } from './queue-executor-bridge';
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue-executor-bridge';
+export { ExecutorRegistry } from './executors/executor-registry';
+export type { ExecutorRegistryOptions } from './executors/executor-registry';
+export type { ITaskExecutor } from './executors/executor-types';
 export { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 export { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 export { QueuePersistence, getRepoQueueFilePath, sanitizeTaskForPersistence } from './queue/queue-persistence';

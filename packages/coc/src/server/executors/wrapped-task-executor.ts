@@ -9,6 +9,7 @@
 import { spawn } from 'child_process';
 import type { ProcessStore, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
+import type { ITaskExecutor } from './executor-types';
 
 // ============================================================================
 // Types
@@ -20,9 +21,8 @@ export interface ScriptResult {
     durationMs: number;
 }
 
-export interface InnerExecutor {
-    execute(task: QueuedTask, prompt: string): Promise<unknown>;
-}
+/** @deprecated Use {@link ITaskExecutor} from `./executor-types` instead. */
+export type InnerExecutor = ITaskExecutor;
 
 // ============================================================================
 // WrappedTaskExecutor
@@ -30,7 +30,7 @@ export interface InnerExecutor {
 
 export class WrappedTaskExecutor {
     constructor(
-        private readonly innerExecutor: InnerExecutor,
+        private readonly innerExecutor: ITaskExecutor,
         private readonly store: ProcessStore,
     ) {}
 

@@ -17,6 +17,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { GitLogService } from '@plusplusoneplusplus/forge/git';
 import { sendJSON, sendError, parseBody } from './api-handler';
+import { resolveWorkspaceOrFail } from './shared/handler-utils';
 import type { Route } from './types';
 
 // ============================================================================
@@ -28,11 +29,6 @@ const TEMPLATES_DIR = '.vscode/templates';
 // ============================================================================
 // Helpers
 // ============================================================================
-
-async function resolveWorkspace(store: ProcessStore, id: string) {
-    const workspaces = await store.getWorkspaces();
-    return workspaces.find(w => w.id === id);
-}
 
 /**
  * Resolve a user-supplied template name against a base directory and validate
@@ -80,11 +76,8 @@ export function registerTemplateRoutes(routes: Route[], store: ProcessStore): vo
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/templates$/,
         handler: async (_req, res, match) => {
-            const workspaceId = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, workspaceId);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const templatesDir = path.join(ws.rootPath, TEMPLATES_DIR);
             let entries: string[];
@@ -117,12 +110,9 @@ export function registerTemplateRoutes(routes: Route[], store: ProcessStore): vo
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/templates\/([^/]+)$/,
         handler: async (_req, res, match) => {
-            const workspaceId = decodeURIComponent(match![1]);
             const templateName = decodeURIComponent(match![2]);
-            const ws = await resolveWorkspace(store, workspaceId);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const templatesDir = path.join(ws.rootPath, TEMPLATES_DIR);
             const filePath = resolveAndValidateTemplatePath(templatesDir, `${templateName}.yaml`);
@@ -181,11 +171,9 @@ export function registerTemplateWriteRoutes(
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/templates$/,
         handler: async (req, res, match) => {
-            const workspaceId = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, workspaceId);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const workspaceId = ws.id;
 
             let body: any;
             try {
@@ -267,12 +255,10 @@ export function registerTemplateWriteRoutes(
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/templates\/([^/]+)$/,
         handler: async (req, res, match) => {
-            const workspaceId = decodeURIComponent(match![1]);
             const templateName = decodeURIComponent(match![2]);
-            const ws = await resolveWorkspace(store, workspaceId);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const workspaceId = ws.id;
 
             const templatesDir = path.join(ws.rootPath, TEMPLATES_DIR);
             const resolvedPath = resolveAndValidateTemplatePath(templatesDir, `${templateName}.yaml`);
@@ -341,12 +327,10 @@ export function registerTemplateWriteRoutes(
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/templates\/([^/]+)$/,
         handler: async (_req, res, match) => {
-            const workspaceId = decodeURIComponent(match![1]);
             const templateName = decodeURIComponent(match![2]);
-            const ws = await resolveWorkspace(store, workspaceId);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const workspaceId = ws.id;
 
             const templatesDir = path.join(ws.rootPath, TEMPLATES_DIR);
             const resolvedPath = resolveAndValidateTemplatePath(templatesDir, `${templateName}.yaml`);

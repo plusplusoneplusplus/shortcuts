@@ -1,26 +1,15 @@
 import type { ChatPayload, ChatMode } from './task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, isMemoryAggregatePayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsContext, hasReplicationContext } from './task-types';
+import { isChatPayload, isMemoryAggregatePayload } from './task-types';
 import { applyFollowUpToTask } from './shared/queue-utils';
 import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, resolveToolCallCacheOptions } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
 import { BaseExecutor } from './executors/base-executor';
-import type { ExecutionContext } from './task-strategies';
-import { TaskStrategyRegistry } from './task-strategies';
-import { ReplicateTemplateStrategy } from './task-strategies/replicate-template-strategy';
-import { ShellExecutor } from './executors/shell-executor';
-import { WorkflowExecutor } from './executors/workflow-executor';
-import { FollowUpExecutor } from './executors/follow-up-executor';
-import { ChatExecutor } from './executors/chat-executor';
-import { PlanExecutor } from './executors/plan-executor';
-import { AutopilotExecutor } from './executors/autopilot-executor';
-import { TaskGenerationExecutor } from './executors/task-generation-executor';
-import { ResolveCommentsExecutor } from './executors/resolve-comments-executor';
-import { MemoryAggregateExecutor } from './memory/memory-aggregate-executor';
-import { ProcessLifecycleRunner } from './executors/process-lifecycle-runner';
 import { resolveSkillConfig } from './executors/skill-config-resolver';
 import { generateTitleIfNeeded as generateTitleIfNeededFn } from './executors/title-generator';
-import { WrappedTaskExecutor } from './executors/wrapped-task-executor';
+import { ExecutorRegistry } from './executors/executor-registry';
+
+export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
 export interface CLITaskExecutorOptions {
     approvePermissions?: boolean; workingDirectory?: string; dataDir?: string;
@@ -44,16 +33,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly defaultWorkingDirectory?: string;
     private readonly aiService: CopilotSDKService;
     private queueManager?: TaskQueueManager;
-    private readonly registry: TaskStrategyRegistry;
-    private readonly workflowExecutor: WorkflowExecutor;
-    private readonly followUpExecutor: FollowUpExecutor;
-    private readonly chatExecutor: ChatExecutor;
-    private readonly planExecutor: PlanExecutor;
-    private readonly autopilotExecutor: AutopilotExecutor;
-    private readonly taskGenerationExecutor: TaskGenerationExecutor;
-    private readonly resolveCommentsExecutor: ResolveCommentsExecutor;
-    private readonly memoryAggregateExecutor: MemoryAggregateExecutor;
-    private readonly runner: ProcessLifecycleRunner;
+    private readonly executors: ExecutorRegistry;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -62,19 +42,19 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.aiService = options.aiService ?? getCopilotSDKService();
         const cacheStore = new FileToolCallCacheStore(resolveToolCallCacheOptions(options.workingDirectory, this.dataDir ? path.join(this.dataDir, 'memory') : undefined));
         const skillCfg = (wsId: string | undefined, workDir?: string) => resolveSkillConfig(store, this.dataDir, wsId, workDir);
-        const chatOpts = { workingDirectory: this.defaultWorkingDirectory, approvePermissions: this.approvePermissions, aiService: this.aiService, defaultTimeoutMs: options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS, followUpSuggestions: options.followUpSuggestions ?? { enabled: true, count: 3 }, toolCallCacheStore: cacheStore, resolveSkillConfig: skillCfg, resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p) };
-        const onTitle = (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns);
-        this.registry = new TaskStrategyRegistry();
-        this.registry.register('replicate-template', new ReplicateTemplateStrategy());
-        this.workflowExecutor = new WorkflowExecutor(store, { approvePermissions: this.approvePermissions, workingDirectory: this.defaultWorkingDirectory }, this.dataDir);
-        this.followUpExecutor = new FollowUpExecutor(store, { workingDirectory: this.defaultWorkingDirectory, approvePermissions: this.approvePermissions, aiService: this.aiService, followUpSuggestions: options.followUpSuggestions ?? { enabled: true, count: 3 }, resolveWorkspaceIdForPath: (p) => this.resolveWorkspaceIdForPath(p), resolveSkillConfig: skillCfg, onTitleNeeded: onTitle }, this.dataDir);
-        this.chatExecutor = new ChatExecutor(store, chatOpts, this.dataDir);
-        this.planExecutor = new PlanExecutor(store, chatOpts, this.dataDir);
-        this.autopilotExecutor = new AutopilotExecutor(store, chatOpts, this.dataDir);
-        this.taskGenerationExecutor = new TaskGenerationExecutor(store, chatOpts, this.dataDir);
-        this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, options.getWsServer, this.dataDir);
-        this.memoryAggregateExecutor = new MemoryAggregateExecutor(store, this.dataDir ?? '');
-        this.runner = new ProcessLifecycleRunner(store, this.dataDir, onTitle);
+        this.executors = new ExecutorRegistry(store, {
+            approvePermissions: this.approvePermissions,
+            defaultWorkingDirectory: this.defaultWorkingDirectory,
+            aiService: this.aiService,
+            dataDir: this.dataDir,
+            defaultTimeoutMs: options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS,
+            followUpSuggestions: options.followUpSuggestions ?? DEFAULT_FOLLOW_UP_SUGGESTIONS,
+            toolCallCacheStore: cacheStore,
+            resolveSkillConfig: skillCfg,
+            resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
+            onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
+            getWsServer: options.getWsServer,
+        });
     }
 
     setQueueManager(qm: TaskQueueManager): void { this.queueManager = qm; }
@@ -89,9 +69,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
         if (isMemoryAggregatePayload(task.payload)) {
-            return this.memoryAggregateExecutor.execute(task);
+            return this.executors.memoryAggregateExecutor.execute(task);
         }
-        return this.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm, imgs) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs), executeByTypeFn: (t, p) => this.executeByType(t, p), getWorkingDirectoryFn: (t) => this.getWorkingDirectory(t) });
+        return this.executors.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm, imgs) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs), executeByTypeFn: (t, p) => this.executors.dispatch(t, p), getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t) });
     }
 
     cancel(taskId: string): void { this.cancelledTasks.add(taskId); }
@@ -104,50 +84,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     async isSessionAlive(_processId: string): Promise<boolean> { return true; }
 
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[]): Promise<void> {
-        return this.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images);
-    }
-
-    private buildExecutionContext(task: QueuedTask): ExecutionContext { return { processId: `queue_${task.id}`, store: this.store, approvePermissions: this.approvePermissions, workingDirectory: this.getWorkingDirectory(task) }; }
-
-    private async executeByType(task: QueuedTask, prompt: string): Promise<unknown> {
-        if (isRunWorkflowPayload(task.payload)) return this.workflowExecutor.execute(task);
-        if (isRunScriptPayload(task.payload)) return new ShellExecutor(this.store, this.dataDir, this.defaultWorkingDirectory).execute(task);
-        if (isChatPayload(task.payload) && !isChatFollowUp(task.payload)) {
-            const payload = task.payload as unknown as ChatPayload;
-
-            // Wrap with before/after scripts when present
-            if (payload.beforeScript || payload.afterScript) {
-                const innerExecutor = this.resolveInnerExecutor(task, prompt, payload);
-                return new WrappedTaskExecutor(innerExecutor, this.store).execute(task, prompt);
-            }
-
-            if (hasTaskGenerationContext(task.payload)) return this.taskGenerationExecutor.execute(task);
-            if (hasReplicationContext(task.payload)) return this.registry.get('replicate-template')!.execute(task, this.buildExecutionContext(task));
-            if (hasResolveCommentsContext(task.payload) || hasResolveDiffCommentsContext(task.payload) || payload.tools?.includes('resolve-comments')) return this.resolveCommentsExecutor.executeTask(task);
-            const mode = payload.mode;
-            if (mode === 'plan') return this.planExecutor.execute(task, prompt);
-            if (mode === 'autopilot') return this.autopilotExecutor.execute(task, prompt);
-            return this.chatExecutor.execute(task, prompt);
-        }
-        return { status: 'completed', message: `Task type '${task.type}' executed (no-op in CLI mode)` };
-    }
-
-    /** Resolve the inner AI executor based on payload mode and context. */
-    private resolveInnerExecutor(task: QueuedTask, prompt: string, payload: ChatPayload): { execute(task: QueuedTask, prompt: string): Promise<unknown> } {
-        if (hasTaskGenerationContext(task.payload)) return this.taskGenerationExecutor;
-        if (hasReplicationContext(task.payload)) return { execute: (t: QueuedTask) => this.registry.get('replicate-template')!.execute(t, this.buildExecutionContext(t)) };
-        if (hasResolveCommentsContext(task.payload) || hasResolveDiffCommentsContext(task.payload) || payload.tools?.includes('resolve-comments')) return { execute: (t: QueuedTask) => this.resolveCommentsExecutor.executeTask(t) };
-        const mode = payload.mode;
-        if (mode === 'plan') return this.planExecutor;
-        if (mode === 'autopilot') return this.autopilotExecutor;
-        return this.chatExecutor;
-    }
-
-    private getWorkingDirectory(task: QueuedTask): string | undefined {
-        if (isRunWorkflowPayload(task.payload)) return task.payload.workingDirectory || this.defaultWorkingDirectory;
-        if (isRunScriptPayload(task.payload)) return task.payload.workingDirectory || this.defaultWorkingDirectory;
-        if (isChatPayload(task.payload)) return task.payload.workingDirectory || (task.payload as unknown as ChatPayload).folderPath || this.defaultWorkingDirectory;
-        return this.defaultWorkingDirectory;
+        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images);
     }
 }
 
