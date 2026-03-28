@@ -72,10 +72,11 @@ export class MemoryAggregateExecutor {
 
             // Load observations
             let observations: Array<{ pipeline: string; content: string }> = [];
+            let observationFilenames: string[] = [];
             if (sources.includes('observations')) {
-                const filenames = await pipelineStore.listRaw('repo', undefined);
+                observationFilenames = await pipelineStore.listRaw('repo', undefined);
                 const rawObs = await Promise.all(
-                    filenames.map(f => pipelineStore.readRaw('repo', undefined, f)),
+                    observationFilenames.map(f => pipelineStore.readRaw('repo', undefined, f)),
                 );
                 observations = rawObs
                     .filter((o): o is NonNullable<typeof o> => o !== undefined)
@@ -167,6 +168,11 @@ export class MemoryAggregateExecutor {
             await pipelineStore.updateIndex('repo', undefined, {
                 lastAggregation: new Date().toISOString(),
             });
+
+            // Delete raw observations now that they are consolidated
+            for (const filename of observationFilenames) {
+                await pipelineStore.deleteRaw('repo', undefined, filename);
+            }
 
             // Compute diff
             const diffLines = computeDiff(previous ?? '', newConsolidated);
