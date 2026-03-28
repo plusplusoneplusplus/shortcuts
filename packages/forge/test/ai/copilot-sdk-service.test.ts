@@ -2377,7 +2377,7 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const permissionHandler = (req: any) =>
-            req.kind === 'read' ? { kind: 'approved' } : { kind: 'denied-by-rules' };
+            req.kind === 'read' ? { kind: 'approved' } : { kind: 'denied-by-rules', rules: [] };
 
         const resultPromise = service.sendMessage({
             prompt: 'Test',
@@ -2437,7 +2437,7 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const asyncPermHandler = async (req: any) => {
-            return req.kind === 'read' ? { kind: 'approved' as const } : { kind: 'denied-by-rules' as const };
+            return req.kind === 'read' ? { kind: 'approved' as const } : { kind: 'denied-by-rules' as const, rules: [] as unknown[] };
         };
 
         const resultPromise = service.sendMessage({

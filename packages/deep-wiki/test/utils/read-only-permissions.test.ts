@@ -15,16 +15,16 @@ describe('readOnlyPermissions', () => {
 
     it('denies write requests', () => {
         const result = readOnlyPermissions({ kind: 'write' } as any);
-        expect(result).toEqual({ kind: 'denied-by-rules' });
+        expect(result).toEqual({ kind: 'denied-by-rules', rules: [] });
     });
 
     it('denies shell requests', () => {
         const result = readOnlyPermissions({ kind: 'shell' } as any);
-        expect(result).toEqual({ kind: 'denied-by-rules' });
+        expect(result).toEqual({ kind: 'denied-by-rules', rules: [] });
     });
 
     it('denies unknown request kinds', () => {
         const result = readOnlyPermissions({ kind: 'unknown' } as any);
-        expect(result).toEqual({ kind: 'denied-by-rules' });
+        expect(result).toEqual({ kind: 'denied-by-rules', rules: [] });
     });
 });

@@ -8,5 +8,5 @@ export function readOnlyPermissions(request: PermissionRequest): PermissionReque
     if (request.kind === 'read') {
         return { kind: 'approved' };
     }
-    return { kind: 'denied-by-rules' };
+    return { kind: 'denied-by-rules', rules: [] };
 }

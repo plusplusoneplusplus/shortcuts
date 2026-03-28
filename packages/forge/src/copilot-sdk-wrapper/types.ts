@@ -456,7 +456,7 @@ export const approveAllPermissions: import('@github/copilot-sdk').PermissionHand
  * This is the default behavior when no handler is provided.
  */
 export const denyAllPermissions: import('@github/copilot-sdk').PermissionHandler = () => {
-    return { kind: 'denied-by-rules' };
+    return { kind: 'denied-by-rules', rules: [] };
 };
 
 // ============================================================================

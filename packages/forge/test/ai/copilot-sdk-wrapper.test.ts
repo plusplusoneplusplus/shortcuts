@@ -154,7 +154,7 @@ describe('Copilot SDK Wrapper Module', () => {
                 { kind: 'write' },
                 { sessionId: 'test' }
             );
-            expect(result).toEqual({ kind: 'denied-by-rules' });
+            expect(result).toEqual({ kind: 'denied-by-rules', rules: [] });
         });
     });
 

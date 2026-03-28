@@ -4060,7 +4060,7 @@
   },
   "dependencies": {
     "@plusplusoneplusplus/forge": "file:packages/forge",
-    "@github/copilot-sdk": "^0.1.29",
+    "@github/copilot-sdk": "^0.2.0",
     "diff": "^5.2.0",
     "js-yaml": "^4.1.0"
   },
