@@ -249,11 +249,29 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
 
             const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
             const tasksSettings = await readTasksSettings(dataDir, ws.id);
+
+            let folderPaths = tasksSettings.folderPaths;
+            let hasDefaultFolderPaths = false;
+
+            // When no settings file has been saved yet, inject .vscode/tasks
+            // as a default additional folder — but only if the directory exists.
+            if (!tasksSettings.persisted && folderPaths.length === 0) {
+                const defaultDir = path.join(ws.rootPath, '.vscode', 'tasks');
+                try {
+                    const stat = await fs.promises.stat(defaultDir);
+                    if (stat.isDirectory()) {
+                        folderPaths = ['.vscode/tasks'];
+                        hasDefaultFolderPaths = true;
+                    }
+                } catch { /* directory doesn't exist — leave empty */ }
+            }
+
             sendJSON(res, 200, {
                 ...DEFAULT_SETTINGS,
                 folderPath: taskRoot.absolutePath,
                 taskRootPath: taskRoot.absolutePath,
-                folderPaths: tasksSettings.folderPaths,
+                folderPaths,
+                hasDefaultFolderPaths,
             });
         },
     });

@@ -166,12 +166,14 @@ describe('tasks-settings persistence', () => {
     it('returns empty folderPaths when file does not exist', async () => {
         const settings = await readTasksSettings(tmpDir, 'ws-missing');
         expect(settings.folderPaths).toEqual([]);
+        expect(settings.persisted).toBe(false);
     });
 
     it('round-trips folderPaths', async () => {
         await writeTasksSettings(tmpDir, 'ws-test', { folderPaths: ['/a', '/b'] });
         const settings = await readTasksSettings(tmpDir, 'ws-test');
         expect(settings.folderPaths).toEqual(['/a', '/b']);
+        expect(settings.persisted).toBe(true);
     });
 
     it('overwrites existing settings', async () => {
@@ -243,6 +245,55 @@ describe('Tasks Multi-Folder HTTP API', () => {
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.folderPaths).toEqual([]);
+        expect(body.hasDefaultFolderPaths).toBe(false);
+    });
+
+    it('GET /tasks/settings injects .vscode/tasks when dir exists and no settings file', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Create .vscode/tasks directory in the workspace
+        fs.mkdirSync(path.join(workspaceDir, '.vscode', 'tasks'), { recursive: true });
+
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/settings`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.folderPaths).toEqual(['.vscode/tasks']);
+        expect(body.hasDefaultFolderPaths).toBe(true);
+    });
+
+    it('GET /tasks/settings does not inject default after explicit empty save', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Create .vscode/tasks directory in the workspace
+        fs.mkdirSync(path.join(workspaceDir, '.vscode', 'tasks'), { recursive: true });
+
+        // Explicitly save empty list
+        await writeTasksSettings(dataDir, wsId, { folderPaths: [] });
+
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/settings`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.folderPaths).toEqual([]);
+        expect(body.hasDefaultFolderPaths).toBe(false);
+    });
+
+    it('GET /tasks/settings does not inject default when custom paths saved', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Create .vscode/tasks directory in the workspace
+        fs.mkdirSync(path.join(workspaceDir, '.vscode', 'tasks'), { recursive: true });
+
+        // Save custom paths
+        await writeTasksSettings(dataDir, wsId, { folderPaths: ['/some/path'] });
+
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/settings`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.folderPaths).toEqual(['/some/path']);
+        expect(body.hasDefaultFolderPaths).toBe(false);
     });
 
     it('GET /tasks/settings reflects saved folderPaths', async () => {

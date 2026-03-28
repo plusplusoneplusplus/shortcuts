@@ -13,11 +13,13 @@ interface TasksSettingsSectionProps {
 interface TasksSettingsData {
     taskRootPath: string;
     folderPaths: string[];
+    hasDefaultFolderPaths?: boolean;
 }
 
 export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps) {
     const [primaryPath, setPrimaryPath] = useState('');
     const [folderPaths, setFolderPaths] = useState<string[]>([]);
+    const [defaultPaths, setDefaultPaths] = useState<string[]>([]);
     const [newInput, setNewInput] = useState('');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -30,6 +32,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
             const data: TasksSettingsData = await res.json();
             setPrimaryPath(data.taskRootPath || '');
             setFolderPaths(data.folderPaths || []);
+            setDefaultPaths(data.hasDefaultFolderPaths ? (data.folderPaths || []) : []);
             setError(null);
         } catch (err: any) {
             setError(err.message || 'Failed to load task settings');
@@ -43,6 +46,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
     const patchFolders = useCallback(async (paths: string[]) => {
         setSaving(true);
         setError(null);
+        setDefaultPaths([]);
         try {
             const res = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`, {
                 method: 'PATCH',
@@ -126,6 +130,9 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
                             >
                                 <span>📁</span>
                                 <span className="flex-1 truncate">{fp}</span>
+                                {defaultPaths.includes(fp) && (
+                                    <span className="text-[10px] bg-[#f0f0f0] dark:bg-[#3c3c3c] text-[#848484] rounded px-1" data-testid="default-badge">default</span>
+                                )}
                                 <button
                                     className="text-[#cc3333] hover:text-red-700 text-xs px-1"
                                     title="Remove"

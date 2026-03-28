@@ -114,6 +114,8 @@ export function mergeTaskFoldersAsVirtualRoot(
 
 export interface TasksSettings {
     folderPaths: string[];
+    /** True when the settings were read from an existing file on disk. */
+    persisted?: boolean;
 }
 
 const TASKS_SETTINGS_FILE = 'tasks-settings.json';
@@ -121,6 +123,7 @@ const TASKS_SETTINGS_FILE = 'tasks-settings.json';
 /**
  * Read per-workspace tasks settings (folderPaths).
  * Returns default (empty folderPaths) if file doesn't exist.
+ * `persisted` is true when the result was read from an existing settings file.
  */
 export async function readTasksSettings(dataDir: string, workspaceId: string): Promise<TasksSettings> {
     const { getRepoDataPath } = await import('./paths');
@@ -129,10 +132,10 @@ export async function readTasksSettings(dataDir: string, workspaceId: string): P
         const raw = await fs.promises.readFile(filePath, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.folderPaths)) {
-            return { folderPaths: parsed.folderPaths };
+            return { folderPaths: parsed.folderPaths, persisted: true };
         }
     } catch { /* file doesn't exist or invalid — return default */ }
-    return { folderPaths: [] };
+    return { folderPaths: [], persisted: false };
 }
 
 /**
