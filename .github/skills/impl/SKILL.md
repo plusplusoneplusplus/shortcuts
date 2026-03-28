@@ -1,6 +1,6 @@
 ---
 name: impl
-description: Implement the requested code change and add comprehensive test coverage, ensuring tests pass across Linux, macOS, and Windows. Use when you need to execute implementation work (not just planning) and must include tests.
+description: Implement the requested code change and add comprehensive test coverage, ensuring tests pass across Linux, macOS, and Windows. Use when you need to execute implementation work (not just planning) and must include tests. Commit the changes to the repository after the implementation is complete.
 ---
 
 # Implementation (with Tests)
@@ -53,13 +53,11 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - Only create a commit after the build succeeds and all related tests pass (step 6).
    - Write a clear commit message describing the change and the test additions.
 
-10. **Archive the task file (if applicable)**
-   - If the task/plan file you followed lives under `.vscode/` or `~/.coc/repos/<repoId>/tasks/`, archive it after the commit succeeds:
+10. **Archive the task file**
+   - If the task/plan file you followed lives under `.vscode/` or `~/.coc/repos/<repoId>/tasks/`, you must archive it after the commit succeeds:
 ```bash
      python3 .github/skills/impl/scripts/archive-task-file.py --task <path-to-task-file>
 ```
-
-   - This moves the file into an `archive/` subdirectory within the appropriate task root (no-op if the file is not under `.vscode/` or `~/.coc/`).
 
 ## Notes
 
