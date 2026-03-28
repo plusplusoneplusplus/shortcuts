@@ -11,6 +11,30 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 
 expect.extend(matchers);
 
+// Node.js ≥ 25 ships a built-in `globalThis.localStorage` (behind --localstorage-file).
+// Vitest's populateGlobal() only overwrites keys that are in its hardcoded KEYS list;
+// `localStorage`/`sessionStorage` are not in that list, so the Node.js stub (a plain
+// object with no getItem/setItem/clear methods) shadows jsdom's working implementation.
+// Fix: when running under jsdom, re-assign from the jsdom window object.
+if (typeof window !== 'undefined') {
+    const jsdomDoc = (globalThis as any).jsdom;
+    const jsdomWin = jsdomDoc?.window ?? window;
+    if (jsdomWin.localStorage?.getItem && typeof globalThis.localStorage?.getItem !== 'function') {
+        Object.defineProperty(globalThis, 'localStorage', {
+            value: jsdomWin.localStorage,
+            configurable: true,
+            writable: true,
+        });
+    }
+    if (jsdomWin.sessionStorage?.getItem && typeof globalThis.sessionStorage?.getItem !== 'function') {
+        Object.defineProperty(globalThis, 'sessionStorage', {
+            value: jsdomWin.sessionStorage,
+            configurable: true,
+            writable: true,
+        });
+    }
+}
+
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const original = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
