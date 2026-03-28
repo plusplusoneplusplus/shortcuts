@@ -1826,6 +1826,10 @@ describe('parseSettingsSection', () => {
         expect(parseSettingsSection('#repos/r1/settings/run-script-template')).toBe('run-script-template');
     });
 
+    it('returns "tasks" for #repos/r1/settings/tasks', () => {
+        expect(parseSettingsSection('#repos/r1/settings/tasks')).toBe('tasks');
+    });
+
     it('falls back to "info" for an unknown section', () => {
         expect(parseSettingsSection('#repos/r1/settings/unknown')).toBe('info');
     });
@@ -1872,6 +1876,10 @@ describe('VALID_SETTINGS_SECTIONS', () => {
 
     it('includes "run-script-template"', () => {
         expect(VALID_SETTINGS_SECTIONS.has('run-script-template')).toBe(true);
+    });
+
+    it('includes "tasks"', () => {
+        expect(VALID_SETTINGS_SECTIONS.has('tasks')).toBe(true);
     });
 
     it('does not include unknown values', () => {
@@ -1934,6 +1942,11 @@ describe('settings section hash routing', () => {
     it('dispatches SET_SETTINGS_SECTION run-script-template for #repos/r1/settings/run-script-template', () => {
         const dispatches = simulateSettingsHash('#repos/r1/settings/run-script-template');
         expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'run-script-template' });
+    });
+
+    it('dispatches SET_SETTINGS_SECTION tasks for #repos/r1/settings/tasks', () => {
+        const dispatches = simulateSettingsHash('#repos/r1/settings/tasks');
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'tasks' });
     });
 
     it('falls back to info for #repos/r1/settings/invalid-section', () => {

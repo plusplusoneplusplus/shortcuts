@@ -5,7 +5,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
-import { getApiBase } from '../utils/config';
 
 interface TasksSettingsSectionProps {
     workspaceId: string;
@@ -26,8 +25,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
 
     const loadSettings = useCallback(async () => {
         try {
-            const base = getApiBase();
-            const res = await fetchApi(`${base}/api/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`);
+            const res = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`);
             if (!res.ok) throw new Error(`Failed to load settings (${res.status})`);
             const data: TasksSettingsData = await res.json();
             setPrimaryPath(data.taskRootPath || '');
@@ -46,8 +44,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
         setSaving(true);
         setError(null);
         try {
-            const base = getApiBase();
-            const res = await fetchApi(`${base}/api/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`, {
+            const res = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ folderPaths: paths }),

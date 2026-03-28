@@ -162,7 +162,7 @@ export function parseActivityDeepLink(hash: string): string | null {
 
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'workflows', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests']);
 
-export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions', 'memory', 'run-script-template']);
+export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions', 'memory', 'run-script-template', 'tasks']);
 /** @deprecated Use VALID_SETTINGS_SECTIONS */
 export const VALID_COPILOT_SECTIONS: Set<string> = VALID_SETTINGS_SECTIONS;
 

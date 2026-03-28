@@ -13,10 +13,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
-    getApiBase: () => 'http://localhost:4000',
-}));
-
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function mockSettingsGet(data: { taskRootPath?: string; folderPaths?: string[] } = {}) {
@@ -75,6 +71,23 @@ beforeEach(() => {
 });
 
 describe('TasksSettingsSection', () => {
+    it('calls fetchApi with correct path (no double /api/ prefix)', async () => {
+        mockFetchApi.mockResolvedValue(mockSettingsGet());
+
+        const { TasksSettingsSection } = await import(
+            '../../../../src/server/spa/client/react/repos/TasksSettingsSection'
+        );
+        render(<TasksSettingsSection workspaceId="ws-abc" />);
+
+        await waitFor(() => {
+            expect(mockFetchApi).toHaveBeenCalled();
+        });
+
+        const [url] = mockFetchApi.mock.calls[0];
+        expect(url).toBe('/workspaces/ws-abc/tasks/settings');
+        expect(url).not.toContain('/api/');
+    });
+
     it('shows loading state initially', async () => {
         // Never resolves so we stay in loading
         mockFetchApi.mockReturnValue(new Promise(() => {}));
