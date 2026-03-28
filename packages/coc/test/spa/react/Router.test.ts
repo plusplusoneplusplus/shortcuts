@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
@@ -551,6 +551,42 @@ describe('parseWorkflowsDeepLink', () => {
 
     it('returns null from #processes/some-id', () => {
         expect(parseWorkflowsDeepLink('#processes/some-id')).toBeNull();
+    });
+
+    it('returns null for chat-template sub-path', () => {
+        expect(parseWorkflowsDeepLink('#repos/my-repo/workflows/chat-template/st-1')).toBeNull();
+    });
+});
+
+// ─── parseChatTemplateDeepLink ───────────────────────────────────
+
+describe('parseChatTemplateDeepLink', () => {
+    it('parses #repos/my-repo/workflows/chat-template/st-1', () => {
+        expect(parseChatTemplateDeepLink('#repos/my-repo/workflows/chat-template/st-1')).toBe('st-1');
+    });
+
+    it('URL-decodes the template ID', () => {
+        expect(parseChatTemplateDeepLink('#repos/my-repo/workflows/chat-template/my%20template')).toBe('my template');
+    });
+
+    it('returns null when template ID is missing', () => {
+        expect(parseChatTemplateDeepLink('#repos/my-repo/workflows/chat-template')).toBeNull();
+    });
+
+    it('returns null for regular workflow deep-link', () => {
+        expect(parseChatTemplateDeepLink('#repos/my-repo/workflows/my-pipe')).toBeNull();
+    });
+
+    it('returns null for non-repo hash', () => {
+        expect(parseChatTemplateDeepLink('#wiki/something')).toBeNull();
+    });
+
+    it('returns null for empty hash', () => {
+        expect(parseChatTemplateDeepLink('#')).toBeNull();
+    });
+
+    it('returns null for empty string', () => {
+        expect(parseChatTemplateDeepLink('')).toBeNull();
     });
 });
 

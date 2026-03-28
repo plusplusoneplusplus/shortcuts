@@ -14,6 +14,9 @@ import type { SkillTemplate } from '../../../../src/server/spa/client/react/hook
 
 vi.stubGlobal('confirm', () => true);
 
+const mockClipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+Object.defineProperty(navigator, 'clipboard', { value: mockClipboard, writable: true });
+
 const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 vi.stubGlobal('fetch', mockFetch);
 
@@ -161,6 +164,31 @@ describe('AI Chat Templates section', () => {
         await waitFor(() => {
             const detail = screen.getByTestId('skill-template-detail');
             expect(detail.textContent).toContain('default');
+        });
+    });
+
+    it('detail view shows the template ID', async () => {
+        await renderWorkflowsTab();
+        fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
+        await waitFor(() => {
+            const idValue = screen.getByTestId('skill-template-id-value');
+            expect(idValue.textContent).toBe('st-1');
+        });
+    });
+
+    it('clicking copy button copies the template ID to clipboard', async () => {
+        await renderWorkflowsTab();
+        fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('skill-template-copy-id-btn'));
+        fireEvent.click(screen.getByTestId('skill-template-copy-id-btn'));
+        expect(mockClipboard.writeText).toHaveBeenCalledWith('st-1');
+    });
+
+    it('selecting a skill template updates location hash', async () => {
+        await renderWorkflowsTab();
+        fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
+        await waitFor(() => {
+            expect(location.hash).toContain('chat-template/st-1');
         });
     });
 

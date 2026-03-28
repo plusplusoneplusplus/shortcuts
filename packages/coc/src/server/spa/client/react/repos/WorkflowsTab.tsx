@@ -329,6 +329,15 @@ interface SkillTemplateDetailViewProps {
 }
 
 function SkillTemplateDetailView({ template, onDelete }: SkillTemplateDetailViewProps) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopyId = () => {
+        navigator.clipboard.writeText(template.id).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        }).catch(() => {});
+    };
+
     return (
         <div className="p-6" data-testid="skill-template-detail">
             <div className="flex items-start justify-between mb-6">
@@ -338,6 +347,24 @@ function SkillTemplateDetailView({ template, onDelete }: SkillTemplateDetailView
                 <Button size="sm" variant="danger" onClick={onDelete} data-testid="skill-template-delete-btn">
                     Delete
                 </Button>
+            </div>
+
+            {/* ID */}
+            <div className="mb-4">
+                <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">ID</label>
+                <div className="mt-1 flex items-center gap-2">
+                    <code className="text-sm text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2a2a2a] px-1.5 py-0.5 rounded font-mono" data-testid="skill-template-id-value">
+                        {template.id}
+                    </code>
+                    <button
+                        onClick={handleCopyId}
+                        className="text-xs text-[#0078d4] hover:text-[#005a9e] dark:hover:text-[#4da6ff] cursor-pointer"
+                        title="Copy ID"
+                        data-testid="skill-template-copy-id-btn"
+                    >
+                        {copied ? '✓ Copied' : '📋 Copy'}
+                    </button>
+                </div>
             </div>
 
             {/* Mode */}
@@ -748,7 +775,7 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
         deleteTemplate: deleteSkillTemplate,
         loaded: skillTemplatesLoaded,
     } = useSkillTemplates(workspaceId);
-    const [selectedSkillTemplateId, setSelectedSkillTemplateId] = useState<string | null>(null);
+    const selectedSkillTemplateId = state.selectedSkillTemplateId;
     const [skillTemplatesExpanded, setSkillTemplatesExpanded] = useState(true);
 
     // ── Derived ──
@@ -759,10 +786,10 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
 
     const handleSelectWorkflow = (p: WorkflowInfo) => {
         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: p.name });
+        dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
         setSelectedTemplateName(null);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
-        setSelectedSkillTemplateId(null);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows/' + encodeURIComponent(p.name);
     };
 
@@ -832,10 +859,10 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
 
     const handleSelectTemplate = (name: string) => {
         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+        dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
         setSelectedTemplateName(name);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
-        setSelectedSkillTemplateId(null);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows';
     };
 
@@ -843,16 +870,20 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
 
     const handleSelectSkillTemplate = (id: string) => {
         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+        dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id });
         setSelectedTemplateName(null);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
-        setSelectedSkillTemplateId(id);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows/chat-template/' + encodeURIComponent(id);
     };
 
     const handleDeleteSkillTemplate = (id: string) => {
         if (!confirm('Delete this AI chat template?')) return;
         deleteSkillTemplate(id);
-        if (selectedSkillTemplateId === id) setSelectedSkillTemplateId(null);
+        if (selectedSkillTemplateId === id) {
+            dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows';
+        }
     };
 
     // ── Determine right panel content ──
