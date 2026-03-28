@@ -5,7 +5,7 @@
  * Validates that:
  * - esbuild config exists and defines correct externals
  * - package.json has proper publishing fields
- * - forge is bundled (not external)
+ * - forge is external (resolved from node_modules at runtime)
  * - external deps are NOT bundled
  * - bundle output has correct shebang and is executable
  */
@@ -49,12 +49,11 @@ describe('Bundle Configuration', () => {
             expect(configContent).toContain('js-yaml');
         });
 
-        it('should NOT mark @plusplusoneplusplus/forge as external', () => {
-            // Extract the EXTERNAL_DEPS array from the config
+        it('should mark @plusplusoneplusplus/forge as external', () => {
             const externalMatch = configContent.match(/EXTERNAL_DEPS\s*=\s*\[([\s\S]*?)\]/);
             expect(externalMatch).toBeTruthy();
             const externalBlock = externalMatch![1];
-            expect(externalBlock).not.toContain('@plusplusoneplusplus/forge');
+            expect(externalBlock).toContain('@plusplusoneplusplus/forge');
         });
 
         it('should target node18', () => {
@@ -157,14 +156,14 @@ describe('Bundle Configuration', () => {
             expect(deps['js-yaml']).toBeTruthy();
         });
 
-        it('should NOT have @plusplusoneplusplus/forge as runtime dependency', () => {
+        it('should have @plusplusoneplusplus/forge as runtime dependency', () => {
             const deps = pkg.dependencies as Record<string, string>;
-            expect(deps['@plusplusoneplusplus/forge']).toBeUndefined();
+            expect(deps['@plusplusoneplusplus/forge']).toBeTruthy();
         });
 
-        it('should have @plusplusoneplusplus/forge as devDependency', () => {
+        it('should NOT have @plusplusoneplusplus/forge as devDependency', () => {
             const devDeps = pkg.devDependencies as Record<string, string>;
-            expect(devDeps['@plusplusoneplusplus/forge']).toBeTruthy();
+            expect(devDeps['@plusplusoneplusplus/forge']).toBeUndefined();
         });
 
         it('should have esbuild as devDependency', () => {
@@ -213,19 +212,14 @@ describe('Bundle Configuration', () => {
             expect(lines[1]).not.toMatch(/^#!/);
         });
 
-        it('should contain bundled forge code (extractJSON)', () => {
-            // extractJSON is a function from pipeline-core that should be inlined
-            expect(bundleContent).toContain('extractJSON');
-        });
-
-        it('should contain bundled forge code (CopilotSDKService)', () => {
-            expect(bundleContent).toContain('CopilotSDKService');
-        });
-
-        it('should NOT contain a require for @plusplusoneplusplus/forge', () => {
-            expect(bundleContent).not.toMatch(
+        it('should externalize @plusplusoneplusplus/forge (require at runtime)', () => {
+            expect(bundleContent).toMatch(
                 /require\(["']@plusplusoneplusplus\/forge["']\)/
             );
+        });
+
+        it('should NOT contain inlined forge source code', () => {
+            expect(bundleContent).not.toMatch(/var CopilotSDKService\s*=/);
         });
 
         it('should externalize commander (require at runtime)', () => {
@@ -242,10 +236,10 @@ describe('Bundle Configuration', () => {
             expect(sizeMB).toBeLessThan(2);
         });
 
-        it('should be a non-trivial size (> 100KB — forge is bundled)', () => {
+        it('should be a non-trivial size (> 50KB — deep-wiki own code)', () => {
             const stats = fs.statSync(BUNDLE_PATH);
             const sizeKB = stats.size / 1024;
-            expect(sizeKB).toBeGreaterThan(100);
+            expect(sizeKB).toBeGreaterThan(50);
         });
 
         it('should be runnable with node --help', () => {
@@ -317,17 +311,11 @@ describe('Bundle Configuration', () => {
             expect(deepDeps['@github/copilot-sdk']).toBe(coreDeps['@github/copilot-sdk']);
         });
 
-        it('all forge runtime deps should be covered by deep-wiki deps or bundle', () => {
+        it('all forge runtime deps should be covered by deep-wiki deps', () => {
             const coreDeps = forgePkg.dependencies as Record<string, string>;
             const deepDeps = pkg.dependencies as Record<string, string>;
 
             for (const dep of Object.keys(coreDeps)) {
-                // Each forge dep should either:
-                // 1. Be in deep-wiki's runtime deps (external)
-                // 2. Be forge itself (bundled, not on npm)
-                if (dep === '@plusplusoneplusplus/forge') {
-                    continue;
-                }
                 expect(deepDeps[dep]).toBeTruthy();
             }
         });

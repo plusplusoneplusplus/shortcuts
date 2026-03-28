@@ -16,7 +16,6 @@
   },
   "license": "MIT",
   "scripts": {
-    "prebuild": "cd ../forge && npm run build",
     "build": "tsc && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
     "build:bundle": "node esbuild.config.mjs",
     "prepublishOnly": "npm run build:bundle && npm run test:run",
@@ -27,6 +26,7 @@
   "dependencies": {
     "@github/copilot-sdk": "^0.2.0",
     "@octokit/rest": "^22.0.1",
+    "@plusplusoneplusplus/forge": "^1.0.0",
     "azure-devops-node-api": "^14.1.0",
     "commander": "^12.1.0",
     "diff": "^5.2.0",
@@ -35,7 +35,6 @@
     "pino-pretty": "^11.x"
   },
   "devDependencies": {
-    "@plusplusoneplusplus/forge": "1.0.0",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",
     "esbuild": "^0.21.5",

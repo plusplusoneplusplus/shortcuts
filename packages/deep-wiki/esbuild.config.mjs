@@ -1,9 +1,9 @@
 /**
  * esbuild configuration for bundling deep-wiki CLI for npm publishing.
  *
- * Bundles @plusplusoneplusplus/forge (workspace-only, not on npm) into
- * the output. External dependencies that are already published on npm remain
- * external so they are resolved from the consumer's node_modules at runtime.
+ * All npm-published dependencies (including @plusplusoneplusplus/forge) are
+ * external and resolved from the consumer's node_modules at runtime.
+ * Only deep-wiki's own source code is bundled into the output.
  */
 
 import * as esbuild from 'esbuild';
@@ -11,6 +11,7 @@ import * as esbuild from 'esbuild';
 /** Packages that are on npm and should NOT be bundled */
 const EXTERNAL_DEPS = [
     '@github/copilot-sdk',
+    '@plusplusoneplusplus/forge',
     'azure-devops-node-api',
     'commander',
     'js-yaml',
