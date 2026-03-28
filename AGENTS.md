@@ -24,6 +24,23 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 
 **Key architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `packages/vscode-extension/src/shortcuts/`. Example: `forge/src/ai/` = pure AI SDK; `packages/vscode-extension/src/shortcuts/ai-service/` = VS Code UI wrapper. **`packages/vscode-extension/` is frozen — do not read, edit, or reason about its code.**
 
+## Package Management & Publishing
+
+All three packages (`forge`, `coc`, `deep-wiki`) are published to npm under the `@plusplusoneplusplus` scope with public access. Versioning and publishing are coordinated via **`@changesets/cli`** with an independent versioning strategy.
+
+**How forge is consumed:** `coc` and `deep-wiki` depend on the published `@plusplusoneplusplus/forge` package via a caret range (`^1.0.0`). During local development, npm workspaces symlink forge automatically. There is no bundling or copying of forge into consumer packages — forge is resolved from `node_modules` at runtime.
+
+**Versioning workflow:**
+1. Add a changeset: `npm run changeset` (interactive prompt for affected packages and semver bump)
+2. Version packages: `npm run version-packages` (applies changesets, updates `package.json` versions and changelogs)
+3. Publish: `npm run publish-packages` (builds all packages then runs `changeset publish`)
+
+**CI release:** `.github/workflows/release.yml` runs on pushes to `main`. When pending changesets exist, `changesets/action` opens a "Version Packages" PR. When the PR is merged (no pending changesets), it publishes changed packages to npm.
+
+**Changesets config:** `.changeset/config.json` — independent versioning, public access, `main` as base branch, `updateInternalDependencies: "patch"`.
+
+**Minimum Node.js:** All packages require Node.js ≥ 24 (`engines.node`). CI runs on `24.x`.
+
 ## Build & Test
 
 - **Build all:** `npm run build` · **Build extension:** `npm run compile` · **Watch:** `npm run watch`
@@ -178,7 +195,7 @@ Opt-in, two-level persistence layer that lets AI pipelines learn from past sessi
 
 ## Development Notes
 
-- TypeScript, webpack bundling, VS Code API ≥ 1.95.0
+- TypeScript, webpack bundling, VS Code API ≥ 1.95.0, Node.js ≥ 24
 - Format on save and import organization enabled
 - Tree data providers: extend `BaseTreeDataProvider` or `FilterableTreeDataProvider`
 - Commands registered centrally in `src/shortcuts/commands.ts`

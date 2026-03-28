@@ -1,6 +1,6 @@
 # Pipeline Core — Developer Reference
 
-Pure Node.js AI pipeline engine. No VS Code dependencies. Used by CoC CLI, Deep Wiki, and the VS Code extension.
+Pure Node.js AI pipeline engine. No VS Code dependencies. Published to npm as `@plusplusoneplusplus/forge` (public access, MIT license). Used by CoC CLI and Deep Wiki as a runtime dependency (`^1.0.0`). Requires Node.js ≥ 24.
 
 ## Source Layout
 
@@ -88,6 +88,10 @@ npx tsc --noEmit       # Type check only
 npm run test:run       # Run all Vitest tests
 npx vitest run test/memory/  # Run specific module tests
 ```
+
+## Publishing
+
+Published via `@changesets/cli` (see root `AGENTS.md`). The `files` field includes `dist` and `resources/` (bundled skills). `publishConfig.access` is `"public"`. Versioning is independent — forge can be bumped without bumping consumers, and `updateInternalDependencies: "patch"` in changesets config auto-bumps `coc`/`deep-wiki` when forge changes.
 
 ## Cross-Platform
 

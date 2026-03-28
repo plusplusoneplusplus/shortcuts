@@ -1,6 +1,6 @@
 # Deep Wiki Generator - Developer Reference
 
-CLI tool that auto-generates comprehensive wikis for any codebase using a six-phase AI pipeline, with optional theme-based article generation.
+CLI tool that auto-generates comprehensive wikis for any codebase using a six-phase AI pipeline, with optional theme-based article generation. Published to npm as `@plusplusoneplusplus/deep-wiki` (public access, MIT license). Depends on the published `@plusplusoneplusplus/forge` package (`^1.0.0`) — forge is externalized in esbuild and resolved from `node_modules` at runtime (not inlined into the bundle). Requires Node.js ≥ 24.
 
 ## Package Structure
 
@@ -277,7 +277,7 @@ interface GeneratedArticle {
 
 ## Dependencies
 
-- `@plusplusoneplusplus/forge` - AI SDK service, session management, `extractJSON` utility
+- `@plusplusoneplusplus/forge` (`^1.0.0`) - AI SDK service, session management, `extractJSON` utility. External dependency resolved from `node_modules` at runtime (not bundled into `dist/index.js`).
 - `commander` - CLI argument parsing
 - `js-yaml` - YAML parsing (for project config detection)
 
@@ -300,5 +300,4 @@ Run with `npm run test:run` in `packages/deep-wiki/` directory.
 ## See Also
 
 - `packages/forge/AGENTS.md` - AI SDK and pipeline engine
-- `packages/coc/AGENTS.md` - CoC CLI (sibling package)
-- `packages/coc-server/AGENTS.md` - Server that hosts wiki serving (`coc wiki serve`)
+- `packages/coc/AGENTS.md` - CoC CLI (sibling package, includes wiki serving via `coc serve`)
