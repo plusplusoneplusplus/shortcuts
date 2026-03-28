@@ -74,8 +74,13 @@
     "./templates": "./dist/templates/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "resources"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
   "scripts": {
     "build": "tsc",
     "test": "vitest",
