@@ -90,7 +90,7 @@ export async function parseBody(req: http.IncomingMessage): Promise<any> {
 const VALID_EXCLUDE_FIELDS: Set<string> = new Set(['conversation', 'toolCalls']);
 
 /** Valid AIProcessStatus values for validation. */
-const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'completed', 'failed', 'cancelled']);
+const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
 
 /**
  * Extract filter parameters from URL query string into a typed ProcessFilter.

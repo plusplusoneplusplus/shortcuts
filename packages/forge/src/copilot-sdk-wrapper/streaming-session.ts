@@ -308,6 +308,7 @@ export class StreamingSession {
                 break;
             case 'abort':
                 this.sessionLog.debug({ reason: event.data?.reason }, 'Session aborted');
+                this.settleError(new Error('Session aborted'));
                 break;
         }
     }

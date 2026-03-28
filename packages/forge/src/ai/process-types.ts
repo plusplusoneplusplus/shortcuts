@@ -16,7 +16,7 @@ export type AIToolType = 'copilot-cli' | 'clipboard';
 /**
  * Status of an AI process
  */
-export type AIProcessStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type AIProcessStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 /**
  * Type of AI process - extensible via string union

@@ -159,3 +159,107 @@ describe('ProcessLifecycleRunner — initial prompt memory recording', () => {
         expect(result.success).toBe(true);
     });
 });
+
+// ============================================================================
+// Cancellation detection tests
+// ============================================================================
+
+describe('ProcessLifecycleRunner — cancellation detection', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('sets cancelled (not failed) when cancelledTasks contains the task id', async () => {
+        const cancelledTasks = new Set<string>();
+        const task = makeTask();
+        const opts = makeOpts({
+            cancelledTasks,
+            executeByTypeFn: vi.fn(async () => {
+                // Simulate cancellation arriving mid-flight
+                cancelledTasks.add(task.id);
+                throw new Error('Session aborted');
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.status).toBe('cancelled');
+        expect(proc?.error).toBeUndefined();
+    });
+
+    it('sets cancelled when process status is cancelling at error time', async () => {
+        const task = makeTask();
+        const processId = `queue_${task.id}`;
+
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn(async () => {
+                // Simulate the cancel endpoint setting 'cancelling' mid-flight
+                await store.updateProcess(processId, { status: 'cancelling' as any });
+                throw new Error('Session aborted');
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(processId);
+        expect(proc?.status).toBe('cancelled');
+        expect(proc?.error).toBeUndefined();
+    });
+
+    it('sets failed (not cancelled) for normal errors', async () => {
+        const task = makeTask();
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn().mockRejectedValue(new Error('network timeout')),
+        });
+
+        await runner.run(task, opts);
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.status).toBe('failed');
+        expect(proc?.error).toBe('network timeout');
+    });
+
+    it('emits process complete with cancelled status', async () => {
+        const cancelledTasks = new Set<string>();
+        const task = makeTask();
+        const opts = makeOpts({
+            cancelledTasks,
+            executeByTypeFn: vi.fn(async () => {
+                cancelledTasks.add(task.id);
+                throw new Error('Session aborted');
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const processId = `queue_${task.id}`;
+        expect(store.completions.has(processId)).toBe(true);
+        expect(store.completions.get(processId)?.status).toBe('cancelled');
+    });
+
+    it('treats success path as cancelled when status is cancelling', async () => {
+        const task = makeTask();
+        const processId = `queue_${task.id}`;
+
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn(async () => {
+                // Simulate cancel endpoint setting 'cancelling' just before success
+                await store.updateProcess(processId, { status: 'cancelling' as any });
+                return { response: 'partial result' };
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(processId);
+        expect(proc?.status).toBe('cancelled');
+    });
+});

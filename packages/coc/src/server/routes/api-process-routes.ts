@@ -27,7 +27,7 @@ import { recordUserMessage } from '../memory/conversation-recorder';
 import type { ApiRouteContext } from './api-shared';
 
 /** Valid AIProcessStatus values for validation. */
-const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'completed', 'failed', 'cancelled']);
+const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
 
 /** Terminal statuses that cannot be cancelled. */
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
@@ -308,13 +308,31 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             await store.updateProcess(id, {
-                status: 'cancelled',
-                endTime: new Date(),
+                status: 'cancelling' as any,
             });
 
-            void bridge?.cancelProcess?.(id)?.catch(() => {});
-
             process.stderr.write(`[Process] cancel id=${id} prevStatus=${existing.status}\n`);
+
+            // Await the abort with a timeout so we don't hang the HTTP response
+            const CANCEL_TIMEOUT_MS = 30_000;
+            try {
+                await Promise.race([
+                    bridge?.cancelProcess?.(id),
+                    new Promise<void>((_, reject) =>
+                        setTimeout(() => reject(new Error('Cancel timeout')), CANCEL_TIMEOUT_MS)),
+                ]);
+            } catch {
+                // Timeout or abort error — fall through to finalize
+            }
+
+            // Finalize: set terminal cancelled status (unless lifecycle runner already did)
+            const current = await store.getProcess(id, wsId);
+            if (current && !TERMINAL_STATUSES.has(current.status)) {
+                await store.updateProcess(id, {
+                    status: 'cancelled',
+                    endTime: new Date(),
+                });
+            }
 
             const updated = await store.getProcess(id, wsId);
             sendJSON(res, 200, { process: updated });

@@ -90,12 +90,12 @@ export async function copyHtmlToClipboard(html: string): Promise<void> {
 }
 
 export function statusIcon(status: string): string {
-    const map: Record<string, string> = { running: '\u{1F504}', completed: '\u2705', failed: '\u274C', cancelled: '\u{1F6AB}', queued: '\u23F3' };
+    const map: Record<string, string> = { running: '\u{1F504}', cancelling: '\u{1F504}', completed: '\u2705', failed: '\u274C', cancelled: '\u{1F6AB}', queued: '\u23F3' };
     return map[status] || '';
 }
 
 export function statusLabel(status: string): string {
-    const map: Record<string, string> = { running: 'Running', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', queued: 'Queued' };
+    const map: Record<string, string> = { running: 'Running', cancelling: 'Cancelling…', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', queued: 'Queued' };
     return map[status] || status || '';
 }
 

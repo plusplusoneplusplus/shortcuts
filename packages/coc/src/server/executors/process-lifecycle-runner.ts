@@ -274,6 +274,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         filterStreaming: true,
                         additionalUpdates: (current) => {
                             if (TERMINAL_STATUSES.has(current.status)) return {};
+                            // If cancellation was requested while executing, finalize as cancelled
+                            if (current.status === 'cancelling') {
+                                return {
+                                    status: 'cancelled' as const,
+                                    endTime: new Date(),
+                                    result: typeof result === 'string' ? result : JSON.stringify(result),
+                                    ...(sessionId ? { sdkSessionId: sessionId } : {}),
+                                };
+                            }
                             return {
                                 status: 'completed' as const,
                                 endTime: new Date(),
@@ -290,8 +299,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     processId,
                     (task.payload as any)?.workspaceId as string | undefined,
                 );
+                const finalStatus = currentProc?.status === 'cancelled' ? 'cancelled' : 'completed';
                 if (!TERMINAL_STATUSES.has(currentProc?.status ?? '')) {
-                    this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
+                    this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
                 }
 
                 setTimeout(() => this.onGenerateTitle(processId, combinedTurns), 0);
@@ -311,12 +321,14 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     (task.payload as any)?.workspaceId as string | undefined,
                 );
                 if (!TERMINAL_STATUSES.has(currentProcess?.status ?? '')) {
+                    const wasCancelled = opts.cancelledTasks.has(task.id) || currentProcess?.status === 'cancelling';
+                    const finalStatus = wasCancelled ? 'cancelled' : 'failed';
                     await this.store.updateProcess(processId, {
-                        status: 'failed',
+                        status: finalStatus,
                         endTime: new Date(),
-                        error: errorMsg,
+                        ...(wasCancelled ? {} : { error: errorMsg }),
                     });
-                    this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
+                    this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
                 }
             } catch {
                 // Non-fatal

@@ -109,9 +109,27 @@ describe('POST /api/processes/:id/cancel — bridge.cancelProcess integration', 
         const res = await postJSON(`${baseUrl}/api/processes/run-1/cancel`);
         expect(res.status).toBe(200);
 
-        // Allow fire-and-forget to settle
-        await new Promise(resolve => setTimeout(resolve, 20));
         expect(mockBridge.cancelProcess).toHaveBeenCalledWith('run-1');
+        const body = JSON.parse(res.body);
+        expect(body.process.status).toBe('cancelled');
+    });
+
+    it('should set cancelling status before awaiting abort', async () => {
+        let intermediateStatus: string | undefined;
+        const slowBridge = createMockBridge({
+            cancelProcess: vi.fn(async (id: string) => {
+                const proc = await store.getProcess(id);
+                intermediateStatus = proc?.status;
+            }),
+        });
+        await startWithBridge(slowBridge);
+        await addRunningProcess('run-slow');
+
+        const res = await postJSON(`${baseUrl}/api/processes/run-slow/cancel`);
+        expect(res.status).toBe(200);
+        expect(intermediateStatus).toBe('cancelling');
+        const body = JSON.parse(res.body);
+        expect(body.process.status).toBe('cancelled');
     });
 
     it('should still return 200 even if bridge.cancelProcess rejects', async () => {

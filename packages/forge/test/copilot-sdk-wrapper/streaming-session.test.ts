@@ -184,6 +184,17 @@ describe('StreamingSession — cancellation', () => {
         const result = await promise;
         expect(result.response).toBe('ping');
     });
+
+    it('abort event: Streaming → Cancelled promptly', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'abort', data: { reason: 'user cancelled' } });
+
+        await expect(promise).rejects.toThrow('Session aborted');
+        expect((ss as any).state).toBe(StreamingState.Cancelled);
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
