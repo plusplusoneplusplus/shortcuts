@@ -58,6 +58,8 @@ export class TaskQueueManager extends EventEmitter {
     private readonly options: Required<Omit<TaskQueueManagerOptions, 'getTaskRepoId' | 'isExclusive'>>;
     /** Set of paused repository IDs */
     private pausedRepos = new Set<string>();
+    /** Set of processIds currently running (for per-process serialization in peek) */
+    private runningProcessIds = new Set<string>();
     /** Per-repo pause reason (present when paused due to task failure). */
     private pauseReasons = new Map<string, PauseReason>();
     /** Function to extract repo ID from a task (injected) */
@@ -159,6 +161,8 @@ export class TaskQueueManager extends EventEmitter {
                 if (repoId && this.pausedRepos.has(repoId)) continue;
             }
             if (this.autopilotPaused && this.isExclusiveFn?.(task) && !task.admitted) continue;
+            // Per-process serialization: skip tasks targeting a process that already has a running task
+            if (task.processId && this.runningProcessIds.has(task.processId)) continue;
             return task;
         }
         return undefined;
@@ -367,6 +371,7 @@ export class TaskQueueManager extends EventEmitter {
             running.status = 'cancelled';
             running.completedAt = Date.now();
             this.running.delete(id);
+            if (running.processId) this.runningProcessIds.delete(running.processId);
             this.addToHistory(running);
             this.emitChange('updated', running);
             this.emit('taskCancelled', running);
@@ -397,6 +402,7 @@ export class TaskQueueManager extends EventEmitter {
         task.status = 'running';
         task.startedAt = Date.now();
         this.running.set(id, task);
+        if (task.processId) this.runningProcessIds.add(task.processId);
 
         this.emitChange('updated', task);
         this.emit('taskStarted', task);
@@ -419,6 +425,7 @@ export class TaskQueueManager extends EventEmitter {
         task.completedAt = Date.now();
         task.result = result;
         this.running.delete(id);
+        if (task.processId) this.runningProcessIds.delete(task.processId);
         this.addToHistory(task);
 
         this.emitChange('updated', task);
@@ -443,6 +450,7 @@ export class TaskQueueManager extends EventEmitter {
         task.completedAt = Date.now();
         task.error = typeof error === 'string' ? error : error.message;
         this.running.delete(id);
+        if (task.processId) this.runningProcessIds.delete(task.processId);
         this.addToHistory(task);
 
         this.emitChange('updated', task);
@@ -469,6 +477,7 @@ export class TaskQueueManager extends EventEmitter {
             task.status = 'queued';
             task.startedAt = undefined;
             this.running.delete(id);
+            if (task.processId) this.runningProcessIds.delete(task.processId);
             this.insertByPriority(task);
             this.emitChange('reordered', task);
         }
@@ -547,6 +556,7 @@ export class TaskQueueManager extends EventEmitter {
             task.result = undefined;
             task.error = undefined;
             this.running.set(id, task);
+            if (task.processId) this.runningProcessIds.add(task.processId);
 
             this.emitChange('updated', task);
             this.emit('taskUpdated', task, { status: 'running', startedAt: task.startedAt });
@@ -561,6 +571,7 @@ export class TaskQueueManager extends EventEmitter {
             task.status = 'running';
             task.startedAt = Date.now();
             this.running.set(id, task);
+            if (task.processId) this.runningProcessIds.add(task.processId);
 
             this.emitChange('updated', task);
             this.emit('taskUpdated', task, { status: 'running', startedAt: task.startedAt });
@@ -1027,6 +1038,7 @@ export class TaskQueueManager extends EventEmitter {
             task.completedAt = Date.now();
             task.error = error;
             this.running.delete(task.id);
+            if (task.processId) this.runningProcessIds.delete(task.processId);
             this.addToHistory(task);
             this.emitChange('updated', task);
             this.emit('taskFailed', task, new Error(error));
@@ -1052,6 +1064,7 @@ export class TaskQueueManager extends EventEmitter {
         task.completedAt = Date.now();
         task.error = error;
         this.running.delete(id);
+        if (task.processId) this.runningProcessIds.delete(task.processId);
         this.addToHistory(task);
         this.emitChange('updated', task);
         this.emit('taskFailed', task, new Error(error));
@@ -1065,6 +1078,7 @@ export class TaskQueueManager extends EventEmitter {
     reset(): void {
         this.queue = [];
         this.running.clear();
+        this.runningProcessIds.clear();
         this.history = [];
         this.paused = false;
         this.autopilotPaused = false;

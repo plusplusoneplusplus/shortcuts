@@ -65,7 +65,7 @@ function makeOptions(overrides: Partial<UseChatSSEOptions> = {}): UseChatSSEOpti
         setSessionCurrentTokens: vi.fn(),
         setTurnsAndRef: vi.fn(),
         refreshConversation: vi.fn().mockResolvedValue(undefined),
-        flushQueueRef: { current: null },
+        onSendComplete: vi.fn(),
         ...overrides,
     };
 }

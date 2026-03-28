@@ -188,6 +188,63 @@ describe('TaskQueueManager', () => {
             expect(manager.size()).toBe(1);
             expect(manager.peek()!.id).toBe(id);
         });
+
+        it('skips task whose processId is already running', () => {
+            const id1 = manager.enqueue(createTestTask({ payload: { processId: 'proc-1' }, processId: 'proc-1' }));
+            const id2 = manager.enqueue(createTestTask({ payload: { processId: 'proc-2' }, processId: 'proc-2' }));
+            manager.markStarted(id1);
+
+            // id1 is running with processId 'proc-1', enqueue another task for same process
+            const id3 = manager.enqueue(createTestTask({ payload: { processId: 'proc-1' }, processId: 'proc-1' }));
+
+            // peek should skip id3 (same processId as running id1) and return id2
+            const peeked = manager.peek() as any;
+            expect(peeked.id).toBe(id2);
+        });
+
+        it('returns task for same processId after running task completes', () => {
+            const id1 = manager.enqueue(createTestTask({ processId: 'proc-1' }));
+            manager.markStarted(id1);
+
+            const id2 = manager.enqueue(createTestTask({ processId: 'proc-1' }));
+
+            // While id1 is running, id2 is skipped
+            expect(manager.peek()).toBeUndefined();
+
+            // After id1 completes, id2 becomes eligible
+            manager.markCompleted(id1);
+            expect(manager.peek()!.id).toBe(id2);
+        });
+
+        it('does not skip tasks without processId', () => {
+            const id1 = manager.enqueue(createTestTask());
+            manager.markStarted(id1);
+
+            const id2 = manager.enqueue(createTestTask());
+            expect(manager.peek()!.id).toBe(id2);
+        });
+
+        it('unlocks processId on task failure', () => {
+            const id1 = manager.enqueue(createTestTask({ processId: 'proc-1' }));
+            manager.markStarted(id1);
+
+            const id2 = manager.enqueue(createTestTask({ processId: 'proc-1' }));
+            expect(manager.peek()).toBeUndefined();
+
+            manager.markFailed(id1, 'error');
+            expect(manager.peek()!.id).toBe(id2);
+        });
+
+        it('unlocks processId on task cancellation', () => {
+            const id1 = manager.enqueue(createTestTask({ processId: 'proc-1' }));
+            manager.markStarted(id1);
+
+            const id2 = manager.enqueue(createTestTask({ processId: 'proc-1' }));
+            expect(manager.peek()).toBeUndefined();
+
+            manager.cancelTask(id1);
+            expect(manager.peek()!.id).toBe(id2);
+        });
     });
 
     // ========================================================================

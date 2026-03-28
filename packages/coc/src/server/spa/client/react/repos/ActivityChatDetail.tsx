@@ -159,7 +159,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         } catch { /* keep current turns */ }
     }, [setTurnsAndRef]);
 
-    const { sendFollowUp, flushQueueRef, closeFollowUpStream } = useSendMessage({
+    const { sendFollowUp, closeFollowUpStream, onSendComplete } = useSendMessage({
         processId,
         taskId,
         inputDisabled,
@@ -196,7 +196,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setSessionCurrentTokens,
         setTurnsAndRef,
         refreshConversation,
-        flushQueueRef,
+        onSendComplete,
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });

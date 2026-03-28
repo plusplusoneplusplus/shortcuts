@@ -17,7 +17,7 @@ export interface UseChatSSEOptions {
     setSessionCurrentTokens: (v: number | undefined) => void;
     setTurnsAndRef: SetTurnsAndRef;
     refreshConversation: (pid: string) => Promise<void>;
-    flushQueueRef: React.MutableRefObject<(() => void) | null>;
+    onSendComplete: () => void;
 }
 
 /** Manages the SSE EventSource for a running process and drives all streaming state updates. */
@@ -33,7 +33,7 @@ export function useChatSSE({
     setSessionCurrentTokens,
     setTurnsAndRef,
     refreshConversation,
-    flushQueueRef,
+    onSendComplete,
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -149,7 +149,7 @@ export function useChatSSE({
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: 'completed' as const } : prev);
             void refreshConversation(processId);
             setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-            setTimeout(() => { flushQueueRef.current?.(); }, 0);
+            onSendComplete();
         };
 
         es.addEventListener('done', finish);

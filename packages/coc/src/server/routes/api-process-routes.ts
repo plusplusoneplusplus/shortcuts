@@ -411,6 +411,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
             const deliveryMode: 'immediate' | 'enqueue' = (body.deliveryMode === 'immediate') ? 'immediate' : 'enqueue';
 
+            // Read optional client-provided optimistic ID for reconciliation
+            const optimisticId: string | undefined = typeof body.optimisticId === 'string' ? body.optimisticId : undefined;
+
             // Mark process as running; user turn is saved inside the executor
             // so it is serialized before the assistant turn in the write-queue.
             const turnIndex = proc.conversationTurns?.length ?? 0;
@@ -456,6 +459,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 turnIndex,
                 deliveryMode,
                 queuePosition: deliveryMode === 'immediate' ? 0 : 1,
+                optimisticId,
             });
 
             globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${turnIndex}\n`);

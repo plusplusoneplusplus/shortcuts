@@ -26,6 +26,8 @@ export interface MessageQueuedPayload {
     deliveryMode: 'immediate' | 'enqueue';
     /** Position in the follow-up queue (1-based). 0 when deliveryMode === 'immediate'. */
     queuePosition: number;
+    /** Client-provided optimistic ID echoed back for reconciliation. */
+    optimisticId?: string;
 }
 
 /** Fired when an immediate-mode message is actively being injected into a live session. */
@@ -45,6 +47,7 @@ export function emitMessageQueued(store: ProcessStore, processId: string, payloa
         turnIndex: payload.turnIndex,
         deliveryMode: payload.deliveryMode,
         queuePosition: payload.queuePosition,
+        ...(payload.optimisticId !== undefined ? { optimisticId: payload.optimisticId } : {}),
     } as ProcessOutputEvent);
 }
 

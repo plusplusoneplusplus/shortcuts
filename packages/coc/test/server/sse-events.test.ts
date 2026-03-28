@@ -50,6 +50,36 @@ describe('emitMessageQueued', () => {
             queuePosition: 0,
         });
     });
+
+    it('echoes optimisticId when provided', () => {
+        const store = createMockStore();
+        emitMessageQueued(store as any, 'proc-4', {
+            turnIndex: 1,
+            deliveryMode: 'enqueue',
+            queuePosition: 1,
+            optimisticId: 'opt-abc-123',
+        });
+
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-4', {
+            type: 'message-queued',
+            turnIndex: 1,
+            deliveryMode: 'enqueue',
+            queuePosition: 1,
+            optimisticId: 'opt-abc-123',
+        });
+    });
+
+    it('omits optimisticId when not provided', () => {
+        const store = createMockStore();
+        emitMessageQueued(store as any, 'proc-5', {
+            turnIndex: 2,
+            deliveryMode: 'enqueue',
+            queuePosition: 1,
+        });
+
+        const emitted = (store.emitProcessEvent as any).mock.calls[0][1];
+        expect(emitted).not.toHaveProperty('optimisticId');
+    });
 });
 
 describe('emitMessageSteering', () => {

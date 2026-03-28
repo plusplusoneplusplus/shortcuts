@@ -64,10 +64,12 @@ export function useSendMessage({
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     flushQueueRef: React.MutableRefObject<(() => void) | null>;
     closeFollowUpStream: () => void;
+    onSendComplete: () => void;
 } {
     const { archivedChatIds, unarchiveChat } = useChatPrefs();
     const followUpEventSourceRef = useRef<EventSource | null>(null);
     const flushQueueRef = useRef<(() => void) | null>(null);
+    const resolveCurrentSendRef = useRef<(() => void) | null>(null);
 
     const closeFollowUpStream = useCallback(() => {
         if (followUpEventSourceRef.current) {
@@ -76,52 +78,35 @@ export function useSendMessage({
         }
     }, []);
 
-    const waitForFollowUpCompletion = useCallback(async (pid: string) => {
-        if (typeof EventSource === 'undefined') {
-            await refreshConversation(pid);
-            return;
+    /** Called by useChatSSE when the main SSE stream fires 'done'. */
+    const onSendComplete = useCallback(() => {
+        if (resolveCurrentSendRef.current) {
+            resolveCurrentSendRef.current();
+            resolveCurrentSendRef.current = null;
         }
-        closeFollowUpStream();
-        await new Promise<void>(resolve => {
-            const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(pid)}/stream`);
-            followUpEventSourceRef.current = es;
-            let done = false;
-            const finish = () => {
-                if (done) return;
-                done = true;
-                es.close();
-                if (followUpEventSourceRef.current === es) followUpEventSourceRef.current = null;
-                void refreshConversation(pid).finally(() => resolve());
+    }, []);
+
+    /** Returns a promise that resolves when the main SSE stream fires 'done' via onSendComplete. */
+    const waitForSendCompletion = useCallback((pid: string): Promise<void> => {
+        if (typeof EventSource === 'undefined') {
+            return refreshConversation(pid);
+        }
+        return new Promise<void>(resolve => {
+            resolveCurrentSendRef.current = resolve;
+            // Safety timeout in case 'done' never fires
+            const timeout = setTimeout(() => {
+                if (resolveCurrentSendRef.current === resolve) {
+                    resolveCurrentSendRef.current = null;
+                    resolve();
+                }
+            }, 90_000);
+            const origResolve = resolve;
+            resolveCurrentSendRef.current = () => {
+                clearTimeout(timeout);
+                origResolve();
             };
-            const timeout = setTimeout(finish, 90_000);
-            es.addEventListener('done', () => { clearTimeout(timeout); finish(); });
-            es.addEventListener('status', (e: Event) => {
-                try {
-                    const status = JSON.parse((e as MessageEvent).data)?.status;
-                    if (status && !['running', 'queued'].includes(status)) { clearTimeout(timeout); finish(); }
-                } catch { /* ignore */ }
-            });
-            es.onerror = () => { clearTimeout(timeout); finish(); };
-            es.addEventListener('suggestions', (event: Event) => {
-                try {
-                    const data = JSON.parse((event as MessageEvent).data);
-                    if (Array.isArray(data.suggestions)) setSuggestions(data.suggestions);
-                } catch { /* ignore */ }
-            });
-            es.addEventListener('message-queued', (event: Event) => {
-                try {
-                    const { optimisticId } = JSON.parse((event as MessageEvent).data);
-                    setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'queued' as const } : m));
-                } catch { /* ignore */ }
-            });
-            es.addEventListener('message-steering', (event: Event) => {
-                try {
-                    const { optimisticId } = JSON.parse((event as MessageEvent).data);
-                    setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'steering' as const } : m));
-                } catch { /* ignore */ }
-            });
         });
-    }, [closeFollowUpStream, refreshConversation, setSuggestions, setPendingQueue]);
+    }, [refreshConversation]);
 
     // Keep flushQueueRef in sync with current pendingQueue for stale-closure-safe drain
     useEffect(() => {
@@ -147,7 +132,7 @@ export function useSendMessage({
             })
                 .then(async (response) => {
                     if (!response.ok) { removeStreamingPlaceholder(); return; }
-                    await waitForFollowUpCompletion(processId);
+                    await waitForSendCompletion(processId);
                 })
                 .catch(() => { removeStreamingPlaceholder(); })
                 .finally(() => {
@@ -183,18 +168,25 @@ export function useSendMessage({
                 status: 'pending-send',
             };
             setPendingQueue(prev => [...prev, qm]);
-            await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: rawContent,
-                    images: images.length > 0 ? images : undefined,
-                    mode: selectedMode,
-                    deliveryMode,
-                    optimisticId: qm.id,
-                    ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
-                }),
-            }).catch(() => {});
+
+            if (deliveryMode === 'immediate') {
+                // Steering messages must reach the server immediately to inject into the running session
+                await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: rawContent,
+                        images: images.length > 0 ? images : undefined,
+                        mode: selectedMode,
+                        deliveryMode,
+                        optimisticId: qm.id,
+                        ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
+                    }),
+                }).catch(() => {});
+            }
+            // For 'enqueue' mode: no POST needed — the message will be sent when
+            // flushQueueRef drains after the current turn completes. The server's
+            // per-process serialization in peek() ensures safe ordering.
             clearImages();
             return;
         }
@@ -242,7 +234,7 @@ export function useSendMessage({
 
             lastFailedMessageRef.current = '';
             clearImages();
-            await waitForFollowUpCompletion(processId);
+            await waitForSendCompletion(processId);
         } catch (err: any) {
             setError(err?.message || 'Failed to send follow-up message.');
             lastFailedMessageRef.current = rawContent;
@@ -255,5 +247,5 @@ export function useSendMessage({
         }
     }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return { sendFollowUp, flushQueueRef, closeFollowUpStream };
+    return { sendFollowUp, flushQueueRef, closeFollowUpStream, onSendComplete };
 }
