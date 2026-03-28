@@ -325,9 +325,10 @@ describe('RepoDetail Ask button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })");
     });
 
-    it('Ask button appears after Queue Task button', () => {
-        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
-        const askBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
+    it('Ask button appears after Queue Task button in desktop toolbar', () => {
+        const desktopSection = REPO_DETAIL_SOURCE.substring(REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn'));
+        const queueBtnIdx = desktopSection.indexOf('repo-queue-task-btn');
+        const askBtnIdx = desktopSection.indexOf('repo-ask-btn');
         expect(queueBtnIdx).toBeGreaterThan(-1);
         expect(askBtnIdx).toBeGreaterThan(-1);
         expect(askBtnIdx).toBeGreaterThan(queueBtnIdx);
@@ -339,18 +340,20 @@ describe('RepoDetail Ask button in header', () => {
         expect(askBtnIdx).toBeLessThan(genBtnIdx);
     });
 
-    it('uses primary variant', () => {
-        const idx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+    it('uses primary variant in desktop toolbar', () => {
+        const desktopSection = REPO_DETAIL_SOURCE.substring(REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn'));
+        const idx = desktopSection.indexOf('repo-ask-btn');
+        const block = desktopSection.substring(Math.max(0, idx - 300), idx);
         expect(block).toContain('variant="primary"');
     });
 
-    it('mobile overflow menu includes Ask option', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-ask"');
+    it('mobile header includes Ask button (not in overflow)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-ask-btn"');
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-ask"');
     });
 
-    it('mobile Ask option dispatches OPEN_DIALOG with mode ask', () => {
-        const askIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-ask');
+    it('mobile Ask button dispatches OPEN_DIALOG with mode ask', () => {
+        const askIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
         const block = REPO_DETAIL_SOURCE.substring(Math.max(0, askIdx - 300), askIdx + 200);
         expect(block).toContain("mode: 'ask'");
     });
@@ -373,9 +376,10 @@ describe('RepoDetail Run Script button in header', () => {
         expect(scriptBtnIdx).toBeGreaterThan(queueBtnIdx);
     });
 
-    it('Run Script button appears before Ask button', () => {
-        const scriptBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
-        const askBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
+    it('Run Script button appears before Ask button in desktop toolbar', () => {
+        const desktopSection = REPO_DETAIL_SOURCE.substring(REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn'));
+        const scriptBtnIdx = desktopSection.indexOf('repo-run-script-btn');
+        const askBtnIdx = desktopSection.indexOf('repo-ask-btn');
         expect(scriptBtnIdx).toBeLessThan(askBtnIdx);
     });
 
@@ -401,10 +405,8 @@ describe('RepoDetail Run Script button in header', () => {
         expect(scriptIdx).toBeGreaterThan(queueIdx);
     });
 
-    it('mobile Run Script option appears before Ask in overflow', () => {
-        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
-        const askIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-ask');
-        expect(scriptIdx).toBeLessThan(askIdx);
+    it('mobile overflow menu does not include Ask (Ask is a top-level button)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-ask"');
     });
 
     it('mobile Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId', () => {
@@ -570,14 +572,13 @@ describe('RepoDetail Launch CLI button in header', () => {
         expect(precedingBlock).not.toContain("activeSubTab ===");
     });
 
-    it('mobile overflow menu includes Launch CLI option', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-launch-cli"');
+    it('mobile overflow menu does not include Launch CLI (hidden on mobile)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-launch-cli"');
     });
 
-    it('mobile Launch CLI option appears before Queue Task in overflow', () => {
-        const launchIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-launch-cli');
-        const queueIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-queue-task');
-        expect(launchIdx).toBeLessThan(queueIdx);
+    it('Launch CLI is only in desktop toolbar', () => {
+        const launchIdx = REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn');
+        expect(launchIdx).toBeGreaterThan(-1);
     });
 });
 

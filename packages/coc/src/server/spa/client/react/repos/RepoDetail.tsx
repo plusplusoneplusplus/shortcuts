@@ -241,12 +241,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             <Button
                                 variant="secondary"
                                 size="sm"
-                                disabled={isLaunchingCli}
-                                onClick={handleLaunchCli}
-                                title="Open CLI in terminal"
-                                data-testid="repo-launch-cli-btn"
+                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
+                                title="Ask AI a question (read-only)"
+                                data-testid="repo-ask-btn"
                             >
-                                &gt;_ Launch CLI
+                                💬 Ask
                             </Button>
                             <div className="relative" ref={moreMenuRef} data-testid="repo-more-menu-container">
                                 <Button
@@ -263,13 +262,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                         <div className="flex flex-col" data-testid="repo-more-menu-items">
                                             <button
                                                 className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                                data-testid="repo-more-launch-cli"
-                                                onClick={() => { setMoreMenuOpen(false); handleLaunchCli(); }}
-                                            >
-                                                &gt;_ Launch CLI
-                                            </button>
-                                            <button
-                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-queue-task"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }); }}
                                             >
@@ -281,13 +273,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
                                             >
                                                 ⚙ Run Script
-                                            </button>
-                                            <button
-                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                                data-testid="repo-more-ask"
-                                                onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }); }}
-                                            >
-                                                💬 Ask
                                             </button>
                                             <button
                                                 className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
