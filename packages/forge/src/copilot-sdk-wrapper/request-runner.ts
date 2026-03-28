@@ -8,21 +8,19 @@
  * independently of CopilotSDKService.
  */
 
+import type { CopilotClient, CopilotSession, SessionConfig, AssistantMessageEvent } from '@github/copilot-sdk';
 import { ToolCall } from '../ai/process-types';
 import { getAIServiceLogger, createSessionLogger } from '../ai-logger';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
 import {
     MCPServerConfig,
-    ReasoningEffort,
     SendMessageOptions,
-    SystemMessageConfig,
     TokenUsage,
     SDKInvocationResult,
     SDKAvailabilityResult,
     PermissionRequest,
     PermissionRequestResult,
-    PermissionHandler,
     ExtendedSdkRequest,
     denyAllPermissions,
     Attachment,
@@ -32,45 +30,6 @@ import {
 import { StreamingSession, StreamingResult } from './streaming-session';
 import { SessionManager } from './session-manager';
 import { isStreamDestroyedError } from './stream-error-guard';
-
-// ============================================================================
-// Internal SDK interface shapes (not part of public API)
-// ============================================================================
-
-interface ISessionOptions {
-    model?: string;
-    streaming?: boolean;
-    availableTools?: string[];
-    excludedTools?: string[];
-    mcpServers?: Record<string, MCPServerConfig>;
-    onPermissionRequest?: PermissionHandler;
-    tools?: unknown[];
-    skillDirectories?: string[];
-    disabledSkills?: string[];
-    systemMessage?: SystemMessageConfig;
-    reasoningEffort?: ReasoningEffort;
-}
-
-interface ICopilotClient {
-    start(): Promise<void>;
-    createSession(options?: ISessionOptions): Promise<ICopilotSession>;
-    resumeSession?(sessionId: string, options?: ISessionOptions): Promise<ICopilotSession>;
-    stop(): Promise<void>;
-}
-
-interface ICopilotSession {
-    sessionId: string;
-    sendAndWait(options: { prompt: string; attachments?: Attachment[] }, timeout?: number): Promise<{ data?: { content?: string } }>;
-    destroy(): Promise<void>;
-    on?(handler: (event: { type: string; data?: unknown }) => void): (() => void);
-    send?(options: { prompt: string; attachments?: Attachment[]; deliveryMode?: DeliveryMode }): Promise<void>;
-    rpc?: {
-        mode: {
-            get(): Promise<{ mode: string }>;
-            set(options: { mode: string }): Promise<void>;
-        };
-    };
-}
 
 // ============================================================================
 // RequestRunner
@@ -83,7 +42,7 @@ interface ICopilotSession {
 export class RequestRunner {
     constructor(
         private readonly isAvailable: () => Promise<SDKAvailabilityResult>,
-        private readonly createClient: (cwd?: string) => Promise<ICopilotClient>,
+        private readonly createClient: (cwd?: string) => Promise<CopilotClient>,
         private readonly sessionManager: SessionManager,
         private readonly defaultTimeoutMs: number = DEFAULT_AI_TIMEOUT_MS,
         private readonly defaultIdleTimeoutMs: number = 3_600_000,
@@ -102,15 +61,54 @@ export class RequestRunner {
             return { success: false, error: availability.error || 'Copilot SDK is not available' };
         }
 
-        let session: ICopilotSession | null = null;
-        let client: ICopilotClient | null = null;
+        let session: CopilotSession | null = null;
+        let client: CopilotClient | null = null;
         let result: SDKInvocationResult | null = null;
 
         try {
             client = await this.createClient(options.workingDirectory);
 
-            // Build session options
-            const sessionOptions: ISessionOptions = {};
+            // Build session options — start with the required permission handler
+            // so we can incrementally add optional fields.
+            const effectiveHandler = options.onPermissionRequest || denyAllPermissions;
+            const toolCallsMap = new Map<string, ToolCall>();
+
+            const sessionOptions: SessionConfig = {
+                onPermissionRequest: (request: PermissionRequest, invocation: { sessionId: string }) => {
+                    const sessionLog = createSessionLogger(invocation.sessionId);
+                    sessionLog.debug({ kind: request.kind, toolCallId: request.toolCallId || undefined, resource: (request as ExtendedSdkRequest).resource, operation: (request as ExtendedSdkRequest).operation }, 'Permission request');
+                    const capturePermission = (permResult: PermissionRequestResult) => {
+                        if (request.toolCallId) {
+                            const tc = toolCallsMap.get(request.toolCallId);
+                            if (tc) {
+                                tc.permissionRequest = {
+                                    kind: request.kind,
+                                    timestamp: new Date(),
+                                    resource: (request as ExtendedSdkRequest).resource,
+                                    operation: (request as ExtendedSdkRequest).operation,
+                                };
+                                tc.permissionResult = {
+                                    approved: permResult.kind === 'approved',
+                                    timestamp: new Date(),
+                                    reason: permResult.kind !== 'approved' ? permResult.kind : undefined,
+                                };
+                            }
+                        }
+                    };
+                    const handlerResult = effectiveHandler(request, invocation);
+                    if (handlerResult && typeof (handlerResult as Promise<PermissionRequestResult>).then === 'function') {
+                        return (handlerResult as Promise<PermissionRequestResult>).then(r => {
+                            createSessionLogger(invocation.sessionId).debug({ kind: r.kind, requestKind: request.kind }, 'Permission result');
+                            capturePermission(r);
+                            return r;
+                        });
+                    }
+                    createSessionLogger(invocation.sessionId).debug({ kind: (handlerResult as PermissionRequestResult).kind, requestKind: request.kind }, 'Permission result');
+                    capturePermission(handlerResult as PermissionRequestResult);
+                    return handlerResult;
+                },
+            };
+
             if (options.model) sessionOptions.model = options.model;
             if (options.streaming) sessionOptions.streaming = options.streaming;
             if (options.tools) sessionOptions.tools = options.tools;
@@ -138,7 +136,9 @@ export class RequestRunner {
                 }
 
                 if (finalMcpServers && Object.keys(finalMcpServers).length > 0) {
-                    sessionOptions.mcpServers = finalMcpServers;
+                    // Forge's MCPLocalServerConfig allows optional `args`; the SDK requires `string[]`.
+                    // The SDK treats missing args as [] at runtime, so the cast is safe.
+                    sessionOptions.mcpServers = finalMcpServers as SessionConfig['mcpServers'];
                     aiLog.debug({ serverCount: Object.keys(finalMcpServers).length, serverNames: Object.keys(finalMcpServers) }, 'Using MCP servers');
                 } else if (options.mcpServers !== undefined && Object.keys(options.mcpServers).length === 0) {
                     sessionOptions.mcpServers = {};
@@ -146,51 +146,12 @@ export class RequestRunner {
                 }
             }
 
-            // Shared tool calls map — bridged between permission handler and sendWithStreaming
-            const toolCallsMap = new Map<string, ToolCall>();
-
-            // Permission handler — wrap with logging to track permission requests.
-            const effectiveHandler = options.onPermissionRequest || denyAllPermissions;
-            sessionOptions.onPermissionRequest = (request: PermissionRequest, invocation: { sessionId: string }) => {
-                const sessionLog = createSessionLogger(invocation.sessionId);
-                sessionLog.debug({ kind: request.kind, toolCallId: request.toolCallId || undefined, resource: (request as ExtendedSdkRequest).resource, operation: (request as ExtendedSdkRequest).operation }, 'Permission request');
-                const capturePermission = (permResult: PermissionRequestResult) => {
-                    if (request.toolCallId) {
-                        const tc = toolCallsMap.get(request.toolCallId);
-                        if (tc) {
-                            tc.permissionRequest = {
-                                kind: request.kind,
-                                timestamp: new Date(),
-                                resource: (request as ExtendedSdkRequest).resource,
-                                operation: (request as ExtendedSdkRequest).operation,
-                            };
-                            tc.permissionResult = {
-                                approved: permResult.kind === 'approved',
-                                timestamp: new Date(),
-                                reason: permResult.kind !== 'approved' ? permResult.kind : undefined,
-                            };
-                        }
-                    }
-                };
-                const handlerResult = effectiveHandler(request, invocation);
-                if (handlerResult && typeof (handlerResult as Promise<PermissionRequestResult>).then === 'function') {
-                    return (handlerResult as Promise<PermissionRequestResult>).then(r => {
-                        createSessionLogger(invocation.sessionId).debug({ kind: r.kind, requestKind: request.kind }, 'Permission result');
-                        capturePermission(r);
-                        return r;
-                    });
-                }
-                createSessionLogger(invocation.sessionId).debug({ kind: (handlerResult as PermissionRequestResult).kind, requestKind: request.kind }, 'Permission result');
-                capturePermission(handlerResult as PermissionRequestResult);
-                return handlerResult;
-            };
-
             const sessionOptionsStr = Object.keys(sessionOptions).length > 0
                 ? JSON.stringify(sessionOptions)
                 : '(default)';
 
             // Resume an existing SDK session or create a new one
-            if (options.sessionId && client.resumeSession) {
+            if (options.sessionId) {
                 aiLog.debug({ cwd: options.workingDirectory, sessionId: options.sessionId, sessionOptionsStr }, 'Resuming session');
                 try {
                     session = await client.resumeSession(options.sessionId, sessionOptions);
@@ -223,7 +184,7 @@ export class RequestRunner {
             let turnCount = 0;
             let capturedToolCalls: ToolCall[] | undefined;
 
-            if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
+            if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && typeof session.on === 'function' && typeof session.send === 'function') {
                 const idleTimeoutMs = options.idleTimeoutMs ?? this.defaultIdleTimeoutMs;
                 const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, options.attachments, options.deliveryMode, options.sessionId);
                 response = streamingResult.response;
@@ -325,9 +286,8 @@ export class RequestRunner {
      * Send a message using the streaming path.
      * Delegates to StreamingSession which encapsulates the full state machine.
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     sendWithStreaming(
-        session: ICopilotSession,
+        session: CopilotSession,
         prompt: string,
         timeoutMs: number,
         onStreamingChunk?: (chunk: string) => void,
@@ -353,11 +313,11 @@ export class RequestRunner {
 
     /** Send a message without streaming (non-streaming path). */
     private sendWithTimeout(
-        session: ICopilotSession,
+        session: CopilotSession,
         prompt: string,
         timeoutMs: number,
         attachments?: Attachment[],
-    ): Promise<{ data?: { content?: string } }> {
+    ): Promise<AssistantMessageEvent | undefined> {
         return session.sendAndWait({ prompt, attachments }, timeoutMs);
     }
 }

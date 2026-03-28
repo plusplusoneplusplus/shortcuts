@@ -211,7 +211,7 @@ export function getModelContextWindow(modelId: string): number | undefined {
  */
 export interface IModelListClient {
     start(): Promise<void>;
-    stop(): Promise<void>;
+    stop(): Promise<Error[] | void>;
     listModels(): Promise<ModelInfo[]>;
 }
 

@@ -6,40 +6,25 @@
  */
 
 import * as fs from 'fs';
-import { SdkModule } from './sdk-loader';
+import { CopilotClient, type CopilotClientOptions } from '@github/copilot-sdk';
 import { ensureFolderTrusted } from './trusted-folder';
 import { getAIServiceLogger } from '../ai-logger';
 
 /**
- * Options passed to the SDK client constructor.
- * Currently the only supported option is `cwd` (working directory for the CLI
- * child process spawned by the SDK).
- */
-export interface ClientOptions {
-    /** Working directory for the SDK CLI child process. */
-    cwd?: string;
-}
-
-/**
- * Spawn a new `CopilotClient` from the given SDK module.
+ * Spawn a new `CopilotClient`.
  *
  * Responsibilities:
  * - Validates the working directory exists (warns, but does not throw).
  * - Registers the directory as trusted (non-fatal if it fails).
- * - Constructs and returns a new `sdkModule.CopilotClient` instance.
+ * - Constructs and returns a new `CopilotClient` instance.
  *
- * This function has no dependency on `CopilotSDKService`; it receives the
- * already-loaded `sdkModule` as a parameter so callers control loading.
- *
- * @param sdkModule - Loaded SDK module (as returned by `loadSdk()`).
- * @param options   - Client creation options (e.g. `cwd`).
+ * @param options - Client creation options (e.g. `cwd`).
  * @returns The newly created SDK client instance.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createSdkClient(sdkModule: SdkModule, options: ClientOptions = {}): any {
+export function createSdkClient(options: CopilotClientOptions = {}): CopilotClient {
     const { cwd } = options;
     const aiLog = getAIServiceLogger();
-    const clientOptions: ClientOptions = {};
+    const clientOptions: CopilotClientOptions = {};
 
     if (cwd) {
         if (!fs.existsSync(cwd)) {
@@ -59,5 +44,5 @@ export function createSdkClient(sdkModule: SdkModule, options: ClientOptions = {
     }
 
     aiLog.debug({ clientOptions }, 'Creating new CopilotClient');
-    return new sdkModule.CopilotClient(clientOptions);
+    return new CopilotClient(clientOptions);
 }

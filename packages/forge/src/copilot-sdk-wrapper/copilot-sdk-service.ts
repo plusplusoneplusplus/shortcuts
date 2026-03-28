@@ -4,7 +4,7 @@
  * Singleton lifecycle, constructor wiring, and single-delegation public stubs.
  * All business logic lives in the collaborator classes imported below.
  *
- * @see sdk-loader.ts        — SDK binary discovery and ESM import
+ * @see sdk-loader.ts        — SDK availability check
  * @see sdk-client-factory.ts — per-request CopilotClient spawning
  * @see session-manager.ts   — active-session tracking / abort
  * @see streaming-session.ts  — streaming state machine
@@ -14,7 +14,8 @@
  * @see image-converter.ts   — image-file → data-URL conversion
  */
 
-import { findSdkBinaryPath, loadSdk, SdkModule } from './sdk-loader';
+import { CopilotClient } from '@github/copilot-sdk';
+import { findSdkBinaryPath } from './sdk-loader';
 import { getAIServiceLogger } from '../ai-logger';
 import { createSdkClient } from './sdk-client-factory';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
@@ -57,7 +58,6 @@ export { tryConvertImageFileToDataUrl } from './image-converter';
 export class CopilotSDKService {
     private static instance: CopilotSDKService | null = null;
 
-    private sdkModule: SdkModule | null = null;
     private availabilityCache: SDKAvailabilityResult | null = null;
     private disposed = false;
 
@@ -97,23 +97,16 @@ export class CopilotSDKService {
         if (this.availabilityCache) return this.availabilityCache;
         const aiLog = getAIServiceLogger();
         aiLog.debug('Checking SDK availability');
-        try {
-            const sdkPath = findSdkBinaryPath();
-            if (!sdkPath) {
-                this.availabilityCache = { available: false, error: 'Copilot SDK not found. Please ensure @github/copilot-sdk is installed.' };
-                aiLog.debug('SDK not found');
-                return this.availabilityCache;
-            }
-            await this.ensureSDKModule();
-            this.availabilityCache = { available: true, sdkPath };
-            aiLog.debug({ sdkPath }, 'SDK available');
-            return this.availabilityCache;
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.availabilityCache = { available: false, error: `Failed to load Copilot SDK: ${errorMessage}` };
-            aiLog.error({ err: error instanceof Error ? error : undefined }, 'SDK availability check failed');
+        const sdkPath = findSdkBinaryPath();
+        if (!sdkPath) {
+            this.availabilityCache = { available: false, error: 'Copilot SDK not found. Please ensure @github/copilot-sdk is installed.' };
+            aiLog.debug('SDK not found');
             return this.availabilityCache;
         }
+        this.streamErrorGuard.install();
+        this.availabilityCache = { available: true, sdkPath };
+        aiLog.debug({ sdkPath }, 'SDK available');
+        return this.availabilityCache;
     }
 
     public clearAvailabilityCache(): void { this.availabilityCache = null; }
@@ -122,11 +115,9 @@ export class CopilotSDKService {
         return isStreamDestroyedError(errorMessage);
     }
 
-    public async createClient(cwd?: string): Promise<any> {
+    public async createClient(cwd?: string): Promise<CopilotClient> {
         if (this.disposed) throw new Error('CopilotSDKService has been disposed');
-        await this.ensureSDKModule();
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        return createSdkClient(this.sdkModule!, { cwd });
+        return createSdkClient({ cwd });
     }
 
     public async listModels(): Promise<ModelInfo[]> {
@@ -153,7 +144,6 @@ export class CopilotSDKService {
         aiLog.debug('Cleaning up SDK service');
         await this.sessionManager.abortAll();
         this.streamErrorGuard.remove();
-        this.sdkModule = null;
         this.availabilityCache = null;
     }
 
@@ -169,14 +159,6 @@ export class CopilotSDKService {
         this.disposed = true;
         this.streamErrorGuard.remove();
         this.cleanup().catch(() => {});
-    }
-
-    private async ensureSDKModule(): Promise<void> {
-        if (this.sdkModule) return;
-        const sdkPath = findSdkBinaryPath();
-        if (!sdkPath) throw new Error('Copilot SDK not found');
-        this.sdkModule = await loadSdk(sdkPath);
-        this.streamErrorGuard.install();
     }
 }
 

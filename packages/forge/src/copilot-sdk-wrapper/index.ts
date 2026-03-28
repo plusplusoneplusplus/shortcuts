@@ -25,12 +25,6 @@ export {
     // Agent mode types
     AgentMode,
     DeliveryMode,
-    // Reasoning effort
-    ReasoningEffort,
-    // Permission types
-    PermissionRequest,
-    PermissionRequestResult,
-    PermissionHandler,
     // Permission helpers
     approveAllPermissions,
     denyAllPermissions,
@@ -39,20 +33,28 @@ export {
     READ_ONLY_SYSTEM_MESSAGE,
     // Tool event types
     ToolEvent,
-    // SDK tool types
-    Tool,
-    ToolHandler,
-    ToolInvocation,
-    defineTool,
-    ToolResult,
-    ToolResultObject,
-    ToolResultType,
-    ZodSchema,
     // Dynamic model info types
     ModelInfo,
     ModelPolicy,
     ModelBilling,
 } from './types';
+
+// SDK types re-exported via types.ts from @github/copilot-sdk
+export type {
+    ReasoningEffort,
+    PermissionRequest,
+    PermissionRequestResult,
+    PermissionHandler,
+    Tool,
+    ToolHandler,
+    ToolInvocation,
+    ToolResult,
+    ToolResultObject,
+    ToolResultType,
+    ZodSchema,
+} from './types';
+
+export { defineTool, approveAll } from './types';
 
 // Model Registry
 export {

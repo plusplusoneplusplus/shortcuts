@@ -102,11 +102,10 @@ describe('mock-sdk helpers', () => {
     });
 
     describe('setupService', () => {
-        it('sets sdkModule and availabilityCache on service internals', () => {
+        it('sets availabilityCache on service internals', () => {
             const fakeService = {} as any;
             const session = createMockSession();
             setupService(fakeService, session);
-            expect(fakeService.sdkModule).toBeDefined();
             expect(fakeService.availabilityCache).toEqual({ available: true, sdkPath: '/fake/sdk' });
         });
     });

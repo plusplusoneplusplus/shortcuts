@@ -54,7 +54,7 @@ export interface IStreamableSession {
         prompt: string;
         attachments?: Attachment[];
         deliveryMode?: DeliveryMode;
-    }) => Promise<void>;
+    }) => Promise<string | void>;
     destroy(): Promise<void>;
 }
 

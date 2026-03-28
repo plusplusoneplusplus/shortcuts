@@ -35,6 +35,11 @@ vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
     ),
 }));
 
+const createSdkClientMock = vi.fn();
+vi.mock('../../src/copilot-sdk-wrapper/sdk-client-factory', () => ({
+    createSdkClient: (...args: any[]) => createSdkClientMock(...args),
+}));
+
 describe('CopilotSDKService - Skills Passthrough', () => {
     let service: CopilotSDKService;
 
@@ -64,7 +69,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.sendMessage({
@@ -95,7 +100,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.sendMessage({
@@ -126,7 +131,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.sendMessage({
@@ -159,7 +164,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.sendMessage({
@@ -190,7 +195,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
 
         const { MockCopilotClient, mockClient } = createMockSDKModule(mockSession);
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.sendMessage({
@@ -216,7 +221,7 @@ describe('CopilotSDKService - Skills Passthrough', () => {
         const { session, dispatchEvent } = createStreamingMockSession('skills-streaming');
         const { MockCopilotClient, mockClient } = createMockSDKModule(session);
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const sendPromise = service.sendMessage({

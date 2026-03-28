@@ -125,6 +125,11 @@ vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
     ),
 }));
 
+const createSdkClientMock = vi.fn();
+vi.mock('../../src/copilot-sdk-wrapper/sdk-client-factory', () => ({
+    createSdkClient: (...args: any[]) => createSdkClientMock(...args),
+}));
+
 describe('CopilotSDKService - view tool image interception', () => {
     let service: CopilotSDKService;
     let tmpDir: string;
@@ -151,7 +156,7 @@ describe('CopilotSDKService - view tool image interception', () => {
     function setupStreamingCall() {
         const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const toolEvents: any[] = [];

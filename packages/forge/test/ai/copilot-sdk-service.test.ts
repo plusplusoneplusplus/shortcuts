@@ -34,6 +34,12 @@ vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
     ),
 }));
 
+// Mock sdk-client-factory so tests can control CopilotClient instantiation
+const createSdkClientMock = vi.fn();
+vi.mock('../../src/copilot-sdk-wrapper/sdk-client-factory', () => ({
+    createSdkClient: (...args: any[]) => createSdkClientMock(...args),
+}));
+
 describe('CopilotSDKService - Client Initialization', () => {
     let service: CopilotSDKService;
 
@@ -48,23 +54,23 @@ describe('CopilotSDKService - Client Initialization', () => {
         resetCopilotSDKService();
     });
 
-    it('should call ensureFolderTrusted with cwd when working directory is specified', async () => {
+    it('should pass cwd to createSdkClient when working directory is specified', async () => {
         const { MockCopilotClient } = createMockSDKModule();
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.createClient('/some/project/path');
 
-        expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith('/some/project/path');
+        expect(createSdkClientMock).toHaveBeenCalledWith({ cwd: '/some/project/path' });
     });
 
     it('should not call ensureFolderTrusted when no working directory is given', async () => {
         const { MockCopilotClient } = createMockSDKModule();
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.createClient(undefined);
@@ -72,19 +78,19 @@ describe('CopilotSDKService - Client Initialization', () => {
         expect(trustedFolder.ensureFolderTrusted).not.toHaveBeenCalled();
     });
 
-    it('should call ensureFolderTrusted for each new cwd when clients are created', async () => {
+    it('should pass each cwd to createSdkClient when clients are created', async () => {
         const { MockCopilotClient } = createMockSDKModule();
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.createClient('/first/path');
         await service.createClient('/second/path');
 
-        expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledTimes(2);
-        expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith('/first/path');
-        expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith('/second/path');
+        expect(createSdkClientMock).toHaveBeenCalledTimes(2);
+        expect(createSdkClientMock).toHaveBeenCalledWith({ cwd: '/first/path' });
+        expect(createSdkClientMock).toHaveBeenCalledWith({ cwd: '/second/path' });
     });
 
     it('should still create client successfully even if ensureFolderTrusted throws', async () => {
@@ -94,7 +100,7 @@ describe('CopilotSDKService - Client Initialization', () => {
         });
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         // Should not throw — ensureFolderTrusted errors are non-fatal
@@ -131,7 +137,7 @@ describe('CopilotSDKService - onSessionCreated callback', () => {
         };
         const { MockCopilotClient } = createMockSDKModule(mockSession);
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const receivedIds: string[] = [];
@@ -151,7 +157,7 @@ describe('CopilotSDKService - onSessionCreated callback', () => {
     it('should invoke onSessionCreated with the session ID immediately after session is created (streaming)', async () => {
         const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const receivedIds: string[] = [];
@@ -185,7 +191,7 @@ describe('CopilotSDKService - onSessionCreated callback', () => {
         };
         const { MockCopilotClient } = createMockSDKModule(mockSession);
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const result = await service.sendMessage({
@@ -227,7 +233,7 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
     function setupStreamingCall(options?: { streaming?: boolean; timeoutMs?: number }) {
         const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const resultPromise = service.sendMessage({
@@ -398,7 +404,7 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
         });
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const result = await service.sendMessage({
@@ -653,7 +659,7 @@ describe('CopilotSDKService - Multi-turn MCP tool conversations', () => {
     function setupStreamingCall(options?: { streaming?: boolean; timeoutMs?: number }) {
         const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const resultPromise = service.sendMessage({
@@ -906,7 +912,7 @@ describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
     it('should idle-timeout when no activity arrives within idleTimeoutMs', async () => {
         const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         // Wait for session setup via sendMessage
@@ -1091,7 +1097,7 @@ describe('CopilotSDKService - onStreamingChunk callback', () => {
     ) {
         const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const resultPromise = service.sendMessage({
@@ -1402,7 +1408,7 @@ describe('CopilotSDKService - Non-streaming (sendAndWait)', () => {
         }
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const result = await service.sendMessage({
@@ -1438,7 +1444,7 @@ describe('CopilotSDKService - Non-streaming (sendAndWait)', () => {
         }
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const result = await service.sendMessage({
@@ -1478,7 +1484,7 @@ describe('CopilotSDKService - Token Usage Tracking', () => {
     function setupStreamingCall() {
         const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const resultPromise = service.sendMessage({
@@ -1655,7 +1661,7 @@ describe('CopilotSDKService - Token Usage Tracking', () => {
         }
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const result = await service.sendMessage({
@@ -1740,7 +1746,7 @@ describe('CopilotSDKService - Empty response with tool activity', () => {
     function setupStreamingCall(options?: { streaming?: boolean; timeoutMs?: number }) {
         const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const resultPromise = service.sendMessage({
@@ -2043,7 +2049,7 @@ describe('CopilotSDKService - Debug Logging (tool execution events)', () => {
     function setupStreamingCall(options?: { streaming?: boolean; timeoutMs?: number; onPermissionRequest?: any }) {
         const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const resultPromise = service.sendMessage({
@@ -2367,7 +2373,7 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
     it('should log permission requests and results via wrapped handler', async () => {
         const { MockCopilotClient, mockClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const permissionHandler = (req: any) =>
@@ -2427,7 +2433,7 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
     it('should handle async permission handlers', async () => {
         const { MockCopilotClient, mockClient, sessions } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const asyncPermHandler = async (req: any) => {
@@ -2535,7 +2541,7 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         );
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
 
         // Should fail with stream error
@@ -2553,7 +2559,7 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         mockClient.createSession.mockRejectedValue(new Error('Model not found'));
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
 
         const result = await service.sendMessage({
@@ -2594,7 +2600,7 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         }
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
 
         // First call — stream error on this client (isolated)
@@ -2623,7 +2629,7 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         expect(serviceAny.streamErrorGuard.handler).toBeNull();
 
         // Set up sdkModule as if it was loaded fresh (simulates ensureSDKModule)
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
         serviceAny.streamErrorGuard.install();
 
@@ -2743,7 +2749,7 @@ describe('CopilotSDKService - reasoningEffort session option', () => {
     it('forwards reasoningEffort to createSession when provided', async () => {
         const { MockCopilotClient, sessions, mockClient } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const resultPromise = service.sendMessage({
@@ -2771,7 +2777,7 @@ describe('CopilotSDKService - reasoningEffort session option', () => {
     it('does not set reasoningEffort on session when not provided', async () => {
         const { MockCopilotClient, sessions, mockClient } = createStreamingMockSDKModule();
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const resultPromise = service.sendMessage({
@@ -2829,7 +2835,7 @@ describe('CopilotSDKService - listModels()', () => {
         mockClient.listModels.mockResolvedValue(models);
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         const result = await service.listModels();
@@ -2841,7 +2847,7 @@ describe('CopilotSDKService - listModels()', () => {
         mockClient.listModels.mockResolvedValue([]);
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.listModels();
@@ -2854,7 +2860,7 @@ describe('CopilotSDKService - listModels()', () => {
         mockClient.listModels.mockRejectedValue(sdkError);
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await expect(service.listModels()).rejects.toThrow('API failure');
@@ -2877,7 +2883,7 @@ describe('CopilotSDKService - listModels()', () => {
         mockClient.listModels.mockImplementation(() => { callOrder.push('listModels'); return Promise.resolve([]); });
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await service.listModels();
@@ -2890,7 +2896,7 @@ describe('CopilotSDKService - listModels()', () => {
         mockClient.start.mockRejectedValue(new Error('start failed'));
 
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         await expect(service.listModels()).rejects.toThrow('start failed');

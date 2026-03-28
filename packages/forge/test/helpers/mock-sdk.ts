@@ -186,14 +186,38 @@ export function createStreamingMockSDKModule(
 
 /**
  * Convenience function that wires a mock SDK module into a CopilotSDKService
- * instance by setting `sdkModule` and `availabilityCache` on the service
- * internals.
+ * instance by setting `availabilityCache` on the service internals.
  */
 export function setupService(service: CopilotSDKService, session: any): void {
-    const { MockCopilotClient } = createMockSDKModule(session);
     const serviceAny = service as any;
-    serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
     serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+}
+
+/**
+ * Wire a MockCopilotClient into a CopilotSDKService so that `createClient()`
+ * returns instances of the mock.
+ *
+ * After the refactoring to static SDK imports, the service no longer has a
+ * `sdkModule` field. Instead, `createClient()` calls `createSdkClient()`
+ * from `sdk-client-factory.ts`, which does `new CopilotClient(...)`.
+ *
+ * Tests that mock `../../src/copilot-sdk-wrapper/sdk-client-factory` can use
+ * this helper to configure what `createSdkClient` returns.
+ *
+ * For tests that DON'T mock the factory module, this function falls back to
+ * overriding the service's `createClient` method directly.
+ */
+export function wireServiceMock(
+    service: CopilotSDKService,
+    MockCopilotClient: new (options?: any) => any,
+    createSdkClientMock?: ReturnType<typeof vi.fn>,
+): void {
+    const serviceAny = service as any;
+    serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+    if (createSdkClientMock) {
+        createSdkClientMock.mockImplementation((options: any) => new MockCopilotClient(options));
+    }
 }
 
 /**

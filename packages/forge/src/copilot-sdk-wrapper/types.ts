@@ -1,89 +1,47 @@
 /**
  * Copilot SDK Wrapper Types
  *
- * SDK-specific types extracted from copilot-sdk-service.ts.
- * These types define the interface for interacting with the Copilot SDK,
- * including MCP server configuration, permission handling, and session management.
+ * Re-exports SDK types where possible, defines forge-specific types
+ * for features that extend or wrap the SDK's surface.
  */
 
 import { AIInvocationResult } from '../ai/types';
 import type { ToolCall } from '../ai/process-types';
 
 // ============================================================================
-// SDK Tool Types (re-exported from @github/copilot-sdk)
+// SDK Tool Types — re-exported from @github/copilot-sdk
 // ============================================================================
+
+export type {
+    ToolResultObject,
+    ToolInvocation,
+    ToolHandler,
+    ZodSchema,
+    Tool,
+    PermissionRequest,
+    PermissionRequestResult,
+    PermissionHandler,
+} from '@github/copilot-sdk';
+
+export { defineTool, approveAll } from '@github/copilot-sdk';
 
 /**
  * Result type for a tool invocation.
- * Indicates whether the tool call succeeded, failed, was rejected, or denied.
+ * Not re-exported from the SDK's public API, so kept locally.
  */
 export type ToolResultType = 'success' | 'failure' | 'rejected' | 'denied';
 
 /**
- * Structured tool result object with metadata.
- */
-export interface ToolResultObject {
-    textResultForLlm: string;
-    binaryResultsForLlm?: Array<{ mimeType: string; base64Data: string }>;
-    resultType: ToolResultType;
-    error?: string;
-}
-
-/**
  * Tool result — either a plain string or a structured result object.
+ * Not re-exported from the SDK's public API, so kept locally.
  */
-export type ToolResult = string | ToolResultObject;
+export type ToolResult = string | import('@github/copilot-sdk').ToolResultObject;
 
 /**
- * Context passed to a tool handler when invoked by the SDK.
+ * Reasoning effort level for models that support extended thinking.
+ * Not re-exported from the SDK's public API, so kept locally.
  */
-export interface ToolInvocation {
-    sessionId: string;
-    toolCallId: string;
-    toolName: string;
-    arguments: unknown;
-}
-
-/**
- * Handler function for a custom tool.
- */
-export type ToolHandler<TArgs = unknown> = (
-    args: TArgs,
-    invocation: ToolInvocation,
-) => Promise<unknown> | unknown;
-
-/**
- * Zod-compatible schema interface for tool parameter validation.
- */
-export interface ZodSchema<T = unknown> {
-    _output: T;
-    toJSONSchema(): Record<string, unknown>;
-}
-
-/**
- * Definition of a custom tool that can be registered on an AI session.
- *
- * Consumers can construct `Tool` objects directly or use the SDK's `defineTool`
- * helper (import `defineTool` from `@github/copilot-sdk`).
- */
-export interface Tool<TArgs = unknown> {
-    name: string;
-    description?: string;
-    parameters?: ZodSchema<TArgs> | Record<string, unknown>;
-    handler: ToolHandler<TArgs>;
-}
-
-/**
- * Helper to define a tool with proper type inference for the handler.
- * Mirrors the SDK's `defineTool` helper from `@github/copilot-sdk`.
- */
-export function defineTool<T = unknown>(name: string, config: {
-    description?: string;
-    parameters?: ZodSchema<T> | Record<string, unknown>;
-    handler: ToolHandler<T>;
-}): Tool<T> {
-    return { name, ...config };
-}
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 // Re-export model types for convenience
 export { AIModel, VALID_MODELS, DEFAULT_MODEL_ID, ModelDefinition, MODEL_REGISTRY,
@@ -96,6 +54,13 @@ export { ModelInfo, ModelPolicy, ModelBilling } from './model-info';
 
 // ============================================================================
 // MCP Server Configuration Types
+//
+// Forge defines its own MCP types that are a superset of the SDK's:
+// - `tools` is optional (SDK requires it)
+// - `args` is optional on local configs (SDK requires it)
+// - `MCPServerConfigBase` adds `enabled` field
+// These differences are relied upon by mcp-config-loader and downstream
+// consumers, so we keep local definitions.
 // ============================================================================
 
 /**
@@ -173,32 +138,8 @@ export interface MCPControlOptions {
 }
 
 // ============================================================================
-// Permission Handling
+// Extended Permission Request
 // ============================================================================
-
-/**
- * Permission request from the Copilot CLI.
- * Maps to SDK's PermissionRequest interface.
- */
-export interface PermissionRequest {
-    /** Type of permission being requested */
-    kind: 'shell' | 'write' | 'mcp' | 'read' | 'url';
-    /** Associated tool call ID (if applicable) */
-    toolCallId?: string;
-    /** Additional request-specific data */
-    [key: string]: unknown;
-}
-
-/**
- * Result of a permission request.
- * Maps to SDK's PermissionRequestResult interface.
- */
-export interface PermissionRequestResult {
-    /** The decision kind */
-    kind: 'approved' | 'denied-by-rules' | 'denied-no-approval-rule-and-could-not-request-from-user' | 'denied-interactively-by-user';
-    /** Optional rules that led to this decision */
-    rules?: unknown[];
-}
 
 /**
  * Extended permission request that includes additional runtime properties
@@ -208,20 +149,13 @@ export interface PermissionRequestResult {
  * NOTE: This interface must be re-verified if the SDK's published types are updated
  * to include these fields natively — at that point this local extension becomes redundant.
  */
-export interface ExtendedSdkRequest extends PermissionRequest {
-    /** The resource being accessed (e.g., a file path or URL). */
+export interface ExtendedSdkRequest {
+    kind: string;
+    toolCallId?: string;
     resource?: string;
-    /** The operation being performed on the resource (e.g., 'read', 'write'). */
     operation?: string;
+    [key: string]: unknown;
 }
-
-/**
- * Handler function for permission requests.
- */
-export type PermissionHandler = (
-    request: PermissionRequest,
-    invocation: { sessionId: string }
-) => Promise<PermissionRequestResult> | PermissionRequestResult;
 
 // ============================================================================
 // Token Usage
@@ -258,6 +192,11 @@ export interface TokenUsage {
 
 // ============================================================================
 // System Message Configuration
+//
+// Forge uses a simplified union (`mode: 'append' | 'replace'` + `content`)
+// while the SDK uses a discriminated union of two separate interfaces.
+// Keep the forge version for backward compatibility — it's structurally
+// compatible with the SDK's union at the call site.
 // ============================================================================
 
 /**
@@ -361,7 +300,7 @@ export interface SendMessageOptions {
      * Handler for permission requests from the Copilot CLI.
      * Without a handler, all permission requests are denied by default.
      */
-    onPermissionRequest?: PermissionHandler;
+    onPermissionRequest?: import('@github/copilot-sdk').PermissionHandler;
 
     /**
      * Callback invoked immediately after the SDK session is created.
@@ -386,7 +325,7 @@ export interface SendMessageOptions {
      * These are SDK-native tools (not MCP) — each tool has a name, optional
      * description/parameters, and a handler function invoked by the AI.
      */
-    tools?: Tool<any>[];
+    tools?: import('@github/copilot-sdk').Tool<any>[];
 
     /**
      * System message configuration for the SDK session.
@@ -448,12 +387,6 @@ export interface ToolEvent {
 export type AgentMode = 'interactive' | 'plan' | 'autopilot';
 
 /**
- * Reasoning effort level for models that support extended thinking.
- * Mirrors the SDK's own type — defined locally to avoid a direct type dependency on @github/copilot-sdk.
- */
-export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
-
-/**
  * Controls when a message is dispatched to the Copilot session.
  * - `immediate` (default): send as soon as the caller invokes the method.
  * - `enqueue`: add to an ordered queue; dispatched when the session is idle.
@@ -477,6 +410,28 @@ export const READ_ONLY_MARKER = '<!-- COC_READ_ONLY_MODE -->';
  */
 export const READ_ONLY_SYSTEM_MESSAGE = `${READ_ONLY_MARKER}
 You are in read-only mode. You MUST NOT use any tools that create, edit, delete, or modify files in the repository, with the sole exception of the plan file. You may only read files, search code, and answer questions. If the user asks you to make changes, explain that you are in read-only/ask mode and suggest they switch to autopilot or plan mode. Do not use tools such as: edit_file, create_file, delete_file, write_file, insert_edit, or any tool that modifies the filesystem (except when writing to the plan file).`;
+
+// ============================================================================
+// Permission Handler Helpers
+// ============================================================================
+
+/**
+ * Permission handler that approves all permission requests.
+ * 
+ * **WARNING**: This allows the AI to perform any operation without restrictions.
+ * Only use this in trusted environments or for testing purposes.
+ */
+export const approveAllPermissions: import('@github/copilot-sdk').PermissionHandler = () => {
+    return { kind: 'approved' };
+};
+
+/**
+ * Permission handler that denies all permission requests.
+ * This is the default behavior when no handler is provided.
+ */
+export const denyAllPermissions: import('@github/copilot-sdk').PermissionHandler = () => {
+    return { kind: 'denied-by-rules' };
+};
 
 // ============================================================================
 // SDK Result Types
@@ -507,25 +462,3 @@ export interface SDKAvailabilityResult {
     /** Error message if not available */
     error?: string;
 }
-
-// ============================================================================
-// Permission Handler Helpers
-// ============================================================================
-
-/**
- * Permission handler that approves all permission requests.
- * 
- * **WARNING**: This allows the AI to perform any operation without restrictions.
- * Only use this in trusted environments or for testing purposes.
- */
-export const approveAllPermissions: PermissionHandler = () => {
-    return { kind: 'approved' };
-};
-
-/**
- * Permission handler that denies all permission requests.
- * This is the default behavior when no handler is provided.
- */
-export const denyAllPermissions: PermissionHandler = () => {
-    return { kind: 'denied-by-rules' };
-};

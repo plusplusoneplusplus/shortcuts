@@ -34,6 +34,11 @@ vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
     ),
 }));
 
+const createSdkClientMock = vi.fn();
+vi.mock('../../src/copilot-sdk-wrapper/sdk-client-factory', () => ({
+    createSdkClient: (...args: any[]) => createSdkClientMock(...args),
+}));
+
 describe('CopilotSDKService - Session Resume', () => {
     let service: CopilotSDKService;
 
@@ -53,7 +58,7 @@ describe('CopilotSDKService - Session Resume', () => {
      */
     function wireService(sdkModule: { MockCopilotClient: new (...args: any[]) => any }) {
         const serviceAny = service as any;
-        serviceAny.sdkModule = { CopilotClient: sdkModule.MockCopilotClient };
+        createSdkClientMock.mockImplementation((opts: any) => new sdkModule.MockCopilotClient(opts));
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
     }
 
