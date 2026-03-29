@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, TasksPanelNavState } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, TasksPanelNavState } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
 
@@ -58,6 +58,7 @@ export interface AppContextState {
     wsStatus: WsStatus;
     activeMemorySubTab: MemorySubTab;
     activeSkillsSubTab: SkillsSubTab;
+    activeAdminSubTab: AdminSubTab;
     /** Per-repo remembered sub-tab (in-memory only, resets on page refresh). */
     repoTabState: Record<string, RepoSubTab>;
     /** Per-wiki remembered project tab (in-memory only, resets on page refresh). */
@@ -104,6 +105,7 @@ const initialState: AppContextState = {
     wsStatus: 'closed',
     activeMemorySubTab: 'config',
     activeSkillsSubTab: 'installed',
+    activeAdminSubTab: 'settings',
     repoTabState: {},
     wikiTabState: {},
     repoSubTabNavState: {},
@@ -164,6 +166,7 @@ export type AppAction =
     | { type: 'SET_EXPLORER_PATH'; path: string | null }
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
     | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
+    | { type: 'SET_ADMIN_SUB_TAB'; tab: AdminSubTab }
     | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string }
     | { type: 'SET_SELECTED_PR'; prId: number | string }
     | { type: 'CLEAR_SELECTED_PR' }
@@ -368,6 +371,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, activeMemorySubTab: action.tab };
         case 'SET_SKILLS_SUB_TAB':
             return { ...state, activeSkillsSubTab: action.tab };
+        case 'SET_ADMIN_SUB_TAB':
+            return { ...state, activeAdminSubTab: action.tab };
         case 'SET_WIKI_TAB':
             return { ...state, wikiTabState: { ...state.wikiTabState, [action.wikiId]: action.tab } };
         case 'SET_SELECTED_PR':

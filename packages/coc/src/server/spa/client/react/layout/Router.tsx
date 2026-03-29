@@ -10,7 +10,7 @@ import { ProcessesView } from '../processes/ProcessesView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { lazy, Suspense } from 'react';
-import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, SettingsSection } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, SettingsSection } from '../types/dashboard';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ default: m.SkillsView })));
@@ -191,6 +191,15 @@ export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     c: 'settings',
 };
 
+
+export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts']);
+
+export function parseAdminSubTab(hash: string): AdminSubTab | null {
+    const parts = hash.replace(/^#/, '').split('/');
+    if (parts[0] !== 'admin') return null;
+    if (parts.length >= 2 && VALID_ADMIN_SUB_TABS.has(parts[1])) return parts[1] as AdminSubTab;
+    return null;
+}
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -400,6 +409,12 @@ export function Router() {
                     location.replace('#skills/gallery');
                     return;
                 }
+            }
+
+            // Parse admin sub-tab deep links: #admin/:subTab
+            if (tab === 'admin') {
+                const subTab = parseAdminSubTab('#' + hash);
+                dispatch({ type: 'SET_ADMIN_SUB_TAB', tab: subTab ?? 'settings' });
             }
         };
         handleHash();

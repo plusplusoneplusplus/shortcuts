@@ -39,6 +39,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         repoWikiInitialComponentId: null,
         activeMemorySubTab: 'config',
         activeSkillsSubTab: 'installed',
+        activeAdminSubTab: 'settings',
         repoTabState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
@@ -972,6 +973,44 @@ describe('AppContext reducer', () => {
             const state = makeState({ activeMemorySubTab: 'entries' });
             const result = appReducer(state, { type: 'SET_MEMORY_SUB_TAB', tab: 'config' });
             expect(result.activeMemorySubTab).toBe('config');
+        });
+    });
+
+    // ── SET_ADMIN_SUB_TAB ──────────────────────────────────────────
+    describe('SET_ADMIN_SUB_TAB', () => {
+        it('defaults activeAdminSubTab to "settings"', () => {
+            const state = makeState();
+            expect(state.activeAdminSubTab).toBe('settings');
+        });
+
+        it('switches to providers', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SET_ADMIN_SUB_TAB', tab: 'providers' });
+            expect(result.activeAdminSubTab).toBe('providers');
+        });
+
+        it('switches to data', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SET_ADMIN_SUB_TAB', tab: 'data' });
+            expect(result.activeAdminSubTab).toBe('data');
+        });
+
+        it('switches to server', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SET_ADMIN_SUB_TAB', tab: 'server' });
+            expect(result.activeAdminSubTab).toBe('server');
+        });
+
+        it('switches to prompts', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SET_ADMIN_SUB_TAB', tab: 'prompts' });
+            expect(result.activeAdminSubTab).toBe('prompts');
+        });
+
+        it('switches back to settings', () => {
+            const state = makeState({ activeAdminSubTab: 'data' });
+            const result = appReducer(state, { type: 'SET_ADMIN_SUB_TAB', tab: 'settings' });
+            expect(result.activeAdminSubTab).toBe('settings');
         });
     });
 });

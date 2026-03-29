@@ -10,6 +10,8 @@ import { invalidateDisplaySettings } from '../hooks/useDisplaySettings';
 import { PreferencesSection } from './PreferencesSection';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { PromptsPanel } from './PromptsPanel';
+import { useApp } from '../context/AppContext';
+import type { AdminSubTab } from '../types/dashboard';
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -26,12 +28,16 @@ interface Stats {
 }
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
-type AdminTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts';
-const TAB_LABELS: Record<AdminTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts' };
+const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts' };
 
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
-    const [activeTab, setActiveTab] = useState<AdminTab>('settings');
+    const { state, dispatch } = useApp();
+    const activeTab = state.activeAdminSubTab;
+    const handleTabChange = (tab: AdminSubTab) => {
+        dispatch({ type: 'SET_ADMIN_SUB_TAB', tab });
+        window.location.hash = `admin/${tab}`;
+    };
     const [showAdvanced, setShowAdvanced] = useState(false);
 
     // Storage stats
@@ -402,7 +408,7 @@ export function AdminPanel() {
     const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
     const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
     const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
-    const tabs: AdminTab[] = ['settings', 'providers', 'data', 'server', 'prompts'];
+    const tabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts'];
 
     return (
         <div id="view-admin">
@@ -449,7 +455,7 @@ export function AdminPanel() {
                                     ? 'border-[#0078d4] text-[#0078d4]'
                                     : 'border-transparent text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
                             ].join(' ')}
-                            onClick={() => setActiveTab(tab)}
+                            onClick={() => handleTabChange(tab)}
                             data-testid={`admin-tab-${tab}`}
                         >
                             {TAB_LABELS[tab]}
@@ -459,7 +465,7 @@ export function AdminPanel() {
                 <select
                     className="md:hidden w-full px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                     value={activeTab}
-                    onChange={e => setActiveTab(e.target.value as AdminTab)}
+                    onChange={e => handleTabChange(e.target.value as AdminSubTab)}
                     aria-label="Select admin section"
                 >
                     {tabs.map(tab => (

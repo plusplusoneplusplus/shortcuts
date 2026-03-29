@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
@@ -2005,5 +2005,49 @@ describe('memory sub-tab deep-link parsing', () => {
 
     it('returns null for non-memory hash', () => {
         expect(parseMemorySubTab('#repos/my-repo')).toBeNull();
+    });
+});
+
+// ─── admin sub-tab deep-link parsing ────────────────────────────
+
+describe('admin sub-tab deep-link parsing', () => {
+    it('VALID_ADMIN_SUB_TABS contains all 5 tabs', () => {
+        expect(VALID_ADMIN_SUB_TABS).toEqual(new Set(['settings', 'providers', 'data', 'server', 'prompts']));
+    });
+
+    it('returns "settings" for #admin/settings', () => {
+        expect(parseAdminSubTab('#admin/settings')).toBe('settings');
+    });
+
+    it('returns "providers" for #admin/providers', () => {
+        expect(parseAdminSubTab('#admin/providers')).toBe('providers');
+    });
+
+    it('returns "data" for #admin/data', () => {
+        expect(parseAdminSubTab('#admin/data')).toBe('data');
+    });
+
+    it('returns "server" for #admin/server', () => {
+        expect(parseAdminSubTab('#admin/server')).toBe('server');
+    });
+
+    it('returns "prompts" for #admin/prompts', () => {
+        expect(parseAdminSubTab('#admin/prompts')).toBe('prompts');
+    });
+
+    it('returns null for #admin (no sub-tab)', () => {
+        expect(parseAdminSubTab('#admin')).toBeNull();
+    });
+
+    it('returns null for #admin/unknown', () => {
+        expect(parseAdminSubTab('#admin/unknown')).toBeNull();
+    });
+
+    it('returns null for non-admin hash', () => {
+        expect(parseAdminSubTab('#repos/my-repo')).toBeNull();
+    });
+
+    it('handles hash without # prefix', () => {
+        expect(parseAdminSubTab('admin/data')).toBe('data');
     });
 });
