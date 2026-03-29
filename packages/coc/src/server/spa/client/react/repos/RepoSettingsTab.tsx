@@ -409,10 +409,10 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const hasInstructions = Object.values(instrContents).some(v => v !== null && v !== '');
 
     return (
-        <div className="flex flex-row h-full overflow-hidden">
+        <div className="flex flex-col sm:flex-row h-full overflow-hidden">
             {/* ── Left sidebar ── */}
             <nav
-                className="w-52 flex-shrink-0 flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[var(--vscode-sideBar-background,#f3f3f3)] dark:bg-[#252526] overflow-y-auto"
+                className="flex-shrink-0 flex flex-row sm:flex-col border-b sm:border-b-0 sm:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[var(--vscode-sideBar-background,#f3f3f3)] dark:bg-[#252526] overflow-x-auto sm:overflow-x-hidden sm:overflow-y-auto sm:w-52"
                 data-testid="settings-sidebar"
             >
                 {NAV_ITEMS.map(item => {
@@ -439,7 +439,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                         <button
                             key={item.id}
                             onClick={() => setActiveSection(item.id)}
-                            className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-colors w-full ${
+                            className={`flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-left transition-colors flex-shrink-0 sm:flex-shrink sm:w-full whitespace-nowrap sm:whitespace-normal ${
                                 isActive
                                     ? 'bg-[var(--vscode-list-activeSelectionBackground,#0078d4)] text-white dark:text-white'
                                     : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
@@ -447,7 +447,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                             data-testid={`nav-item-${item.id}`}
                         >
                             <span className="text-sm">{item.icon}</span>
-                            <span className="flex-1 truncate">{item.label}</span>
+                            <span className="sm:flex-1 truncate">{item.label}</span>
                             {badge}
                         </button>
                     );
@@ -455,7 +455,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
             </nav>
 
             {/* ── Right content panel ── */}
-            <div className="flex-1 overflow-y-auto p-4" data-testid="settings-content-panel">
+            <div className="flex-1 overflow-y-auto p-4 min-w-0" data-testid="settings-content-panel">
                 {activeSection === 'info' && (
                     <div className="flex flex-col gap-4">
                         {/* Metadata grid */}
