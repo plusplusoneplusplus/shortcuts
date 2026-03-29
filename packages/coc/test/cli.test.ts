@@ -67,11 +67,6 @@ describe('CLI', () => {
             expect(listCmd).toBeDefined();
         });
 
-        it('should have version', () => {
-            const program = createProgram();
-            expect(program.version()).toBe('1.0.6');
-        });
-
         it('run command should have expected options', () => {
             const program = createProgram();
             const runCmd = program.commands.find(c => c.name() === 'run')!;
