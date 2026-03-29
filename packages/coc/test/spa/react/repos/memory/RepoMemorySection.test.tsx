@@ -56,45 +56,27 @@ afterEach(() => {
 
 describe('MemoryHeader', () => {
     it('renders observation count', () => {
-        render(<MemoryHeader observationCount={3} noteCount={2} consolidatedAt={null} onAddNote={vi.fn()} onAggregate={vi.fn()} />);
+        render(<MemoryHeader observationCount={3} noteCount={2} onAddNote={vi.fn()} onAggregate={vi.fn()} />);
         expect(screen.getByTestId('memory-stats-label').textContent).toContain('5 observations');
     });
 
     it('uses singular for 1 total', () => {
-        render(<MemoryHeader observationCount={1} noteCount={0} consolidatedAt={null} onAddNote={vi.fn()} onAggregate={vi.fn()} />);
-        expect(screen.getByTestId('memory-stats-label').textContent).toContain('1 observation ');
-    });
-
-    it('shows "never" when consolidatedAt is null', () => {
-        render(<MemoryHeader observationCount={0} noteCount={0} consolidatedAt={null} onAddNote={vi.fn()} onAggregate={vi.fn()} />);
-        expect(screen.getByTestId('memory-stats-label').textContent).toContain('never');
+        render(<MemoryHeader observationCount={1} noteCount={0} onAddNote={vi.fn()} onAggregate={vi.fn()} />);
+        expect(screen.getByTestId('memory-stats-label').textContent).toContain('1 observation');
     });
 
     it('calls onAddNote when Add Note button clicked', () => {
         const onAddNote = vi.fn();
-        render(<MemoryHeader observationCount={0} noteCount={0} consolidatedAt={null} onAddNote={onAddNote} onAggregate={vi.fn()} />);
+        render(<MemoryHeader observationCount={0} noteCount={0} onAddNote={onAddNote} onAggregate={vi.fn()} />);
         fireEvent.click(screen.getByTestId('memory-add-note-btn'));
         expect(onAddNote).toHaveBeenCalledOnce();
     });
 
     it('calls onAggregate when Aggregate button clicked', () => {
         const onAggregate = vi.fn();
-        render(<MemoryHeader observationCount={0} noteCount={0} consolidatedAt={null} onAddNote={vi.fn()} onAggregate={onAggregate} />);
+        render(<MemoryHeader observationCount={0} noteCount={0} onAddNote={vi.fn()} onAggregate={onAggregate} />);
         fireEvent.click(screen.getByTestId('memory-aggregate-btn'));
         expect(onAggregate).toHaveBeenCalledOnce();
-    });
-
-    it('renders clickable consolidated label when consolidatedAt is set and onViewConsolidated provided', () => {
-        const onView = vi.fn();
-        render(<MemoryHeader observationCount={0} noteCount={0} consolidatedAt="2024-01-01T08:00:00Z" onAddNote={vi.fn()} onAggregate={vi.fn()} onViewConsolidated={onView} />);
-        const btn = screen.getByTestId('memory-view-consolidated-btn');
-        fireEvent.click(btn);
-        expect(onView).toHaveBeenCalledOnce();
-    });
-
-    it('does not render clickable consolidated label when consolidatedAt is null', () => {
-        render(<MemoryHeader observationCount={0} noteCount={0} consolidatedAt={null} onAddNote={vi.fn()} onAggregate={vi.fn()} onViewConsolidated={vi.fn()} />);
-        expect(screen.queryByTestId('memory-view-consolidated-btn')).toBeNull();
     });
 });
 
@@ -218,7 +200,15 @@ describe('RepoMemorySection', () => {
         expect(screen.getByTestId('memory-loading')).toBeTruthy();
     });
 
-    it('renders feed items after loading', async () => {
+    it('renders tab bar with Feed and Consolidated tabs', async () => {
+        mockFetchWith(okStats, okFeed);
+        render(<RepoMemorySection repoId="ws-abc" />);
+        await waitFor(() => expect(screen.getByTestId('memory-tab-bar')).toBeTruthy());
+        expect(screen.getByTestId('memory-tab-feed')).toBeTruthy();
+        expect(screen.getByTestId('memory-tab-consolidated')).toBeTruthy();
+    });
+
+    it('renders feed items after loading (Feed tab is default)', async () => {
         mockFetchWith(okStats, okFeed);
         render(<RepoMemorySection repoId="ws-abc" />);
         await waitFor(() => {
@@ -260,7 +250,7 @@ describe('RepoMemorySection', () => {
         expect(screen.getByTestId('aggregate-panel')).toBeTruthy();
     });
 
-    it('shows ConsolidatedPanel when consolidated label is clicked', async () => {
+    it('switches to Consolidated tab and shows consolidated content', async () => {
         (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
             if (url.includes('/memory/stats')) {
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(okStats) });
@@ -274,14 +264,14 @@ describe('RepoMemorySection', () => {
             return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
         });
         render(<RepoMemorySection repoId="ws-abc" />);
-        await waitFor(() => expect(screen.getByTestId('memory-view-consolidated-btn')).toBeTruthy());
-        fireEvent.click(screen.getByTestId('memory-view-consolidated-btn'));
-        await waitFor(() => expect(screen.getByTestId('consolidated-panel')).toBeTruthy());
-        await waitFor(() => expect(screen.getByTestId('consolidated-content')).toBeTruthy());
-        expect(screen.getByTestId('consolidated-content').textContent).toContain('# Memory');
+        await waitFor(() => expect(screen.getByTestId('memory-tab-consolidated')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('memory-tab-consolidated'));
+        await waitFor(() => expect(screen.getByTestId('consolidated-tab')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('consolidated-tab-content')).toBeTruthy());
+        expect(screen.getByTestId('consolidated-tab-content').textContent).toContain('# Memory');
     });
 
-    it('hides ConsolidatedPanel when close button is clicked', async () => {
+    it('hides feed content when Consolidated tab is active', async () => {
         (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
             if (url.includes('/memory/stats')) {
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(okStats) });
@@ -295,11 +285,33 @@ describe('RepoMemorySection', () => {
             return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
         });
         render(<RepoMemorySection repoId="ws-abc" />);
-        await waitFor(() => expect(screen.getByTestId('memory-view-consolidated-btn')).toBeTruthy());
-        fireEvent.click(screen.getByTestId('memory-view-consolidated-btn'));
-        await waitFor(() => expect(screen.getByTestId('consolidated-panel')).toBeTruthy());
-        fireEvent.click(screen.getByTestId('consolidated-close-btn'));
-        expect(screen.queryByTestId('consolidated-panel')).toBeNull();
+        await waitFor(() => expect(screen.getByTestId('feed-item-n1')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('memory-tab-consolidated'));
+        await waitFor(() => expect(screen.getByTestId('consolidated-tab')).toBeTruthy());
+        expect(screen.queryByTestId('feed-item-n1')).toBeNull();
+        expect(screen.queryByTestId('feed-source-filter')).toBeNull();
+    });
+
+    it('switches back to Feed tab from Consolidated tab', async () => {
+        (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+            if (url.includes('/memory/stats')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(okStats) });
+            }
+            if (url.includes('/memory/consolidated')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: '# Memory' }) });
+            }
+            if (url.includes('/memory/feed') && !url.includes('/feed/')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: okFeed, consolidatedAt: okStats.consolidatedAt, totalCount: okFeed.length }) });
+            }
+            return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
+        });
+        render(<RepoMemorySection repoId="ws-abc" />);
+        await waitFor(() => expect(screen.getByTestId('memory-tab-consolidated')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('memory-tab-consolidated'));
+        await waitFor(() => expect(screen.getByTestId('consolidated-tab')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('memory-tab-feed'));
+        await waitFor(() => expect(screen.getByTestId('feed-item-n1')).toBeTruthy());
+        expect(screen.queryByTestId('consolidated-tab')).toBeNull();
     });
 
     it('filters by source on client side', async () => {

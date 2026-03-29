@@ -1,7 +1,7 @@
 /**
  * RepoMemorySection — top-level memory section for the repo settings tab.
  *
- * Manages feed state, stats, filtering/search, and inline sub-panels.
+ * Sub-tabbed interface: Feed (default) | Consolidated.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -10,10 +10,13 @@ import type { FeedItem, MemoryStats } from './memoryApi';
 import { MemoryHeader } from './MemoryHeader';
 import { AddNoteForm } from './AddNoteForm';
 import { AggregatePanel } from './AggregatePanel';
-import { ConsolidatedPanel } from './ConsolidatedPanel';
+import { ConsolidatedTab } from './ConsolidatedTab';
 import { FeedControls } from './FeedControls';
 import type { SourceFilter } from './FeedControls';
 import { FeedList } from './FeedList';
+import { cn } from '../../shared/cn';
+
+type MemoryTab = 'feed' | 'consolidated';
 
 interface RepoMemorySectionProps {
     repoId: string;
@@ -21,6 +24,7 @@ interface RepoMemorySectionProps {
 }
 
 export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
+    const [activeTab, setActiveTab] = useState<MemoryTab>('feed');
     const [feed, setFeed] = useState<FeedItem[]>([]);
     const [stats, setStats] = useState<MemoryStats>({ observationCount: 0, noteCount: 0, consolidatedAt: null, consolidationStatus: 'idle' });
     const [loading, setLoading] = useState(true);
@@ -29,7 +33,6 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddingNote, setIsAddingNote] = useState(false);
     const [isAggregating, setIsAggregating] = useState(false);
-    const [isViewingConsolidated, setIsViewingConsolidated] = useState(false);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -72,6 +75,11 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
         setSearchQuery(query);
     };
 
+    const openAggregate = () => {
+        setIsAggregating(v => !v);
+        setIsAddingNote(false);
+    };
+
     // Client-side filtering
     const filteredFeed = feed.filter(item => {
         if (sourceFilter === 'user' && (item.type !== 'note' || item.source === 'conversation')) return false;
@@ -88,24 +96,38 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
         return true;
     });
 
+    const TABS: { id: MemoryTab; label: string }[] = [
+        { id: 'feed', label: 'Feed' },
+        { id: 'consolidated', label: 'Consolidated' },
+    ];
+
     return (
         <div data-testid="repo-memory-section">
             <MemoryHeader
                 observationCount={stats.observationCount}
                 noteCount={stats.noteCount}
-                consolidatedAt={stats.consolidatedAt}
-                consolidationStatus={stats.consolidationStatus}
-                onAddNote={() => { setIsAddingNote(v => !v); setIsAggregating(false); setIsViewingConsolidated(false); }}
-                onAggregate={() => { setIsAggregating(v => !v); setIsAddingNote(false); setIsViewingConsolidated(false); }}
-                onViewConsolidated={() => { setIsViewingConsolidated(v => !v); setIsAddingNote(false); setIsAggregating(false); }}
+                onAddNote={() => { setActiveTab('feed'); setIsAddingNote(v => !v); setIsAggregating(false); }}
+                onAggregate={openAggregate}
             />
 
-            {isAddingNote && (
-                <AddNoteForm
-                    onSave={handleSaveNote}
-                    onCancel={() => setIsAddingNote(false)}
-                />
-            )}
+            {/* Sub-tab bar */}
+            <div className="flex items-center gap-1 mb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="memory-tab-bar">
+                {TABS.map(({ id, label }) => (
+                    <button
+                        key={id}
+                        className={cn(
+                            'h-8 px-3 text-sm transition-colors border-b-2',
+                            activeTab === id
+                                ? 'border-[#0078d4] text-[#0078d4] font-medium'
+                                : 'border-transparent text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+                        )}
+                        data-testid={`memory-tab-${id}`}
+                        onClick={() => setActiveTab(id)}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
 
             {isAggregating && (
                 <AggregatePanel
@@ -114,31 +136,48 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
                     consolidationProcessId={stats.consolidationProcessId}
                     consolidationTaskId={stats.consolidationTaskId}
                     onClose={() => setIsAggregating(false)}
-                    onDone={() => { setIsAggregating(false); setIsViewingConsolidated(false); refresh(); }}
+                    onDone={() => { setIsAggregating(false); refresh(); }}
                 />
             )}
 
-            {isViewingConsolidated && (
-                <ConsolidatedPanel
+            {/* Feed tab */}
+            {activeTab === 'feed' && (
+                <>
+                    {isAddingNote && (
+                        <AddNoteForm
+                            onSave={handleSaveNote}
+                            onCancel={() => setIsAddingNote(false)}
+                        />
+                    )}
+
+                    <FeedControls
+                        sourceFilter={sourceFilter}
+                        searchQuery={searchQuery}
+                        onChange={handleFilterChange}
+                    />
+
+                    {loading ? (
+                        <div className="text-xs text-[#848484] py-4 text-center" data-testid="memory-loading">
+                            Loading…
+                        </div>
+                    ) : error ? (
+                        <div className="text-xs text-red-500 py-4" data-testid="memory-error">{error}</div>
+                    ) : (
+                        <FeedList items={filteredFeed} onDelete={handleDelete} />
+                    )}
+                </>
+            )}
+
+            {/* Consolidated tab */}
+            {activeTab === 'consolidated' && (
+                <ConsolidatedTab
                     repoId={repoId}
-                    onClose={() => setIsViewingConsolidated(false)}
+                    consolidatedAt={stats.consolidatedAt}
+                    consolidationStatus={stats.consolidationStatus}
+                    consolidationProcessId={stats.consolidationProcessId}
+                    consolidationTaskId={stats.consolidationTaskId}
+                    onAggregate={openAggregate}
                 />
-            )}
-
-            <FeedControls
-                sourceFilter={sourceFilter}
-                searchQuery={searchQuery}
-                onChange={handleFilterChange}
-            />
-
-            {loading ? (
-                <div className="text-xs text-[#848484] py-4 text-center" data-testid="memory-loading">
-                    Loading…
-                </div>
-            ) : error ? (
-                <div className="text-xs text-red-500 py-4" data-testid="memory-error">{error}</div>
-            ) : (
-                <FeedList items={filteredFeed} onDelete={handleDelete} />
             )}
         </div>
     );
