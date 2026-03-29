@@ -41,21 +41,37 @@ import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
 
 /**
  * Builds the system message config for the given chat mode.
- * Both `ask` and `plan` modes inject the read-only system message, plus an
- * optional directive to save plan files in the repo's task folder.
+ * Both `ask` and `plan` modes inject the read-only system message.
  * `autopilot` (and any unknown mode) returns `undefined`.
+ *
+ * NOTE: The auto-folder location block is NOT included here.
+ * Use {@link appendAutoFolderBlock} after {@link withRepoInstructions}
+ * to ensure the canonical save-location directive is always last.
  */
 export function buildModeSystemMessage(
     mode: ChatMode | undefined,
-    autoFolderContext?: AutoFolderContext,
 ): SystemMessageConfig | undefined {
     if (mode !== 'ask' && mode !== 'plan') {
         return undefined;
     }
-    const planFolderSuffix = autoFolderContext
-        ? `\n\n${buildAutoFolderLocationBlock(toForwardSlashes(autoFolderContext.tasksRoot), autoFolderContext.existingFolders)}`
-        : '';
-    return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE + planFolderSuffix };
+    return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE };
+}
+
+/**
+ * Appends the auto-folder location block to an existing system message config.
+ * Must be called AFTER {@link withRepoInstructions} so the canonical
+ * save-location directive appears last and cannot be overridden by repo instructions.
+ */
+export function appendAutoFolderBlock(
+    systemMessage: SystemMessageConfig | undefined,
+    autoFolderContext: AutoFolderContext | undefined,
+): SystemMessageConfig | undefined {
+    if (!autoFolderContext || !systemMessage) return systemMessage;
+    const block = buildAutoFolderLocationBlock(
+        toForwardSlashes(autoFolderContext.tasksRoot),
+        autoFolderContext.existingFolders,
+    );
+    return { mode: 'append' as const, content: systemMessage.content + '\n\n' + block };
 }
 
 /**

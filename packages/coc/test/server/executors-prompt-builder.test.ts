@@ -57,6 +57,7 @@ vi.mock('../../src/server/suggest-follow-ups-tool', () => ({
 
 import {
     buildModeSystemMessage,
+    appendAutoFolderBlock,
     withRepoInstructions,
     findContextFileSuffix,
     extractPrompt,
@@ -91,10 +92,52 @@ describe('buildModeSystemMessage', () => {
         expect(result!.mode).toBe('append');
     });
 
-    it('appends auto-folder block when autoFolderContext provided', () => {
+    it('does NOT include auto-folder block (use appendAutoFolderBlock separately)', () => {
+        const result = buildModeSystemMessage('ask');
+        expect(result!.content).not.toContain('auto-folder-block');
+    });
+});
+
+// ============================================================================
+// appendAutoFolderBlock
+// ============================================================================
+
+describe('appendAutoFolderBlock', () => {
+    it('returns original when autoFolderContext is undefined', () => {
+        const msg = { mode: 'append' as const, content: 'base' };
+        expect(appendAutoFolderBlock(msg, undefined)).toBe(msg);
+    });
+
+    it('returns undefined when systemMessage is undefined', () => {
         const ctx = { tasksRoot: '/tasks', existingFolders: ['feat1'] };
-        const result = buildModeSystemMessage('ask', ctx);
+        expect(appendAutoFolderBlock(undefined, ctx)).toBeUndefined();
+    });
+
+    it('appends auto-folder block to system message', () => {
+        const msg = { mode: 'append' as const, content: 'base' };
+        const ctx = { tasksRoot: '/tasks', existingFolders: ['feat1'] };
+        const result = appendAutoFolderBlock(msg, ctx);
+        expect(result!.content).toContain('base');
         expect(result!.content).toContain('auto-folder-block');
+    });
+
+    it('auto-folder block appears after repo instructions when used with withRepoInstructions', async () => {
+        mockLoadInstructions.mockResolvedValue('repo custom instructions with Save to D:/projects/shortcuts');
+        const ctx = { tasksRoot: '/tasks', existingFolders: ['feat1'] };
+
+        const withRepo = await withRepoInstructions(
+            buildModeSystemMessage('plan'),
+            '/some/dir',
+            'plan',
+        );
+        const result = appendAutoFolderBlock(withRepo, ctx);
+
+        const content = result!.content;
+        const repoIdx = content.indexOf('repo custom instructions');
+        const folderIdx = content.indexOf('auto-folder-block');
+        expect(repoIdx).toBeGreaterThan(-1);
+        expect(folderIdx).toBeGreaterThan(-1);
+        expect(folderIdx).toBeGreaterThan(repoIdx);
     });
 });
 

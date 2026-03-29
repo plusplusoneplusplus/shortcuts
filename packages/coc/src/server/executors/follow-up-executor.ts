@@ -31,6 +31,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import {
     buildModeSystemMessage,
+    appendAutoFolderBlock,
     withRepoInstructions,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
@@ -151,10 +152,13 @@ export class FollowUpExecutor extends BaseExecutor {
             const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
             autoFolderContextForFollowUp = { tasksRoot, existingFolders };
         }
-        const systemMessage = await withRepoInstructions(
-            buildModeSystemMessage(currentMode, autoFolderContextForFollowUp),
-            workingDirectory,
-            currentMode
+        const systemMessage = appendAutoFolderBlock(
+            await withRepoInstructions(
+                buildModeSystemMessage(currentMode),
+                workingDirectory,
+                currentMode,
+            ),
+            autoFolderContextForFollowUp,
         );
 
         const { skillDirectories, disabledSkills } = await this._resolveSkillConfig(wsId, workingDirectory);

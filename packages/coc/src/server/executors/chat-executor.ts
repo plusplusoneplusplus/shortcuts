@@ -20,6 +20,7 @@ import type {
 import type { ChatPayload } from '../task-types';
 import {
     buildModeSystemMessage,
+    appendAutoFolderBlock,
     withRepoInstructions,
     buildFollowUpSuggestionsAddon,
 } from './prompt-builder';
@@ -52,10 +53,13 @@ export class ChatExecutor extends ChatBaseExecutor {
             );
         }
 
-        const systemMessage = await withRepoInstructions(
-            buildModeSystemMessage('ask', autoFolderContext),
-            workingDirectory,
-            'ask',
+        const systemMessage = appendAutoFolderBlock(
+            await withRepoInstructions(
+                buildModeSystemMessage('ask'),
+                workingDirectory,
+                'ask',
+            ),
+            autoFolderContext,
         );
 
         const { tools, suffix } = buildFollowUpSuggestionsAddon(
