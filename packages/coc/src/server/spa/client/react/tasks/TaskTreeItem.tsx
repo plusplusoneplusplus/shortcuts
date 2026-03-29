@@ -13,6 +13,7 @@ export interface TaskTreeItemProps {
     isSelected: boolean;
     isOpen: boolean;
     isActiveFolder?: boolean;
+    isPrimaryRoot?: boolean;
     commentCount: number;
     queueRunning: number;
     folderQueueCount?: number;
@@ -67,6 +68,7 @@ export function TaskTreeItem({
     isSelected,
     isOpen,
     isActiveFolder,
+    isPrimaryRoot,
     commentCount,
     queueRunning,
     folderQueueCount,
@@ -105,7 +107,9 @@ export function TaskTreeItem({
     const isArchived = isTaskDocument(item) ? item.isArchived : isTaskDocumentGroup(item) ? item.isArchived : false;
     const isFuture = status === 'future';
     const isArchiveFolder = isFolder && ((item as TaskFolder).relativePath === 'archive' || (item as TaskFolder).name === 'archive');
-    const tooltip = !isFolder ? buildFileTooltip(path, commentCount, status) : undefined;
+    const tooltip = isFolder
+        ? ((item as TaskFolder).folderPath || undefined)
+        : buildFileTooltip(path, commentCount, status);
 
     const handleClick = (e: React.MouseEvent) => {
         if (isFolder) {
@@ -294,6 +298,16 @@ export function TaskTreeItem({
                     title={`${folderMdCount} markdown file${folderMdCount === 1 ? '' : 's'} in folder`}
                 >
                     {folderMdCount}
+                </span>
+            )}
+
+            {/* Primary root badge */}
+            {isPrimaryRoot && (
+                <span
+                    className="flex-shrink-0 text-[9px] text-[#848484] dark:text-[#666] px-1 py-px rounded border border-[#d0d0d0] dark:border-[#444]"
+                    data-testid="badge-default"
+                >
+                    default
                 </span>
             )}
 

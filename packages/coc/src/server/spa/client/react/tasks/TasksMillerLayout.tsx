@@ -18,6 +18,7 @@ interface TasksMillerLayoutProps {
     commentCounts: Record<string, number>;
     wsId: string;
     tasksFolder: string;
+    primaryFolderPath?: string;
     initialFolderPath: string | null;
     initialFilePath: string | null;
     initialViewMode: 'review' | 'source' | null;
@@ -44,6 +45,7 @@ export function TasksMillerLayout({
     commentCounts,
     wsId,
     tasksFolder,
+    primaryFolderPath,
     initialFolderPath,
     initialFilePath,
     initialViewMode,
@@ -87,6 +89,7 @@ export function TasksMillerLayout({
                             commentCounts={commentCounts}
                             wsId={wsId}
                             tasksFolder={tasksFolder}
+                            primaryFolderPath={primaryFolderPath}
                             initialFolderPath={initialFolderPath}
                             initialFilePath={initialFilePath}
                             navigateToFilePath={navigateToFilePath}

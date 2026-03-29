@@ -135,7 +135,7 @@ describe('resolveAllTaskRoots', () => {
         );
         expect(roots).toHaveLength(2);
         expect(roots[1].absolutePath).toBe(path.resolve('/extra/tasks'));
-        expect(roots[1].label).toBe('tasks');
+        expect(roots[1].label).toBe(path.join('extra', 'tasks'));
     });
 
     it('resolves relative additional paths against rootPath', () => {

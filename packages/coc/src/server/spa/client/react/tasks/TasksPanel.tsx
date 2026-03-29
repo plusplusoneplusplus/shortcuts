@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
-import { useTaskTree, filterFolderTree, isDocumentMatchingFilter, type TaskStatusValue, STATUS_PILLS } from '../hooks/useTaskTree';
+import { useTaskTree, filterFolderTree, isDocumentMatchingFilter, type TaskStatusValue, type TaskFolder, STATUS_PILLS } from '../hooks/useTaskTree';
 import { fetchApi } from '../hooks/useApi';
 import { useFolderActions } from '../hooks/useFolderActions';
 import { useFileActions } from '../hooks/useFileActions';
@@ -53,6 +53,16 @@ function scrollToEnd(el: HTMLElement | null) {
     });
 }
 
+function findFolderByKey(tree: TaskFolder, key: string): TaskFolder | null {
+    const k = (tree.relativePath || tree.name).replace(/\\/g, '/');
+    if (k === key) return tree;
+    for (const child of tree.children) {
+        const found = findFolderByKey(child, key);
+        if (found) return found;
+    }
+    return null;
+}
+
 function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps) {
     const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
     const { openFilePath, setOpenFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
@@ -62,11 +72,16 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const [toolbarOverflowOpen, setToolbarOverflowOpen] = useState(false);
     const [statusFilter, setStatusFilter] = useState<TaskStatusValue[]>([]);
     const [tasksFolder, setTasksFolder] = useState('.vscode/tasks');
+    const [folderPaths, setFolderPaths] = useState<string[]>([]);
     useEffect(() => {
         fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/settings`)
-            .then((data: any) => { if (data?.folderPath) setTasksFolder(data.folderPath); })
+            .then((data: any) => {
+                if (data?.folderPath) setTasksFolder(data.folderPath);
+                setFolderPaths(data?.folderPaths ?? []);
+            })
             .catch(() => {});
     }, [wsId]);
+    const primaryFolderPath = tasksFolder;
 
     const { dispatch: queueDispatch } = useQueue();
     const { addToast } = useGlobalToast();
@@ -180,12 +195,14 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         );
     }
 
+    const activeFolder = selectedFolderPath ? (findFolderByKey(tree, selectedFolderPath) ?? tree) : tree;
+
     return (
         <div className="flex flex-col h-full">
             <TasksToolbar
                 isMobile={isMobile}
-                onNewTask={() => folderDlg.setFolderDialog({ action: 'create-task', folder: tree, submitting: false })}
-                onNewFolder={() => folderDlg.setFolderDialog({ action: 'create-subfolder', folder: tree, submitting: false })}
+                onNewTask={() => folderDlg.setFolderDialog({ action: 'create-task', folder: activeFolder, submitting: false })}
+                onNewFolder={() => folderDlg.setFolderDialog({ action: 'create-subfolder', folder: activeFolder, submitting: false })}
                 undoAvailable={undoAvailable}
                 undoInFlight={undoInFlight}
                 onUndoArchive={undoLastArchive}
@@ -242,6 +259,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 commentCounts={commentCounts}
                 wsId={wsId}
                 tasksFolder={tasksFolder}
+                primaryFolderPath={primaryFolderPath}
                 initialFolderPath={initialParams.initialFolderPath}
                 initialFilePath={initialParams.initialFilePath}
                 initialViewMode={initialParams.initialViewMode}

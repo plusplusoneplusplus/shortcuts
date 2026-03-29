@@ -11,6 +11,8 @@ import { fetchApi } from './useApi';
 export interface TaskFolder {
     name: string;
     relativePath: string;
+    /** Absolute path to the folder (populated by the server) */
+    folderPath?: string;
     children: TaskFolder[];
     documentGroups: TaskDocumentGroup[];
     singleDocuments: TaskDocument[];

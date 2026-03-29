@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { resolveTaskRoot, ensureTaskRoot } from '../../src/server/task-root-resolver';
+import { resolveTaskRoot, ensureTaskRoot, buildRootLabel, resolveAllTaskRoots } from '../../src/server/task-root-resolver';
 
 describe('task-root-resolver', () => {
     let tmpDir: string;
@@ -63,5 +63,41 @@ describe('task-root-resolver', () => {
     it('resolveTaskRoot performs no I/O (non-existent dataDir does not throw)', () => {
         const nonExistent = path.join(tmpDir, 'does', 'not', 'exist');
         expect(() => resolveTaskRoot({ dataDir: nonExistent, rootPath: '/any', workspaceId: 'ws-test' })).not.toThrow();
+    });
+
+    describe('buildRootLabel', () => {
+        it('includes parent and basename segments', () => {
+            const label = buildRootLabel(path.join('/home', 'user', '.coc', 'repos', 'ws-kss6a7', 'tasks'));
+            expect(label).toBe(path.join('ws-kss6a7', 'tasks'));
+        });
+
+        it('distinguishes roots with same basename', () => {
+            const a = buildRootLabel(path.join('/data', 'repos', 'ws-abc', 'tasks'));
+            const b = buildRootLabel(path.join('/project', '.vscode', 'tasks'));
+            expect(a).not.toBe(b);
+            expect(a).toBe(path.join('ws-abc', 'tasks'));
+            expect(b).toBe(path.join('.vscode', 'tasks'));
+        });
+    });
+
+    describe('resolveAllTaskRoots', () => {
+        it('returns parent/basename labels instead of bare basename', () => {
+            const roots = resolveAllTaskRoots(
+                { dataDir: '/data', rootPath: '/my/repo', workspaceId: 'ws-test' },
+                ['.vscode/tasks'],
+            );
+            expect(roots).toHaveLength(2);
+            expect(roots[0].label).toBe(path.join('ws-test', 'tasks'));
+            expect(roots[1].label).toBe(path.join('.vscode', 'tasks'));
+        });
+
+        it('returns a single root when no additional paths provided', () => {
+            const roots = resolveAllTaskRoots(
+                { dataDir: '/data', rootPath: '/my/repo', workspaceId: 'ws-test' },
+                [],
+            );
+            expect(roots).toHaveLength(1);
+            expect(roots[0].label).toBe(path.join('ws-test', 'tasks'));
+        });
     });
 });
