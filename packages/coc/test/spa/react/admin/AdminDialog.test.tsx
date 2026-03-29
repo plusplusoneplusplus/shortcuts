@@ -10,9 +10,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
 import { AdminDialog } from '../../../../src/server/spa/client/react/admin/AdminDialog';
 import { mockViewport } from '../../helpers/viewport-mock';
+import { renderWithProviders } from '../../react/test-utils';
 
 // Stub out all the fetch calls AdminPanel makes on mount
 beforeEach(() => {
@@ -29,7 +29,7 @@ afterEach(() => {
 describe('AdminDialog scrollability regression', () => {
     it('renders the dialog when open=true', () => {
         mockViewport(1280);
-        const { unmount } = render(<AdminDialog open={true} onClose={vi.fn()} />);
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={vi.fn()} />);
         const dialog = document.getElementById('admin-dialog');
         expect(dialog).not.toBeNull();
         unmount();
@@ -37,7 +37,7 @@ describe('AdminDialog scrollability regression', () => {
 
     it('does NOT render when open=false', () => {
         mockViewport(1280);
-        const { unmount } = render(<AdminDialog open={false} onClose={vi.fn()} />);
+        const { unmount } = renderWithProviders(<AdminDialog open={false} onClose={vi.fn()} />);
         const dialog = document.getElementById('admin-dialog');
         expect(dialog).toBeNull();
         unmount();
@@ -45,7 +45,7 @@ describe('AdminDialog scrollability regression', () => {
 
     it('AdminPanel is a direct child of the Dialog content wrapper (no extra scroll div wrapper)', () => {
         mockViewport(1280);
-        const { unmount } = render(<AdminDialog open={true} onClose={vi.fn()} />);
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={vi.fn()} />);
 
         // The admin page content div rendered by AdminPanel
         const adminContent = document.getElementById('admin-page-content');
@@ -70,7 +70,7 @@ describe('AdminDialog scrollability regression', () => {
 
     it('Dialog panel has max-h-[90vh] and overflow-hidden to constrain tall content', () => {
         mockViewport(1280);
-        const { unmount } = render(<AdminDialog open={true} onClose={vi.fn()} />);
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={vi.fn()} />);
 
         const overlay = document.getElementById('admin-dialog') as HTMLElement;
         expect(overlay).not.toBeNull();
@@ -88,7 +88,7 @@ describe('AdminDialog scrollability regression', () => {
         // Previously Dialog's desktop content wrapper lacked overflow-y-auto + flex-1 + min-h-0,
         // making the admin page unscrollable.
         mockViewport(1280);
-        const { unmount } = render(<AdminDialog open={true} onClose={vi.fn()} />);
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={vi.fn()} />);
 
         const adminContent = document.getElementById('admin-page-content');
         expect(adminContent).not.toBeNull();

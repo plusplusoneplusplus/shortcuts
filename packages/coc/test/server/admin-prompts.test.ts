@@ -6,15 +6,18 @@ import { describe, it, expect } from 'vitest';
 import { getBuiltInPrompts } from '../../src/server/admin-handler';
 
 describe('getBuiltInPrompts', () => {
-    it('returns all 7 built-in prompts', () => {
+    it('returns all 10 built-in prompts', () => {
         const prompts = getBuiltInPrompts();
         const ids = Object.keys(prompts);
-        expect(ids).toHaveLength(7);
+        expect(ids).toHaveLength(10);
         expect(ids).toContain('read-only-mode');
         expect(ids).toContain('task-creation');
         expect(ids).toContain('plan-generation');
         expect(ids).toContain('skill-prompt-wrapper');
         expect(ids).toContain('memory-consolidation');
+        expect(ids).toContain('memory-consolidation-sections');
+        expect(ids).toContain('memory-identifier-preservation');
+        expect(ids).toContain('memory-language-preservation');
         expect(ids).toContain('tool-call-cache');
         expect(ids).toContain('follow-up-suggestions');
     });
@@ -47,10 +50,10 @@ describe('getBuiltInPrompts', () => {
         expect(pipelinePrompts).toHaveLength(4);
     });
 
-    it('Memory group contains 2 prompts', () => {
+    it('Memory group contains 5 prompts', () => {
         const prompts = getBuiltInPrompts();
         const memoryPrompts = Object.values(prompts).filter(p => p.group === 'Memory');
-        expect(memoryPrompts).toHaveLength(2);
+        expect(memoryPrompts).toHaveLength(5);
     });
 
     it('UI group contains 1 prompt', () => {
