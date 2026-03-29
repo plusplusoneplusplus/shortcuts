@@ -121,8 +121,8 @@ describe('Bundle Configuration', () => {
             expect(pkg.bin).toEqual({ 'deep-wiki': './dist/index.js' });
         });
 
-        it('should have engines requiring node >= 20', () => {
-            expect(pkg.engines).toEqual({ node: '>=20' });
+        it('should have engines requiring node >= 24', () => {
+            expect(pkg.engines).toEqual({ node: '>=24' });
         });
 
         it('should have build:bundle script', () => {
