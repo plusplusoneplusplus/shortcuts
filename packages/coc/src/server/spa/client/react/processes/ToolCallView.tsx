@@ -147,6 +147,16 @@ function getToolSummary(toolName: string, args: any): string {
             if (args.path) parts.push(`in ${shortenPath(args.path)}`);
             return parts.join(' ');
         }
+        case 'sql': {
+            if (typeof args.description === 'string' && args.description.trim()) {
+                return args.description.trim();
+            }
+            if (typeof args.query === 'string' && args.query.trim()) {
+                const q = args.query.trim();
+                return q.length > 80 ? `${q.slice(0, 77)}...` : q;
+            }
+            return '';
+        }
         case 'skill': {
             if (args.name) return args.name;
             if (args.skill_name) return args.skill_name;
@@ -415,6 +425,7 @@ export function ToolCallView({
     const visibleResult = isResultTruncated ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated)` : resultText;
 
     const isShellLike = name === 'bash' || name === 'shell' || name === 'powershell';
+    const isSql = name === 'sql';
 
     const bashDescription = isShellLike && argsObj && typeof argsObj === 'object' && argsObj.description
         ? String(argsObj.description)
@@ -429,6 +440,19 @@ export function ToolCallView({
         : null;
     const bashOptionsText = bashOptions && Object.keys(bashOptions).length > 0 ? JSON.stringify(bashOptions, null, 2) : '';
 
+    const sqlDescription = isSql && argsObj && typeof argsObj === 'object' && argsObj.description
+        ? String(argsObj.description)
+        : '';
+    const sqlQuery = isSql && argsObj && typeof argsObj === 'object' && argsObj.query
+        ? String(argsObj.query)
+        : '';
+    const sqlOptions = isSql && argsObj && typeof argsObj === 'object'
+        ? Object.fromEntries(
+            Object.entries(argsObj).filter(([key]) => key !== 'description' && key !== 'query')
+        )
+        : null;
+    const sqlOptionsText = sqlOptions && Object.keys(sqlOptions).length > 0 ? JSON.stringify(sqlOptions, null, 2) : '';
+
     const taskCompleteSummary = isTaskComplete
         ? (resultText || (argsObj && typeof argsObj.summary === 'string' ? argsObj.summary : ''))
         : '';
@@ -437,7 +461,7 @@ export function ToolCallView({
         return renderMarkdownToHtml(taskCompleteSummary);
     }, [isTaskComplete, taskCompleteSummary]);
 
-    const hasHoverResult = (name === 'task' || name === 'read_agent' || name === 'view' || isShellLike || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit') && !!resultText;
+    const hasHoverResult = (name === 'task' || name === 'read_agent' || name === 'view' || isShellLike || isSql || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit') && !!resultText;
 
     const clearTimers = useCallback(() => {
         if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
@@ -581,6 +605,30 @@ export function ToolCallView({
                             </pre>
                         </div>
                     )}
+                    {isSql && sqlDescription && (
+                        <div>
+                            <div className="text-[10px] uppercase text-[#848484] mb-0.5">Description</div>
+                            <div className="text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                {sqlDescription}
+                            </div>
+                        </div>
+                    )}
+                    {isSql && sqlQuery && (
+                        <div>
+                            <div className="text-[10px] uppercase text-[#848484] mb-0.5">Query</div>
+                            <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                <code>{sqlQuery}</code>
+                            </pre>
+                        </div>
+                    )}
+                    {isSql && sqlOptionsText && (
+                        <div>
+                            <div className="text-[10px] uppercase text-[#848484] mb-0.5">Options</div>
+                            <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                <code>{sqlOptionsText}</code>
+                            </pre>
+                        </div>
+                    )}
                     {name === 'edit' && argsObj && (
                         <EditToolView args={argsObj} />
                     )}
@@ -590,7 +638,7 @@ export function ToolCallView({
                     {name === 'view' && argsObj && (
                         <ViewToolView args={argsObj} result={visibleResult} />
                     )}
-                    {!isShellLike && name !== 'edit' && name !== 'create' && name !== 'view' && !isTaskComplete && args && (
+                    {!isShellLike && !isSql && name !== 'edit' && name !== 'create' && name !== 'view' && !isTaskComplete && args && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Arguments</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
