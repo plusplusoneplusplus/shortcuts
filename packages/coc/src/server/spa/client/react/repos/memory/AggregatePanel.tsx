@@ -12,6 +12,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../shared/Dialog';
 import { memoryApi } from './memoryApi';
 import { getApiBase } from '../../utils/config';
+import { useModels } from '../../hooks/useModels';
 
 interface AggregatePanelProps {
     repoId: string;
@@ -48,10 +49,14 @@ export function AggregatePanel({
     onClose,
     onDone,
 }: AggregatePanelProps) {
+    const { models: modelInfos } = useModels();
+    const enabledModels = modelInfos.filter(m => m.enabled);
+    const modelIds = (enabledModels.length > 0 ? enabledModels : modelInfos).map(m => m.id);
+
     const [phase, setPhase] = useState<AggregatePhase>('idle');
     const [includeNotes, setIncludeNotes] = useState(true);
     const [includeAi, setIncludeAi] = useState(true);
-    const [model, setModel] = useState('claude-sonnet-4.6');
+    const [model, setModel] = useState('');
     const [streamOutput, setStreamOutput] = useState('');
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [error, setError] = useState<string | null>(null);
@@ -333,13 +338,15 @@ export function AggregatePanel({
                             </label>
                             <div className="flex items-center gap-1.5 ml-auto">
                                 <span className="text-[#848484]">Model:</span>
-                                <input
-                                    type="text"
+                                <select
                                     value={model}
                                     onChange={e => setModel(e.target.value)}
                                     className="text-[11px] px-1.5 py-0.5 border border-[#c8c8c8] dark:border-[#555] rounded bg-transparent focus:outline-none focus:border-[#0078d4] w-40"
-                                    data-testid="aggregate-model-input"
-                                />
+                                    data-testid="aggregate-model-select"
+                                >
+                                    <option value="">Default</option>
+                                    {modelIds.map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
                             </div>
                         </div>
                         {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
