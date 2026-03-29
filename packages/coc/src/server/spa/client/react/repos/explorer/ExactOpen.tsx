@@ -1,6 +1,7 @@
 /**
  * ExactOpen — Ctrl+O file opener with exact/prefix filename matching.
  * Debounces keystrokes and delegates search to the server-side /search endpoint.
+ * Supports absolute paths within trusted directories (e.g., ~/.copilot).
  * Portal-rendered to document.body.
  */
 
@@ -8,6 +9,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { fetchApi } from '../../hooks/useApi';
 import { cn } from '../../shared/cn';
+
+/** Prefix used to mark trusted absolute-path file selections. */
+export const TRUSTED_PATH_PREFIX = '__trusted__:';
 
 export interface ExactOpenProps {
     workspaceId: string;
@@ -41,11 +45,23 @@ export function exactMatchScore(query: string, filePath: string): 0 | 1 | 2 {
     return 0;
 }
 
+/** Detect whether a query looks like an absolute file path (cross-platform). */
+export function isAbsolutePath(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed) return false;
+    // Unix absolute or home-dir
+    if (trimmed.startsWith('/') || trimmed.startsWith('~/')) return true;
+    // Windows drive letter, e.g. C:\ or C:/
+    if (/^[A-Za-z]:[/\\]/.test(trimmed)) return true;
+    return false;
+}
+
 export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpenProps) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(0);
+    const [isTrustedPath, setIsTrustedPath] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,6 +74,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
         setResults([]);
         setHighlightIndex(0);
         setLoading(false);
+        setIsTrustedPath(false);
     }, [open]);
 
     // Debounced server-side search on query change
@@ -70,9 +87,38 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
         if (!query.trim()) {
             setResults([]);
             setLoading(false);
+            setIsTrustedPath(false);
             return;
         }
 
+        // Absolute path: probe the trusted-fs blob endpoint instead of repo search
+        if (isAbsolutePath(query.trim())) {
+            debounceRef.current = setTimeout(() => {
+                const abort = new AbortController();
+                abortRef.current = abort;
+                setLoading(true);
+                fetchApi(`/api/fs/blob?path=${encodeURIComponent(query.trim())}`, { signal: abort.signal, method: 'GET' })
+                    .then(() => {
+                        if (abort.signal.aborted) return;
+                        setResults([query.trim()]);
+                        setIsTrustedPath(true);
+                    })
+                    .catch(() => {
+                        if (abort.signal.aborted) return;
+                        setResults([]);
+                        setIsTrustedPath(false);
+                    })
+                    .finally(() => {
+                        if (!abort.signal.aborted) setLoading(false);
+                    });
+            }, 200);
+
+            return () => {
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+            };
+        }
+
+        setIsTrustedPath(false);
         debounceRef.current = setTimeout(() => {
             const abort = new AbortController();
             abortRef.current = abort;
@@ -123,9 +169,10 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
     }, [highlightIndex]);
 
     const handleSelect = useCallback((filePath: string) => {
-        onFileSelect(filePath);
+        const selected = isTrustedPath ? TRUSTED_PATH_PREFIX + filePath : filePath;
+        onFileSelect(selected);
         onClose();
-    }, [onFileSelect, onClose]);
+    }, [onFileSelect, onClose, isTrustedPath]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'ArrowDown') {
@@ -197,9 +244,14 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
                             ✕
                         </button>
                     )}
-                    {hasExactMatch && (
+                    {hasExactMatch && !isTrustedPath && (
                         <span className="text-[10px] text-[#4caf50] ml-2" data-testid="exact-open-exact-badge">
                             exact
+                        </span>
+                    )}
+                    {isTrustedPath && results.length > 0 && (
+                        <span className="text-[10px] text-[#0078d4] ml-2" data-testid="exact-open-trusted-badge">
+                            trusted file
                         </span>
                     )}
                 </div>
@@ -216,11 +268,11 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
                         </div>
                     ) : results.length === 0 ? (
                         <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="exact-open-no-results">
-                            No exact match
+                            {isAbsolutePath(query.trim()) ? 'File not found or outside trusted directories' : 'No exact match'}
                         </div>
                     ) : (
                         results.map((filePath, idx) => {
-                            const isExact = query.trim()
+                            const isExact = !isTrustedPath && query.trim()
                                 ? fileName(filePath).toLowerCase() === query.trim().toLowerCase()
                                 : false;
                             return (
@@ -236,7 +288,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
                                     onMouseEnter={() => setHighlightIndex(idx)}
                                     data-testid={`exact-open-item-${idx}`}
                                 >
-                                    <span className="text-xs mr-2 opacity-60">📄</span>
+                                    <span className="text-xs mr-2 opacity-60">{isTrustedPath ? '🔒' : '📄'}</span>
                                     <span className={cn(
                                         'font-medium truncate',
                                         isExact
@@ -245,11 +297,15 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
                                     )}>
                                         {fileName(filePath)}
                                     </span>
-                                    {dirName(filePath) && (
+                                    {isTrustedPath ? (
+                                        <span className="ml-2 text-xs text-[#848484] truncate flex-shrink-0">
+                                            {filePath}
+                                        </span>
+                                    ) : dirName(filePath) ? (
                                         <span className="ml-2 text-xs text-[#848484] truncate flex-shrink-0">
                                             {dirName(filePath)}
                                         </span>
-                                    )}
+                                    ) : null}
                                 </div>
                             );
                         })

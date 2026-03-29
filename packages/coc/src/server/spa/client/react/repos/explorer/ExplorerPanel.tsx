@@ -14,7 +14,7 @@ import { PreviewPane } from './PreviewPane';
 import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { QuickOpen } from './QuickOpen';
-import { ExactOpen } from './ExactOpen';
+import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 
@@ -188,6 +188,15 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     }, []);
 
     const handleQuickOpenSelect = useCallback((filePath: string) => {
+        // Trusted absolute-path from ExactOpen — skip tree expansion and hash update
+        if (filePath.startsWith(TRUSTED_PATH_PREFIX)) {
+            const absPath = filePath.slice(TRUSTED_PATH_PREFIX.length);
+            const name = exactFileName(absPath);
+            setSelectedPath(null);
+            setPreviewFile({ path: filePath, name });
+            return;
+        }
+
         const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
         setSelectedPath(filePath);
         setPreviewFile({ path: filePath, name });

@@ -13,10 +13,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchApi } from '../../hooks/useApi';
 import { Spinner, Button } from '../../shared';
 import { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
+import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 
 export interface PreviewPaneProps {
     repoId: string;
-    /** Relative path from repo root, e.g. "src/index.ts" */
+    /** Relative path from repo root, or prefixed with TRUSTED_PATH_PREFIX for absolute paths */
     filePath: string;
     /** File name for language detection, e.g. "index.ts" */
     fileName: string;
@@ -41,6 +42,10 @@ function formatFileSize(bytes: number): string {
 }
 
 export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: PreviewPaneProps) {
+    const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
+    const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
+    const effectiveReadOnly = readOnly || isTrusted;
+
     const [blob, setBlob] = useState<BlobResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -48,6 +53,10 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
+
+    const blobUrl = isTrusted
+        ? `/api/fs/blob?path=${encodeURIComponent(actualPath)}`
+        : `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(actualPath)}`;
 
     // Fetch blob on mount or path change; cancel in-flight on change
     useEffect(() => {
@@ -61,10 +70,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
         setIsDirty(false);
         setEditedContent('');
 
-        fetchApi(
-            `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
-            { signal: controller.signal },
-        )
+        fetchApi(blobUrl, { signal: controller.signal })
             .then((data: BlobResponse) => {
                 if (!controller.signal.aborted) {
                     setBlob(data);
@@ -83,7 +89,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
             });
 
         return () => controller.abort();
-    }, [repoId, filePath]);
+    }, [blobUrl]);
 
     const doRetry = () => {
         abortRef.current?.abort();
@@ -94,10 +100,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
         setBlob(null);
         setIsDirty(false);
         setEditedContent('');
-        fetchApi(
-            `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
-            { signal: controller.signal },
-        )
+        fetchApi(blobUrl, { signal: controller.signal })
             .then((data: BlobResponse) => {
                 if (!controller.signal.aborted) {
                     setBlob(data);
@@ -117,16 +120,17 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
     };
 
     const handleEditorChange = useCallback((value: string) => {
-        if (readOnly) return;
+        if (effectiveReadOnly) return;
         setEditedContent(value);
         setIsDirty(true);
-    }, [readOnly]);
+    }, [effectiveReadOnly]);
 
     const handleSave = useCallback(async () => {
+        if (isTrusted) return; // never save trusted files
         setIsSaving(true);
         try {
             await fetchApi(
-                `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
+                `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(actualPath)}`,
                 {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -139,7 +143,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
         } finally {
             setIsSaving(false);
         }
-    }, [repoId, filePath, editedContent]);
+    }, [repoId, actualPath, editedContent, isTrusted]);
 
     const isImage = blob?.encoding === 'base64' && blob.mimeType.startsWith('image/');
     const isBinary = blob?.encoding === 'base64' && !isImage;
@@ -165,7 +169,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
                     className="absolute top-2 right-6 z-10 flex items-center gap-1.5"
                     data-testid="preview-toolbar"
                 >
-                    {isDirty && !readOnly && (
+                    {isDirty && !effectiveReadOnly && (
                         <button
                             className="text-[10px] px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors shadow-sm"
                             onClick={handleSave}
@@ -175,7 +179,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
                             {isSaving ? 'Saving…' : 'Save'}
                         </button>
                     )}
-                    {isDirty && !readOnly && (
+                    {isDirty && !effectiveReadOnly && (
                         <span className="w-2 h-2 rounded-full bg-[#f59e0b] flex-shrink-0" title="Unsaved changes" data-testid="dirty-indicator" />
                     )}
                     {onClose && (
@@ -219,8 +223,8 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
                         value={isOversized ? displayContent : editedContent}
                         language={monacoLanguage}
                         onChange={handleEditorChange}
-                        onSave={readOnly ? undefined : handleSave}
-                        readOnly={readOnly}
+                        onSave={effectiveReadOnly ? undefined : handleSave}
+                        readOnly={effectiveReadOnly}
                     />
                 </div>
             ) : null}

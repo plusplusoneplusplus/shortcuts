@@ -33,6 +33,14 @@ describe('ExactOpen component', () => {
         it('exports fileName helper', () => {
             expect(source).toContain('export function fileName');
         });
+
+        it('exports isAbsolutePath helper', () => {
+            expect(source).toContain('export function isAbsolutePath');
+        });
+
+        it('exports TRUSTED_PATH_PREFIX constant', () => {
+            expect(source).toContain('export const TRUSTED_PATH_PREFIX');
+        });
     });
 
     describe('props', () => {
@@ -70,6 +78,10 @@ describe('ExactOpen component', () => {
         it('calls server-side search endpoint with query and limit', () => {
             expect(source).toContain('/search?q=');
             expect(source).toContain('limit=50');
+        });
+
+        it('calls /api/fs/blob endpoint for absolute paths', () => {
+            expect(source).toContain('/api/fs/blob?path=');
         });
     });
 
@@ -201,6 +213,19 @@ describe('ExactOpen component', () => {
         it('shows exact badge when exact match found', () => {
             expect(source).toContain('exact-open-exact-badge');
         });
+
+        it('shows trusted file badge for trusted paths', () => {
+            expect(source).toContain('exact-open-trusted-badge');
+            expect(source).toContain('trusted file');
+        });
+
+        it('shows lock icon for trusted path results', () => {
+            expect(source).toContain('🔒');
+        });
+
+        it('shows error message for absolute paths outside trusted dirs', () => {
+            expect(source).toContain('File not found or outside trusted directories');
+        });
     });
 
     describe('auto-focus', () => {
@@ -296,5 +321,46 @@ describe('exactMatchScore algorithm', () => {
             const none = exactMatchScore('xyz', 'src/index.ts');
             expect(prefix).toBeGreaterThan(none);
         });
+    });
+});
+
+describe('isAbsolutePath detection', () => {
+    let isAbsolutePath: (query: string) => boolean;
+
+    beforeAll(async () => {
+        const mod = await import(EXACT_OPEN_PATH.replace(/\.tsx$/, ''));
+        isAbsolutePath = mod.isAbsolutePath;
+    });
+
+    it('detects Unix absolute paths', () => {
+        expect(isAbsolutePath('/home/user/file.txt')).toBe(true);
+        expect(isAbsolutePath('/etc/config')).toBe(true);
+    });
+
+    it('detects home-dir paths (~)', () => {
+        expect(isAbsolutePath('~/.copilot/plan.md')).toBe(true);
+        expect(isAbsolutePath('~/Documents/file.txt')).toBe(true);
+    });
+
+    it('detects Windows drive letter paths', () => {
+        expect(isAbsolutePath('C:\\Users\\test')).toBe(true);
+        expect(isAbsolutePath('D:/projects/file.ts')).toBe(true);
+        expect(isAbsolutePath('c:\\lower')).toBe(true);
+    });
+
+    it('rejects relative paths', () => {
+        expect(isAbsolutePath('src/index.ts')).toBe(false);
+        expect(isAbsolutePath('file.txt')).toBe(false);
+        expect(isAbsolutePath('package.json')).toBe(false);
+    });
+
+    it('rejects empty string', () => {
+        expect(isAbsolutePath('')).toBe(false);
+        expect(isAbsolutePath('  ')).toBe(false);
+    });
+
+    it('handles whitespace trimming', () => {
+        expect(isAbsolutePath('  /usr/bin/node  ')).toBe(true);
+        expect(isAbsolutePath('  C:\\path  ')).toBe(true);
     });
 });

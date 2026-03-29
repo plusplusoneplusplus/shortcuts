@@ -18,8 +18,8 @@ describe('ExplorerPanel — Exact Open (Ctrl+O) integration', () => {
     });
 
     describe('ExactOpen import and rendering', () => {
-        it('imports ExactOpen component', () => {
-            expect(panelSource).toContain("import { ExactOpen } from './ExactOpen'");
+        it('imports ExactOpen component and TRUSTED_PATH_PREFIX', () => {
+            expect(panelSource).toContain("import { ExactOpen, TRUSTED_PATH_PREFIX");
         });
 
         it('renders ExactOpen component', () => {
@@ -89,6 +89,37 @@ describe('ExplorerPanel — Exact Open (Ctrl+O) integration', () => {
             expect(quickOpenIdx).toBeGreaterThan(-1);
             expect(exactOpenIdx).toBeGreaterThan(-1);
             expect(exactOpenIdx).toBeGreaterThan(quickOpenIdx);
+        });
+    });
+
+    describe('trusted path handling in handleQuickOpenSelect', () => {
+        it('detects TRUSTED_PATH_PREFIX in handleQuickOpenSelect', () => {
+            expect(panelSource).toContain('filePath.startsWith(TRUSTED_PATH_PREFIX)');
+        });
+
+        it('does not expand tree paths for trusted files', () => {
+            // The trusted path branch should NOT call setExpandedPaths
+            const handler = panelSource.match(/if \(filePath\.startsWith\(TRUSTED_PATH_PREFIX\)\)[\s\S]*?return;\s*\}/);
+            expect(handler).toBeTruthy();
+            expect(handler![0]).not.toContain('setExpandedPaths');
+        });
+
+        it('does not update location hash for trusted files', () => {
+            const handler = panelSource.match(/if \(filePath\.startsWith\(TRUSTED_PATH_PREFIX\)\)[\s\S]*?return;\s*\}/);
+            expect(handler).toBeTruthy();
+            expect(handler![0]).not.toContain('location.hash');
+        });
+
+        it('sets selectedPath to null for trusted files', () => {
+            const handler = panelSource.match(/if \(filePath\.startsWith\(TRUSTED_PATH_PREFIX\)\)[\s\S]*?return;\s*\}/);
+            expect(handler).toBeTruthy();
+            expect(handler![0]).toContain('setSelectedPath(null)');
+        });
+
+        it('sets previewFile with the full trusted-prefixed path', () => {
+            const handler = panelSource.match(/if \(filePath\.startsWith\(TRUSTED_PATH_PREFIX\)\)[\s\S]*?return;\s*\}/);
+            expect(handler).toBeTruthy();
+            expect(handler![0]).toContain('setPreviewFile');
         });
     });
 });

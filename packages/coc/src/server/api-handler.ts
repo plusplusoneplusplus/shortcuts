@@ -226,7 +226,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
         registerApiWorkspaceRoutes(ctx);
         registerApiGitRoutes(ctx);
-        registerApiFsRoutes(routes);
+        registerApiFsRoutes(routes, { dataDir: dataDir ?? undefined });
         registerApiProcessRoutes(ctx);
 
         // Register global skill routes first so /skills/all is matched
