@@ -29,9 +29,9 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         relativePath: 'go-deep'
     },
     {
-        name: 'summarize-chats',
-        description: 'Summarize CoC conversation process records, highlighting key topics, decisions, action items, and unresolved questions',
-        relativePath: 'summarize-chats'
+        name: 'coc-chat',
+        description: 'Access, search, analyze, and submit CoC conversation process records via disk or REST API',
+        relativePath: 'coc-chat'
     },
     {
         name: 'rethink',
