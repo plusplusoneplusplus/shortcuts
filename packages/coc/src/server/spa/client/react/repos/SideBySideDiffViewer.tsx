@@ -226,7 +226,10 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
         }, [enableComments]);
 
         const handleMouseDown = useCallback((e: React.MouseEvent) => {
-            if (e.button !== 0) return;
+            // On macOS, Ctrl+Click triggers a secondary-click (contextmenu) but fires
+            // a mousedown with button===0 and ctrlKey===true. Skip clearing the pending
+            // selection in that case so the contextmenu handler can still use it.
+            if (e.button !== 0 || e.ctrlKey) return;
             pendingSelectionRef.current = null;
             setToolbar(t => ({ ...t, visible: false }));
         }, []);

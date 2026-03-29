@@ -346,6 +346,31 @@ describe('SideBySideDiffViewer — DiffContextMenu', () => {
         expect(screen.getByTestId('context-menu')).toBeTruthy();
     });
 
+    it('macOS Ctrl+Click: context menu appears when mousedown has button=0 and ctrlKey=true', async () => {
+        // On macOS, Ctrl+Click triggers a secondary-click. The browser fires mousedown
+        // with button===0 and ctrlKey===true, followed by contextmenu. The pending
+        // selection must NOT be cleared in that case.
+        const { container } = render(
+            <SideBySideDiffViewer diff={SIMPLE_DIFF} enableComments />
+        );
+        const leftCol = container.querySelector<HTMLElement>('[data-split-side="left"][data-diff-line-index="5"]')!;
+        mockSelection({ startEl: leftCol, endEl: leftCol });
+
+        // Step 1: user completes drag selection with left button
+        await act(async () => { fireEvent.mouseUp(container.firstElementChild!, { button: 0 }); });
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+
+        // Step 2: macOS Ctrl+Click fires mousedown with button=0 + ctrlKey=true
+        await act(async () => { fireEvent.mouseDown(container.firstElementChild!, { button: 0, ctrlKey: true }); });
+
+        // Step 3: contextmenu event fires (secondary click)
+        await act(async () => {
+            fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200, ctrlKey: true });
+        });
+
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
+
     it('collapsed selection does not show context menu', async () => {
         const { container } = render(
             <SideBySideDiffViewer diff={SIMPLE_DIFF} enableComments />
