@@ -122,7 +122,7 @@ export class MemoryAggregateExecutor {
                 const noteLines = notes
                     .map(n => `- ${n.content}${n.tags.length > 0 ? ` [tags: ${n.tags.join(', ')}]` : ''}`)
                     .join('\n');
-                promptParts.push('## User Notes (treat as authoritative)\n' + noteLines);
+                promptParts.push('## User Notes (authoritative — always preserve unless explicitly contradicted)\n' + noteLines);
             }
             if (observations.length > 0) {
                 const obsLines = observations.map(o => `- ${o.pipeline}: ${o.content}`).join('\n');
@@ -130,16 +130,27 @@ export class MemoryAggregateExecutor {
             }
             promptParts.push(
                 '## Instructions\n' +
-                'Produce an updated memory document. Output ONLY the document itself — no preamble, no commentary, no summary of your process.\n' +
+                'Produce an updated memory document. Output ONLY the document itself — no preamble, no commentary.\n' +
                 'Start your response directly with the first markdown section header.\n\n' +
-                'Rules:\n' +
-                '- Deduplicate: merge similar or redundant facts\n' +
-                '- Resolve conflicts: user notes override AI observations\n' +
-                '- Prune: drop facts no longer relevant\n' +
-                '- Categorize: group by topic (conventions, architecture, patterns, tools, gotchas)\n' +
+                'Write the document in the primary language used in the observations.\n' +
+                'Do not translate or alter code, file paths, identifiers, or error messages.\n\n' +
+                '### Required Sections (use these exact headings, in this order)\n' +
+                '## Conventions\n' +
+                '## Architecture\n' +
+                '## Patterns & Tools\n' +
+                '## Gotchas\n' +
+                '## Pending Decisions\n\n' +
+                '### Identifier Preservation\n' +
+                'Preserve all opaque identifiers exactly as written (no shortening or reconstruction),\n' +
+                'including UUIDs, hashes, IDs, tokens, hostnames, IPs, ports, URLs, and file names.\n\n' +
+                '### Consolidation Rules\n' +
+                '- Deduplicate: merge similar or redundant facts into a single bullet\n' +
+                '- Resolve conflicts: user notes override AI observations; newer observations override older ones\n' +
+                '- Prune: drop facts that appear no longer relevant or were superseded\n' +
                 '- Keep it concise: target <100 facts total\n' +
-                '- Use markdown with clear section headers\n' +
-                '- Each fact must be a bullet point (`- `) under a section header',
+                '- Each fact must be a bullet point (`- `) under a section header\n' +
+                '- If a section has no facts, write "None." under it\n' +
+                '- Do not omit unresolved questions or pending decisions',
             );
 
             const prompt = promptParts.join('\n\n');

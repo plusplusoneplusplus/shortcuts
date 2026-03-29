@@ -118,9 +118,37 @@ describe('MemoryAggregator', () => {
 
             const prompt = vi.mocked(mockAI).mock.calls[0][0];
             expect(prompt).toContain('Output ONLY the document itself');
-            expect(prompt).toContain('no preamble, no commentary, no summary of your process');
+            expect(prompt).toContain('no preamble, no commentary');
             expect(prompt).toContain('Start your response directly with the first markdown section header');
             expect(prompt).toContain('Each fact must be a bullet point');
+        });
+
+        it('prompt includes required sections and identifier preservation', async () => {
+            vi.mocked(mockStore.listRaw).mockResolvedValue(['a.md']);
+            vi.mocked(mockStore.readRaw).mockResolvedValue(makeRawObservation('a.md', 'obs'));
+
+            await aggregator.aggregate(mockAI, 'system');
+
+            const prompt = vi.mocked(mockAI).mock.calls[0][0];
+            expect(prompt).toContain('### Required Sections');
+            expect(prompt).toContain('## Conventions');
+            expect(prompt).toContain('## Architecture');
+            expect(prompt).toContain('## Patterns & Tools');
+            expect(prompt).toContain('## Gotchas');
+            expect(prompt).toContain('## Pending Decisions');
+            expect(prompt).toContain('### Identifier Preservation');
+            expect(prompt).toContain('Preserve all opaque identifiers exactly as written');
+        });
+
+        it('prompt includes language preservation instructions', async () => {
+            vi.mocked(mockStore.listRaw).mockResolvedValue(['a.md']);
+            vi.mocked(mockStore.readRaw).mockResolvedValue(makeRawObservation('a.md', 'obs'));
+
+            await aggregator.aggregate(mockAI, 'system');
+
+            const prompt = vi.mocked(mockAI).mock.calls[0][0];
+            expect(prompt).toContain('Write the document in the primary language used in the observations');
+            expect(prompt).toContain('Do not translate or alter code, file paths, identifiers, or error messages');
         });
 
         it('includes existing consolidated in prompt', async () => {

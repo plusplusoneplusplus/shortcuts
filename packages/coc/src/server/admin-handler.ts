@@ -586,20 +586,63 @@ The plan file should include:
             title: 'Memory Consolidation',
             group: 'Memory',
             source: 'forge/memory/memory-aggregator.ts',
-            description: 'Rules for deduplication, conflict resolution, pruning (<100 facts)',
+            description: 'Structured prompt for deduplication, conflict resolution, pruning (<100 facts) with required sections',
             text: `## Existing Memory
 \${existingMemory}
 
 ## New Observations (\${count} sessions)
 \${rawSection}
 
-Produce an updated memory document following these rules:
-- Deduplicate: merge similar or redundant facts
+## Instructions
+Produce an updated memory document. Output ONLY the document itself — no preamble, no commentary.
+Start your response directly with the first markdown section header.
+
+Write the document in the primary language used in the observations.
+Do not translate or alter code, file paths, identifiers, or error messages.
+
+### Required Sections (use these exact headings, in this order)
+## Conventions
+## Architecture
+## Patterns & Tools
+## Gotchas
+## Pending Decisions
+
+### Identifier Preservation
+Preserve all opaque identifiers exactly as written (no shortening or reconstruction),
+including UUIDs, hashes, IDs, tokens, hostnames, IPs, ports, URLs, and file names.
+
+### Consolidation Rules
+- Deduplicate: merge similar or redundant facts into a single bullet
 - Resolve conflicts: newer observations override older ones
-- Prune: drop facts that appear no longer relevant
-- Categorize: group by topic (conventions, architecture, patterns, tools, gotchas)
+- Prune: drop facts that appear no longer relevant or were superseded
 - Keep it concise: target <100 facts total
-- Use markdown with clear section headers`,
+- Each fact must be a bullet point (\`- \`) under a section header
+- If a section has no facts, write "None." under it
+- Do not omit unresolved questions or pending decisions`,
+        },
+        'memory-consolidation-sections': {
+            id: 'memory-consolidation-sections',
+            title: 'Memory Consolidation — Required Sections',
+            group: 'Memory',
+            source: 'forge/memory/memory-aggregator.ts',
+            description: 'Required section headings for consolidated memory documents',
+            text: `## Conventions\n## Architecture\n## Patterns & Tools\n## Gotchas\n## Pending Decisions\n\nSections must appear in this order. If a section has no facts, write "None." under it.`,
+        },
+        'memory-identifier-preservation': {
+            id: 'memory-identifier-preservation',
+            title: 'Memory — Identifier Preservation',
+            group: 'Memory',
+            source: 'forge/memory/memory-aggregator.ts',
+            description: 'Instructions to preserve opaque identifiers exactly as written during consolidation',
+            text: 'Preserve all opaque identifiers exactly as written (no shortening or reconstruction), including UUIDs, hashes, IDs, tokens, hostnames, IPs, ports, URLs, and file names.',
+        },
+        'memory-language-preservation': {
+            id: 'memory-language-preservation',
+            title: 'Memory — Language Preservation',
+            group: 'Memory',
+            source: 'forge/memory/memory-aggregator.ts',
+            description: 'Instructions to preserve conversation language and code artifacts during consolidation',
+            text: 'Write the document in the primary language used in the observations.\nFocus on factual content: what was discussed, decisions made, and current state.\nDo not translate or alter code, file paths, identifiers, or error messages.',
         },
         'tool-call-cache': {
             id: 'tool-call-cache',
