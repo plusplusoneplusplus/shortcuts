@@ -1111,7 +1111,7 @@ export { FileMemoryStore, computeRepoHash } from './memory';
 export { MemoryRetriever } from './memory';
 export { createWriteMemoryTool } from './memory';
 export type { WriteMemoryToolOptions, WriteMemoryArgs } from './memory';
-export { MemoryAggregator } from './memory';
+export { MemoryAggregator, MEMORY_CONSOLIDATION_INSTRUCTIONS } from './memory';
 export type { AggregatorOptions } from './memory';
 export { withMemory } from './memory';
 export type { WithMemoryOptions } from './memory';

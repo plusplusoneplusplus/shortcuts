@@ -11,6 +11,7 @@
 import * as crypto from 'crypto';
 import * as url from 'url';
 import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import { MEMORY_CONSOLIDATION_INSTRUCTIONS } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from './api-handler';
 import { handleAPIError, invalidJSON, badRequest, forbidden } from './errors';
 import type { Route } from './types';
@@ -587,38 +588,7 @@ The plan file should include:
             group: 'Memory',
             source: 'forge/memory/memory-aggregator.ts',
             description: 'Structured prompt for deduplication, conflict resolution, pruning (<100 facts) with required sections',
-            text: `## Existing Memory
-\${existingMemory}
-
-## New Observations (\${count} sessions)
-\${rawSection}
-
-## Instructions
-Produce an updated memory document. Output ONLY the document itself — no preamble, no commentary.
-Start your response directly with the first markdown section header.
-
-Write the document in the primary language used in the observations.
-Do not translate or alter code, file paths, identifiers, or error messages.
-
-### Required Sections (use these exact headings, in this order)
-## Conventions
-## Architecture
-## Patterns & Tools
-## Gotchas
-## Pending Decisions
-
-### Identifier Preservation
-Preserve all opaque identifiers exactly as written (no shortening or reconstruction),
-including UUIDs, hashes, IDs, tokens, hostnames, IPs, ports, URLs, and file names.
-
-### Consolidation Rules
-- Deduplicate: merge similar or redundant facts into a single bullet
-- Resolve conflicts: newer observations override older ones
-- Prune: drop facts that appear no longer relevant or were superseded
-- Keep it concise: target <100 facts total
-- Each fact must be a bullet point (\`- \`) under a section header
-- If a section has no facts, write "None." under it
-- Do not omit unresolved questions or pending decisions`,
+            text: `## Existing Memory\n\${existingMemory}\n\n## New Observations (\${count} sessions)\n\${rawSection}\n\n${MEMORY_CONSOLIDATION_INSTRUCTIONS}`,
         },
         'memory-consolidation-sections': {
             id: 'memory-consolidation-sections',
