@@ -48,7 +48,7 @@ export function getSessionIdFromProcess(process: any): string | null {
         || parseSessionIdFromResult(process.result);
 }
 
-function buildRows(process: any, turnsCount?: number): MetaRow[] {
+export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     if (!process) return [];
 
     const rows: MetaRow[] = [];

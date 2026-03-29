@@ -10,7 +10,8 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Badge, Card, Button, cn, FilterDropdown } from '../shared';
 import type { FilterItem } from '../shared';
 import { getApiBase } from '../utils/config';
-import { formatDuration, formatRelativeTime } from '../utils/format';
+import { copyToClipboard, formatDuration, formatRelativeTime } from '../utils/format';
+import { buildRows } from '../processes/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
@@ -108,6 +109,10 @@ export interface ActivityListPaneProps {
     fetchQueue: () => Promise<void>;
     /** Reason for the current pause (present when auto-paused due to task failure). */
     pauseReason?: { taskId: string; displayName: string; failedAt: string };
+}
+
+function formatMetadataText(task: any): string {
+    return buildRows(task).map(r => `${r.label}: ${r.value}`).join('\n');
 }
 
 export function ActivityListPane({
@@ -480,6 +485,18 @@ export function ActivityListPane({
                         } catch { /* network error — silently ignored, matches existing patterns */ }
                     },
                 }] : []),
+                {
+                    label: ids.length === 1 ? 'Copy metadata' : `Copy metadata (${ids.length} chats)`,
+                    icon: '📋',
+                    onClick: () => {
+                        const tasks = ids
+                            .map(id => history.find((t: any) => t.id === id))
+                            .filter(Boolean);
+                        const text = tasks.map(t => formatMetadataText(t)).join('\n\n---\n\n');
+                        void copyToClipboard(text);
+                        closeContextMenu();
+                    },
+                },
                 { label: '', icon: '', separator: true, onClick: () => {} },
                 { label: `Delete ${ids.length} chats…`, icon: '🗑', onClick: () => {
                     if (confirm(`Delete ${ids.length} chats? This cannot be undone.`)) {
@@ -496,6 +513,11 @@ export function ActivityListPane({
             return [
                 ...(isPinned && onUnpinChat ? [{ label: 'Unpin', icon: '📌', onClick: () => onUnpinChat(taskId) }] : []),
                 ...(!isPinned && onPinChat ? [{ label: 'Pin to top', icon: '📌', onClick: () => onPinChat(taskId) }] : []),
+                { label: 'Copy metadata', icon: '📋', onClick: () => {
+                    const task = running.find((t: any) => t.id === taskId);
+                    if (task) void copyToClipboard(formatMetadataText(task));
+                    closeContextMenu();
+                }},
                 { label: '', icon: '', separator: true, onClick: () => {} },
                 { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
             ];
@@ -527,12 +549,16 @@ export function ActivityListPane({
             ...(isHeld ? [{ label: 'Schedule Immediately', icon: '🚀', onClick: () => handleAdmit(taskId) }] : []),
             ...(isAdmitted ? [{ label: 'Cancel Scheduling', icon: '🚫', onClick: () => handleUnadmit(taskId) }] : []),
             ...((isHeld || isAdmitted) ? [{ label: '', icon: '', separator: true, onClick: () => {} }] : []),
+            { label: 'Copy metadata', icon: '📋', onClick: () => {
+                if (task) void copyToClipboard(formatMetadataText(task));
+                closeContextMenu();
+            }},
             isFrozen
                 ? { label: 'Unfreeze', icon: '▶', onClick: () => handleUnfreeze(taskId) }
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
+    }, [contextMenu, queued, running, history, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
