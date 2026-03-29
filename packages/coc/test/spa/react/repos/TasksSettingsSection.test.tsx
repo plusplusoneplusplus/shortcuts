@@ -17,29 +17,17 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 
 function mockSettingsGet(data: { taskRootPath?: string; folderPaths?: string[] } = {}) {
     return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-            taskRootPath: data.taskRootPath ?? '/home/user/.coc/repos/ws-1/tasks',
-            folderPaths: data.folderPaths ?? [],
-        }),
+        taskRootPath: data.taskRootPath ?? '/home/user/.coc/repos/ws-1/tasks',
+        folderPaths: data.folderPaths ?? [],
     };
 }
 
 function mockPatchOk(folderPaths: string[]) {
-    return {
-        ok: true,
-        status: 200,
-        json: async () => ({ folderPaths }),
-    };
+    return { folderPaths };
 }
 
 function mockPatchError(status: number, error: string) {
-    return {
-        ok: false,
-        status,
-        json: async () => ({ error }),
-    };
+    return new Error(`API error: ${status} - ${error}`);
 }
 
 async function renderSection(opts: { taskRootPath?: string; folderPaths?: string[] } = {}) {
@@ -47,7 +35,7 @@ async function renderSection(opts: { taskRootPath?: string; folderPaths?: string
         if (url.includes('/tasks/settings')) {
             return Promise.resolve(mockSettingsGet(opts));
         }
-        return Promise.resolve({ ok: true, json: async () => ({}) });
+        return Promise.resolve({});
     });
 
     const { TasksSettingsSection } = await import(
@@ -129,7 +117,6 @@ describe('TasksSettingsSection', () => {
     it('adds a new folder and calls PATCH', async () => {
         await renderSection({ folderPaths: [] });
 
-        // Setup PATCH mock
         mockFetchApi.mockImplementation((url: string, init?: any) => {
             if (init?.method === 'PATCH') {
                 return Promise.resolve(mockPatchOk(['/new/path']));
@@ -243,7 +230,7 @@ describe('TasksSettingsSection', () => {
 
         mockFetchApi.mockImplementation((url: string, init?: any) => {
             if (init?.method === 'PATCH') {
-                return Promise.resolve(mockPatchError(403, 'Path outside trusted directories'));
+                return Promise.reject(mockPatchError(403, 'Path outside trusted directories'));
             }
             return Promise.resolve(mockSettingsGet({ folderPaths: [] }));
         });
@@ -267,7 +254,7 @@ describe('TasksSettingsSection', () => {
 
     it('shows error when GET fails', async () => {
         mockFetchApi.mockImplementation(() =>
-            Promise.resolve({ ok: false, status: 500, json: async () => ({}) })
+            Promise.reject(new Error('API error: 500 Internal Server Error'))
         );
 
         const { TasksSettingsSection } = await import(

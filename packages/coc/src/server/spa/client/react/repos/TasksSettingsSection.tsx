@@ -27,9 +27,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
 
     const loadSettings = useCallback(async () => {
         try {
-            const res = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`);
-            if (!res.ok) throw new Error(`Failed to load settings (${res.status})`);
-            const data: TasksSettingsData = await res.json();
+            const data: TasksSettingsData = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`);
             setPrimaryPath(data.taskRootPath || '');
             setFolderPaths(data.folderPaths || []);
             setDefaultPaths(data.hasDefaultFolderPaths ? (data.folderPaths || []) : []);
@@ -48,16 +46,11 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
         setError(null);
         setDefaultPaths([]);
         try {
-            const res = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`, {
+            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/tasks/settings`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ folderPaths: paths }),
             });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-                throw new Error(body.error || `Failed to save (${res.status})`);
-            }
-            const data = await res.json();
             setFolderPaths(data.folderPaths ?? paths);
         } catch (err: any) {
             setError(err.message || 'Failed to save settings');
