@@ -49,6 +49,7 @@ export function useChatSSE({
             eventSourceRef.current = null;
         }
         if (!taskId || task?.status !== 'running' || !processId) return;
+        if (typeof EventSource === 'undefined') return;
 
         const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(processId)}/stream`);
         eventSourceRef.current = es;

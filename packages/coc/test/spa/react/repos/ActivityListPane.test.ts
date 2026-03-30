@@ -510,20 +510,18 @@ describe('ActivityListPane pinned chats', () => {
             });
 
             it('summarize calls POST /queue/summarize', () => {
-                const bulkBlock = source.substring(
-                    source.indexOf('contextMenu.bulkIds'),
-                    source.indexOf('contextMenu.bulkIds') + 3000,
-                );
-                expect(bulkBlock).toContain("'/queue/summarize'");
+                const dialogIdx = source.indexOf('<SummarizeChatDialog');
+                expect(dialogIdx).toBeGreaterThan(-1);
+                const block = source.substring(dialogIdx, dialogIdx + 1500);
+                expect(block).toContain("'/queue/summarize'");
             });
 
             it('summarize sends processIds and workspaceId in body', () => {
-                const bulkBlock = source.substring(
-                    source.indexOf('contextMenu.bulkIds'),
-                    source.indexOf('contextMenu.bulkIds') + 3000,
-                );
-                expect(bulkBlock).toContain('processIds: ids');
-                expect(bulkBlock).toContain('workspaceId');
+                const dialogIdx = source.indexOf('<SummarizeChatDialog');
+                expect(dialogIdx).toBeGreaterThan(-1);
+                const block = source.substring(dialogIdx, dialogIdx + 1500);
+                expect(block).toContain('processIds: summarizeDialogIds');
+                expect(block).toContain('workspaceId');
             });
 
             it('summarize is capped at 20 items', () => {
@@ -543,11 +541,10 @@ describe('ActivityListPane pinned chats', () => {
             });
 
             it('summarize navigates to new task via onSelectTask', () => {
-                const bulkBlock = source.substring(
-                    source.indexOf('contextMenu.bulkIds'),
-                    source.indexOf('contextMenu.bulkIds') + 3000,
-                );
-                expect(bulkBlock).toContain('onSelectTask(data.task.id)');
+                const dialogIdx = source.indexOf('<SummarizeChatDialog');
+                expect(dialogIdx).toBeGreaterThan(-1);
+                const block = source.substring(dialogIdx, dialogIdx + 1500);
+                expect(block).toContain('onSelectTask(data.task.id)');
             });
 
             it('useMemo deps include workspaceId, onSelectTask, fetchQueue', () => {
@@ -561,9 +558,9 @@ describe('ActivityListPane pinned chats', () => {
             });
 
             it('summarize uses POST method in fetch call', () => {
-                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
-                expect(summarizeIdx).toBeGreaterThan(-1);
-                const block = source.substring(summarizeIdx, summarizeIdx + 600);
+                const dialogIdx = source.indexOf('<SummarizeChatDialog');
+                expect(dialogIdx).toBeGreaterThan(-1);
+                const block = source.substring(dialogIdx, dialogIdx + 1500);
                 expect(block).toContain("method: 'POST'");
             });
 
@@ -575,30 +572,30 @@ describe('ActivityListPane pinned chats', () => {
             });
 
             it('summarize calls fetchQueue after successful response', () => {
-                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
-                expect(summarizeIdx).toBeGreaterThan(-1);
-                const block = source.substring(summarizeIdx, summarizeIdx + 900);
+                const dialogIdx = source.indexOf('<SummarizeChatDialog');
+                expect(dialogIdx).toBeGreaterThan(-1);
+                const block = source.substring(dialogIdx, dialogIdx + 1500);
                 expect(block).toContain('fetchQueue()');
             });
 
             it('summarize sends Content-Type application/json header', () => {
-                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
-                expect(summarizeIdx).toBeGreaterThan(-1);
-                const block = source.substring(summarizeIdx, summarizeIdx + 600);
+                const dialogIdx = source.indexOf('<SummarizeChatDialog');
+                expect(dialogIdx).toBeGreaterThan(-1);
+                const block = source.substring(dialogIdx, dialogIdx + 1500);
                 expect(block).toContain("'Content-Type': 'application/json'");
             });
 
             it('summarize uses JSON.stringify for request body', () => {
-                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
-                expect(summarizeIdx).toBeGreaterThan(-1);
-                const block = source.substring(summarizeIdx, summarizeIdx + 600);
+                const dialogIdx = source.indexOf('<SummarizeChatDialog');
+                expect(dialogIdx).toBeGreaterThan(-1);
+                const block = source.substring(dialogIdx, dialogIdx + 1500);
                 expect(block).toContain('JSON.stringify');
             });
 
             it('summarize checks res.ok before navigating', () => {
-                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
-                expect(summarizeIdx).toBeGreaterThan(-1);
-                const block = source.substring(summarizeIdx, summarizeIdx + 600);
+                const dialogIdx = source.indexOf('<SummarizeChatDialog');
+                expect(dialogIdx).toBeGreaterThan(-1);
+                const block = source.substring(dialogIdx, dialogIdx + 1500);
                 expect(block).toContain('res.ok');
             });
         });
