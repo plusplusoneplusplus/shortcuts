@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, TasksPanelNavState } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, TasksPanelNavState } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
 
@@ -52,6 +52,7 @@ export interface AppContextState {
     selectedGitCommitHash: string | null;
     selectedGitFilePath: string | null;
     selectedPrId: number | string | null;
+    selectedPrDetailTab: PrDetailTab | null;
     selectedWorkflowProcessId: string | null;
     selectedExplorerPath: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
@@ -99,6 +100,7 @@ const initialState: AppContextState = {
     selectedGitCommitHash: null,
     selectedGitFilePath: null,
     selectedPrId: null,
+    selectedPrDetailTab: null,
     selectedWorkflowProcessId: null,
     selectedExplorerPath: null,
     conversationCache: {},
@@ -169,6 +171,7 @@ export type AppAction =
     | { type: 'SET_ADMIN_SUB_TAB'; tab: AdminSubTab }
     | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string }
     | { type: 'SET_SELECTED_PR'; prId: number | string }
+    | { type: 'SET_PR_DETAIL_TAB'; tab: PrDetailTab }
     | { type: 'CLEAR_SELECTED_PR' }
     | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
     | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection };
@@ -377,8 +380,10 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, wikiTabState: { ...state.wikiTabState, [action.wikiId]: action.tab } };
         case 'SET_SELECTED_PR':
             return { ...state, selectedPrId: action.prId };
+        case 'SET_PR_DETAIL_TAB':
+            return state.selectedPrDetailTab === action.tab ? state : { ...state, selectedPrDetailTab: action.tab };
         case 'CLEAR_SELECTED_PR':
-            return { ...state, selectedPrId: null };
+            return { ...state, selectedPrId: null, selectedPrDetailTab: null };
         case 'SET_TASKS_NAV_STATE':
             return {
                 ...state,

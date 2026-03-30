@@ -10,7 +10,7 @@ import { ProcessesView } from '../processes/ProcessesView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { lazy, Suspense } from 'react';
-import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, SettingsSection } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ default: m.SkillsView })));
@@ -149,6 +149,17 @@ export function parseWorkflowDeepLink(hash: string): { repoId: string; processId
         };
     }
     return null;
+}
+
+export const VALID_PR_DETAIL_TABS: Set<string> = new Set(['overview', 'threads', 'files']);
+
+export function parsePrDetailTab(hash: string): PrDetailTab {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'pull-requests' && parts[3] && parts[4] && VALID_PR_DETAIL_TABS.has(parts[4])) {
+        return parts[4] as PrDetailTab;
+    }
+    return 'overview';
 }
 
 export function parseActivityDeepLink(hash: string): string | null {
@@ -347,9 +358,11 @@ export function Router() {
                     } else if (parts[2] === 'explorer') {
                         dispatch({ type: 'SET_EXPLORER_PATH', path: null });
                     }
-                    // Pull-requests deep-link: #repos/{id}/pull-requests and #repos/{id}/pull-requests/{prNumber}
+                    // Pull-requests deep-link: #repos/{id}/pull-requests and #repos/{id}/pull-requests/{prNumber}/{subTab}
                     if (parts[2] === 'pull-requests' && parts[3]) {
                         dispatch({ type: 'SET_SELECTED_PR', prId: decodeURIComponent(parts[3]) });
+                        const subTab = (parts[4] && VALID_PR_DETAIL_TABS.has(parts[4]) ? parts[4] : 'overview') as PrDetailTab;
+                        dispatch({ type: 'SET_PR_DETAIL_TAB', tab: subTab });
                     } else if (parts[2] === 'pull-requests') {
                         dispatch({ type: 'CLEAR_SELECTED_PR' });
                     }

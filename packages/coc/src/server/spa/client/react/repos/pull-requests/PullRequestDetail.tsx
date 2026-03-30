@@ -3,7 +3,7 @@
  * and comment threads in a two-tab layout.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Marked } from 'marked';
 import { useApp } from '../../context/AppContext';
 import { getApiBase } from '../../utils/config';
@@ -12,6 +12,7 @@ import { ReviewerBadge } from './ReviewerBadge';
 import { ThreadList } from './ThreadList';
 import { UnifiedDiffViewer } from '../UnifiedDiffViewer';
 import type { PullRequest, CommentThread } from './pr-utils';
+import type { PrDetailTab } from '../../types/dashboard';
 
 const descMarked = new Marked({ gfm: true, breaks: true });
 
@@ -24,14 +25,22 @@ export interface PullRequestDetailProps {
 }
 
 export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: PullRequestDetailProps) {
-    const { dispatch } = useApp();
+    const { state, dispatch } = useApp();
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [detailTab, setDetailTab] = useState<'overview' | 'threads' | 'files'>('overview');
+    const initialTab = (state.selectedPrDetailTab as PrDetailTab) ?? 'overview';
+    const [detailTab, setDetailTab] = useState<PrDetailTab>(initialTab);
     const [diff, setDiff] = useState<string | null>(null);
     const [diffLoading, setDiffLoading] = useState(false);
+
+    const switchTab = useCallback((tab: PrDetailTab) => {
+        setDetailTab(tab);
+        dispatch({ type: 'SET_PR_DETAIL_TAB', tab });
+        const newHash = `#repos/${encodeURIComponent(String(repoId))}/pull-requests/${encodeURIComponent(String(prId))}/${tab}`;
+        history.replaceState(null, '', newHash);
+    }, [dispatch, repoId, prId]);
 
     useEffect(() => {
         setLoading(true);
@@ -61,6 +70,13 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
             .catch(err => setError(err.message ?? 'Failed to load pull request'))
             .finally(() => setLoading(false));
     }, [repoId, prId]);
+
+    // Sync local tab state when context changes (e.g. hash navigation)
+    useEffect(() => {
+        if (state.selectedPrDetailTab && state.selectedPrDetailTab !== detailTab) {
+            setDetailTab(state.selectedPrDetailTab as PrDetailTab);
+        }
+    }, [state.selectedPrDetailTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (detailTab !== 'files' || diff !== null) return;
@@ -175,7 +191,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-medium'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                         }`}
-                        onClick={() => setDetailTab('overview')}
+                        onClick={() => switchTab('overview')}
                         data-testid="tab-overview"
                     >
                         Overview
@@ -186,7 +202,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-medium'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                         }`}
-                        onClick={() => setDetailTab('threads')}
+                        onClick={() => switchTab('threads')}
                         data-testid="tab-threads"
                     >
                         Threads ({threads.length})
@@ -197,7 +213,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-medium'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                         }`}
-                        onClick={() => setDetailTab('files')}
+                        onClick={() => switchTab('files')}
                         data-testid="tab-files"
                     >
                         Files Changed

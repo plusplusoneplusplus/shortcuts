@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
@@ -1738,6 +1738,8 @@ describe('handleHash pull-requests dispatch simulation', () => {
                 // Pull-requests deep-link handling (mirrors Router.tsx)
                 if (parts[2] === 'pull-requests' && parts[3]) {
                     dispatches.push({ type: 'SET_SELECTED_PR', prId: decodeURIComponent(parts[3]) });
+                    const subTab = parts[4] && VALID_PR_DETAIL_TABS.has(parts[4]) ? parts[4] : 'overview';
+                    dispatches.push({ type: 'SET_PR_DETAIL_TAB', tab: subTab });
                 } else if (parts[2] === 'pull-requests') {
                     dispatches.push({ type: 'CLEAR_SELECTED_PR' });
                 }
@@ -1788,6 +1790,77 @@ describe('handleHash pull-requests dispatch simulation', () => {
 
     it('pull-requests is in VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
+    });
+
+    it('dispatches SET_PR_DETAIL_TAB overview by default for #repos/r1/pull-requests/42', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/42');
+        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
+    });
+
+    it('dispatches SET_PR_DETAIL_TAB threads for #repos/r1/pull-requests/42/threads', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/threads');
+        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'threads' });
+    });
+
+    it('dispatches SET_PR_DETAIL_TAB files for #repos/r1/pull-requests/42/files', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/files');
+        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'files' });
+    });
+
+    it('dispatches SET_PR_DETAIL_TAB overview for #repos/r1/pull-requests/42/overview', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/overview');
+        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
+    });
+
+    it('defaults to overview for invalid sub-tab #repos/r1/pull-requests/42/bogus', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/bogus');
+        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
+    });
+});
+
+// ─── parsePrDetailTab ──────────────────────────────────────────────
+
+describe('parsePrDetailTab', () => {
+    it('returns "overview" for hash without sub-tab', () => {
+        expect(parsePrDetailTab('#repos/r1/pull-requests/42')).toBe('overview');
+    });
+
+    it('returns "overview" for explicit overview sub-tab', () => {
+        expect(parsePrDetailTab('#repos/r1/pull-requests/42/overview')).toBe('overview');
+    });
+
+    it('returns "threads" for threads sub-tab', () => {
+        expect(parsePrDetailTab('#repos/r1/pull-requests/42/threads')).toBe('threads');
+    });
+
+    it('returns "files" for files sub-tab', () => {
+        expect(parsePrDetailTab('#repos/r1/pull-requests/42/files')).toBe('files');
+    });
+
+    it('returns "overview" for invalid sub-tab', () => {
+        expect(parsePrDetailTab('#repos/r1/pull-requests/42/invalid')).toBe('overview');
+    });
+
+    it('returns "overview" for list-level hash', () => {
+        expect(parsePrDetailTab('#repos/r1/pull-requests')).toBe('overview');
+    });
+
+    it('returns "overview" for non-PR hash', () => {
+        expect(parsePrDetailTab('#repos/r1/git')).toBe('overview');
+    });
+});
+
+// ─── VALID_PR_DETAIL_TABS ──────────────────────────────────────────
+
+describe('VALID_PR_DETAIL_TABS', () => {
+    it('contains overview, threads, files', () => {
+        expect(VALID_PR_DETAIL_TABS.has('overview')).toBe(true);
+        expect(VALID_PR_DETAIL_TABS.has('threads')).toBe(true);
+        expect(VALID_PR_DETAIL_TABS.has('files')).toBe(true);
+    });
+
+    it('has exactly 3 entries', () => {
+        expect(VALID_PR_DETAIL_TABS.size).toBe(3);
     });
 });
 

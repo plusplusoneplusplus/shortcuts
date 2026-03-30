@@ -163,7 +163,8 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
         // GitHub's REST API requires pull_number, not the database id.
         const prNumber = pr.number ?? pr.id;
         dispatch({ type: 'SET_SELECTED_PR', prId: prNumber });
-        window.location.hash = `#repos/${encodeURIComponent(repoId)}/pull-requests/${prNumber}`;
+        dispatch({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
+        window.location.hash = `#repos/${encodeURIComponent(repoId)}/pull-requests/${prNumber}/overview`;
         if (isMobile) setMobileShowDetail(true);
     }
 
