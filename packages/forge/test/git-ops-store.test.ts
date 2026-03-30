@@ -237,6 +237,37 @@ describe('GitOpsStore', () => {
         await expect(fs.access(oldPath)).rejects.toThrow();
     });
 
+    // --- All op types ---
+
+    it('should accept all GitOpType values including reword', async () => {
+        const store = new GitOpsStore({ dataDir: tmpDir });
+        const opTypes = [
+            'pull', 'push', 'fetch',
+            'rebase-autosquash', 'rebase-continue', 'rebase-abort',
+            'merge-continue', 'merge-abort', 'rebase-reorder', 'reword',
+        ] as const;
+
+        for (const op of opTypes) {
+            await store.create(makeJob({ id: `op-${op}`, workspaceId: 'ws-ops', op }));
+        }
+
+        for (const op of opTypes) {
+            const job = await store.getById('ws-ops', `op-${op}`);
+            expect(job).toBeDefined();
+            expect(job!.op).toBe(op);
+        }
+
+        // getRunning and getLatest should filter by reword
+        await store.create(makeJob({ id: 'reword-running', workspaceId: 'ws-ops', op: 'reword', status: 'running' }));
+        const running = await store.getRunning('ws-ops', 'reword');
+        expect(running.length).toBeGreaterThanOrEqual(1);
+        expect(running.some(j => j.id === 'reword-running')).toBe(true);
+
+        const latest = await store.getLatest('ws-ops', 'reword');
+        expect(latest).toBeDefined();
+        expect(latest!.op).toBe('reword');
+    });
+
     // --- Persistence across instances ---
 
     it('should persist data across store instances', async () => {

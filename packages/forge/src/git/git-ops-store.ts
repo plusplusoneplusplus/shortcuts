@@ -23,7 +23,7 @@ import { getRepoDataPath } from '../paths';
 // Types
 // ============================================================================
 
-export type GitOpType = 'pull' | 'push' | 'fetch' | 'rebase-autosquash' | 'rebase-continue' | 'rebase-abort' | 'merge-continue' | 'merge-abort' | 'rebase-reorder';
+export type GitOpType = 'pull' | 'push' | 'fetch' | 'rebase-autosquash' | 'rebase-continue' | 'rebase-abort' | 'merge-continue' | 'merge-abort' | 'rebase-reorder' | 'reword';
 export type GitOpStatus = 'running' | 'success' | 'failed' | 'interrupted';
 
 export interface GitOpJob {
