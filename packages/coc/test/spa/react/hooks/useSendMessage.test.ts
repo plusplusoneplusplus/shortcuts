@@ -71,6 +71,7 @@ function makeOptions(overrides: Partial<UseSendMessageOptions> = {}): UseSendMes
         images: [],
         clearImages: vi.fn(),
         lastFailedMessageRef: { current: '' },
+        setTask: vi.fn(),
         ...overrides,
     };
 }
@@ -215,5 +216,51 @@ describe('useSendMessage', () => {
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp(); });
         expect(mockUnarchiveChat).not.toHaveBeenCalled();
+    });
+
+    it('calls setTask with status running after successful POST', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const setTask = vi.fn();
+        const opts = makeOptions({ setTask });
+        opts.followUpInputRef.current = 'hello';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(setTask).toHaveBeenCalled();
+        const updater = setTask.mock.calls[0][0];
+        expect(updater({ status: 'completed', id: '1' })).toEqual({ status: 'running', id: '1' });
+    });
+
+    it('does not call setTask on failed POST', async () => {
+        fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: 'fail' }) });
+        const setTask = vi.fn();
+        const opts = makeOptions({ setTask });
+        opts.followUpInputRef.current = 'hello';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(setTask).not.toHaveBeenCalled();
+    });
+
+    it('calls refreshConversation in finally block after successful send', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        const opts = makeOptions({ refreshConversation });
+        opts.followUpInputRef.current = 'hello';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(refreshConversation).toHaveBeenCalledWith('pid-1');
+    });
+
+    it('calls refreshConversation in finally block even after error', async () => {
+        fetchMock.mockRejectedValue(new Error('network'));
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        const opts = makeOptions({ refreshConversation });
+        opts.followUpInputRef.current = 'hello';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(refreshConversation).toHaveBeenCalledWith('pid-1');
     });
 });

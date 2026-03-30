@@ -72,6 +72,7 @@ function makeOptions(overrides: Partial<Parameters<typeof useSendMessage>[0]> = 
         images: [],
         clearImages: vi.fn(),
         lastFailedMessageRef: { current: '' },
+        setTask: vi.fn(),
         ...overrides,
     };
 }

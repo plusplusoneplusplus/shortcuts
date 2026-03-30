@@ -182,6 +182,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         images,
         clearImages,
         lastFailedMessageRef,
+        setTask,
     });
 
     const { stopStreaming } = useChatSSE({

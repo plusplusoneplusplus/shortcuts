@@ -35,6 +35,7 @@ export interface UseSendMessageOptions {
     images: string[];
     clearImages: () => void;
     lastFailedMessageRef: React.MutableRefObject<string>;
+    setTask: (updater: (prev: any) => any) => void;
 }
 
 export function useSendMessage({
@@ -60,6 +61,7 @@ export function useSendMessage({
     images,
     clearImages,
     lastFailedMessageRef,
+    setTask,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     flushQueueRef: React.MutableRefObject<(() => void) | null>;
@@ -233,6 +235,7 @@ export function useSendMessage({
             }
 
             lastFailedMessageRef.current = '';
+            setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
             clearImages();
             await waitForSendCompletion(processId);
         } catch (err: any) {
@@ -243,6 +246,7 @@ export function useSendMessage({
             setSending(false);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
+            void refreshConversation(processId);
             setTimeout(() => { flushQueueRef.current?.(); }, 0);
         }
     }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
