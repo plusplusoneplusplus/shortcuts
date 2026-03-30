@@ -16,6 +16,8 @@ export interface TaskFolder {
     children: TaskFolder[];
     documentGroups: TaskDocumentGroup[];
     singleDocuments: TaskDocument[];
+    /** Absolute filesystem path of the task root this folder belongs to */
+    taskRootPath?: string;
 }
 
 export interface TaskDocumentGroup {
@@ -31,6 +33,8 @@ export interface TaskDocument {
     relativePath?: string;
     status?: string;
     isArchived: boolean;
+    /** Absolute filesystem path of the task root this document belongs to */
+    taskRootPath?: string;
 }
 
 export type TaskNode = TaskFolder | TaskDocumentGroup | TaskDocument;

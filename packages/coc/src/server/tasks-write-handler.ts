@@ -16,8 +16,8 @@ import { sendJSON, sendError } from './api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
 import { resolveCollision, getErrorMessage } from './shared/fs-utils';
 import type { Route } from './types';
-import { resolveTaskRoot } from './task-root-resolver';
-import { resolveAndValidatePath, copyRecursive } from './tasks-handler-utils';
+import { resolveTaskRoot, resolveAllTaskRoots } from './task-root-resolver';
+import { resolveAndValidatePath, copyRecursive, readTasksSettings } from './tasks-handler-utils';
 
 // ============================================================================
 // Write Route Registration
@@ -504,7 +504,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { path: itemPath, action } = body || {};
+            const { path: itemPath, action, folderPath: clientFolderPath } = body || {};
             if (!itemPath || typeof itemPath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -512,7 +512,19 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 return sendError(res, 400, 'Invalid action. Must be "archive" or "unarchive"');
             }
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+            // Resolve the task root: prefer client-supplied folderPath, fall back to primary root.
+            let tasksFolder: string;
+            if (clientFolderPath && typeof clientFolderPath === 'string') {
+                const settings = await readTasksSettings(dataDir, ws.id);
+                const allRoots = resolveAllTaskRoots({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }, settings.folderPaths);
+                const match = allRoots.find(r => path.resolve(r.absolutePath) === path.resolve(clientFolderPath));
+                if (!match) {
+                    return sendError(res, 403, 'Access denied: folderPath is not a configured task root');
+                }
+                tasksFolder = match.absolutePath;
+            } else {
+                tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+            }
             const archiveFolder = path.join(tasksFolder, 'archive');
             const resolvedPath = resolveAndValidatePath(tasksFolder, itemPath);
             if (!resolvedPath) {
@@ -551,6 +563,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     const undoRecord = {
                         timestamp: new Date().toISOString(),
                         type: itemType,
+                        tasksFolder,
                         originalPath: relFromTasks.replace(/\\/g, '/'),
                         archivedPath: newRelPath.replace(/\\/g, '/'),
                     };
@@ -592,15 +605,19 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
-            const undoFile = path.join(tasksFolder, ARCHIVE_UNDO_FILE);
-            try {
-                const raw = await fs.promises.readFile(undoFile, 'utf-8');
-                const record = JSON.parse(raw);
-                sendJSON(res, 200, { available: true, record: { type: record.type, originalPath: record.originalPath, timestamp: record.timestamp } });
-            } catch {
-                sendJSON(res, 200, { available: false });
+            // Scan all task roots for the undo file
+            const settings = await readTasksSettings(dataDir, ws.id);
+            const allRoots = resolveAllTaskRoots({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }, settings.folderPaths);
+            for (const root of allRoots) {
+                const undoFile = path.join(root.absolutePath, ARCHIVE_UNDO_FILE);
+                try {
+                    const raw = await fs.promises.readFile(undoFile, 'utf-8');
+                    const record = JSON.parse(raw);
+                    sendJSON(res, 200, { available: true, record: { type: record.type, originalPath: record.originalPath, timestamp: record.timestamp } });
+                    return;
+                } catch { /* continue to next root */ }
             }
+            sendJSON(res, 200, { available: false });
         },
     });
 
@@ -614,14 +631,28 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
-            const undoFile = path.join(tasksFolder, ARCHIVE_UNDO_FILE);
+            // Scan all task roots for the undo file
+            const settings = await readTasksSettings(dataDir, ws.id);
+            const allRoots = resolveAllTaskRoots({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }, settings.folderPaths);
 
-            let record: { originalPath: string; archivedPath: string };
-            try {
-                const raw = await fs.promises.readFile(undoFile, 'utf-8');
-                record = JSON.parse(raw);
-            } catch {
+            let tasksFolder: string | undefined;
+            let undoFile: string | undefined;
+            let record: { originalPath: string; archivedPath: string; tasksFolder?: string } | undefined;
+            for (const root of allRoots) {
+                const candidate = path.join(root.absolutePath, ARCHIVE_UNDO_FILE);
+                try {
+                    const raw = await fs.promises.readFile(candidate, 'utf-8');
+                    record = JSON.parse(raw);
+                    undoFile = candidate;
+                    // Use tasksFolder from the record if available, otherwise the root where the file was found
+                    tasksFolder = (record!.tasksFolder && typeof record!.tasksFolder === 'string')
+                        ? record!.tasksFolder
+                        : root.absolutePath;
+                    break;
+                } catch { /* continue to next root */ }
+            }
+
+            if (!record || !undoFile || !tasksFolder) {
                 return sendError(res, 404, 'Nothing to undo');
             }
 

@@ -11,13 +11,27 @@
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskFolder, TaskDocument } from '@plusplusoneplusplus/forge';
 import { getFullTaskHierarchy, isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from './api-handler';
 import { resolveWorkspaceOrFail } from './shared/handler-utils';
 import type { Route } from './types';
 import { resolveTaskRoot, resolveAllTaskRoots } from './task-root-resolver';
 import { isWithinTrustedReadOnlyDir, DEFAULT_SETTINGS, buildArchiveFolderNode, mergeTaskFoldersAsVirtualRoot, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
+
+/**
+ * Recursively set `taskRootPath` on every folder and document in a TaskFolder tree.
+ */
+function annotateTaskRootPath(folder: TaskFolder, rootPath: string): void {
+    folder.taskRootPath = rootPath;
+    for (const doc of folder.singleDocuments) doc.taskRootPath = rootPath;
+    for (const group of folder.documentGroups) {
+        for (const doc of group.documents) doc.taskRootPath = rootPath;
+    }
+    const contextDocs: TaskDocument[] = (folder as any).contextDocuments ?? [];
+    for (const doc of contextDocs) doc.taskRootPath = rootPath;
+    for (const child of folder.children) annotateTaskRootPath(child, rootPath);
+}
 
 // ============================================================================
 // Route Registration
@@ -355,12 +369,14 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 // Helper: scan a single folder and optionally append archive node
                 const scanFolder = async (folderPath: string) => {
                     const hierarchy = await getFullTaskHierarchy(folderPath);
+                    annotateTaskRootPath(hierarchy, folderPath);
                     if (includeArchiveFolder) {
                         const archiveDir = path.join(folderPath, 'archive');
                         try {
                             const stat = await fs.promises.stat(archiveDir);
                             if (stat.isDirectory()) {
                                 const archiveNode = buildArchiveFolderNode(archiveDir);
+                                annotateTaskRootPath(archiveNode, folderPath);
                                 hierarchy.children = hierarchy.children || [];
                                 hierarchy.children.push(archiveNode);
                             }

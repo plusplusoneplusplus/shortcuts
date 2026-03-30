@@ -97,9 +97,9 @@ export function useFolderContextMenu({
                 icon: isArchived ? '📤' : '🗄️',
                 onClick: async () => {
                     if (isArchived) {
-                        await folderActions.unarchiveFolder(folderPath);
+                        await folderActions.unarchiveFolder(folderPath, folder.taskRootPath);
                     } else {
-                        await folderActions.archiveFolder(folderPath);
+                        await folderActions.archiveFolder(folderPath, folder.taskRootPath);
                     }
                     refresh();
                 },

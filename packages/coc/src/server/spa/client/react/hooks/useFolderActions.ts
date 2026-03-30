@@ -10,8 +10,8 @@ export interface FolderActionsResult {
     renameFolder:    (folderPath: string, newName: string) => Promise<void>;
     createSubfolder: (parentPath: string, name: string) => Promise<void>;
     createTask:      (folderPath: string, name: string, docType?: string) => Promise<void>;
-    archiveFolder:   (folderPath: string) => Promise<void>;
-    unarchiveFolder: (folderPath: string) => Promise<void>;
+    archiveFolder:   (folderPath: string, taskRootPath?: string) => Promise<void>;
+    unarchiveFolder: (folderPath: string, taskRootPath?: string) => Promise<void>;
     moveFolder:      (sourcePath: string, destinationFolder: string) => Promise<void>;
     moveFolderToWorkspace: (sourcePath: string, destinationWorkspaceId: string, destinationFolder: string) => Promise<void>;
     deleteFolder:    (folderPath: string) => Promise<void>;
@@ -52,13 +52,13 @@ export function useFolderActions(wsId: string, options?: FolderActionsOptions): 
             return apiFetch('POST', base, body);
         },
 
-        archiveFolder: async (folderPath) => {
-            await apiFetch('POST', `${base}/archive`, { path: folderPath, action: 'archive' });
+        archiveFolder: async (folderPath, taskRootPath?) => {
+            await apiFetch('POST', `${base}/archive`, { path: folderPath, action: 'archive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) });
             options?.onArchived?.();
         },
 
-        unarchiveFolder: (folderPath) =>
-            apiFetch('POST', `${base}/archive`, { path: folderPath, action: 'unarchive' }),
+        unarchiveFolder: (folderPath, taskRootPath?) =>
+            apiFetch('POST', `${base}/archive`, { path: folderPath, action: 'unarchive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) }),
 
         moveFolder: (sourcePath, destinationFolder) =>
             apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder }),

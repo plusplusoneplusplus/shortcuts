@@ -8,8 +8,8 @@ import { getApiBase } from '../utils/config';
 
 export interface FileActionsResult {
     renameFile:    (filePath: string, newName: string) => Promise<void>;
-    archiveFile:   (filePath: string) => Promise<void>;
-    unarchiveFile: (filePath: string) => Promise<void>;
+    archiveFile:   (filePath: string, taskRootPath?: string) => Promise<void>;
+    unarchiveFile: (filePath: string, taskRootPath?: string) => Promise<void>;
     deleteFile:    (filePath: string) => Promise<void>;
     moveFile:      (sourcePath: string, destinationFolder: string) => Promise<void>;
     moveFileToWorkspace: (sourcePath: string, destinationWorkspaceId: string, destinationFolder: string) => Promise<void>;
@@ -40,13 +40,13 @@ export function useFileActions(wsId: string, options?: FileActionsOptions): File
         renameFile: (filePath, newName) =>
             apiFetch('PATCH', base, { path: filePath, newName }),
 
-        archiveFile: async (filePath) => {
-            await apiFetch('POST', `${base}/archive`, { path: filePath, action: 'archive' });
+        archiveFile: async (filePath, taskRootPath?) => {
+            await apiFetch('POST', `${base}/archive`, { path: filePath, action: 'archive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) });
             options?.onArchived?.();
         },
 
-        unarchiveFile: (filePath) =>
-            apiFetch('POST', `${base}/archive`, { path: filePath, action: 'unarchive' }),
+        unarchiveFile: (filePath, taskRootPath?) =>
+            apiFetch('POST', `${base}/archive`, { path: filePath, action: 'unarchive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) }),
 
         deleteFile: (filePath) =>
             apiFetch('DELETE', base, { path: filePath }),

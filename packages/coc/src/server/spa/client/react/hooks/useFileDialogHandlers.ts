@@ -16,6 +16,8 @@ export interface FileCtxInfo {
     renamePath: string;
     displayName: string;
     isArchived: boolean;
+    /** Absolute task root path this item belongs to (for secondary roots). */
+    taskRootPath?: string;
 }
 
 export interface FileCtxMenu { ctxItem: FileCtxInfo; x: number; y: number }
@@ -70,19 +72,21 @@ export function useFileDialogHandlers({ fileActions, refresh, addToast, onSearch
         if (isTaskDocument(item)) {
             const rel = item.relativePath || '';
             const p = rel ? `${rel}/${item.fileName}` : item.fileName;
-            return { item, paths: [p], renamePath: p, displayName: item.baseName, isArchived: item.isArchived };
+            return { item, paths: [p], renamePath: p, displayName: item.baseName, isArchived: item.isArchived, taskRootPath: item.taskRootPath };
         }
         // TaskDocumentGroup
         const paths = item.documents.map(doc => {
             const rel = doc.relativePath || '';
             return rel ? `${rel}/${doc.fileName}` : doc.fileName;
         });
+        const taskRootPath = item.documents[0]?.taskRootPath;
         return {
             item,
             paths,
             renamePath: paths[0] ?? '',
             displayName: item.baseName,
             isArchived: item.isArchived,
+            taskRootPath,
         };
     }
 

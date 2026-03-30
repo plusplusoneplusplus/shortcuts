@@ -42,6 +42,8 @@ export interface TaskDocument {
     relativePath?: string;
     /** Task workflow status parsed from frontmatter (defaults to 'pending' if not specified) */
     status?: TaskStatus;
+    /** Absolute filesystem path of the task root this document belongs to */
+    taskRootPath?: string;
 }
 
 /**
@@ -95,6 +97,8 @@ export interface TaskFolder {
     contextDocuments?: TaskDocument[];
     /** Related items from related.yaml (if exists) */
     relatedItems?: RelatedItemsConfig;
+    /** Absolute filesystem path of the task root this folder belongs to */
+    taskRootPath?: string;
 }
 
 /** Settings for the Tasks Viewer feature */

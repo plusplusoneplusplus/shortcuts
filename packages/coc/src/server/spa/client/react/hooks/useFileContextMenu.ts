@@ -87,9 +87,9 @@ export function useFileContextMenu({
                     try {
                         for (const p of ctxItem.paths) {
                             if (ctxItem.isArchived) {
-                                await fileActions.unarchiveFile(p);
+                                await fileActions.unarchiveFile(p, ctxItem.taskRootPath);
                             } else {
-                                await fileActions.archiveFile(p);
+                                await fileActions.archiveFile(p, ctxItem.taskRootPath);
                             }
                         }
                         refresh();

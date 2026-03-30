@@ -16,6 +16,7 @@ import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { resolveTaskRoot } from '../../src/server/task-root-resolver';
+import { writeTasksSettings } from '../../src/server/tasks-handler-utils';
 
 // ============================================================================
 // Helpers
@@ -839,6 +840,145 @@ describe('Tasks Handler Write', () => {
 
             const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`);
             expect(JSON.parse(res.body).available).toBe(false);
+        });
+    });
+
+    // ========================================================================
+    // Archive with secondary (folderPaths) roots
+    // ========================================================================
+
+    describe('Archive with secondary task root (folderPath)', () => {
+        let secondaryDir: string;
+
+        function createSecondaryFiles(files: Record<string, string>): void {
+            for (const [filePath, content] of Object.entries(files)) {
+                const fullPath = path.join(secondaryDir, filePath);
+                fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+                fs.writeFileSync(fullPath, content, 'utf-8');
+            }
+        }
+
+        it('should archive a file from a secondary root when folderPath is provided', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            secondaryDir = path.join(workspaceDir, '.github', 'tasks');
+            fs.mkdirSync(secondaryDir, { recursive: true });
+            createSecondaryFiles({ 'my-task.md': '# Secondary Task' });
+            await writeTasksSettings(dataDir, wsId, { folderPaths: ['.github/tasks'] });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'my-task.md',
+                action: 'archive',
+                folderPath: secondaryDir,
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toMatch(/archive/);
+
+            // File should be moved to secondary root's archive
+            expect(fs.existsSync(path.join(secondaryDir, 'my-task.md'))).toBe(false);
+            expect(fs.existsSync(path.join(secondaryDir, 'archive', 'my-task.md'))).toBe(true);
+
+            // Primary root's archive should NOT have the file
+            expect(fs.existsSync(path.join(tasksDir(), 'archive', 'my-task.md'))).toBe(false);
+        });
+
+        it('should fall back to primary root when no folderPath is provided', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'primary-task.md': '# Primary Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'primary-task.md',
+                action: 'archive',
+            });
+            expect(res.status).toBe(200);
+            expect(fs.existsSync(path.join(tasksDir(), 'archive', 'primary-task.md'))).toBe(true);
+        });
+
+        it('should return 403 when folderPath is not a configured task root', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const bogusDir = path.join(workspaceDir, 'not-a-root');
+            fs.mkdirSync(bogusDir, { recursive: true });
+            fs.writeFileSync(path.join(bogusDir, 'task.md'), '# Bad', 'utf-8');
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'task.md',
+                action: 'archive',
+                folderPath: bogusDir,
+            });
+            expect(res.status).toBe(403);
+            expect(res.body).toContain('not a configured task root');
+        });
+
+        it('should unarchive a file from a secondary root when folderPath is provided', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            secondaryDir = path.join(workspaceDir, '.github', 'tasks');
+            fs.mkdirSync(secondaryDir, { recursive: true });
+            createSecondaryFiles({ 'archive/my-task.md': '# Archived' });
+            await writeTasksSettings(dataDir, wsId, { folderPaths: ['.github/tasks'] });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'archive/my-task.md',
+                action: 'unarchive',
+                folderPath: secondaryDir,
+            });
+            expect(res.status).toBe(200);
+            expect(fs.existsSync(path.join(secondaryDir, 'my-task.md'))).toBe(true);
+            expect(fs.existsSync(path.join(secondaryDir, 'archive', 'my-task.md'))).toBe(false);
+        });
+
+        it('GET undo-archive finds record in secondary root', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            secondaryDir = path.join(workspaceDir, '.github', 'tasks');
+            fs.mkdirSync(secondaryDir, { recursive: true });
+            createSecondaryFiles({ 'my-task.md': '# Task' });
+            await writeTasksSettings(dataDir, wsId, { folderPaths: ['.github/tasks'] });
+
+            // Archive from secondary root
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'my-task.md',
+                action: 'archive',
+                folderPath: secondaryDir,
+            });
+
+            // GET undo-archive should find the record
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`);
+            const body = JSON.parse(res.body);
+            expect(body.available).toBe(true);
+            expect(body.record.originalPath).toBe('my-task.md');
+        });
+
+        it('POST undo-archive restores file from secondary root', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            secondaryDir = path.join(workspaceDir, '.github', 'tasks');
+            fs.mkdirSync(secondaryDir, { recursive: true });
+            createSecondaryFiles({ 'my-task.md': '# Task' });
+            await writeTasksSettings(dataDir, wsId, { folderPaths: ['.github/tasks'] });
+
+            // Archive from secondary root
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'my-task.md',
+                action: 'archive',
+                folderPath: secondaryDir,
+            });
+
+            expect(fs.existsSync(path.join(secondaryDir, 'archive', 'my-task.md'))).toBe(true);
+
+            // Undo archive
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`, 'POST', {});
+            expect(res.status).toBe(200);
+            expect(fs.existsSync(path.join(secondaryDir, 'my-task.md'))).toBe(true);
+            expect(fs.existsSync(path.join(secondaryDir, 'archive', 'my-task.md'))).toBe(false);
         });
     });
 
