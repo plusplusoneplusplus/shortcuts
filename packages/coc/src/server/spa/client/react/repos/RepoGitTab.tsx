@@ -99,6 +99,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [enqueueToast, setEnqueueToast] = useState<string | null>(null);
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
+    const [rewordingCommit, setRewordingCommit] = useState<GitCommitItem | null>(null);
 
     // Repo state (merge/rebase/cherry-pick in progress)
     const [repoState, setRepoState] = useState<{ operation: string; conflictFiles: string[] } | null>(null);
@@ -660,7 +661,26 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
     }, [amendingCommit, workspaceId, refreshAll]);
 
-    const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
+    const handleRewordConfirm = useCallback(async (title: string) => {
+        if (!rewordingCommit) return;
+        setRewordingCommit(null);
+        setActionError(null);
+        try {
+            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/reword`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hash: rewordingCommit.hash, title }),
+            });
+            if (result.error) throw new Error(result.error);
+            refreshAll();
+            setEnqueueToast('Commit title amended.');
+            setTimeout(() => setEnqueueToast(null), 3000);
+        } catch (err: any) {
+            setActionError(err.message || 'Reword failed');
+        }
+    }, [rewordingCommit, workspaceId, refreshAll]);
+
+    const handleCommitContextMenu= useCallback((e: React.MouseEvent, commitHash: string) => {
         if (
             rightPanelView?.type === 'multi-commit' &&
             rightPanelView.commits.some(c => c.hash === commitHash)
@@ -954,6 +974,14 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     label: 'Amend Message\u2026',
                     icon: '✏️',
                     onClick: () => { closeContextMenu(); setAmendingCommit(commit); },
+                });
+            }
+            if (!isHead) {
+                items.push({ label: '', separator: true, onClick: () => {} });
+                items.push({
+                    label: 'Amend Title\u2026',
+                    icon: '✏️',
+                    onClick: () => { closeContextMenu(); setRewordingCommit(commit); },
                 });
             }
             items.push({ label: '', separator: true, onClick: () => {} });
@@ -1428,6 +1456,14 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 commit={amendingCommit}
                 onConfirm={handleAmendConfirm}
                 onCancel={() => setAmendingCommit(null)}
+            />
+        )}
+        {rewordingCommit && (
+            <AmendMessageModal
+                commit={rewordingCommit}
+                titleOnly
+                onConfirm={(title) => handleRewordConfirm(title)}
+                onCancel={() => setRewordingCommit(null)}
             />
         )}
         </>

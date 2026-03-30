@@ -886,6 +886,74 @@ export class BranchService {
     }
 
     /**
+     * Reword (rename) the title of a non-HEAD commit using interactive rebase.
+     * Uses GIT_SEQUENCE_EDITOR to replace `pick <hash>` with `reword <hash>`
+     * and GIT_EDITOR to inject the new title as the commit message.
+     */
+    async rewordCommit(repoRoot: string, hash: string, title: string): Promise<GitOperationResult> {
+        if (!hash || !hash.trim()) {
+            return { success: false, error: 'Commit hash must not be empty' };
+        }
+        if (!title || !title.trim()) {
+            return { success: false, error: 'Commit title must not be empty' };
+        }
+        try {
+            const fullHash = this.execGitSync(`git rev-parse ${hash}`, { cwd: repoRoot }).trim();
+            const parentHash = this.execGitSync(`git rev-parse ${fullHash}~1`, { cwd: repoRoot }).trim();
+
+            const tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-reword-'));
+            const msgPath = path.join(tmpDir, 'message');
+            fs.writeFileSync(msgPath, title.trim(), 'utf-8');
+
+            // Sequence editor: replace `pick <hash>` with `reword <hash>` in the todo
+            let seqEditor: string;
+            let msgEditor: string;
+            if (process.platform === 'win32') {
+                const seqScriptPath = path.join(tmpDir, 'seq-editor.cmd');
+                const shortHash = fullHash.slice(0, 7);
+                fs.writeFileSync(seqScriptPath,
+                    `@echo off\r\n` +
+                    `powershell -NoProfile -Command "(Get-Content '%1') -replace '^pick ${shortHash}', 'reword ${shortHash}' | Set-Content '%1'"\r\n`,
+                    'utf-8');
+                seqEditor = seqScriptPath;
+
+                const msgScriptPath = path.join(tmpDir, 'msg-editor.cmd');
+                fs.writeFileSync(msgScriptPath,
+                    `@copy /Y "${msgPath.replace(/\\/g, '\\\\')}" %1 >nul\r\n`,
+                    'utf-8');
+                msgEditor = msgScriptPath;
+            } else {
+                const seqScriptPath = path.join(tmpDir, 'seq-editor.sh');
+                const shortHash = fullHash.slice(0, 7);
+                fs.writeFileSync(seqScriptPath,
+                    `#!/bin/sh\nsed -i "s/^pick ${shortHash}/reword ${shortHash}/" "$1"\n`,
+                    { mode: 0o755 });
+                seqEditor = seqScriptPath;
+
+                const msgScriptPath = path.join(tmpDir, 'msg-editor.sh');
+                fs.writeFileSync(msgScriptPath,
+                    `#!/bin/sh\ncp "${msgPath}" "$1"\n`,
+                    { mode: 0o755 });
+                msgEditor = msgScriptPath;
+            }
+
+            await this.execGitAsync(`git rebase -i ${parentHash}`, {
+                cwd: repoRoot,
+                timeout: 600000,
+                env: { GIT_SEQUENCE_EDITOR: seqEditor, GIT_EDITOR: msgEditor },
+            });
+
+            try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
+
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to reword commit', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
      * Dispose of resources (no-op, provided for Disposable interface compatibility).
      */
     dispose(): void {

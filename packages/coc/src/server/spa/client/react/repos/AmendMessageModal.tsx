@@ -12,11 +12,13 @@ interface AmendMessageModalProps {
     commit: GitCommitItem;
     onConfirm: (title: string, body: string) => void;
     onCancel: () => void;
+    /** When true, only show the title input (no body textarea). */
+    titleOnly?: boolean;
 }
 
 const TITLE_MAX_SOFT = 72;
 
-export function AmendMessageModal({ commit, onConfirm, onCancel }: AmendMessageModalProps) {
+export function AmendMessageModal({ commit, onConfirm, onCancel, titleOnly }: AmendMessageModalProps) {
     const [title, setTitle] = useState(() => commit.subject ?? '');
     const [body, setBody] = useState(() => commit.body ?? '');
     const [titleError, setTitleError] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function AmendMessageModal({ commit, onConfirm, onCancel }: AmendMessageM
             onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
         >
             <div className="bg-[var(--vscode-editor-background,#1e1e1e)] border border-[var(--vscode-panel-border,#333)] rounded-md shadow-xl w-[480px] max-w-full mx-4 p-5 flex flex-col gap-4">
-                <h2 className="text-sm font-semibold text-[var(--vscode-foreground,#ccc)]">Amend Commit Message</h2>
+                <h2 className="text-sm font-semibold text-[var(--vscode-foreground,#ccc)]">{titleOnly ? 'Amend Commit Title' : 'Amend Commit Message'}</h2>
 
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-[var(--vscode-descriptionForeground,#999)]">
@@ -70,6 +72,7 @@ export function AmendMessageModal({ commit, onConfirm, onCancel }: AmendMessageM
                     )}
                 </div>
 
+                {!titleOnly && (
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-[var(--vscode-descriptionForeground,#999)]">Body <span className="opacity-60">(optional)</span></label>
                     <textarea
@@ -80,6 +83,7 @@ export function AmendMessageModal({ commit, onConfirm, onCancel }: AmendMessageM
                         placeholder="Extended description (optional)"
                     />
                 </div>
+                )}
 
                 <div className="flex justify-end gap-2">
                     <button

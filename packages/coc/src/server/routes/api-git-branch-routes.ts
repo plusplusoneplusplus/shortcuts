@@ -600,6 +600,59 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
     });
 
     // ------------------------------------------------------------------
+    // Reword commit title (non-HEAD commits via interactive rebase)
+    // ------------------------------------------------------------------
+
+    // POST /api/workspaces/:id/git/reword — Reword a non-HEAD commit's title
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/reword$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!body.hash || typeof body.hash !== 'string') {
+                return handleAPIError(res, missingFields(['hash']));
+            }
+            if (!body.title || typeof body.title !== 'string' || !body.title.trim()) {
+                return handleAPIError(res, missingFields(['title']));
+            }
+
+            const running = await gitOpsStore.getRunning(id, 'reword');
+            if (running.length > 0) {
+                return handleAPIError(res, conflict('A reword operation is already running'));
+            }
+
+            const jobId = `reword-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const job: GitOpJob = {
+                id: jobId, workspaceId: id, op: 'reword',
+                status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
+            };
+            await gitOpsStore.create(job);
+            sendJSON(res, 202, { jobId });
+
+            branchService.rewordCommit(ws.rootPath, body.hash, body.title).then(async (result) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: result.success ? 'success' : 'failed',
+                    finishedAt: new Date().toISOString(), error: result.error,
+                });
+                gitCache.invalidateMutable(id);
+                getWsServer?.()?.broadcastGitChanged(id, 'reword');
+            }).catch(async (err) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: 'failed', finishedAt: new Date().toISOString(),
+                    error: err instanceof Error ? err.message : 'Unknown error',
+                });
+                getWsServer?.()?.broadcastGitChanged(id, 'reword');
+            });
+        },
+    });
+
+    // ------------------------------------------------------------------
     // Rebase reorder (drag-and-drop commit reorder)
     // ------------------------------------------------------------------
 

@@ -1159,3 +1159,95 @@ describe('BranchService.rebaseReorder', () => {
         expect(result.error).toBe('rebase failed');
     });
 });
+
+// ── rewordCommit ──────────────────────────────────────────────────
+describe('BranchService.rewordCommit', () => {
+    let service: BranchService;
+    const mockedMkdtempSync = fs.mkdtempSync as Mock;
+    const mockedWriteFileSync = fs.writeFileSync as Mock;
+    const mockedRmSync = fs.rmSync as Mock;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns error for empty hash', async () => {
+        const result = await service.rewordCommit('/repo', '', 'New title');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/hash.*empty/i);
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('returns error for empty title', async () => {
+        const result = await service.rewordCommit('/repo', 'abc1234', '');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/title.*empty/i);
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('returns error for whitespace-only title', async () => {
+        const result = await service.rewordCommit('/repo', 'abc1234', '   ');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/title.*empty/i);
+    });
+
+    it('calls git rebase -i with GIT_SEQUENCE_EDITOR and GIT_EDITOR on success', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')   // rev-parse hash
+            .mockReturnValueOnce('parent000\n');      // rev-parse parent
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reword-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.rewordCommit('/repo', 'abc1234', 'New title');
+
+        expect(result.success).toBe(true);
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            expect.stringContaining('git rebase -i parent000'),
+            expect.objectContaining({
+                cwd: '/repo',
+                timeout: 600000,
+                env: expect.objectContaining({
+                    GIT_SEQUENCE_EDITOR: expect.any(String),
+                    GIT_EDITOR: expect.any(String),
+                }),
+            })
+        );
+    });
+
+    it('writes message file with trimmed title', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reword-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        await service.rewordCommit('/repo', 'abc1234', '  New title  ');
+
+        // First writeFileSync call is the message file
+        const msgCall = mockedWriteFileSync.mock.calls[0];
+        expect(msgCall[1]).toBe('New title');
+    });
+
+    it('returns failure with error message on rebase failure', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reword-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedExecAsync.mockRejectedValueOnce(new Error('rebase conflict'));
+
+        const result = await service.rewordCommit('/repo', 'abc1234', 'New title');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('rebase conflict');
+    });
+});

@@ -15,6 +15,7 @@
  * - POST /api/workspaces/:id/git/stash
  * - POST /api/workspaces/:id/git/stash/pop
  * - POST /api/workspaces/:id/git/reset
+ * - POST /api/workspaces/:id/git/reword
  *
  * Uses mocked BranchService via vi.mock to avoid actual git calls.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -56,6 +57,7 @@ const mockRebaseAbort = vi.fn();
 const mockMergeContinue = vi.fn();
 const mockMergeAbort = vi.fn();
 const mockRebaseReorder = vi.fn();
+const mockRewordCommit = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -83,6 +85,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             mergeContinue: mockMergeContinue,
             mergeAbort: mockMergeAbort,
             rebaseReorder: mockRebaseReorder,
+            rewordCommit: mockRewordCommit,
         })),
     };
 });
@@ -213,6 +216,7 @@ describe('Git Branches API endpoints', () => {
         mockMergeContinue.mockReset();
         mockMergeAbort.mockReset();
         mockRebaseReorder.mockReset();
+        mockRewordCommit.mockReset();
     });
 
     // -----------------------------------------------------------------------
@@ -1270,6 +1274,71 @@ describe('Git Branches API endpoints', () => {
             const res2 = await request(`${base()}/api/workspaces/ws-ops-test/git/rebase-reorder`, {
                 method: 'POST',
                 body: JSON.stringify({ commits: ['abc222'] }),
+            });
+            expect(res2.status).toBe(409);
+            expect(res2.json().code).toBe('CONFLICT');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/reword — Reword commit title
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/reword', () => {
+        it('should return 202 with jobId for valid hash and title', async () => {
+            mockRewordCommit.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reword`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', title: 'New commit title' }),
+            });
+
+            expect(res.status).toBe(202);
+            const data = res.json();
+            expect(data.jobId).toBeDefined();
+            expect(typeof data.jobId).toBe('string');
+            await new Promise(resolve => setTimeout(resolve, 200));
+        });
+
+        it('should return 400 when hash is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reword`, {
+                method: 'POST',
+                body: JSON.stringify({ title: 'New title' }),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 400 when title is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reword`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234' }),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 400 when title is empty/whitespace', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reword`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', title: '   ' }),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 409 when a reword operation is already running', async () => {
+            mockRewordCommit.mockReturnValue(new Promise(() => {})); // never resolves
+
+            const res1 = await request(`${base()}/api/workspaces/ws-ops-test/git/reword`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', title: 'New title' }),
+            });
+            expect(res1.status).toBe(202);
+
+            const res2 = await request(`${base()}/api/workspaces/ws-ops-test/git/reword`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc5678', title: 'Another title' }),
             });
             expect(res2.status).toBe(409);
             expect(res2.json().code).toBe('CONFLICT');
