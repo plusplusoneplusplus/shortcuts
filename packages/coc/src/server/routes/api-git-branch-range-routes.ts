@@ -12,6 +12,7 @@ import { handleAPIError, badRequest } from '../errors';
 import { gitCache } from '../git-cache';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
+import { truncateDiffIfNeeded } from './api-shared';
 
 export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
@@ -108,10 +109,13 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/files\/(.+)\/diff$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             const filePath = decodeURIComponent(match![2]);
+
+            const parsed = url.parse(req.url || '/', true);
+            const full = parsed.query.full === 'true';
 
             try {
                 const rangeService = getGitRangeService();
@@ -120,7 +124,8 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                     return sendJSON(res, 200, { diff: '', path: filePath });
                 }
                 const diff = rangeService.getFileDiff(ws.rootPath, range.baseRef, 'HEAD', filePath);
-                sendJSON(res, 200, { diff, path: filePath });
+                const result = { ...truncateDiffIfNeeded(diff, full), path: filePath };
+                sendJSON(res, 200, result);
             } catch {
                 sendJSON(res, 200, { diff: '', path: filePath });
             }

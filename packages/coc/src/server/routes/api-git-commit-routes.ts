@@ -13,6 +13,7 @@ import { handleAPIError, notFound, badRequest } from '../errors';
 import { gitCache } from '../git-cache';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
+import { truncateDiffIfNeeded } from './api-shared';
 
 export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
@@ -215,22 +216,25 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files\/(.+)\/diff$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             const id = ws.id;
             const hash = match![2];
             const filePath = decodeURIComponent(match![3]);
 
-            const cacheKey = `${id}:commit-file-diff:${hash}:${filePath}`;
-            const cached = gitCache.get<{ diff: string }>(cacheKey);
+            const parsed = url.parse(req.url || '/', true);
+            const full = parsed.query.full === 'true';
+
+            const cacheKey = `${id}:commit-file-diff:${hash}:${filePath}${full ? ':full' : ''}`;
+            const cached = gitCache.get<{ diff: string; truncated?: boolean; totalLines?: number }>(cacheKey);
             if (cached) {
                 return sendJSON(res, 200, cached);
             }
 
             try {
                 const diff = execGitSync(`show --format="" --patch -U99999 ${hash} -- ${filePath}`, ws.rootPath);
-                const result = { diff };
+                const result = truncateDiffIfNeeded(diff, full);
                 gitCache.set(cacheKey, result);
                 sendJSON(res, 200, result);
             } catch (err: any) {

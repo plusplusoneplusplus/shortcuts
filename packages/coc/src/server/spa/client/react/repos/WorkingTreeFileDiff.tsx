@@ -55,6 +55,9 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [truncated, setTruncated] = useState(false);
+    const [totalLines, setTotalLines] = useState(0);
+    const [fullRequested, setFullRequested] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
     const [activePopoverComment, setActivePopoverComment] = useState<AnyComment | null>(null);
@@ -98,7 +101,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
             clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
 
-    const fetchDiff = useCallback(() => {
+    const fetchDiff = useCallback((full = false) => {
         if (stage === 'untracked') {
             setLoading(false);
             setDiff(null);
@@ -108,17 +111,27 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
         setLoading(true);
         setError(null);
         setDiff(null);
+        const fullParam = full ? '&full=true' : '';
         fetchApi(
-            `/workspaces/${encodeURIComponent(workspaceId)}/git/changes/files/${encodeURIComponent(filePath)}/diff?stage=${stage}`
+            `/workspaces/${encodeURIComponent(workspaceId)}/git/changes/files/${encodeURIComponent(filePath)}/diff?stage=${stage}${fullParam}`
         )
-            .then(data => setDiff(data.diff ?? ''))
+            .then(data => {
+                setDiff(data.diff ?? '');
+                setTruncated(!!data.truncated);
+                setTotalLines(data.totalLines ?? 0);
+            })
             .catch(err => setError(err.message || 'Failed to load diff'))
             .finally(() => setLoading(false));
     }, [workspaceId, filePath, stage]);
 
     useEffect(() => {
+        setFullRequested(false);
         fetchDiff();
     }, [fetchDiff]);
+
+    useEffect(() => {
+        if (fullRequested) fetchDiff(true);
+    }, [fullRequested, fetchDiff]);
 
     const handleAddComment = useCallback(
         (selection: DiffCommentSelection, selectedText: string, position: { top: number; left: number }) => {
@@ -224,35 +237,49 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
                             <Button variant="secondary" size="sm" onClick={fetchDiff} data-testid="working-tree-file-diff-retry-btn">Retry</Button>
                         </div>
                     ) : diff ? (
-                        viewMode === 'split' ? (
-                            <SideBySideDiffViewer
-                                ref={viewerRef}
-                                diff={diff}
-                                fileName={filePath}
-                                enableComments
-                                showLineNumbers
-                                comments={comments}
-                                onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
-                                onAddComment={handleAddComment}
-                                onAskAI={handleAskAIDiff}
-                                onCommentClick={handleCommentClick}
-                                data-testid="working-tree-file-diff-content"
-                            />
-                        ) : (
-                            <UnifiedDiffViewer
-                                ref={viewerRef}
-                                diff={diff}
-                                fileName={filePath}
-                                enableComments
-                                showLineNumbers
-                                comments={comments}
-                                onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
-                                onAddComment={handleAddComment}
-                                onAskAI={handleAskAIDiff}
-                                onCommentClick={handleCommentClick}
-                                data-testid="working-tree-file-diff-content"
-                            />
-                        )
+                        <>
+                            {viewMode === 'split' ? (
+                                <SideBySideDiffViewer
+                                    ref={viewerRef}
+                                    diff={diff}
+                                    fileName={filePath}
+                                    enableComments
+                                    showLineNumbers
+                                    comments={comments}
+                                    onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
+                                    onAddComment={handleAddComment}
+                                    onAskAI={handleAskAIDiff}
+                                    onCommentClick={handleCommentClick}
+                                    data-testid="working-tree-file-diff-content"
+                                />
+                            ) : (
+                                <UnifiedDiffViewer
+                                    ref={viewerRef}
+                                    diff={diff}
+                                    fileName={filePath}
+                                    enableComments
+                                    showLineNumbers
+                                    comments={comments}
+                                    onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
+                                    onAddComment={handleAddComment}
+                                    onAskAI={handleAskAIDiff}
+                                    onCommentClick={handleCommentClick}
+                                    data-testid="working-tree-file-diff-content"
+                                />
+                            )}
+                            {truncated && !fullRequested && (
+                                <div className="flex items-center gap-2 px-4 py-2 text-xs bg-[#fff3cd] dark:bg-[#3a3000] border-t border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="diff-truncation-banner">
+                                    <span>Diff truncated (showing first 5,000 of {totalLines.toLocaleString()} lines).</span>
+                                    <button
+                                        className="text-[#0366d6] dark:text-[#58a6ff] underline hover:no-underline font-medium"
+                                        onClick={() => setFullRequested(true)}
+                                        data-testid="load-full-diff-btn"
+                                    >
+                                        Load full diff
+                                    </button>
+                                </div>
+                            )}
+                        </>
                     ) : (
                         <div className="text-xs text-[#848484]" data-testid="working-tree-file-diff-empty">(no changes)</div>
                     )}

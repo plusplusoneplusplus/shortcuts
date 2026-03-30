@@ -11,6 +11,7 @@ import { sendJSON } from '../api-handler';
 import { handleAPIError, missingFields } from '../errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
+import { truncateDiffIfNeeded } from './api-shared';
 
 export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     const { routes, store, getWsServer } = ctx;
@@ -155,10 +156,12 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
             const parsed = url.parse(req.url!, true).query;
             const stage = parsed.stage as string | undefined;
             const staged = stage === 'staged';
+            const full = parsed.full === 'true';
 
             try {
                 const diff = await workingTreeService.getFileDiff(ws.rootPath, filePath, staged);
-                sendJSON(res, 200, { diff, path: filePath });
+                const result = { ...truncateDiffIfNeeded(diff, full), path: filePath };
+                sendJSON(res, 200, result);
             } catch {
                 sendJSON(res, 200, { diff: '', path: filePath });
             }

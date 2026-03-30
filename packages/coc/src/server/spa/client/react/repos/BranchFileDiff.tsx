@@ -47,6 +47,9 @@ export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateT
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [truncated, setTruncated] = useState(false);
+    const [totalLines, setTotalLines] = useState(0);
+    const [fullRequested, setFullRequested] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
     const [activePopoverComment, setActivePopoverComment] = useState<AnyComment | null>(null);
@@ -89,21 +92,31 @@ export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateT
             clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
             resolveWithAI, fixWithAI } = useDiffComments(workspaceId, diffContext);
 
-    const fetchDiff = useCallback(() => {
+    const fetchDiff = useCallback((full = false) => {
         setLoading(true);
         setError(null);
         setDiff(null);
+        const suffix = full ? '?full=true' : '';
         fetchApi(
-            `/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/files/${encodeURIComponent(filePath)}/diff`
+            `/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/files/${encodeURIComponent(filePath)}/diff${suffix}`
         )
-            .then(data => setDiff(data.diff ?? ''))
+            .then(data => {
+                setDiff(data.diff ?? '');
+                setTruncated(!!data.truncated);
+                setTotalLines(data.totalLines ?? 0);
+            })
             .catch(err => setError(err.message || 'Failed to load diff'))
             .finally(() => setLoading(false));
     }, [workspaceId, filePath]);
 
     useEffect(() => {
+        setFullRequested(false);
         fetchDiff();
     }, [fetchDiff]);
+
+    useEffect(() => {
+        if (fullRequested) fetchDiff(true);
+    }, [fullRequested, fetchDiff]);
 
     const handleRetry = useCallback(() => {
         fetchDiff();
@@ -212,35 +225,49 @@ export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateT
                             <Button variant="secondary" size="sm" onClick={handleRetry} data-testid="branch-file-diff-retry-btn">Retry</Button>
                         </div>
                     ) : diff ? (
-                        viewMode === 'split' ? (
-                            <SideBySideDiffViewer
-                                ref={viewerRef}
-                                diff={diff}
-                                fileName={filePath}
-                                enableComments
-                                showLineNumbers
-                                comments={comments}
-                                onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
-                                onAddComment={handleAddComment}
-                                onAskAI={handleAskAIDiff}
-                                onCommentClick={handleCommentClick}
-                                data-testid="branch-file-diff-content"
-                            />
-                        ) : (
-                            <UnifiedDiffViewer
-                                ref={viewerRef}
-                                diff={diff}
-                                fileName={filePath}
-                                enableComments
-                                showLineNumbers
-                                comments={comments}
-                                onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
-                                onAddComment={handleAddComment}
-                                onAskAI={handleAskAIDiff}
-                                onCommentClick={handleCommentClick}
-                                data-testid="branch-file-diff-content"
-                            />
-                        )
+                        <>
+                            {viewMode === 'split' ? (
+                                <SideBySideDiffViewer
+                                    ref={viewerRef}
+                                    diff={diff}
+                                    fileName={filePath}
+                                    enableComments
+                                    showLineNumbers
+                                    comments={comments}
+                                    onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
+                                    onAddComment={handleAddComment}
+                                    onAskAI={handleAskAIDiff}
+                                    onCommentClick={handleCommentClick}
+                                    data-testid="branch-file-diff-content"
+                                />
+                            ) : (
+                                <UnifiedDiffViewer
+                                    ref={viewerRef}
+                                    diff={diff}
+                                    fileName={filePath}
+                                    enableComments
+                                    showLineNumbers
+                                    comments={comments}
+                                    onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
+                                    onAddComment={handleAddComment}
+                                    onAskAI={handleAskAIDiff}
+                                    onCommentClick={handleCommentClick}
+                                    data-testid="branch-file-diff-content"
+                                />
+                            )}
+                            {truncated && !fullRequested && (
+                                <div className="flex items-center gap-2 px-4 py-2 text-xs bg-[#fff3cd] dark:bg-[#3a3000] border-t border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="diff-truncation-banner">
+                                    <span>Diff truncated (showing first 5,000 of {totalLines.toLocaleString()} lines).</span>
+                                    <button
+                                        className="text-[#0366d6] dark:text-[#58a6ff] underline hover:no-underline font-medium"
+                                        onClick={() => setFullRequested(true)}
+                                        data-testid="load-full-diff-btn"
+                                    >
+                                        Load full diff
+                                    </button>
+                                </div>
+                            )}
+                        </>
                     ) : (
                         <div className="text-xs text-[#848484]" data-testid="branch-file-diff-empty">(empty diff)</div>
                     )}

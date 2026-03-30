@@ -23,3 +23,25 @@ export interface ApiRouteContext {
     getWsServer?: () => ProcessWebSocketServer | undefined;
     gitOpsStore: GitOpsStore;
 }
+
+/** Maximum number of diff lines returned before truncation kicks in. */
+export const DIFF_LINE_LIMIT = 5000;
+
+/**
+ * If the diff exceeds DIFF_LINE_LIMIT lines and `full` is not true,
+ * returns a truncated version with metadata. Otherwise returns the full diff.
+ */
+export function truncateDiffIfNeeded(
+    diff: string,
+    full: boolean,
+): { diff: string; truncated?: boolean; totalLines?: number } {
+    const lines = diff.split('\n');
+    if (!full && lines.length > DIFF_LINE_LIMIT) {
+        return {
+            diff: lines.slice(0, DIFF_LINE_LIMIT).join('\n'),
+            truncated: true,
+            totalLines: lines.length,
+        };
+    }
+    return { diff };
+}
