@@ -282,6 +282,7 @@ describe('Server Integration', () => {
                 }, (res) => {
                     let buffer = '';
                     const collected: Array<{ event: string; data: unknown }> = [];
+                    let emitted = false;
 
                     res.on('data', (chunk: Buffer) => {
                         buffer += chunk.toString();
@@ -300,6 +301,15 @@ describe('Server Integration', () => {
                             if (event && data) {
                                 collected.push({ event, data: JSON.parse(data) });
                             }
+                            // Emit process events only after the server confirms the stream is
+                            // ready via the initial heartbeat, avoiding the race between the
+                            // server's async subscription setup and test event emission.
+                            if (event === 'heartbeat' && !emitted) {
+                                emitted = true;
+                                store.emitProcessOutput('sse-running', 'hello ');
+                                store.emitProcessOutput('sse-running', 'world');
+                                store.emitProcessComplete('sse-running', 'completed', '1s');
+                            }
                             if (event === 'done') {
                                 resolve(collected);
                             }
@@ -312,13 +322,6 @@ describe('Server Integration', () => {
 
                 req.on('error', reject);
                 req.end();
-
-                // Emit chunks after a brief delay
-                setTimeout(() => {
-                    store.emitProcessOutput('sse-running', 'hello ');
-                    store.emitProcessOutput('sse-running', 'world');
-                    store.emitProcessComplete('sse-running', 'completed', '1s');
-                }, 100);
             });
 
             const chunks = events.filter(e => e.event === 'chunk');
@@ -366,6 +369,7 @@ describe('Server Integration', () => {
                 }, (res) => {
                     let buffer = '';
                     const collected: Array<{ event: string; data: unknown }> = [];
+                    let emitted = false;
 
                     res.on('data', (chunk: Buffer) => {
                         buffer += chunk.toString();
@@ -383,6 +387,47 @@ describe('Server Integration', () => {
                             if (event && data) {
                                 collected.push({ event, data: JSON.parse(data) });
                             }
+                            // Emit tool events only after the server signals readiness via heartbeat
+                            if (event === 'heartbeat' && !emitted) {
+                                emitted = true;
+                                store.emitProcessEvent('sse-tools', {
+                                    type: 'tool-start',
+                                    turnIndex: 0,
+                                    toolCallId: 'call_abc',
+                                    toolName: 'view',
+                                    parameters: { path: '/src/app.ts' },
+                                });
+                                store.emitProcessEvent('sse-tools', {
+                                    type: 'tool-complete',
+                                    turnIndex: 0,
+                                    toolCallId: 'call_abc',
+                                    result: 'File contents here',
+                                });
+                                store.emitProcessEvent('sse-tools', {
+                                    type: 'tool-start',
+                                    turnIndex: 0,
+                                    toolCallId: 'call_def',
+                                    parentToolCallId: 'call_abc',
+                                    toolName: 'edit',
+                                    parameters: { path: '/src/app.ts' },
+                                });
+                                store.emitProcessEvent('sse-tools', {
+                                    type: 'tool-failed',
+                                    turnIndex: 0,
+                                    toolCallId: 'call_def',
+                                    parentToolCallId: 'call_abc',
+                                    error: 'Permission denied',
+                                });
+                                store.emitProcessEvent('sse-tools', {
+                                    type: 'permission-request',
+                                    turnIndex: 1,
+                                    permissionId: 'perm_xyz',
+                                    kind: 'write',
+                                    description: 'Write to /src/app.ts',
+                                });
+                                store.emitProcessOutput('sse-tools', 'Done.');
+                                store.emitProcessComplete('sse-tools', 'completed', '2s');
+                            }
                             if (event === 'done') {
                                 resolve(collected);
                             }
@@ -395,47 +440,6 @@ describe('Server Integration', () => {
 
                 req.on('error', reject);
                 req.end();
-
-                // Emit tool events after a brief delay
-                setTimeout(() => {
-                    store.emitProcessEvent('sse-tools', {
-                        type: 'tool-start',
-                        turnIndex: 0,
-                        toolCallId: 'call_abc',
-                        toolName: 'view',
-                        parameters: { path: '/src/app.ts' },
-                    });
-                    store.emitProcessEvent('sse-tools', {
-                        type: 'tool-complete',
-                        turnIndex: 0,
-                        toolCallId: 'call_abc',
-                        result: 'File contents here',
-                    });
-                    store.emitProcessEvent('sse-tools', {
-                        type: 'tool-start',
-                        turnIndex: 0,
-                        toolCallId: 'call_def',
-                        parentToolCallId: 'call_abc',
-                        toolName: 'edit',
-                        parameters: { path: '/src/app.ts' },
-                    });
-                    store.emitProcessEvent('sse-tools', {
-                        type: 'tool-failed',
-                        turnIndex: 0,
-                        toolCallId: 'call_def',
-                        parentToolCallId: 'call_abc',
-                        error: 'Permission denied',
-                    });
-                    store.emitProcessEvent('sse-tools', {
-                        type: 'permission-request',
-                        turnIndex: 1,
-                        permissionId: 'perm_xyz',
-                        kind: 'write',
-                        description: 'Write to /src/app.ts',
-                    });
-                    store.emitProcessOutput('sse-tools', 'Done.');
-                    store.emitProcessComplete('sse-tools', 'completed', '2s');
-                }, 100);
             });
 
             // Verify tool events arrived

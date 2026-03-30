@@ -215,7 +215,10 @@ export async function handleProcessStream(
         }
     });
 
-    // 7. Heartbeat to detect stale connections (every 15s)
+    // 7a. Immediate heartbeat signals the client that the stream is ready
+    sendEvent(res, 'heartbeat', {});
+
+    // 7b. Periodic heartbeat to detect stale connections (every 15s)
     const heartbeat = setInterval(() => {
         sendEvent(res, 'heartbeat', {});
     }, 15_000);
