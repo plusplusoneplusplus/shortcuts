@@ -715,39 +715,16 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         const snapshot = { ...contextMenu };
         closeContextMenu();
 
-        const MAX_LINES = 3000;
-        const truncateDiff = (diff: string) => {
-            const lines = diff.split('\n');
-            if (lines.length <= MAX_LINES) return diff;
-            return lines.slice(0, MAX_LINES).join('\n') +
-                `\n[Diff truncated — showing first ${MAX_LINES} lines of ${lines.length} total]`;
-        };
-
         try {
             let promptContent: string;
             if (snapshot.type === 'commit' && snapshot.commit) {
-                const { commit } = snapshot;
-                const diffData = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${commit.hash}/diff`);
-                const diff = truncateDiff(diffData.diff || '');
-                promptContent = `Review the following git changes.\n\nCommit: ${commit.hash} — ${commit.subject}\nAuthor: ${commit.author}\n\n<diff>\n${diff}\n</diff>`;
+                promptContent = `<commit>${snapshot.commit.hash}</commit>`;
             } else if (snapshot.type === 'multi-commit' && snapshot.commits?.length) {
-                const selectedCommits = snapshot.commits;
-                const diffs = await Promise.all(
-                    selectedCommits.map(c =>
-                        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${c.hash}/diff`)
-                            .then((d: any) => ({ commit: c, diff: d.diff || '' }))
-                    )
-                );
-                const sections = diffs.map(({ commit: c, diff }) =>
-                    `Commit: ${c.hash} — ${c.subject}\nAuthor: ${c.author}\n\n<diff>\n${truncateDiff(diff)}\n</diff>`
-                );
-                promptContent = `Review the following git changes.\n\n${selectedCommits.length} commits selected:\n${sections.join('\n\n---\n\n')}`;
+                promptContent = `<commits>\n${snapshot.commits.map(c => c.hash).join('\n')}\n</commits>`;
             } else {
-                const diffData = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/diff`);
-                const diff = truncateDiff(diffData.diff || '');
-                const commitCount = branchRangeData?.commitCount ?? 0;
                 const base = (branchRangeData?.baseRef ?? 'main').replace(/^origin\//, '');
-                promptContent = `Review the following branch changes (${commitCount} commit${commitCount !== 1 ? 's' : ''} ahead of ${base}).\n\n<diff>\n${diff}\n</diff>`;
+                const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
+                promptContent = `<commit-range>${base}..${head}</commit-range>`;
             }
 
             const ws = state.workspaces.find((w: any) => w.id === workspaceId);

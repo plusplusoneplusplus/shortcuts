@@ -761,13 +761,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain('const handleEnqueueSkill = useCallback(async');
         });
 
-        it('handleEnqueueSkill fetches commit diff for commit type', () => {
-            expect(source).toContain('/git/commits/');
-            expect(source).toContain('/diff');
+        it('handleEnqueueSkill uses commit hash tag for single commit', () => {
+            expect(source).toContain('<commit>${snapshot.commit.hash}</commit>');
         });
 
-        it('handleEnqueueSkill fetches branch-range diff for branch-range type', () => {
-            expect(source).toContain('/git/branch-range/diff');
+        it('handleEnqueueSkill uses commit-range tag for branch range', () => {
+            expect(source).toContain('<commit-range>');
         });
 
         it('handleEnqueueSkill enqueues chat task with skill context', () => {
@@ -781,9 +780,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain("getApiBase() + '/queue/tasks'");
         });
 
-        it('handleEnqueueSkill truncates large diffs at MAX_LINES', () => {
-            expect(source).toContain('MAX_LINES');
-            expect(source).toContain('Diff truncated');
+        it('handleEnqueueSkill does not fetch or embed diffs', () => {
+            const block = source.match(/const handleEnqueueSkill[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).not.toContain('MAX_LINES');
+            expect(block![0]).not.toContain('truncateDiff');
+            expect(block![0]).not.toContain('/diff');
         });
 
         it('defines contextMenuItems via useMemo', () => {
@@ -992,19 +994,11 @@ describe('RepoGitTab', () => {
             expect(multiBlock![0]).toContain("launchMode: 'floating-chat'");
         });
 
-        it('handleEnqueueSkill fetches diffs in parallel for multi-commit type', () => {
+        it('handleEnqueueSkill uses commits tag for multi-commit', () => {
             const block = source.match(/else if \(snapshot\.type === 'multi-commit'[\s\S]*?} else \{/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('Promise.all');
-            expect(block![0]).toContain('/git/commits/');
-            expect(block![0]).toContain('/diff');
-        });
-
-        it('handleEnqueueSkill builds sectioned prompt for multi-commit', () => {
-            const block = source.match(/else if \(snapshot\.type === 'multi-commit'[\s\S]*?} else \{/);
-            expect(block).toBeTruthy();
-            expect(block![0]).toContain('commits selected:');
-            expect(block![0]).toContain('truncateDiff');
+            expect(block![0]).toContain('<commits>');
+            expect(block![0]).toContain('.map(c => c.hash)');
         });
 
         it('handleEnqueueSkill shortId shows commit count for multi-commit', () => {
