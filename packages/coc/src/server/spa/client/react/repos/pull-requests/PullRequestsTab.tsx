@@ -250,7 +250,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
             {/* PR list */}
             <div className="flex-1 overflow-y-auto" data-testid="pr-list">
                 {filtered.map(pr => (
-                    <PullRequestRow key={pr.id} pr={pr} onClick={() => handleRowClick(pr)} />
+                    <PullRequestRow key={pr.id} pr={pr} onClick={() => handleRowClick(pr)} isSelected={(pr.number ?? pr.id) === state.selectedPrId} />
                 ))}
                 {!loading && !error && !unconfigured && prs.length > 0 && filtered.length === 0 && (
                     <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="no-results">

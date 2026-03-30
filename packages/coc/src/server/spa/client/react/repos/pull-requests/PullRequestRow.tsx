@@ -1,18 +1,25 @@
+import { cn } from '../../shared';
 import { prStatusBadge, formatTimestamp } from './pr-utils';
 import type { PullRequest } from './pr-utils';
 
 interface PullRequestRowProps {
     pr: PullRequest;
     onClick: () => void;
+    isSelected?: boolean;
 }
 
-export function PullRequestRow({ pr, onClick }: PullRequestRowProps) {
+export function PullRequestRow({ pr, onClick, isSelected }: PullRequestRowProps) {
     const badge = prStatusBadge(pr.status);
     const reviewerCount = pr.reviewers?.length ?? 0;
 
     return (
         <div
-            className="pr-row flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer border-b border-gray-100 dark:border-gray-700"
+            className={cn(
+                "pr-row flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-gray-100 dark:border-gray-700",
+                isSelected
+                    ? "bg-blue-50 dark:bg-gray-700"
+                    : "hover:bg-gray-50 dark:hover:bg-gray-800"
+            )}
             onClick={onClick}
             data-testid="pr-row"
         >
