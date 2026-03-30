@@ -102,6 +102,10 @@ describe('useCommitChatBinding', () => {
             expect(source).not.toContain('blocks:');
         });
 
+        it('extracts taskId from nested task object (server returns { task: { id } })', () => {
+            expect(source).toContain('res.task?.id ?? res.id');
+        });
+
         it('POSTs binding after task creation', () => {
             expect(source).toContain('/commit-chat-bindings');
             expect(source).toContain('body: JSON.stringify({ commitHash, taskId: newTaskId })');

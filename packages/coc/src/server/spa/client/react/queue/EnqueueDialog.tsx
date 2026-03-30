@@ -249,9 +249,10 @@ export function EnqueueDialog() {
             });
             if (queueState.dialogLaunchMode === 'floating-chat') {
                 const created = await res.json().catch(() => null);
-                if (created?.id) {
+                const createdId = created?.task?.id ?? created?.id;
+                if (createdId) {
                     floatChat({
-                        taskId: created.id,
+                        taskId: createdId,
                         workspaceId: workspaceId || undefined,
                         title: (effectivePrompt || 'Ask AI').slice(0, 60),
                         status: 'running',

@@ -66,7 +66,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
                     },
                 }),
             });
-            const newTaskId = res.id ?? res.taskId;
+            const newTaskId = res.task?.id ?? res.id;
 
             // Save binding
             await fetchApi(

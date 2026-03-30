@@ -58,7 +58,7 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
             }
 
             const newTask = await res.json();
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newTask.id, repoId: workspaceId });
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newTask.task?.id ?? newTask.id, repoId: workspaceId });
             setInput('');
             richTextRef.current?.setValue('');
         } catch (err: any) {
