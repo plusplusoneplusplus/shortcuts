@@ -24,6 +24,7 @@ import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../context/QueueContext';
 import { BranchCommitStrip } from './BranchCommitStrip';
 import { BranchAllFilesDiff } from './BranchAllFilesDiff';
+import { CommitChatPanel } from './CommitChatPanel';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
@@ -79,6 +80,19 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
     const isRangeMode = !!range;
     const { dispatch: queueDispatch } = useQueue();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [chatOpen, setChatOpen] = useState(() => {
+        try {
+            return localStorage.getItem('coc.commitChat.open') === 'true';
+        } catch { return false; }
+    });
+
+    const toggleChat = useCallback(() => {
+        setChatOpen(prev => {
+            const next = !prev;
+            try { localStorage.setItem('coc.commitChat.open', String(next)); } catch { /* ignore */ }
+            return next;
+        });
+    }, []);
     const [popupState, setPopupState] = useState<PopupState>(null);
     const [activePopoverComment, setActivePopoverComment] = useState<AnyComment | null>(null);
     const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
@@ -498,6 +512,14 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                         >
                             💬 {comments.length > 0 ? comments.length : ''}
                         </button>
+                        <button
+                            onClick={toggleChat}
+                            title="Toggle AI chat"
+                            className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                            data-testid="toggle-chat-btn"
+                        >
+                            🤖
+                        </button>
                     </div>
                 </div>
             )}
@@ -514,6 +536,14 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                         data-testid="toggle-comments-btn"
                     >
                         💬 {allCommitComments.length > 0 ? allCommitComments.length : ''}
+                    </button>
+                    <button
+                        onClick={toggleChat}
+                        title="Toggle AI chat"
+                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                        data-testid="toggle-chat-btn"
+                    >
+                        🤖
                     </button>
                 </div>
             )}
@@ -616,6 +646,15 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                         onCommentClick={handleSidebarCommentClick}
                         onCopyPrompt={copyAllCommitCommentsAsPrompt}
                         data-testid="diff-comment-sidebar"
+                    />
+                )}
+
+                {chatOpen && hash && (
+                    <CommitChatPanel
+                        workspaceId={workspaceId}
+                        commitHash={hash}
+                        commitMessage={commit?.subject}
+                        onClose={toggleChat}
                     />
                 )}
             </div>

@@ -64,7 +64,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
     HunkNavButtons: () => null,
 }));
 
-import { CommitDetail } from '../../../../src/server/spa/client/react/repos/CommitDetail';
+vi.mock('../../../../src/server/spa/client/react/repos/CommitChatPanel', () => ({
+    CommitChatPanel: () => null,
+}));
+
+import { CommitDetail }from '../../../../src/server/spa/client/react/repos/CommitDetail';
 
 function makeHook(overrides: Record<string, unknown> = {}) {
     return {

@@ -62,6 +62,10 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
     HunkNavButtons: () => null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/repos/CommitChatPanel', () => ({
+    CommitChatPanel: () => null,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     copyToClipboard: vi.fn().mockResolvedValue(undefined),
     formatRelativeTime: (d: string) => d,
