@@ -32,6 +32,8 @@ export interface ChatHeaderProps {
     onLaunchInteractiveResume: () => void;
     onPopOut: () => void;
     onFloat: () => void;
+    /** Override the default "Chat" title */
+    title?: string;
 }
 
 export function ChatHeader({
@@ -57,6 +59,7 @@ export function ChatHeader({
     onLaunchInteractiveResume,
     onPopOut,
     onFloat,
+    title,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -78,7 +81,7 @@ export function ChatHeader({
                         ← Back
                     </button>
                 )}
-                <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
+                <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">{title ?? 'Chat'}</span>
                 {task && (
                     <Badge status={task.status}>
                         {statusIcon(task.status)} {statusLabel(task.status)}

@@ -42,6 +42,8 @@ export interface FollowUpInputAreaProps {
         filteredSkills: SkillItem[];
         highlightIndex: number;
     };
+    /** When true, the ask/plan/autopilot mode selector is hidden */
+    hideModeSelector?: boolean;
 }
 
 export function FollowUpInputArea({
@@ -63,6 +65,7 @@ export function FollowUpInputArea({
     onImageRemove,
     task,
     slashCommands,
+    hideModeSelector = false,
 }: FollowUpInputAreaProps) {
     // Sync programmatic followUpInput changes (draft restore, clear after send) to the editor.
     // Guard prevents re-setting when the change originated from the user typing.
@@ -121,7 +124,7 @@ export function FollowUpInputArea({
             )}
             <ImagePreviews images={images} onRemove={onImageRemove} />
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <div className="shrink-0" data-testid="mode-selector">
+                {!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">
                     <select
                         value={selectedMode}
                         onChange={e => setSelectedMode(e.target.value as 'ask' | 'plan' | 'autopilot')}
@@ -132,7 +135,7 @@ export function FollowUpInputArea({
                             <option key={mode} value={mode}>{label}</option>
                         ))}
                     </select>
-                </div>
+                </div>}
                 <div className="relative flex-1 w-full sm:w-auto">
                     <RichTextInput
                         ref={richTextRef}

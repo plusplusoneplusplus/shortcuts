@@ -49,9 +49,15 @@ export interface ActivityChatDetailProps {
      *   as used inside a FloatingDialog overlay.
      */
     variant?: 'inline' | 'floating';
+    /** When true, suppresses QueueContext dispatches (SELECT_QUEUE_TASK). For embedded use. */
+    standalone?: boolean;
+    /** Override the "Chat" title in ChatHeader */
+    title?: string;
+    /** Hide the ask/plan/autopilot mode selector */
+    hideModeSelector?: boolean;
 }
 
-export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline' }: ActivityChatDetailProps) {
+export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -394,7 +400,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
     const handleCancel = async () => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId), { method: 'DELETE' });
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+        if (!standalone) queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
         onBack?.();
     };
 
@@ -460,6 +466,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 onLaunchInteractiveResume={() => { void launchInteractiveResume(); }}
                 onPopOut={handlePopOut}
                 onFloat={handleFloat}
+                title={title}
             />
             <div className="relative flex-1 min-h-0 flex overflow-x-hidden min-w-0">
                 <ConversationArea
@@ -516,6 +523,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     onImageRemove={removeImage}
                     task={task}
                     slashCommands={slashCommands}
+                    hideModeSelector={hideModeSelector}
                 />
             )}
         </div>
