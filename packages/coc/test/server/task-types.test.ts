@@ -16,6 +16,7 @@ import {
     hasResolveCommentsContext,
     hasResolveDiffCommentsContext,
     hasReplicationContext,
+    hasCommitChatContext,
 } from '../../src/server/task-types';
 import type {
     RunWorkflowPayload,
@@ -261,6 +262,36 @@ describe('hasReplicationContext', () => {
 });
 
 // ============================================================================
+// hasCommitChatContext
+// ============================================================================
+
+describe('hasCommitChatContext', () => {
+    it('returns true for chat payload with context.commitChat', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'Discuss commit',
+            context: { commitChat: { commitHash: 'abc123', commitMessage: 'fix: update validation' } },
+        };
+        expect(hasCommitChatContext(payload)).toBe(true);
+    });
+
+    it('returns false for chat payload without commitChat', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello' };
+        expect(hasCommitChatContext(payload)).toBe(false);
+    });
+
+    it('returns false for non-chat payload', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'run-workflow',
+            workflowPath: '/p',
+            workingDirectory: '/tmp',
+            context: { commitChat: { commitHash: 'abc', commitMessage: 'fix: update validation' } },
+        };
+        expect(hasCommitChatContext(payload)).toBe(false);
+    });
+});
+
+// ============================================================================
 // Type narrowing integration
 // ============================================================================
 
@@ -321,25 +352,40 @@ describe('type narrowing', () => {
             prompt: 'replicate',
             context: { replication: { commitHash: 'abc', templateName: 'x' } },
         };
+        const commitChatPayload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'discuss commit',
+            context: { commitChat: { commitHash: 'abc123', commitMessage: 'fix: update validation' } },
+        };
 
         expect(hasTaskGenerationContext(taskGenPayload)).toBe(true);
         expect(hasResolveCommentsContext(taskGenPayload)).toBe(false);
         expect(hasResolveDiffCommentsContext(taskGenPayload)).toBe(false);
         expect(hasReplicationContext(taskGenPayload)).toBe(false);
+        expect(hasCommitChatContext(taskGenPayload)).toBe(false);
 
         expect(hasResolveCommentsContext(resolvePayload)).toBe(true);
         expect(hasTaskGenerationContext(resolvePayload)).toBe(false);
         expect(hasResolveDiffCommentsContext(resolvePayload)).toBe(false);
         expect(hasReplicationContext(resolvePayload)).toBe(false);
+        expect(hasCommitChatContext(resolvePayload)).toBe(false);
 
         expect(hasResolveDiffCommentsContext(resolveDiffPayload)).toBe(true);
         expect(hasTaskGenerationContext(resolveDiffPayload)).toBe(false);
         expect(hasResolveCommentsContext(resolveDiffPayload)).toBe(false);
         expect(hasReplicationContext(resolveDiffPayload)).toBe(false);
+        expect(hasCommitChatContext(resolveDiffPayload)).toBe(false);
 
         expect(hasReplicationContext(replicatePayload)).toBe(true);
         expect(hasTaskGenerationContext(replicatePayload)).toBe(false);
         expect(hasResolveCommentsContext(replicatePayload)).toBe(false);
         expect(hasResolveDiffCommentsContext(replicatePayload)).toBe(false);
+        expect(hasCommitChatContext(replicatePayload)).toBe(false);
+
+        expect(hasCommitChatContext(commitChatPayload)).toBe(true);
+        expect(hasTaskGenerationContext(commitChatPayload)).toBe(false);
+        expect(hasResolveCommentsContext(commitChatPayload)).toBe(false);
+        expect(hasResolveDiffCommentsContext(commitChatPayload)).toBe(false);
+        expect(hasReplicationContext(commitChatPayload)).toBe(false);
     });
 });

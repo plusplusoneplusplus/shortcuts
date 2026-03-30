@@ -75,6 +75,11 @@ export interface ChatContext {
         filePath: string;
         wsId: string;
     };
+    /** Commit-chat preset (side-by-side chat anchored to a specific commit). */
+    commitChat?: {
+        commitHash: string;
+        commitMessage?: string;
+    };
     /** Schedule-specific metadata. */
     scheduleId?: string;
     scheduleParams?: Record<string, string>;
@@ -181,4 +186,9 @@ export function hasResolveDiffCommentsContext(payload: Record<string, unknown>):
 /** Check whether a chat payload carries replication context. */
 export function hasReplicationContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.replication;
+}
+
+/** Check whether a chat payload carries commit-chat context. */
+export function hasCommitChatContext(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && !!payload.context?.commitChat;
 }
