@@ -38,6 +38,79 @@ import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
 
+/**
+ * Best-effort rebind of commit-chat binding when a hash changes.
+ * Fires and forgets — failure is silent (the old binding simply orphans).
+ */
+async function rebindCommitChat(
+    workspaceId: string,
+    oldHash: string,
+    newHash: string
+): Promise<void> {
+    if (oldHash === newHash) return;
+    try {
+        await fetchApi(
+            `/workspaces/${encodeURIComponent(workspaceId)}/commit-chat-bindings/rebind`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ oldHash, newHash }),
+            }
+        );
+    } catch {
+        // Best-effort — binding may not exist; ignore errors
+    }
+}
+
+/**
+ * Heuristic matching of old commits to new commits after a rewrite.
+ * Returns an array of { oldHash, newHash } pairs where identity matched
+ * but hash changed.
+ *
+ * Identity key: `${subject}\0${author}\0${authorEmail}\0${date}`
+ *
+ * Only 1:1 matches are returned — if multiple old commits share the same
+ * identity key (e.g., duplicate "fix typo" commits), none of them match
+ * to avoid incorrect rebinding.
+ */
+export function matchCommitsByIdentity(
+    oldCommits: GitCommitItem[],
+    newCommits: GitCommitItem[]
+): Array<{ oldHash: string; newHash: string }> {
+    const identityKey = (c: GitCommitItem) =>
+        `${c.subject}\0${c.author}\0${c.authorEmail ?? ''}\0${c.date}`;
+
+    const oldMap = new Map<string, GitCommitItem[]>();
+    for (const c of oldCommits) {
+        const key = identityKey(c);
+        const arr = oldMap.get(key) || [];
+        arr.push(c);
+        oldMap.set(key, arr);
+    }
+
+    const newMap = new Map<string, GitCommitItem[]>();
+    for (const c of newCommits) {
+        const key = identityKey(c);
+        const arr = newMap.get(key) || [];
+        arr.push(c);
+        newMap.set(key, arr);
+    }
+
+    const pairs: Array<{ oldHash: string; newHash: string }> = [];
+    for (const [key, oldArr] of oldMap) {
+        if (oldArr.length !== 1) continue;
+        const newArr = newMap.get(key);
+        if (!newArr || newArr.length !== 1) continue;
+        const oldC = oldArr[0];
+        const newC = newArr[0];
+        if (oldC.hash !== newC.hash) {
+            pairs.push({ oldHash: oldC.hash, newHash: newC.hash });
+        }
+    }
+
+    return pairs;
+}
+
 interface RepoGitTabProps {
     workspaceId: string;
 }
@@ -332,6 +405,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     // WebSocket: auto-refresh on git-changed events for this workspace
     const gitChangedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const prevCommitsRef = useRef<GitCommitItem[]>([]);
 
     useWebSocket({
         onMessage: useCallback((msg: any) => {
@@ -339,8 +413,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 if (gitChangedDebounceRef.current) clearTimeout(gitChangedDebounceRef.current);
                 gitChangedDebounceRef.current = setTimeout(() => {
                     gitChangedDebounceRef.current = null;
+                    // Snapshot current commits before the refresh overwrites them
+                    prevCommitsRef.current = commits;
                     // Re-fetch commits and working tree but NOT branch range (cached)
-                    fetchCommits(true, 0, searchQuery);
+                    fetchCommits(true, 0, searchQuery).then((newCommits: GitCommitItem[]) => {
+                        // Heuristic rebind: match old→new commits by identity
+                        const pairs = matchCommitsByIdentity(prevCommitsRef.current, newCommits);
+                        for (const { oldHash, newHash } of pairs) {
+                            rebindCommitChat(workspaceId, oldHash, newHash);
+                        }
+                        prevCommitsRef.current = [];
+                    });
                     setWorkingChangesRefreshKey(k => k + 1);
                 }, 500);
                 // If we're tracking a pull job, re-fetch its status on git-changed
@@ -357,7 +440,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                         .catch(() => {});
                 }
             }
-        }, [workspaceId, fetchCommits, searchQuery]),
+        }, [workspaceId, commits, fetchCommits, searchQuery]),
     });
 
     // Pull job polling helpers
@@ -653,6 +736,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 body: JSON.stringify({ title, body }),
             });
             if (result.error) throw new Error(result.error);
+            // Rebind commit-chat if the amend produced a new hash
+            if (result.hash && result.hash !== amendingCommit.hash) {
+                rebindCommitChat(workspaceId, amendingCommit.hash, result.hash);
+            }
             refreshAll();
             setEnqueueToast('Commit message amended.');
             setTimeout(() => setEnqueueToast(null), 3000);
