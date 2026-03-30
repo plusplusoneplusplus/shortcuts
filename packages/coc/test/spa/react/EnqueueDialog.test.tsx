@@ -2554,4 +2554,194 @@ describe('EnqueueDialog ask mode', () => {
 
         expect(postBody.payload.prompt).toBe('my custom task prompt');
     });
+
+    it('selecting a template with no skills clears previously selected skills', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skillTemplates: [
+                            { id: 'tmpl-with-skills', name: 'ask: go-deep [opus]', model: 'claude-opus-4.6', mode: 'ask', skills: ['go-deep'] },
+                            { id: 'tmpl-no-skills', name: 'ask: default [opus]', model: 'claude-opus-4.6', mode: 'ask', skills: [] },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
+                <DialogOpener mode="ask" workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy();
+        });
+
+        // Select template WITH skills first
+        act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+        const cardWithSkills = await screen.findByTestId('template-card-tmpl-with-skills');
+        await act(async () => { fireEvent.click(cardWithSkills); });
+
+        // Now select template with NO skills
+        const cardNoSkills = await screen.findByTestId('template-card-tmpl-no-skills');
+        await act(async () => { fireEvent.click(cardNoSkills); });
+
+        // Type a prompt and submit
+        const textarea = screen.getByTestId('prompt-input');
+        textarea.innerText = 'explain the codebase';
+        fireEvent.input(textarea);
+
+        const askBtn = screen.getAllByRole('button', { name: /Ask/i }).find(
+            b => b.textContent?.trim() === 'Ask' && b.getAttribute('title') === 'Ctrl+Enter'
+        )!;
+        await act(async () => { fireEvent.click(askBtn); });
+
+        await waitFor(() => {
+            expect(postBody).not.toBeNull();
+        });
+
+        // Template with no skills should have cleared skills — no context.skills in payload
+        expect(postBody.payload.context?.skills).toBeUndefined();
+        expect(postBody.config?.model).toBe('claude-opus-4.6');
+    });
+
+    it('selecting a template with empty model sets model to default', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skillTemplates: [
+                            { id: 'tmpl-with-model', name: 'ask: go-deep [opus]', model: 'claude-opus-4.6', mode: 'ask', skills: ['go-deep'] },
+                            { id: 'tmpl-default-model', name: 'ask: go-deep [default]', model: '', mode: 'ask', skills: ['go-deep'] },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
+                <DialogOpener mode="ask" workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy();
+        });
+
+        // Select template with explicit model first
+        act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+        const cardWithModel = await screen.findByTestId('template-card-tmpl-with-model');
+        await act(async () => { fireEvent.click(cardWithModel); });
+
+        // Now select template with empty model (default)
+        const cardDefaultModel = await screen.findByTestId('template-card-tmpl-default-model');
+        await act(async () => { fireEvent.click(cardDefaultModel); });
+
+        // Submit
+        const askBtn = screen.getAllByRole('button', { name: /Ask/i }).find(
+            b => b.textContent?.trim() === 'Ask' && b.getAttribute('title') === 'Ctrl+Enter'
+        )!;
+        await act(async () => { fireEvent.click(askBtn); });
+
+        await waitFor(() => {
+            expect(postBody).not.toBeNull();
+        });
+
+        // Empty model means "default" — no config.model in body
+        expect(postBody.config?.model).toBeUndefined();
+    });
+
+    it('preference-restore effects do not overwrite template selection with no skills', async () => {
+        // Simulate: preferences have saved skills, but the selected template has no skills.
+        // The preference-restore effect should NOT re-apply saved skills.
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        models: { ask: 'gpt-4' },
+                        skills: { ask: ['go-deep'] },
+                        skillTemplates: [
+                            { id: 'tmpl-bare', name: 'ask: bare [default]', model: '', mode: 'ask', skills: [] },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/skills/all')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ merged: [{ name: 'go-deep', description: 'Deep research' }] }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
+                <DialogOpener mode="ask" workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy();
+        });
+
+        // Select the bare template (no skills, default model)
+        act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+        const card = await screen.findByTestId('template-card-tmpl-bare');
+        await act(async () => { fireEvent.click(card); });
+
+        // Type prompt and submit
+        const textarea = screen.getByTestId('prompt-input');
+        textarea.innerText = 'bare ask question';
+        fireEvent.input(textarea);
+
+        const askBtn = screen.getAllByRole('button', { name: /Ask/i }).find(
+            b => b.textContent?.trim() === 'Ask' && b.getAttribute('title') === 'Ctrl+Enter'
+        )!;
+        await act(async () => { fireEvent.click(askBtn); });
+
+        await waitFor(() => {
+            expect(postBody).not.toBeNull();
+        });
+
+        // Template had no skills → should NOT have picked up 'go-deep' from preferences
+        expect(postBody.payload.context?.skills).toBeUndefined();
+        // Template had empty model → should NOT have picked up 'gpt-4' from preferences
+        expect(postBody.config?.model).toBeUndefined();
+    });
 });

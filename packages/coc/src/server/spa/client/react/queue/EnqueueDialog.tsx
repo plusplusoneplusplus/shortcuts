@@ -77,6 +77,7 @@ export function EnqueueDialog() {
     // On mode change: always apply the new mode's saved model (or clear).
     // On initial load: apply only when model is empty.
     useEffect(() => {
+        if (selectedTemplateId) return;
         const modeChanged = prevModeRef.current !== isAskMode;
         const savedModel = isAskMode ? savedModels.ask : savedModels.task;
         if (modeChanged || !model) {
@@ -134,6 +135,7 @@ export function EnqueueDialog() {
         const modeChanged = prevModeRef.current !== isAskMode;
         prevModeRef.current = isAskMode;
 
+        if (selectedTemplateId && !modeChanged) return;
         const mode = isAskMode ? 'ask' : 'task';
         const savedSkillArr = savedSkills[mode];
         if (savedSkillArr && savedSkillArr.length > 0 && skills.length > 0 && (modeChanged || selectedSkills.length === 0)) {
@@ -157,8 +159,8 @@ export function EnqueueDialog() {
     }, []);
 
     const handleSelectTemplate = useCallback((t: import('../hooks/useSkillTemplates').SkillTemplate) => {
-        if (t.skills.length > 0) setSelectedSkills(t.skills);
-        if (t.model) setModel(t.model);
+        setSelectedSkills(t.skills);
+        setModel(t.model);
         if (t.mode !== (isAskMode ? 'ask' : 'task')) {
             queueDispatch({ type: 'SET_DIALOG_MODE', mode: t.mode });
         }
