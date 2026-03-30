@@ -97,6 +97,11 @@ describe('useCommitChatBinding', () => {
             expect(source).toContain('commitChat: { commitHash, commitMessage }');
         });
 
+        it('does not fetch or inline diff (AI uses git tools instead)', () => {
+            expect(source).not.toContain('/git/commits/');
+            expect(source).not.toContain('blocks:');
+        });
+
         it('POSTs binding after task creation', () => {
             expect(source).toContain('/commit-chat-bindings');
             expect(source).toContain('body: JSON.stringify({ commitHash, taskId: newTaskId })');
@@ -105,23 +110,6 @@ describe('useCommitChatBinding', () => {
         it('sets taskId on success', () => {
             expect(source).toContain('setTaskId(newTaskId)');
             expect(source).toContain('return newTaskId');
-        });
-    });
-
-    describe('createChat includes diff as context block', () => {
-        it('fetches diff from git commits endpoint', () => {
-            expect(source).toContain('/git/commits/');
-            expect(source).toContain('/diff');
-        });
-
-        it('includes diff in blocks when available', () => {
-            expect(source).toContain('blocks: diff ? [{ label:');
-            expect(source).toContain('content: diff }]');
-        });
-
-        it('uses empty blocks when diff fetch fails', () => {
-            // catch block around diff fetch is empty — proceed without diff
-            expect(source).toContain('} catch { /* proceed without diff */ }');
         });
     });
 

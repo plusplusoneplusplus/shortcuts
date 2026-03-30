@@ -58,7 +58,6 @@ vi.mock('../../src/server/suggest-follow-ups-tool', () => ({
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
-    withCommitChatPrefix,
     withRepoInstructions,
     findContextFileSuffix,
     extractPrompt,
@@ -139,91 +138,6 @@ describe('appendAutoFolderBlock', () => {
         expect(repoIdx).toBeGreaterThan(-1);
         expect(folderIdx).toBeGreaterThan(-1);
         expect(folderIdx).toBeGreaterThan(repoIdx);
-    });
-});
-
-// ============================================================================
-// withCommitChatPrefix
-// ============================================================================
-
-describe('withCommitChatPrefix', () => {
-    const makeTask = (payload: any, displayName?: string): any => ({
-        id: 't1',
-        type: payload.kind === 'chat' ? 'chat' : payload.kind,
-        priority: 'normal',
-        status: 'queued',
-        displayName,
-        config: {},
-        payload,
-    });
-
-    it('returns original systemMessage when payload is not chat', () => {
-        const msg = { mode: 'append' as const, content: 'base' };
-        const task = makeTask({ kind: 'run-workflow', workflowPath: '/f', workingDirectory: '/' });
-        expect(withCommitChatPrefix(msg, task)).toBe(msg);
-    });
-
-    it('returns original systemMessage when no commitChat context', () => {
-        const msg = { mode: 'append' as const, content: 'base' };
-        const task = makeTask({ kind: 'chat', mode: 'ask', prompt: 'hi' });
-        expect(withCommitChatPrefix(msg, task)).toBe(msg);
-    });
-
-    it('prepends commit prefix to existing system message', () => {
-        const msg = { mode: 'append' as const, content: 'base instructions' };
-        const task = makeTask({
-            kind: 'chat', mode: 'ask', prompt: 'explain',
-            context: { commitChat: { commitHash: 'abc123' } },
-        });
-        const result = withCommitChatPrefix(msg, task);
-        expect(result!.content).toMatch(/^You are reviewing a specific git commit\./);
-        expect(result!.content).toContain('Commit: abc123');
-        expect(result!.content).toContain('base instructions');
-    });
-
-    it('includes commit message when provided', () => {
-        const msg = { mode: 'append' as const, content: 'base' };
-        const task = makeTask({
-            kind: 'chat', mode: 'ask', prompt: 'explain',
-            context: { commitChat: { commitHash: 'abc123', commitMessage: 'fix: handle null' } },
-        });
-        const result = withCommitChatPrefix(msg, task);
-        expect(result!.content).toContain('Message: fix: handle null');
-    });
-
-    it('omits commit message line when not provided', () => {
-        const msg = { mode: 'append' as const, content: 'base' };
-        const task = makeTask({
-            kind: 'chat', mode: 'ask', prompt: 'explain',
-            context: { commitChat: { commitHash: 'abc123' } },
-        });
-        const result = withCommitChatPrefix(msg, task);
-        expect(result!.content).not.toContain('Message:');
-    });
-
-    it('creates new system message when none provided', () => {
-        const task = makeTask({
-            kind: 'chat', mode: 'ask', prompt: 'explain',
-            context: { commitChat: { commitHash: 'abc123' } },
-        });
-        const result = withCommitChatPrefix(undefined, task);
-        expect(result).toBeDefined();
-        expect(result!.mode).toBe('append');
-        expect(result!.content).toContain('You are reviewing a specific git commit.');
-        expect(result!.content).toContain('Commit: abc123');
-    });
-
-    it('composes correctly with buildModeSystemMessage', () => {
-        const task = makeTask({
-            kind: 'chat', mode: 'ask', prompt: 'explain',
-            context: { commitChat: { commitHash: 'def456' } },
-        });
-        const result = withCommitChatPrefix(buildModeSystemMessage('ask'), task);
-        expect(result!.content).toContain('You are reviewing');
-        expect(result!.content).toContain('READ_ONLY');
-        const reviewIdx = result!.content.indexOf('You are reviewing');
-        const readOnlyIdx = result!.content.indexOf('READ_ONLY');
-        expect(reviewIdx).toBeLessThan(readOnlyIdx);
     });
 });
 
@@ -363,12 +277,26 @@ describe('extractPrompt', () => {
         expect(result).toBe('My Display');
     });
 
-    it('returns chat prompt for commitChat context (falls through to generic chat)', () => {
+    it('enriches prompt with commit hash and message for commitChat context', () => {
         const task = makeTask({
             kind: 'chat', mode: 'ask', prompt: 'Explain this change',
             context: { commitChat: { commitHash: 'abc123', commitMessage: 'fix: null check' } },
         });
-        expect(extractPrompt(task)).toBe('Explain this change');
+        const result = extractPrompt(task);
+        expect(result).toContain("I'm asking about git commit abc123.");
+        expect(result).toContain('Commit message: fix: null check');
+        expect(result).toContain('Explain this change');
+    });
+
+    it('omits commit message line when not provided', () => {
+        const task = makeTask({
+            kind: 'chat', mode: 'ask', prompt: 'What changed?',
+            context: { commitChat: { commitHash: 'abc123' } },
+        });
+        const result = extractPrompt(task);
+        expect(result).toContain("I'm asking about git commit abc123.");
+        expect(result).not.toContain('Commit message:');
+        expect(result).toContain('What changed?');
     });
 
     it('uses displayName fallback for commitChat context with empty prompt', () => {
@@ -376,15 +304,9 @@ describe('extractPrompt', () => {
             kind: 'chat', mode: 'ask', prompt: '',
             context: { commitChat: { commitHash: 'abc123' } },
         }, 'Commit Chat');
-        expect(extractPrompt(task)).toBe('Commit Chat');
-    });
-
-    it('returns generic fallback for commitChat context with no prompt or displayName', () => {
-        const task = makeTask({
-            kind: 'chat', mode: 'ask', prompt: '',
-            context: { commitChat: { commitHash: 'abc123' } },
-        });
-        expect(extractPrompt(task)).toBe('Chat message');
+        const result = extractPrompt(task);
+        expect(result).toContain("I'm asking about git commit abc123.");
+        expect(result).toContain('Commit Chat');
     });
 });
 

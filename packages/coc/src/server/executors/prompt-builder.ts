@@ -76,36 +76,6 @@ export function appendAutoFolderBlock(
 }
 
 /**
- * Prepends a commit-chat scoping directive to the system message when
- * the chat payload carries commitChat context.
- * Must be called AFTER buildModeSystemMessage so the base mode message exists.
- */
-export function withCommitChatPrefix(
-    systemMessage: SystemMessageConfig | undefined,
-    task: QueuedTask,
-): SystemMessageConfig | undefined {
-    if (!isChatPayload(task.payload) || !hasCommitChatContext(task.payload)) {
-        return systemMessage;
-    }
-    const { commitHash, commitMessage } = (task.payload as unknown as ChatPayload).context!.commitChat!;
-    const lines = [
-        'You are reviewing a specific git commit.',
-        `Commit: ${commitHash}`,
-    ];
-    if (commitMessage) {
-        lines.push(`Message: ${commitMessage}`);
-    }
-    lines.push(
-        'The full commit diff is provided in the conversation. Focus your answers on the changes in this commit.',
-    );
-    const prefix = lines.join('\n');
-    const content = systemMessage
-        ? prefix + '\n\n' + systemMessage.content
-        : prefix;
-    return { mode: 'append' as const, content };
-}
-
-/**
  * Appends per-repo custom instructions (from `.github/coc/`) to an existing
  * system message config.  If no instructions exist for the repo/mode, the
  * original config is returned unchanged.
@@ -186,8 +156,20 @@ export function extractPrompt(task: QueuedTask): string {
             return prompt;
         }
 
-        // Context files: resolve file-path-based prompts using shared builder
+        // Commit chat: reference the commit by ID; the AI can inspect it via tools
         const ctx = payload.context;
+        if (hasCommitChatContext(task.payload)) {
+            const { commitHash, commitMessage } = ctx!.commitChat!;
+            const parts: string[] = [];
+            parts.push(`I'm asking about git commit ${commitHash}.`);
+            if (commitMessage) {
+                parts.push(`Commit message: ${commitMessage}`);
+            }
+            parts.push(`\n${prompt}`);
+            return parts.join('\n');
+        }
+
+        // Context files: resolve file-path-based prompts using shared builder
         if (ctx?.files?.length) {
             const promptFile = ctx.files[0];
             const planFile = ctx.files.length > 1 ? ctx.files[1] : undefined;

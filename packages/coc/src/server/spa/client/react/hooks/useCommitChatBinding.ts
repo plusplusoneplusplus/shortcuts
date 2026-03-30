@@ -48,15 +48,6 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
     const createChat = useCallback(async (prompt: string): Promise<string | null> => {
         if (!commitHash) return null;
         try {
-            // Fetch commit diff
-            let diff: string | undefined;
-            try {
-                const diffRes = await fetchApi(
-                    `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${encodeURIComponent(commitHash)}/diff`
-                );
-                diff = diffRes.diff ?? diffRes;
-            } catch { /* proceed without diff */ }
-
             // Create queue task
             const res = await fetchApi('/queue/tasks', {
                 method: 'POST',
@@ -71,7 +62,6 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
                         workspaceId,
                         context: {
                             commitChat: { commitHash, commitMessage },
-                            blocks: diff ? [{ label: `Commit ${commitHash.slice(0, 7)} diff`, content: diff }] : [],
                         },
                     },
                 }),
