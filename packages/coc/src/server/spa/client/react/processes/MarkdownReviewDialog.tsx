@@ -13,6 +13,16 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useMarkdownPopOut } from '../context/MarkdownPopOutContext';
 import { mdPopOutKey } from '../layout/PopOutMarkdownShell';
 
+function RevealInExplorerIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"
+             aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+            <path d="M1 4a1 1 0 0 1 1-1h3l1 1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4z"/>
+            <path d="M6 6.5l2 1.5-2 1.5V8H4.5v-1H6V6.5z" fill="white"/>
+        </svg>
+    );
+}
+
 function PopOutIcon() {
     return (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"
@@ -83,6 +93,11 @@ export function MarkdownReviewDialog({
     const title = getTitle(displayPath, filePath);
     const handleMinimize = onMinimize ? () => onMinimize(scrollTopRef.current) : undefined;
 
+    const handleReveal = () => {
+        fetch(`/api/repos/${encodeURIComponent(wsId)}/reveal?path=${encodeURIComponent(filePath)}`)
+            .catch(() => {/* ignore */});
+    };
+
     const handlePopOut = () => {
         const params = new URLSearchParams();
         params.set('workspace', wsId);
@@ -122,6 +137,16 @@ export function MarkdownReviewDialog({
                         {title}
                     </span>
                     <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                            data-testid="markdown-review-reveal-btn"
+                            onClick={handleReveal}
+                            onMouseDown={e => e.stopPropagation()}
+                            className={headerBtnClass}
+                            aria-label="Reveal in Explorer"
+                            title="Reveal in Explorer"
+                        >
+                            <RevealInExplorerIcon />
+                        </button>
                         <button
                             data-testid="markdown-review-popout-btn"
                             onClick={handlePopOut}
@@ -184,6 +209,16 @@ export function MarkdownReviewDialog({
                         </div>
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                            data-testid="markdown-review-reveal-btn"
+                            onClick={handleReveal}
+                            onMouseDown={e => e.stopPropagation()}
+                            className={headerBtnClass}
+                            aria-label="Reveal in Explorer"
+                            title="Reveal in Explorer"
+                        >
+                            <RevealInExplorerIcon />
+                        </button>
                         <button
                             data-testid="markdown-review-popout-btn"
                             onClick={handlePopOut}
