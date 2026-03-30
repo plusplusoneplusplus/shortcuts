@@ -411,15 +411,23 @@ export function buildContextPrompt(turns: ConversationTurn[]): string {
 
 /**
  * Build a prompt that asks the AI to summarize multiple conversation process files.
+ *
+ * @param filePaths  Paths to the JSON process files to summarize.
+ * @param userPrompt Optional focus question or instructions from the user (max 2000 chars).
  */
-export function buildSummarizePrompt(filePaths: string[]): string {
+export function buildSummarizePrompt(filePaths: string[], userPrompt?: string): string {
     const fileList = filePaths.map(fp => `- ${fp}`).join('\n');
-    return (
+    let prompt =
         'Summarize the following conversation logs. Each file is a JSON process record ' +
         'containing conversation turns. Read each file, then produce a concise summary ' +
         'that highlights: key topics discussed, decisions made, action items, and any ' +
         'unresolved questions.\n\n' +
         'Conversation files:\n' +
-        fileList
-    );
+        fileList;
+
+    const trimmed = userPrompt?.trim();
+    if (trimmed) {
+        prompt += '\n\nAdditional focus / question from the user:\n' + trimmed;
+    }
+    return prompt;
 }

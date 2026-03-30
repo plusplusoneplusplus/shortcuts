@@ -267,13 +267,16 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             }
 
             const workspaceId = body.workspaceId.trim();
+            const rawUserPrompt = typeof body.userPrompt === 'string'
+                ? body.userPrompt.trim().slice(0, 2000)
+                : undefined;
             const filePaths: string[] = body.processIds.map((id: string) => {
                 const trimmed = id.trim();
                 const normalized = trimmed.startsWith('queue_') ? trimmed : `queue_${trimmed}`;
                 return store!.getProcessFilePath!(workspaceId, normalized);
             });
 
-            const prompt = buildSummarizePrompt(filePaths);
+            const prompt = buildSummarizePrompt(filePaths, rawUserPrompt);
 
             const taskSpec = {
                 type: 'chat' as const,

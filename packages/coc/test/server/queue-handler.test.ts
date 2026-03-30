@@ -2780,6 +2780,27 @@ describe('Queue Handler', () => {
                 expect(prompt).toContain(`- ${p}`);
             }
         });
+
+        it('should not include user prompt section when userPrompt is undefined', () => {
+            const prompt = buildSummarizePrompt(['/data/proc1.json']);
+            expect(prompt).not.toContain('Additional focus');
+        });
+
+        it('should not include user prompt section when userPrompt is empty', () => {
+            const prompt = buildSummarizePrompt(['/data/proc1.json'], '');
+            expect(prompt).not.toContain('Additional focus');
+        });
+
+        it('should not include user prompt section when userPrompt is whitespace', () => {
+            const prompt = buildSummarizePrompt(['/data/proc1.json'], '   ');
+            expect(prompt).not.toContain('Additional focus');
+        });
+
+        it('should append user prompt section when userPrompt is provided', () => {
+            const prompt = buildSummarizePrompt(['/data/proc1.json'], 'Focus on action items');
+            expect(prompt).toContain('Additional focus / question from the user:');
+            expect(prompt).toContain('Focus on action items');
+        });
     });
 
     // ========================================================================
@@ -2953,6 +2974,71 @@ describe('Queue Handler', () => {
             // Should NOT double-prefix
             expect(task.payload.prompt).toContain('queue_abc123');
             expect(task.payload.prompt).not.toContain('queue_queue_abc123');
+        });
+
+        it('should forward userPrompt into the enqueued task prompt', async () => {
+            const store = new FileProcessStore({ dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['id1'],
+                workspaceId: 'ws1',
+                userPrompt: 'Focus on action items only',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+
+            const queueRes = await request(`${srv.url}/api/queue`);
+            const queueBody = JSON.parse(queueRes.body);
+            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
+            expect(task).toBeDefined();
+            expect(task.payload.prompt).toContain('Focus on action items only');
+            expect(task.payload.prompt).toContain('Additional focus / question from the user:');
+        });
+
+        it('should not include user prompt section when userPrompt is empty', async () => {
+            const store = new FileProcessStore({ dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['id1'],
+                workspaceId: 'ws1',
+                userPrompt: '',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+
+            const queueRes = await request(`${srv.url}/api/queue`);
+            const queueBody = JSON.parse(queueRes.body);
+            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
+            expect(task).toBeDefined();
+            expect(task.payload.prompt).not.toContain('Additional focus');
+        });
+
+        it('should truncate userPrompt to 2000 characters', async () => {
+            const store = new FileProcessStore({ dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
+            const longPrompt = 'x'.repeat(3000);
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['id1'],
+                workspaceId: 'ws1',
+                userPrompt: longPrompt,
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+
+            const queueRes = await request(`${srv.url}/api/queue`);
+            const queueBody = JSON.parse(queueRes.body);
+            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
+            expect(task).toBeDefined();
+            // The user prompt section should exist but be truncated
+            expect(task.payload.prompt).toContain('Additional focus');
+            const afterMarker = task.payload.prompt.split('Additional focus / question from the user:\n')[1];
+            expect(afterMarker.length).toBeLessThanOrEqual(2000);
         });
     });
 });

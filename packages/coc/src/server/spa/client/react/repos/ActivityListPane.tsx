@@ -20,6 +20,7 @@ import { getDraft } from '../hooks/useDraftStore';
 import { useLongPress } from '../hooks/useLongPress';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
+import { SummarizeChatDialog } from './SummarizeChatDialog';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -148,6 +149,8 @@ export function ActivityListPane({
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
+    const [summarizeDialogOpen, setSummarizeDialogOpen] = useState(false);
+    const [summarizeDialogIds, setSummarizeDialogIds] = useState<string[]>([]);
 
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
 
@@ -467,22 +470,10 @@ export function ActivityListPane({
                 ...(ids.length <= 20 ? [{
                     label: ids.length === 1 ? 'Summarize chat' : `Summarize ${ids.length} chats`,
                     icon: '📝',
-                    onClick: async () => {
+                    onClick: () => {
                         closeContextMenu();
-                        try {
-                            const res = await fetch(getApiBase() + '/queue/summarize', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ processIds: ids, workspaceId }),
-                            });
-                            if (res.ok) {
-                                const data = await res.json();
-                                if (data.task?.id) {
-                                    onSelectTask(data.task.id);
-                                    fetchQueue();
-                                }
-                            }
-                        } catch { /* network error — silently ignored, matches existing patterns */ }
+                        setSummarizeDialogIds(ids);
+                        setSummarizeDialogOpen(true);
                     },
                 }] : []),
                 {
@@ -1054,6 +1045,28 @@ export function ActivityListPane({
                 onClose={closeContextMenu}
             />
         )}
+        <SummarizeChatDialog
+            open={summarizeDialogOpen}
+            chatCount={summarizeDialogIds.length}
+            onClose={() => setSummarizeDialogOpen(false)}
+            onConfirm={async (userPrompt) => {
+                const res = await fetch(getApiBase() + '/queue/summarize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ processIds: summarizeDialogIds, workspaceId, userPrompt: userPrompt || undefined }),
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || `Request failed (${res.status})`);
+                }
+                const data = await res.json();
+                setSummarizeDialogOpen(false);
+                if (data.task?.id) {
+                    onSelectTask(data.task.id);
+                }
+                fetchQueue();
+            }}
+        />
     </>
     );
 }
