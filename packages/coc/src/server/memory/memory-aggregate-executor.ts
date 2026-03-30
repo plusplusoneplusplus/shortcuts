@@ -185,6 +185,15 @@ export class MemoryAggregateExecutor {
                 await pipelineStore.deleteRaw('repo', undefined, filename);
             }
 
+            // Delete notes that have been consolidated
+            if (sources.includes('notes')) {
+                const noteStoreCleanup = getNoteStore(this.dataDir, repoId);
+                const { entries: noteEntries } = noteStoreCleanup.list({ pageSize: 10000 });
+                for (const entry of noteEntries) {
+                    noteStoreCleanup.delete(entry.id);
+                }
+            }
+
             // Compute diff
             const diffLines = computeDiff(previous ?? '', newConsolidated);
             const diffText = diffLines
