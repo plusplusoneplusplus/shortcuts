@@ -767,7 +767,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
     }, [rewordingCommit, workspaceId, refreshAll]);
 
-    const handleCommitContextMenu= useCallback((e: React.MouseEvent, commitHash: string) => {
+    const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
         if (
             rightPanelView?.type === 'multi-commit' &&
             rightPanelView.commits.some(c => c.hash === commitHash)
