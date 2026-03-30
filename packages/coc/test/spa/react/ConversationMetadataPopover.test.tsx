@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import {
     ConversationMetadataPopover,
     getSessionIdFromProcess,
+    buildRows,
 } from '../../../src/server/spa/client/react/processes/ConversationMetadataPopover';
 
 beforeEach(() => {
@@ -26,9 +27,10 @@ function renderPopover(process: any = BASE_PROCESS, turnsCount?: number) {
 }
 
 describe('ConversationMetadataPopover', () => {
-    it('renders nothing when process has no displayable rows', () => {
+    it('renders trigger even when process has only default model row', () => {
         const { container } = renderPopover({});
-        expect(container.innerHTML).toBe('');
+        expect(container.innerHTML).not.toBe('');
+        expect(screen.getByRole('button', { name: /conversation metadata/i })).toBeDefined();
     });
 
     it('renders the trigger button with "i" text', () => {
@@ -192,7 +194,8 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.getByText('Process ID')).toBeDefined();
         expect(screen.getByText('Status')).toBeDefined();
         expect(screen.queryByText('Queue Task ID')).toBeNull();
-        expect(screen.queryByText('Model')).toBeNull();
+        expect(screen.getByText('Model')).toBeDefined();
+        expect(screen.getByText('default')).toBeDefined();
         expect(screen.queryByText('Working Directory')).toBeNull();
     });
 });
@@ -230,5 +233,28 @@ describe('getSessionIdFromProcess', () => {
 
     it('returns null for empty string values', () => {
         expect(getSessionIdFromProcess({ sdkSessionId: '', sessionId: '  ' })).toBeNull();
+    });
+});
+
+describe('buildRows – model default fallback', () => {
+    it('shows "default" when no model is set', () => {
+        const rows = buildRows({ id: 'p-1', status: 'running' });
+        const modelRow = rows.find(r => r.label === 'Model');
+        expect(modelRow).toBeDefined();
+        expect(modelRow!.value).toBe('default');
+    });
+
+    it('shows explicit model when metadata.model is set', () => {
+        const rows = buildRows({ id: 'p-2', metadata: { model: 'gpt-4o' } });
+        const modelRow = rows.find(r => r.label === 'Model');
+        expect(modelRow).toBeDefined();
+        expect(modelRow!.value).toBe('gpt-4o');
+    });
+
+    it('shows config.model when metadata.model is absent', () => {
+        const rows = buildRows({ id: 'p-3', config: { model: 'claude-sonnet' } });
+        const modelRow = rows.find(r => r.label === 'Model');
+        expect(modelRow).toBeDefined();
+        expect(modelRow!.value).toBe('claude-sonnet');
     });
 });

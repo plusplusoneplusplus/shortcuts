@@ -75,7 +75,7 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     push('Queue Task ID', queueTaskId, { breakAll: true, mono: true });
     push('Type', process.type);
     push('Status', process.status);
-    push('Model', process?.metadata?.model || process?.config?.model || process?.model);
+    push('Model', process?.metadata?.model || process?.config?.model || process?.model || 'default');
     push('Mode', process?.metadata?.mode || process?.mode);
     push('Session ID', sessionId, { breakAll: true, mono: true });
     push('Backend', process?.metadata?.backend);
