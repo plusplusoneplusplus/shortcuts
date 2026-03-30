@@ -121,7 +121,9 @@ export class MemoryAggregator {
         const prompt = this.buildPrompt(existing, observations);
 
         // 5. Call AI
-        const result = await aiInvoker(prompt);
+        const result = await aiInvoker(prompt, {
+            systemMessage: { mode: 'replace', content: MEMORY_CONSOLIDATION_INSTRUCTIONS },
+        });
         if (!result.success) {
             throw new Error(`Aggregation AI call failed: ${result.error ?? 'unknown error'}`);
         }
@@ -157,8 +159,6 @@ export class MemoryAggregator {
             '',
             `## New Observations (${observations.length} sessions)`,
             rawSection,
-            '',
-            MEMORY_CONSOLIDATION_INSTRUCTIONS,
         ].join('\n');
     }
 }

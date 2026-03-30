@@ -110,6 +110,8 @@ export interface AIInvokerOptions {
     tools?: import('../copilot-sdk-wrapper/types').Tool<any>[];
     /** Callback invoked for each tool event during the AI session. */
     onToolEvent?: (event: import('../copilot-sdk-wrapper/types').ToolEvent) => void;
+    /** System message configuration for the SDK session. */
+    systemMessage?: import('../copilot-sdk-wrapper/types').SystemMessageConfig;
 }
 
 /**

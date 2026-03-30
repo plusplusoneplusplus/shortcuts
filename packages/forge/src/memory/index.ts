@@ -45,7 +45,7 @@ export { FileToolCallCacheStore, resolveToolCallCacheOptions } from './tool-call
 export { ToolCallCapture } from './tool-call-capture';
 export type { ToolCallCaptureOptions } from './tool-call-capture';
 
-export { ToolCallCacheAggregator } from './tool-call-cache-aggregator';
+export { ToolCallCacheAggregator, TOOL_CALL_CACHE_CONSOLIDATION_INSTRUCTIONS } from './tool-call-cache-aggregator';
 export type { ToolCallCacheAggregatorOptions } from './tool-call-cache-aggregator';
 
 export { ToolCallCacheRetriever } from './tool-call-cache-retriever';

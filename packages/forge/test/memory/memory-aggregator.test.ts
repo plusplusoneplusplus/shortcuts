@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MemoryStore, RawObservation } from '../../src/memory/types';
 import type { AIInvoker, AIInvokerResult } from '../../src/ai/types';
-import { MemoryAggregator, countFacts } from '../../src/memory/memory-aggregator';
+import { MemoryAggregator, countFacts, MEMORY_CONSOLIDATION_INSTRUCTIONS } from '../../src/memory/memory-aggregator';
 
 function makeRawObservation(filename: string, content: string): RawObservation {
     return {
@@ -110,17 +110,31 @@ describe('MemoryAggregator', () => {
             expect(prompt).toContain('## New Observations (2 sessions)');
         });
 
+        it('passes systemMessage with mode replace and consolidation instructions', async () => {
+            vi.mocked(mockStore.listRaw).mockResolvedValue(['a.md']);
+            vi.mocked(mockStore.readRaw).mockResolvedValue(makeRawObservation('a.md', 'obs'));
+
+            await aggregator.aggregate(mockAI, 'system');
+
+            const opts = vi.mocked(mockAI).mock.calls[0][1];
+            expect(opts?.systemMessage).toEqual({
+                mode: 'replace',
+                content: MEMORY_CONSOLIDATION_INSTRUCTIONS,
+            });
+        });
+
         it('prompt includes output-format constraints to prevent meta-commentary', async () => {
             vi.mocked(mockStore.listRaw).mockResolvedValue(['a.md']);
             vi.mocked(mockStore.readRaw).mockResolvedValue(makeRawObservation('a.md', 'obs'));
 
             await aggregator.aggregate(mockAI, 'system');
 
-            const prompt = vi.mocked(mockAI).mock.calls[0][0];
-            expect(prompt).toContain('Output ONLY the document itself');
-            expect(prompt).toContain('no preamble, no commentary');
-            expect(prompt).toContain('Start your response directly with the first markdown section header');
-            expect(prompt).toContain('Each fact must be a bullet point');
+            const opts = vi.mocked(mockAI).mock.calls[0][1];
+            const sysContent = opts?.systemMessage?.content ?? '';
+            expect(sysContent).toContain('Output ONLY the document itself');
+            expect(sysContent).toContain('no preamble, no commentary');
+            expect(sysContent).toContain('Start your response directly with the first markdown section header');
+            expect(sysContent).toContain('Each fact must be a bullet point');
         });
 
         it('prompt includes required sections and identifier preservation', async () => {
@@ -129,15 +143,16 @@ describe('MemoryAggregator', () => {
 
             await aggregator.aggregate(mockAI, 'system');
 
-            const prompt = vi.mocked(mockAI).mock.calls[0][0];
-            expect(prompt).toContain('### Required Sections');
-            expect(prompt).toContain('## Conventions');
-            expect(prompt).toContain('## Architecture');
-            expect(prompt).toContain('## Patterns & Tools');
-            expect(prompt).toContain('## Gotchas');
-            expect(prompt).toContain('## Pending Decisions');
-            expect(prompt).toContain('### Identifier Preservation');
-            expect(prompt).toContain('Preserve all opaque identifiers exactly as written');
+            const opts = vi.mocked(mockAI).mock.calls[0][1];
+            const sysContent = opts?.systemMessage?.content ?? '';
+            expect(sysContent).toContain('### Required Sections');
+            expect(sysContent).toContain('## Conventions');
+            expect(sysContent).toContain('## Architecture');
+            expect(sysContent).toContain('## Patterns & Tools');
+            expect(sysContent).toContain('## Gotchas');
+            expect(sysContent).toContain('## Pending Decisions');
+            expect(sysContent).toContain('### Identifier Preservation');
+            expect(sysContent).toContain('Preserve all opaque identifiers exactly as written');
         });
 
         it('prompt includes language preservation instructions', async () => {
@@ -146,9 +161,10 @@ describe('MemoryAggregator', () => {
 
             await aggregator.aggregate(mockAI, 'system');
 
-            const prompt = vi.mocked(mockAI).mock.calls[0][0];
-            expect(prompt).toContain('Write the document in the primary language used in the observations');
-            expect(prompt).toContain('Do not translate or alter code, file paths, identifiers, or error messages');
+            const opts = vi.mocked(mockAI).mock.calls[0][1];
+            const sysContent = opts?.systemMessage?.content ?? '';
+            expect(sysContent).toContain('Write the document in the primary language used in the observations');
+            expect(sysContent).toContain('Do not translate or alter code, file paths, identifiers, or error messages');
         });
 
         it('includes existing consolidated in prompt', async () => {

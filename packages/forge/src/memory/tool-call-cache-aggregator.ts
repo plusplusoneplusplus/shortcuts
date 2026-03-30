@@ -18,6 +18,35 @@ export interface ToolCallCacheAggregatorOptions {
     batchThreshold?: number;
 }
 
+export const TOOL_CALL_CACHE_CONSOLIDATION_INSTRUCTIONS = [
+    'You are a tool-call cache consolidator. Your job is to merge raw Q&A pairs into a deduplicated, clustered, normalized index.',
+    '',
+    '## Instructions',
+    '1. **Deduplicate**: Merge entries with near-identical questions (e.g. "list files in src" vs "list files in the src directory"). Keep the best answer.',
+    '2. **Cluster by topic**: Assign 1-3 topic tags per entry (e.g. ["file-structure", "git"], ["testing", "vitest"]).',
+    '3. **Normalize questions**: Rewrite questions to be generic and reusable. Remove repo-specific paths where possible, but preserve the semantic intent.',
+    '4. **Preserve tool sources**: Union all toolSources from merged entries.',
+    '5. **Set confidence**: 1.0 for entries with consistent answers, lower for entries with conflicting answers.',
+    '6. **Merge with existing**: If an existing consolidated entry covers the same question, update its answer and increment hitCount.',
+    '7. **Prune**: Drop entries that appear trivial or overly specific to a single context.',
+    '',
+    '## Output Format',
+    'Respond with ONLY a JSON array of consolidated entries. No markdown fences, no explanation.',
+    'Each entry must have this exact shape:',
+    '```',
+    '{',
+    '  "id": "<unique-kebab-case-id>",',
+    '  "question": "<normalized question>",',
+    '  "answer": "<best answer>",',
+    '  "topics": ["<topic1>", "<topic2>"],',
+    '  "gitHash": "<most-recent-git-hash-or-null>",',
+    '  "toolSources": ["<tool1>", "<tool2>"],',
+    '  "createdAt": "<ISO-8601>",',
+    '  "hitCount": <number>',
+    '}',
+    '```',
+].join('\n');
+
 export class ToolCallCacheAggregator {
     private readonly store: ToolCallCacheStore;
     private readonly batchThreshold: number;
@@ -52,7 +81,9 @@ export class ToolCallCacheAggregator {
         const existing = await this.store.readConsolidated();
         const prompt = this.buildPrompt(existing, rawEntries);
 
-        const result = await aiInvoker(prompt);
+        const result = await aiInvoker(prompt, {
+            systemMessage: { mode: 'replace', content: TOOL_CALL_CACHE_CONSOLIDATION_INSTRUCTIONS },
+        });
         if (!result.success) {
             throw new Error(`Tool call cache aggregation failed: ${result.error ?? 'unknown error'}`);
         }
@@ -89,38 +120,11 @@ export class ToolCallCacheAggregator {
             .join('\n\n');
 
         return [
-            'You are a tool-call cache consolidator. Your job is to merge raw Q&A pairs into a deduplicated, clustered, normalized index.',
-            '',
             '## Existing Consolidated Entries',
             existingSection,
             '',
             `## New Raw Entries (${rawEntries.length} entries)`,
             rawSection,
-            '',
-            '## Instructions',
-            '1. **Deduplicate**: Merge entries with near-identical questions (e.g. "list files in src" vs "list files in the src directory"). Keep the best answer.',
-            '2. **Cluster by topic**: Assign 1-3 topic tags per entry (e.g. ["file-structure", "git"], ["testing", "vitest"]).',
-            '3. **Normalize questions**: Rewrite questions to be generic and reusable. Remove repo-specific paths where possible, but preserve the semantic intent.',
-            '4. **Preserve tool sources**: Union all toolSources from merged entries.',
-            '5. **Set confidence**: 1.0 for entries with consistent answers, lower for entries with conflicting answers.',
-            '6. **Merge with existing**: If an existing consolidated entry covers the same question, update its answer and increment hitCount.',
-            '7. **Prune**: Drop entries that appear trivial or overly specific to a single context.',
-            '',
-            '## Output Format',
-            'Respond with ONLY a JSON array of consolidated entries. No markdown fences, no explanation.',
-            'Each entry must have this exact shape:',
-            '```',
-            '{',
-            '  "id": "<unique-kebab-case-id>",',
-            '  "question": "<normalized question>",',
-            '  "answer": "<best answer>",',
-            '  "topics": ["<topic1>", "<topic2>"],',
-            '  "gitHash": "<most-recent-git-hash-or-null>",',
-            '  "toolSources": ["<tool1>", "<tool2>"],',
-            '  "createdAt": "<ISO-8601>",',
-            '  "hitCount": <number>',
-            '}',
-            '```',
         ].join('\n');
     }
 

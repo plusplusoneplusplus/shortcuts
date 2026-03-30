@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
-import { FileMemoryStore as PipelineMemoryStore } from '@plusplusoneplusplus/forge';
+import { FileMemoryStore as PipelineMemoryStore, MEMORY_CONSOLIDATION_INSTRUCTIONS } from '@plusplusoneplusplus/forge';
 import { createCLIAIInvoker } from '../../ai-invoker';
 import type { MemoryAggregatePayload } from '../task-types';
 import { readMemoryConfig } from './memory-config-handler';
@@ -21,6 +21,16 @@ import { getRepoDataPath } from '../paths';
 import { computeDiff } from './repo-memory-handler';
 
 const inProgress = new Set<string>();
+
+/**
+ * Executor-specific consolidation instructions.
+ * Extends the base MEMORY_CONSOLIDATION_INSTRUCTIONS with a user-notes
+ * conflict-resolution rule (user notes override AI observations).
+ */
+const EXECUTOR_CONSOLIDATION_INSTRUCTIONS = MEMORY_CONSOLIDATION_INSTRUCTIONS.replace(
+    '- Resolve conflicts: newer observations override older ones',
+    '- Resolve conflicts: user notes override AI observations; newer observations override older ones',
+);
 
 function getNoteStore(dataDir: string, workspaceId: string): FileMemoryStore {
     const noteDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'notes'));
@@ -128,37 +138,16 @@ export class MemoryAggregateExecutor {
                 const obsLines = observations.map(o => `- ${o.pipeline}: ${o.content}`).join('\n');
                 promptParts.push('## AI Observations\n' + obsLines);
             }
-            promptParts.push(
-                '## Instructions\n' +
-                'Produce an updated memory document. Output ONLY the document itself — no preamble, no commentary.\n' +
-                'Start your response directly with the first markdown section header.\n\n' +
-                'Write the document in the primary language used in the observations.\n' +
-                'Do not translate or alter code, file paths, identifiers, or error messages.\n\n' +
-                '### Required Sections (use these exact headings, in this order)\n' +
-                '## Conventions\n' +
-                '## Architecture\n' +
-                '## Patterns & Tools\n' +
-                '## Gotchas\n' +
-                '## Pending Decisions\n\n' +
-                '### Identifier Preservation\n' +
-                'Preserve all opaque identifiers exactly as written (no shortening or reconstruction),\n' +
-                'including UUIDs, hashes, IDs, tokens, hostnames, IPs, ports, URLs, and file names.\n\n' +
-                '### Consolidation Rules\n' +
-                '- Deduplicate: merge similar or redundant facts into a single bullet\n' +
-                '- Resolve conflicts: user notes override AI observations; newer observations override older ones\n' +
-                '- Prune: drop facts that appear no longer relevant or were superseded\n' +
-                '- Keep it concise: target <100 facts total\n' +
-                '- Each fact must be a bullet point (`- `) under a section header\n' +
-                '- If a section has no facts, write "None." under it\n' +
-                '- Do not omit unresolved questions or pending decisions',
-            );
 
             const prompt = promptParts.join('\n\n');
 
             this.store.emitProcessOutput(processId, 'Running AI consolidation…\n');
 
             const aiInvoker = createCLIAIInvoker({ approvePermissions: true });
-            const result = await aiInvoker(prompt, { model });
+            const result = await aiInvoker(prompt, {
+                model,
+                systemMessage: { mode: 'replace', content: EXECUTOR_CONSOLIDATION_INSTRUCTIONS },
+            });
 
             if (!result.success) {
                 const durationMs = Date.now() - startMs;

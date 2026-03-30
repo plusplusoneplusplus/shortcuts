@@ -120,6 +120,7 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
                 onStreamingChunk: options.onChunk,
                 tools: options.tools,
                 onToolEvent: invokerOptions?.onToolEvent,
+                systemMessage: invokerOptions?.systemMessage,
             };
 
             const result = await service.sendMessage(sendOptions);

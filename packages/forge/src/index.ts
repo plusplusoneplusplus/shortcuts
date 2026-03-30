@@ -1115,7 +1115,7 @@ export { MemoryAggregator, MEMORY_CONSOLIDATION_INSTRUCTIONS } from './memory';
 export type { AggregatorOptions } from './memory';
 export { withMemory } from './memory';
 export type { WithMemoryOptions } from './memory';
-export { FileToolCallCacheStore, ToolCallCacheAggregator, resolveToolCallCacheOptions } from './memory';
+export { FileToolCallCacheStore, ToolCallCacheAggregator, TOOL_CALL_CACHE_CONSOLIDATION_INSTRUCTIONS, resolveToolCallCacheOptions } from './memory';
 export { ToolCallCapture } from './memory';
 export type { ToolCallCaptureOptions } from './memory';
 export { TASK_FILTER, ALL_TOOLS_FILTER, createToolNameFilter } from './memory';
