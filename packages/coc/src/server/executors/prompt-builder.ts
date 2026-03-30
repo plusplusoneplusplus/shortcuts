@@ -27,6 +27,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import type { ChatMode, ChatPayload, RunScriptPayload } from '../task-types';
 import {
+    hasCommitChatContext,
     hasResolveCommentsContext,
     hasTaskGenerationContext,
     isChatPayload,
@@ -72,6 +73,36 @@ export function appendAutoFolderBlock(
         autoFolderContext.existingFolders,
     );
     return { mode: 'append' as const, content: systemMessage.content + '\n\n' + block };
+}
+
+/**
+ * Prepends a commit-chat scoping directive to the system message when
+ * the chat payload carries commitChat context.
+ * Must be called AFTER buildModeSystemMessage so the base mode message exists.
+ */
+export function withCommitChatPrefix(
+    systemMessage: SystemMessageConfig | undefined,
+    task: QueuedTask,
+): SystemMessageConfig | undefined {
+    if (!isChatPayload(task.payload) || !hasCommitChatContext(task.payload)) {
+        return systemMessage;
+    }
+    const { commitHash, commitMessage } = (task.payload as unknown as ChatPayload).context!.commitChat!;
+    const lines = [
+        'You are reviewing a specific git commit.',
+        `Commit: ${commitHash}`,
+    ];
+    if (commitMessage) {
+        lines.push(`Message: ${commitMessage}`);
+    }
+    lines.push(
+        'The full commit diff is provided in the conversation. Focus your answers on the changes in this commit.',
+    );
+    const prefix = lines.join('\n');
+    const content = systemMessage
+        ? prefix + '\n\n' + systemMessage.content
+        : prefix;
+    return { mode: 'append' as const, content };
 }
 
 /**
