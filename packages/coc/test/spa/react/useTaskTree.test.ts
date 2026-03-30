@@ -293,6 +293,46 @@ describe('rebuildColumnsFromKeys', () => {
         const cols = rebuildColumnsFromKeys(rootWithNameChild, ['misc']);
         expect(cols).toHaveLength(2);
     });
+
+    it('resolves correct folder when same-named subfolder exists in multiple roots', () => {
+        // Simulates multi-root scenario: primary and secondary roots both have a "features" child
+        const primaryFeatures = makeFolder('features', 'features');
+        const primaryRoot = makeFolder('primary', 'primary', [primaryFeatures]);
+        const secondaryFeatures = makeFolder('features', 'features');
+        const secondaryRoot = makeFolder('secondary', 'secondary', [secondaryFeatures]);
+        const virtualRoot: TaskFolder = {
+            name: 'tasks',
+            relativePath: '',
+            children: [primaryRoot, secondaryRoot],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+
+        // Navigate into secondary root's features: keys = ['secondary', 'features']
+        const cols = rebuildColumnsFromKeys(virtualRoot, ['secondary', 'features']);
+        expect(cols).toHaveLength(3);
+        // Column 2 must show secondary's features children, not primary's
+        expect(cols[2]).toEqual(folderToNodes(secondaryFeatures));
+    });
+
+    it('does not cross into sibling root when key matches child of another root', () => {
+        const sharedChild = makeFolder('shared', 'shared');
+        const rootA = makeFolder('rootA', 'rootA', [sharedChild]);
+        const rootB = makeFolder('rootB', 'rootB', [makeFolder('shared', 'shared')]);
+        const virtualRoot: TaskFolder = {
+            name: 'tasks',
+            relativePath: '',
+            children: [rootA, rootB],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+
+        // Navigate into rootB's "shared": keys = ['rootB', 'shared']
+        const cols = rebuildColumnsFromKeys(virtualRoot, ['rootB', 'shared']);
+        expect(cols).toHaveLength(3);
+        // The resolved folder is rootB's child, not rootA's
+        expect(cols[1]).toEqual(folderToNodes(rootB));
+    });
 });
 
 // ── folderToNodes with contextDocuments ─────────────────────────────────

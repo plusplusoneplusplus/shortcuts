@@ -3,7 +3,7 @@
  * Renders a two-zone flex layout: left = TaskTree, right = TaskPreview.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
 import { useTaskTree, filterFolderTree, isDocumentMatchingFilter, type TaskStatusValue, type TaskFolder, STATUS_PILLS } from '../hooks/useTaskTree';
 import { fetchApi } from '../hooks/useApi';
@@ -53,16 +53,6 @@ function scrollToEnd(el: HTMLElement | null) {
     });
 }
 
-function findFolderByKey(tree: TaskFolder, key: string): TaskFolder | null {
-    const k = (tree.relativePath || tree.name).replace(/\\/g, '/');
-    if (k === key) return tree;
-    for (const child of tree.children) {
-        const found = findFolderByKey(child, key);
-        if (found) return found;
-    }
-    return null;
-}
-
 function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps) {
     const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
     const { openFilePath, setOpenFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
@@ -86,6 +76,8 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const { dispatch: queueDispatch } = useQueue();
     const { addToast } = useGlobalToast();
     const { undoAvailable, undoInFlight, setUndoAvailable, undoLastArchive } = useArchiveUndo(wsId, refresh);
+    const [activeFolder, setActiveFolder] = useState<TaskFolder | null>(null);
+    const handleActiveFolderChange = useCallback((folder: TaskFolder) => { setActiveFolder(folder); }, []);
     const folderActions = useFolderActions(wsId, { onArchived: () => setUndoAvailable(true) });
     const fileActions = useFileActions(wsId, { onArchived: () => setUndoAvailable(true) });
 
@@ -195,14 +187,14 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         );
     }
 
-    const activeFolder = selectedFolderPath ? (findFolderByKey(tree, selectedFolderPath) ?? tree) : tree;
+    const resolvedActiveFolder = activeFolder ?? tree;
 
     return (
         <div className="flex flex-col h-full">
             <TasksToolbar
                 isMobile={isMobile}
-                onNewTask={() => folderDlg.setFolderDialog({ action: 'create-task', folder: activeFolder, submitting: false })}
-                onNewFolder={() => folderDlg.setFolderDialog({ action: 'create-subfolder', folder: activeFolder, submitting: false })}
+                onNewTask={() => folderDlg.setFolderDialog({ action: 'create-task', folder: resolvedActiveFolder, submitting: false })}
+                onNewFolder={() => folderDlg.setFolderDialog({ action: 'create-subfolder', folder: resolvedActiveFolder, submitting: false })}
                 undoAvailable={undoAvailable}
                 undoInFlight={undoInFlight}
                 onUndoArchive={undoLastArchive}
@@ -271,6 +263,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 onFolderEmptySpaceContextMenu={folderDlg.handleFolderEmptySpaceContextMenu}
                 onFileContextMenu={fileDlg.handleFileContextMenu}
                 onDrop={folderDlg.handleDragDrop}
+                onActiveFolderChange={handleActiveFolderChange}
                 openFilePath={openFilePath}
                 setOpenFilePath={setOpenFilePath}
                 isMobile={isMobile}

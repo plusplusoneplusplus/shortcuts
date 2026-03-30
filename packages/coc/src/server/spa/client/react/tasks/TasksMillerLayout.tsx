@@ -30,6 +30,7 @@ interface TasksMillerLayoutProps {
     onFolderEmptySpaceContextMenu: (folder: TaskFolder, x: number, y: number) => void;
     onFileContextMenu: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
     onDrop: (items: DragItem[], targetFolderPath: string) => void;
+    onActiveFolderChange?: (folder: TaskFolder) => void;
     openFilePath: string | null;
     setOpenFilePath: (path: string | null) => void;
     isMobile: boolean;
@@ -57,6 +58,7 @@ export function TasksMillerLayout({
     onFolderEmptySpaceContextMenu,
     onFileContextMenu,
     onDrop,
+    onActiveFolderChange,
     openFilePath,
     setOpenFilePath,
     isMobile,
@@ -100,6 +102,7 @@ export function TasksMillerLayout({
                             onFolderEmptySpaceContextMenu={onFolderEmptySpaceContextMenu}
                             onFileContextMenu={onFileContextMenu}
                             onDrop={onDrop}
+                            onActiveFolderChange={onActiveFolderChange}
                         />
                     )}
                 </div>

@@ -28,29 +28,23 @@ interface TaskTreeProps {
     onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
     onDrop?: (items: DragItem[], targetFolderPath: string) => void;
     onNavigateBack?: () => void;
+    onActiveFolderChange?: (folder: TaskFolder) => void;
 }
 
 export function getFolderKey(folder: TaskFolder): string {
     return (folder.relativePath || folder.name).replace(/\\/g, '/');
 }
 
-function findFolderByKey(tree: TaskFolder, key: string): TaskFolder | null {
-    for (const child of tree.children) {
-        if (getFolderKey(child) === key) return child;
-        const found = findFolderByKey(child, key);
-        if (found) return found;
-    }
-    return null;
-}
-
 export function rebuildColumnsFromKeys(tree: TaskFolder, keys: (string | null)[]): TaskNode[][] {
     const rootNodes = folderToNodes(tree);
     const cols: TaskNode[][] = [rootNodes];
+    let parent = tree;
     for (const key of keys) {
         if (!key) break;
-        const folder = findFolderByKey(tree, key);
+        const folder = parent.children.find(c => getFolderKey(c) === key) ?? null;
         if (!folder) break;
         cols.push(folderToNodes(folder));
+        parent = folder;
     }
     return cols;
 }
@@ -71,6 +65,7 @@ export function TaskTree({
     onFileContextMenu,
     onDrop: onDropCallback,
     onNavigateBack,
+    onActiveFolderChange,
 }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, setSelectedFiles, clearSelection, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId, tasksFolder);
@@ -81,6 +76,22 @@ export function TaskTree({
     const activeFolderKeysRef = useRef<(string | null)[]>([]);
     const lastClickAnchorRef = useRef<{ path: string; colIndex: number } | null>(null);
     const isInitialMount = useRef(true);
+    const activeFolderChangeRef = useRef(onActiveFolderChange);
+    activeFolderChangeRef.current = onActiveFolderChange;
+
+    // Emit resolved active folder to parent whenever keys or tree change
+    useEffect(() => {
+        const cb = activeFolderChangeRef.current;
+        if (!cb) return;
+        let parent = tree;
+        for (const key of activeFolderKeys) {
+            if (!key) break;
+            const child = parent.children.find(c => getFolderKey(c) === key);
+            if (!child) break;
+            parent = child;
+        }
+        cb(parent);
+    }, [activeFolderKeys, tree]);
 
     // Initialize or rebuild columns from tree
     useEffect(() => {
@@ -270,9 +281,15 @@ export function TaskTree({
 
     const getColumnFolder = (colIndex: number): TaskFolder | null => {
         if (colIndex === 0) return tree;
-        const parentKey = activeFolderKeys[colIndex - 1];
-        if (!parentKey) return null;
-        return findFolderByKey(tree, parentKey);
+        let parent = tree;
+        for (let i = 0; i < colIndex; i++) {
+            const key = activeFolderKeys[i];
+            if (!key) return null;
+            const child = parent.children.find(c => getFolderKey(c) === key);
+            if (!child) return null;
+            parent = child;
+        }
+        return parent;
     };
 
     // Resolve selected file paths into DragItem[] for multi-select drag
