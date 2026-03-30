@@ -111,4 +111,17 @@ describe('CommitChatBindingStore', () => {
         nestedStore.bind('ws1', 'abc123', 'task-1');
         expect(nestedStore.get('ws1', 'abc123')!.taskId).toBe('task-1');
     });
+
+    it('createdAt is a valid ISO-8601 string', () => {
+        store.bind('ws1', 'abc123', 'task-1');
+        const binding = store.get('ws1', 'abc123')!;
+        const parsed = new Date(binding.createdAt);
+        expect(isNaN(parsed.getTime())).toBe(false);
+        expect(parsed.toISOString()).toBe(binding.createdAt);
+    });
+
+    it('unbind on empty store does not throw', () => {
+        const result = store.unbind('ws1', 'nonexistent');
+        expect(result).toBe(false);
+    });
 });

@@ -362,6 +362,30 @@ describe('extractPrompt', () => {
         const result = extractPrompt(task);
         expect(result).toBe('My Display');
     });
+
+    it('returns chat prompt for commitChat context (falls through to generic chat)', () => {
+        const task = makeTask({
+            kind: 'chat', mode: 'ask', prompt: 'Explain this change',
+            context: { commitChat: { commitHash: 'abc123', commitMessage: 'fix: null check' } },
+        });
+        expect(extractPrompt(task)).toBe('Explain this change');
+    });
+
+    it('uses displayName fallback for commitChat context with empty prompt', () => {
+        const task = makeTask({
+            kind: 'chat', mode: 'ask', prompt: '',
+            context: { commitChat: { commitHash: 'abc123' } },
+        }, 'Commit Chat');
+        expect(extractPrompt(task)).toBe('Commit Chat');
+    });
+
+    it('returns generic fallback for commitChat context with no prompt or displayName', () => {
+        const task = makeTask({
+            kind: 'chat', mode: 'ask', prompt: '',
+            context: { commitChat: { commitHash: 'abc123' } },
+        });
+        expect(extractPrompt(task)).toBe('Chat message');
+    });
 });
 
 // ============================================================================
