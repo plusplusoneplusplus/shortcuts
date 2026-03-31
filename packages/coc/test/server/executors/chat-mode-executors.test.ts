@@ -15,7 +15,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
+import { READ_ONLY_SYSTEM_MESSAGE, resolveSkill, SkillResolverError } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { PlanExecutor } from '../../../src/server/executors/plan-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
@@ -44,6 +44,15 @@ vi.mock('../../../src/server/executors/image-store', () => ({
     cleanupTempDir: vi.fn(),
     rehydrateImagesIfNeeded: vi.fn().mockResolvedValue(undefined),
 }));
+
+// Mock resolveSkill from forge to avoid real filesystem calls
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
+    return {
+        ...actual,
+        resolveSkill: vi.fn(),
+    };
+});
 
 // Mock task-root-resolver to avoid real filesystem calls
 const mockResolveTaskRoot = vi.fn().mockReturnValue({ absolutePath: '/tasks-root' });
@@ -318,5 +327,133 @@ describe('AutopilotExecutor has no system message', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.systemMessage).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// Skill injection tests (context.skills)
+// ============================================================================
+
+const mockResolveSkill = vi.mocked(resolveSkill);
+
+describe('ChatBaseExecutor skill injection', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI answer',
+            sessionId: 'sess-1',
+            toolCalls: [],
+        });
+        mockResolveSkill.mockReset();
+    });
+
+    it('prepends skill content to prompt when context.skills has a known skill', async () => {
+        mockResolveSkill.mockResolvedValue('You are a deep researcher.');
+
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task: QueuedTask = {
+            id: 'task-skill',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: '<commit>abc123</commit>',
+                workingDirectory: '/fake/ws',
+                context: { skills: ['go-deep'] },
+            },
+            config: {},
+            displayName: 'skill test',
+        };
+
+        await executor.execute(task, '<commit>abc123</commit>');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).toContain('<skill name="go-deep">');
+        expect(call.prompt).toContain('You are a deep researcher.');
+        // Skill content is prepended, original prompt follows
+        expect(call.prompt).toContain('<commit>abc123</commit>');
+        expect(call.prompt.indexOf('<skill')).toBeLessThan(call.prompt.indexOf('<commit>'));
+    });
+
+    it('skips unknown skills with a warning, prompt unchanged', async () => {
+        mockResolveSkill.mockRejectedValue(new SkillResolverError('not found', 'unknown-skill'));
+
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task: QueuedTask = {
+            id: 'task-unknown-skill',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'Hello',
+                workingDirectory: '/fake/ws',
+                context: { skills: ['unknown-skill'] },
+            },
+            config: {},
+            displayName: 'unknown skill test',
+        };
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        // Prompt should not contain skill tags
+        expect(call.prompt).not.toContain('<skill');
+    });
+
+    it('does not alter prompt when context.skills is undefined', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task = makeChatTask('ask', 'task-no-skills');
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).not.toContain('<skill');
+        expect(mockResolveSkill).not.toHaveBeenCalled();
+    });
+
+    it('handles multiple skills, prepending all found ones', async () => {
+        mockResolveSkill.mockImplementation(async (name: string) => {
+            if (name === 'skill-a') return 'Skill A instructions';
+            if (name === 'skill-b') return 'Skill B instructions';
+            throw new SkillResolverError('not found', name);
+        });
+
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task: QueuedTask = {
+            id: 'task-multi-skill',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'test prompt',
+                workingDirectory: '/fake/ws',
+                context: { skills: ['skill-a', 'missing', 'skill-b'] },
+            },
+            config: {},
+            displayName: 'multi skill test',
+        };
+
+        await executor.execute(task, 'test prompt');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).toContain('<skill name="skill-a">');
+        expect(call.prompt).toContain('Skill A instructions');
+        expect(call.prompt).toContain('<skill name="skill-b">');
+        expect(call.prompt).toContain('Skill B instructions');
+        expect(call.prompt).not.toContain('missing');
     });
 });
