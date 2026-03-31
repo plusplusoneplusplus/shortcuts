@@ -19,7 +19,9 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import {
     buildFollowUpSuggestionsAddon,
+    buildUpdateTaskStatusAddon,
 } from './prompt-builder';
+import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 
@@ -39,16 +41,20 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         prompt: string,
         _workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions> {
-        const { tools, suffix } = buildFollowUpSuggestionsAddon(
+        const payload = task.payload as unknown as ChatPayload;
+        const hasPlanFile = (payload.context?.files?.length ?? 0) > 1;
+
+        const followUp = buildFollowUpSuggestionsAddon(
             this.followUpSuggestions.enabled,
             this.followUpSuggestions.count,
         );
+        const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
 
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage: undefined,
-            tools,
-            effectivePrompt: prompt + suffix,
+            tools: [...followUp.tools, ...updateStatus.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix,
         };
     }
 }

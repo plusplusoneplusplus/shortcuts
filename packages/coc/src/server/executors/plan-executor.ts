@@ -24,6 +24,7 @@ import {
     appendAutoFolderBlock,
     withRepoInstructions,
     buildFollowUpSuggestionsAddon,
+    buildUpdateTaskStatusAddon,
 } from './prompt-builder';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
@@ -63,16 +64,18 @@ export class PlanExecutor extends ChatBaseExecutor {
             autoFolderContext,
         );
 
-        const { tools, suffix } = buildFollowUpSuggestionsAddon(
+        const hasPlanFile = (payload.context?.files?.length ?? 0) > 1;
+        const followUp = buildFollowUpSuggestionsAddon(
             this.followUpSuggestions.enabled,
             this.followUpSuggestions.count,
         );
+        const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
 
         return {
             agentMode: 'plan' as AgentMode,
             systemMessage,
-            tools,
-            effectivePrompt: prompt + suffix,
+            tools: [...followUp.tools, ...updateStatus.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix,
         };
     }
 }

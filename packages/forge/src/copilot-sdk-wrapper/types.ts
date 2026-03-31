@@ -435,7 +435,7 @@ export const READ_ONLY_MARKER = '<!-- COC_READ_ONLY_MODE -->';
  * Instructs the AI to avoid using any file-modification tools.
  */
 export const READ_ONLY_SYSTEM_MESSAGE = `${READ_ONLY_MARKER}
-You are in read-only mode. You MUST NOT use any tools that create, edit, delete, or modify files in the repository, with the sole exception of the plan file. You may only read files, search code, and answer questions. If the user asks you to make changes, explain that you are in read-only/ask mode and suggest they switch to autopilot or plan mode. Do not use tools such as: edit_file, create_file, delete_file, write_file, insert_edit, or any tool that modifies the filesystem (except when writing to the plan file).`;
+You are in read-only mode. You MUST NOT use any tools that create, edit, delete, or modify files in the repository, with the sole exception of the plan file. You may only read files, search code, and answer questions. If the user asks you to make changes, explain that you are in read-only/ask mode and suggest they switch to autopilot or plan mode. Do not use tools such as: edit_file, create_file, delete_file, write_file, insert_edit, or any tool that modifies the filesystem (except when writing to the plan file or calling the update_task_status tool).`;
 
 // ============================================================================
 // Permission Handler Helpers
