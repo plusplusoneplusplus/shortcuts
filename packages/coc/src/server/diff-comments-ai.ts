@@ -96,51 +96,6 @@ export function renderCommentBlock(comment: DiffComment, index: number): string 
 }
 
 /**
- * Build a batch-resolve prompt for diff comments.
- *
- * Unlike task-comment resolve (which asks AI to output a revised document),
- * diff-comment resolve asks AI only for analysis/summary per comment.
- * The AI calls `resolve_comment(id, summary)` for each addressed comment.
- */
-export function buildDiffBatchResolvePrompt(
-    comments: DiffComment[],
-    diffContent: string,
-    filePath: string,
-    oldRef: string,
-    newRef: string,
-): string {
-    const openComments = comments
-        .filter(c => c.status === 'open')
-        .sort((a, b) => (a.selection?.diffLineStart ?? 0) - (b.selection?.diffLineStart ?? 0));
-
-    if (openComments.length === 0) {
-        return '';
-    }
-
-    let prompt = '# Diff Comment Resolution Request\n\n';
-    prompt += `You are reviewing comments on a code diff for file \`${filePath}\` (${oldRef} → ${newRef}).\n\n`;
-
-    prompt += '## Diff Content\n\n';
-    prompt += '```diff\n';
-    prompt += diffContent;
-    prompt += '\n```\n\n';
-
-    prompt += '## Open Comments\n\n';
-
-    openComments.forEach((c, i) => {
-        prompt += renderCommentBlock(c, i);
-    });
-
-    prompt += '## Instructions\n\n';
-    prompt += '1. Analyze each comment in the context of the diff shown above.\n';
-    prompt += '2. For each comment you can address, explain whether the code change is correct, what improvement could be made, or why the concern is already handled.\n';
-    prompt += '3. Call `resolve_comment(commentId, summary)` for each comment you address.\n';
-    prompt += '4. Do NOT call `resolve_comment` for comments you cannot address.\n';
-
-    return prompt;
-}
-
-/**
  * Build a batch-resolve prompt for multi-file diff comments.
  *
  * Unlike the single-file variant, this prompt does NOT embed diff content.

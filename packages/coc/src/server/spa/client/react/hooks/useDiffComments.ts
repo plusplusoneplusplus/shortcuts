@@ -58,7 +58,6 @@ export interface UseDiffCommentsReturn {
     resolvingIds: Set<string>;
     deletingIds: Set<string>;
     resolving: boolean;
-    resolvingCommentId: string | null;
     refresh: () => Promise<void>;
     runRelocation: (lines: DiffLine[]) => Promise<void>;
     copyAllCommentsAsPrompt: () => void;
@@ -130,7 +129,6 @@ export function useDiffComments(
     const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
     const [deletingIds, setDeletingIds]   = useState<Set<string>>(new Set());
     const [resolving, setResolving]               = useState(false);
-    const [resolvingCommentId, setResolvingCommentId] = useState<string | null>(null);
     const mountedRef  = useRef(true);
     const contextRef  = useRef(context);
     contextRef.current = context; // always up-to-date without being a dep
@@ -438,7 +436,6 @@ export function useDiffComments(
         const ctx = contextRef.current;
         if (!ctx) return;
         setAiLoadingIds(prev => new Set(prev).add(id));
-        setResolvingCommentId(id);
         try {
             const response = await fetch(
                 `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`,
@@ -462,7 +459,6 @@ export function useDiffComments(
         } finally {
             if (mountedRef.current) {
                 setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-                setResolvingCommentId(null);
             }
         }
     }, [wsId, fetchComments]);
@@ -558,7 +554,6 @@ export function useDiffComments(
         resolvingIds,
         deletingIds,
         resolving,
-        resolvingCommentId,
         refresh,
         runRelocation,
         copyAllCommentsAsPrompt,
