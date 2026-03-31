@@ -173,11 +173,11 @@ export function EnqueueDialog() {
     }, [isAskMode, model, selectedSkills, saveTemplate]);
 
     const handleSubmit = useCallback(async () => {
-        // Parse /skill tokens from prompt text
+        // Parse /skill tokens from prompt text (skills are extracted but prompt is kept intact)
         const rawText = richTextRef.current?.getValue() ?? prompt;
-        const { skills: slashSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(rawText);
+        const { skills: slashSkills } = slashCommands.parseAndExtract(rawText);
         const effectiveSkills = [...new Set([...selectedSkills, ...slashSkills])];
-        const effectivePrompt = effectiveSkills.length > 0 ? cleanedPrompt : rawText.trim();
+        const effectivePrompt = rawText.trim();
 
         if (effectiveSkills.length === 0 && !effectivePrompt) return;
         setSubmitting(true);

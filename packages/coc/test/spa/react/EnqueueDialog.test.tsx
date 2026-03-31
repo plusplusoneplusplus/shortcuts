@@ -1829,7 +1829,36 @@ describe('EnqueueDialog slash commands', () => {
         expect(body.type).toBe('chat');
         expect(body.displayName).toBe('Skill: impl');
         expect(body.payload.context.skills).toEqual(['impl']);
-        expect(body.payload.prompt).toBe('fix the bug');
+        expect(body.payload.prompt).toBe('/impl fix the bug');
+    });
+
+    it('does not strip slash-command skill names from the prompt text', async () => {
+        const posts: Array<{ body: any; url: string }> = [];
+        setupFetchWithSkills(
+            [{ name: 'impl', description: 'Implementation' }, { name: 'draft', description: 'Draft' }],
+            posts,
+        );
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/project' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
+
+        const textarea = screen.getByTestId('prompt-input');
+        textarea.innerText = '/impl /draft please review and implement';
+        fireEvent.input(textarea);
+
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => expect(posts.length).toBeGreaterThan(0));
+
+        const body = posts[0].body;
+        // Slash-command tokens must be preserved in the prompt — never stripped
+        expect(body.payload.prompt).toBe('/impl /draft please review and implement');
+        expect(body.payload.context.skills).toEqual(expect.arrayContaining(['impl', 'draft']));
     });
 
     it('placeholder text includes slash-command hint', async () => {
