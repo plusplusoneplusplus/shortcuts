@@ -15,6 +15,7 @@ import {
     hasTaskGenerationContext,
     hasResolveCommentsContext,
     hasResolveDiffCommentsContext,
+    hasResolveDiffCommentsMultiContext,
     hasReplicationContext,
     hasCommitChatContext,
 } from '../../src/server/task-types';
@@ -288,6 +289,49 @@ describe('hasCommitChatContext', () => {
             context: { commitChat: { commitHash: 'abc', commitMessage: 'fix: update validation' } },
         };
         expect(hasCommitChatContext(payload)).toBe(false);
+    });
+});
+
+// ============================================================================
+// hasResolveDiffCommentsMultiContext
+// ============================================================================
+
+describe('hasResolveDiffCommentsMultiContext', () => {
+    it('returns true for chat payload with context.resolveDiffCommentsMulti', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'Resolve multi',
+            context: {
+                resolveDiffCommentsMulti: {
+                    files: [{ storageKey: 'k1', commentIds: ['c1'], filePath: '/f' }],
+                    wsId: 'ws1',
+                    oldRef: 'abc^',
+                    newRef: 'abc',
+                },
+            },
+        };
+        expect(hasResolveDiffCommentsMultiContext(payload)).toBe(true);
+    });
+
+    it('returns false for chat payload without resolveDiffCommentsMulti', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello' };
+        expect(hasResolveDiffCommentsMultiContext(payload)).toBe(false);
+    });
+
+    it('returns false for non-chat payload', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'run-script',
+            script: 'echo',
+            context: {
+                resolveDiffCommentsMulti: {
+                    files: [{ storageKey: 'k1', commentIds: ['c1'], filePath: '/f' }],
+                    wsId: 'ws1',
+                    oldRef: 'abc^',
+                    newRef: 'abc',
+                },
+            },
+        };
+        expect(hasResolveDiffCommentsMultiContext(payload)).toBe(false);
     });
 });
 

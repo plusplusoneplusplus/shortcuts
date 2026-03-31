@@ -57,6 +57,45 @@ export function buildDiffAIPrompt(comment: DiffComment, question: string): strin
 export { DEFAULT_AI_COMMANDS };
 
 /**
+ * Render a single comment block for use in batch resolve prompts.
+ * Shared between single-file and multi-file prompt builders.
+ */
+export function renderCommentBlock(comment: DiffComment, index: number): string {
+    let block = `### Comment ${index + 1}`;
+    if (comment.selection?.diffLineStart != null) {
+        block += ` (Diff line ${comment.selection.diffLineStart})`;
+    }
+    block += '\n\n';
+    block += `- **ID**: \`${comment.id}\`\n`;
+    block += `- **Selected Text**: "${comment.selectedText}"\n`;
+    block += `- **Comment**: "${comment.comment}"\n`;
+    const author = comment.author?.trim();
+    if (author) {
+        block += `- **Author**: ${author}\n`;
+    }
+    if (Array.isArray(comment.tags) && comment.tags.length > 0) {
+        const tags = comment.tags.map(tag => tag.trim()).filter(Boolean);
+        if (tags.length > 0) {
+            block += `- **Tags**: ${tags.join(', ')}\n`;
+        }
+    }
+    if (comment.aiResponse?.trim()) {
+        block += `- **Previous AI Response**: ${comment.aiResponse}\n`;
+    }
+    if (Array.isArray(comment.replies) && comment.replies.length > 0) {
+        const replies = comment.replies
+            .filter(reply => reply.text?.trim())
+            .map(reply => `${reply.author || 'Anonymous'}: ${reply.text}`);
+        if (replies.length > 0) {
+            block += `- **Replies**:\n`;
+            replies.forEach(r => { block += `  > ${r}\n`; });
+        }
+    }
+    block += '\n';
+    return block;
+}
+
+/**
  * Build a batch-resolve prompt for diff comments.
  *
  * Unlike task-comment resolve (which asks AI to output a revised document),
@@ -89,37 +128,7 @@ export function buildDiffBatchResolvePrompt(
     prompt += '## Open Comments\n\n';
 
     openComments.forEach((c, i) => {
-        prompt += `### Comment ${i + 1}`;
-        if (c.selection?.diffLineStart != null) {
-            prompt += ` (Diff line ${c.selection.diffLineStart})`;
-        }
-        prompt += '\n\n';
-        prompt += `- **ID**: \`${c.id}\`\n`;
-        prompt += `- **Selected Text**: "${c.selectedText}"\n`;
-        prompt += `- **Comment**: "${c.comment}"\n`;
-        const author = c.author?.trim();
-        if (author) {
-            prompt += `- **Author**: ${author}\n`;
-        }
-        if (Array.isArray(c.tags) && c.tags.length > 0) {
-            const tags = c.tags.map(tag => tag.trim()).filter(Boolean);
-            if (tags.length > 0) {
-                prompt += `- **Tags**: ${tags.join(', ')}\n`;
-            }
-        }
-        if (c.aiResponse?.trim()) {
-            prompt += `- **Previous AI Response**: ${c.aiResponse}\n`;
-        }
-        if (Array.isArray(c.replies) && c.replies.length > 0) {
-            const replies = c.replies
-                .filter(reply => reply.text?.trim())
-                .map(reply => `${reply.author || 'Anonymous'}: ${reply.text}`);
-            if (replies.length > 0) {
-                prompt += `- **Replies**:\n`;
-                replies.forEach(r => { prompt += `  > ${r}\n`; });
-            }
-        }
-        prompt += '\n';
+        prompt += renderCommentBlock(c, i);
     });
 
     prompt += '## Instructions\n\n';
@@ -127,6 +136,88 @@ export function buildDiffBatchResolvePrompt(
     prompt += '2. For each comment you can address, explain whether the code change is correct, what improvement could be made, or why the concern is already handled.\n';
     prompt += '3. Call `resolve_comment(commentId, summary)` for each comment you address.\n';
     prompt += '4. Do NOT call `resolve_comment` for comments you cannot address.\n';
+
+    return prompt;
+}
+
+/**
+ * Build a batch-resolve prompt for multi-file diff comments.
+ *
+ * Unlike the single-file variant, this prompt does NOT embed diff content.
+ * Instead it references oldRef/newRef and instructs the AI to use tools
+ * to examine the actual code changes.
+ */
+export function buildMultiFileBatchResolvePrompt(
+    fileEntries: Array<{ filePath: string; comments: DiffComment[] }>,
+    oldRef: string,
+    newRef: string,
+): string {
+    // Collect open comments per file, filtering and sorting
+    const filesWithOpen = fileEntries
+        .map(entry => ({
+            filePath: entry.filePath,
+            openComments: entry.comments
+                .filter(c => c.status === 'open')
+                .sort((a, b) => (a.selection?.diffLineStart ?? 0) - (b.selection?.diffLineStart ?? 0)),
+        }))
+        .filter(entry => entry.openComments.length > 0);
+
+    if (filesWithOpen.length === 0) {
+        return '';
+    }
+
+    let prompt = '# Multi-File Diff Comment Resolution\n\n';
+    prompt += `You are reviewing comments on code changes from \`${oldRef}\` to \`${newRef}\`.\n`;
+    prompt += 'Use your tools to examine the actual code changes for each file listed below.\n\n';
+
+    prompt += '## Files with Open Comments\n\n';
+
+    filesWithOpen.forEach((file, fileIdx) => {
+        prompt += `### File ${fileIdx + 1}: \`${file.filePath}\`\n\n`;
+        prompt += '#### Comments\n\n';
+        file.openComments.forEach((c, commentIdx) => {
+            // Use ##### heading for individual comments within a file
+            let block = `##### Comment ${commentIdx + 1}`;
+            if (c.selection?.diffLineStart != null) {
+                block += ` (Diff line ${c.selection.diffLineStart})`;
+            }
+            block += '\n\n';
+            block += `- **ID**: \`${c.id}\`\n`;
+            block += `- **Selected Text**: "${c.selectedText}"\n`;
+            block += `- **Comment**: "${c.comment}"\n`;
+            const author = c.author?.trim();
+            if (author) {
+                block += `- **Author**: ${author}\n`;
+            }
+            if (Array.isArray(c.tags) && c.tags.length > 0) {
+                const tags = c.tags.map(tag => tag.trim()).filter(Boolean);
+                if (tags.length > 0) {
+                    block += `- **Tags**: ${tags.join(', ')}\n`;
+                }
+            }
+            if (c.aiResponse?.trim()) {
+                block += `- **Previous AI Response**: ${c.aiResponse}\n`;
+            }
+            if (Array.isArray(c.replies) && c.replies.length > 0) {
+                const replies = c.replies
+                    .filter(reply => reply.text?.trim())
+                    .map(reply => `${reply.author || 'Anonymous'}: ${reply.text}`);
+                if (replies.length > 0) {
+                    block += `- **Replies**:\n`;
+                    replies.forEach(r => { block += `  > ${r}\n`; });
+                }
+            }
+            block += '\n';
+            prompt += block;
+        });
+    });
+
+    prompt += '## Instructions\n\n';
+    prompt += `1. For each file, examine the diff between \`${oldRef}\` and \`${newRef}\` using your available tools.\n`;
+    prompt += '2. Analyze each comment in the context of the actual code changes.\n';
+    prompt += '3. Call `resolve_comment(commentId, summary)` for each comment you address.\n';
+    prompt += '4. Do NOT call `resolve_comment` for comments you cannot address.\n';
+    prompt += '5. Comments span multiple files — consider cross-file relationships.\n';
 
     return prompt;
 }

@@ -75,6 +75,17 @@ export interface ChatContext {
         filePath: string;
         wsId: string;
     };
+    /** Resolve-diff-comments-multi preset (multi-file, ref-based, no diff content). */
+    resolveDiffCommentsMulti?: {
+        files: Array<{
+            storageKey: string;
+            commentIds: string[];
+            filePath: string;
+        }>;
+        wsId: string;
+        oldRef: string;
+        newRef: string;
+    };
     /** Commit-chat preset (side-by-side chat anchored to a specific commit). */
     commitChat?: {
         commitHash: string;
@@ -181,6 +192,11 @@ export function hasResolveCommentsContext(payload: Record<string, unknown>): boo
 /** Check whether a chat payload carries resolve-diff-comments context. */
 export function hasResolveDiffCommentsContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.resolveDiffComments;
+}
+
+/** Check whether a chat payload carries resolve-diff-comments-multi context. */
+export function hasResolveDiffCommentsMultiContext(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && !!payload.context?.resolveDiffCommentsMulti;
 }
 
 /** Check whether a chat payload carries replication context. */
