@@ -6,6 +6,8 @@ import { cn, ImageGallery, Spinner } from '../shared';
 import type { ClientConversationTurn, ClientTokenUsage } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
 import { ToolCallView } from './ToolCallView';
+import { JsonResponseView } from './JsonResponseView';
+import { isJsonResponse } from './json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
@@ -595,6 +597,13 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     const [copiedHtml, setCopiedHtml] = useState(false);
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
 
+    // Detect pure-JSON assistant responses (only when stream is complete).
+    const jsonDetected = useMemo(() => {
+        if (isUser || turn.streaming || !turn.content) return false;
+        return isJsonResponse(turn.content);
+    }, [isUser, turn.streaming, turn.content]);
+    const [viewMode, setViewMode] = useState<'json' | 'rendered'>('json');
+
     // Pre-compute section markdown slices for section-level copy buttons on assistant turns.
     const sectionMarkdown = useMemo(() => {
         if (isUser || !turn.content) return undefined;
@@ -768,8 +777,19 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             ↺ Retry
                         </button>
                     )}
+                    {jsonDetected && !showRaw && (
+                        <button
+                            className="bubble-json-toggle-btn ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-medium"
+                            title={viewMode === 'json' ? 'Switch to rendered markdown' : 'Switch to JSON tree view'}
+                            onClick={() => setViewMode(v => v === 'json' ? 'rendered' : 'json')}
+                            style={viewMode === 'json' ? { opacity: 1, color: '#0078d4' } : undefined}
+                            data-testid="json-toggle-btn"
+                        >
+                            {viewMode === 'json' ? 'JSON' : 'Rendered'}
+                        </button>
+                    )}
                     <button
-                        className="bubble-raw-btn ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                        className={`bubble-raw-btn ${!jsonDetected || showRaw ? 'ml-auto' : ''} text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]`}
                         title={showRaw ? 'View rendered content' : 'View raw content'}
                         onClick={() => setShowRaw((v) => !v)}
                         style={showRaw ? { opacity: 1, color: '#0078d4' } : undefined}
@@ -868,7 +888,10 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             </pre>
                         </div>
                     )}
-                    {!isUser && !showRaw && assistantRender && (() => {
+                    {!isUser && !showRaw && jsonDetected && viewMode === 'json' && (
+                        <JsonResponseView content={turn.content!} />
+                    )}
+                    {!isUser && !showRaw && !(jsonDetected && viewMode === 'json') && assistantRender && (() => {
                         const nodes: React.ReactNode[] = [];
                         let accHtml = '';
                         let accKey = '';
