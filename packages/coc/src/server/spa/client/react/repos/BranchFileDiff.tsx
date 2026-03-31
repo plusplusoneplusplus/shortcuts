@@ -152,14 +152,12 @@ export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateT
     );
 
     const handleResolveAllWithAI = useCallback(() => {
-        if (!diff) return;
-        void resolveWithAI(diff);
-    }, [resolveWithAI, diff]);
+        void resolveWithAI();
+    }, [resolveWithAI]);
 
     const handleFixWithAI = useCallback((id: string) => {
-        if (!diff) return;
-        void fixWithAI(id, diff);
-    }, [fixWithAI, diff]);
+        void fixWithAI(id);
+    }, [fixWithAI]);
 
     const handleAskAIDiff = useCallback(
         (selection: DiffCommentSelection, selectedText: string) => {

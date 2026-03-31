@@ -195,6 +195,11 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         deleteComment: deleteCommitComment,
         updateComment: updateCommitComment,
         copyAllCommentsAsPrompt: copyAllCommitCommentsAsPrompt,
+        resolveWithAI: commitResolveWithAI,
+        fixWithAI: commitFixWithAI,
+        aiLoadingIds: commitAiLoadingIds,
+        aiErrors: commitAiErrors,
+        clearAiError: clearCommitAiError,
     } = useAllCommitComments((!isRangeMode && !filePath) ? workspaceId : '', (!isRangeMode && !filePath && hash) ? hash : '');
 
     const handleAddComment = useCallback(
@@ -227,14 +232,20 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
     );
 
     const handleResolveAllWithAI = useCallback(() => {
-        if (!diff) return;
-        void resolveWithAI(diff);
-    }, [resolveWithAI, diff]);
+        void resolveWithAI();
+    }, [resolveWithAI]);
 
     const handleFixWithAI = useCallback((id: string) => {
-        if (!diff) return;
-        void fixWithAI(id, diff);
-    }, [fixWithAI, diff]);
+        void fixWithAI(id);
+    }, [fixWithAI]);
+
+    const handleResolveAllCommitWithAI = useCallback(() => {
+        void commitResolveWithAI();
+    }, [commitResolveWithAI]);
+
+    const handleFixCommitWithAI = useCallback((id: string) => {
+        void commitFixWithAI(id);
+    }, [commitFixWithAI]);
 
     const handleAskAIDiff = useCallback(
         (selection: DiffCommentSelection, selectedText: string) => {
@@ -651,6 +662,11 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                             if (c) void updateCommitComment(c, { comment: text });
                         }}
                         onAskAI={() => undefined}
+                        onResolveAllWithAI={handleResolveAllCommitWithAI}
+                        onFixWithAI={handleFixCommitWithAI}
+                        aiLoadingIds={commitAiLoadingIds}
+                        aiErrors={commitAiErrors}
+                        onClearAiError={clearCommitAiError}
                         onCommentClick={handleSidebarCommentClick}
                         onCopyPrompt={copyAllCommitCommentsAsPrompt}
                         data-testid="diff-comment-sidebar"

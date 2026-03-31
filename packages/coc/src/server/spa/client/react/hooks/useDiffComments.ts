@@ -49,8 +49,8 @@ export interface UseDiffCommentsReturn {
     resolveComment: (id: string) => Promise<DiffComment>;
     unresolveComment: (id: string) => Promise<DiffComment>;
     askAI: (id: string, options?: AskAIOptions) => Promise<void>;
-    resolveWithAI: (diffContent: string) => Promise<{ totalCount: number }>;
-    fixWithAI: (id: string, diffContent: string) => Promise<void>;
+    resolveWithAI: () => Promise<{ totalCount: number }>;
+    fixWithAI: (id: string) => Promise<void>;
     copyResolvePrompt: (diffContent: string) => void;
     aiLoadingIds: Set<string>;
     aiErrors: Map<string, string>;
@@ -402,17 +402,17 @@ export function useDiffComments(
     // resolveWithAI — batch resolve all open comments via AI
     // ------------------------------------------------------------------
 
-    const resolveWithAI = useCallback(async (diffContent: string): Promise<{ totalCount: number }> => {
+    const resolveWithAI = useCallback(async (): Promise<{ totalCount: number }> => {
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
         setResolving(true);
         try {
             const response = await fetch(
-                `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}/batch-resolve`,
+                `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ context: ctx, diffContent }),
+                    body: JSON.stringify({ oldRef: ctx.oldRef, newRef: ctx.newRef, filePath: ctx.filePath }),
                 }
             );
             if (!response.ok) {
@@ -434,19 +434,20 @@ export function useDiffComments(
     // fixWithAI — resolve a single comment via AI
     // ------------------------------------------------------------------
 
-    const fixWithAI = useCallback(async (id: string, diffContent: string): Promise<void> => {
+    const fixWithAI = useCallback(async (id: string): Promise<void> => {
         const ctx = contextRef.current;
         if (!ctx) return;
         setAiLoadingIds(prev => new Set(prev).add(id));
         setResolvingCommentId(id);
         try {
-            const storageKey = await computeStorageKey(ctx);
-            const url = buildDiffCommentUrl(wsId, storageKey, id) + '/ask-ai';
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ commandId: 'resolve', diffContent }),
-            });
+            const response = await fetch(
+                `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ oldRef: ctx.oldRef, newRef: ctx.newRef, filePath: ctx.filePath, commentId: id }),
+                }
+            );
             if (!response.ok) throw new Error('Fix with AI failed');
             const data = await response.json();
             if (data.taskId) {

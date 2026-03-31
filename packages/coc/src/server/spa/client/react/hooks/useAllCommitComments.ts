@@ -24,10 +24,17 @@ import type { UpdateDiffCommentRequest } from './useDiffComments';
 export interface UseAllCommitCommentsReturn {
     comments: DiffComment[];
     loading: boolean;
+    resolving: boolean;
+    aiLoadingIds: Set<string>;
+    aiErrors: Map<string, string>;
+    resolvingIds: Set<string>;
     resolveComment: (comment: DiffComment) => Promise<void>;
     unresolveComment: (comment: DiffComment) => Promise<void>;
     deleteComment: (comment: DiffComment) => Promise<void>;
     updateComment: (comment: DiffComment, updates: UpdateDiffCommentRequest) => Promise<void>;
+    resolveWithAI: () => Promise<void>;
+    fixWithAI: (id: string) => Promise<void>;
+    clearAiError: (id: string) => void;
     copyAllCommentsAsPrompt: () => void;
 }
 
@@ -35,10 +42,36 @@ export interface UseAllCommitCommentsReturn {
 // Hook
 // ============================================================================
 
+import { getApiBase } from '../utils/config';
+
+/** Poll a queued task until it completes or fails. */
+async function pollTaskResult<T>(taskId: string, timeoutMs = 180_000): Promise<T> {
+    const start = Date.now();
+    let delay = 1000;
+    while (Date.now() - start < timeoutMs) {
+        await new Promise(r => setTimeout(r, delay));
+        const res = await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId));
+        if (!res.ok) throw new Error('Failed to fetch task status');
+        const { task } = await res.json();
+        if (task.status === 'completed') return task.result as T;
+        if (task.status === 'failed' || task.status === 'cancelled') {
+            throw new Error(task.error || `Task ${task.status}`);
+        }
+        delay = Math.min(delay * 1.5, 5000);
+    }
+    throw new Error('Task timed out');
+}
+
 export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCommentsReturn {
     const [comments, setComments] = useState<DiffComment[]>([]);
     const [loading, setLoading] = useState(false);
+    const [resolving, setResolving] = useState(false);
+    const [aiLoadingIds, setAiLoadingIds] = useState<Set<string>>(new Set());
+    const [aiErrors, setAiErrors] = useState<Map<string, string>>(new Map());
+    const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
     const mountedRef = useRef(true);
+    const commentsRef = useRef<DiffComment[]>(comments);
+    commentsRef.current = comments;
 
     useEffect(() => {
         mountedRef.current = true;
@@ -101,6 +134,65 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
     }, [wsId]);
 
     // ------------------------------------------------------------------
+    // resolveWithAI — commit-level batch resolve via AI
+    // ------------------------------------------------------------------
+
+    const resolveWithAI = useCallback(async () => {
+        setResolving(true);
+        try {
+            const response = await fetchApi(`/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ oldRef: `${hash}^`, newRef: hash }),
+            });
+            if (response.taskId) await pollTaskResult(response.taskId as string);
+            await fetchComments();
+        } finally {
+            if (mountedRef.current) setResolving(false);
+        }
+    }, [wsId, hash, fetchComments]);
+
+    // ------------------------------------------------------------------
+    // fixWithAI — resolve a single comment via AI
+    // ------------------------------------------------------------------
+
+    const fixWithAI = useCallback(async (id: string) => {
+        const comment = commentsRef.current.find(c => c.id === id);
+        if (!comment) return;
+        setAiLoadingIds(prev => new Set(prev).add(id));
+        try {
+            const response = await fetchApi(`/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    oldRef: comment.context.oldRef,
+                    newRef: comment.context.newRef,
+                    filePath: comment.context.filePath,
+                    commentId: id,
+                }),
+            });
+            if (response.taskId) await pollTaskResult(response.taskId as string);
+            await fetchComments();
+        } catch (err: any) {
+            if (mountedRef.current) {
+                setAiErrors(prev => new Map(prev).set(id, err.message));
+            }
+        } finally {
+            if (mountedRef.current) {
+                setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            }
+        }
+    }, [wsId, fetchComments]);
+
+    // ------------------------------------------------------------------
+    // clearAiError
+    // ------------------------------------------------------------------
+
+    const clearAiError = useCallback((id: string) => {
+        setAiErrors(prev => { const m = new Map(prev); m.delete(id); return m; });
+    }, []);
+
+    // ------------------------------------------------------------------
     // Copy all comments as prompt
     // ------------------------------------------------------------------
 
@@ -161,5 +253,9 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
         return () => { ws.close(); };
     }, [wsId, hash, fetchComments]);
 
-    return { comments, loading, resolveComment, unresolveComment, deleteComment, updateComment, copyAllCommentsAsPrompt };
+    return {
+        comments, loading, resolving, aiLoadingIds, aiErrors, resolvingIds,
+        resolveComment, unresolveComment, deleteComment, updateComment,
+        resolveWithAI, fixWithAI, clearAiError, copyAllCommentsAsPrompt,
+    };
 }

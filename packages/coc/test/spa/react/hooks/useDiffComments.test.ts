@@ -749,11 +749,11 @@ describe('useDiffComments — runRelocation', () => {
 
     // ── resolveWithAI — batch resolve ────────────────────────────────
 
-    it('resolveWithAI posts to batch-resolve endpoint and refreshes', async () => {
+    it('resolveWithAI posts to resolve-with-ai endpoint and refreshes', async () => {
         fetchMock
             // Initial fetch
             .mockResolvedValueOnce({ ok: true, json: async () => ({ comments: [makeComment()] }) })
-            // batch-resolve POST
+            // resolve-with-ai POST
             .mockResolvedValueOnce({ ok: true, json: async () => ({ taskId: 'task-1', totalCount: 1 }) })
             // poll task (completed)
             .mockResolvedValueOnce({ ok: true, json: async () => ({ task: { status: 'completed', result: {} } }) })
@@ -765,19 +765,21 @@ describe('useDiffComments — runRelocation', () => {
 
         let resolveResult: { totalCount: number } | undefined;
         await act(async () => {
-            resolveResult = await result.current.resolveWithAI('diff content');
+            resolveResult = await result.current.resolveWithAI();
         });
 
         expect(resolveResult?.totalCount).toBe(1);
 
-        // Verify batch-resolve was called
+        // Verify resolve-with-ai was called
         const postCalls = fetchMock.mock.calls.filter(
-            (c: any[]) => c[1]?.method === 'POST' && typeof c[0] === 'string' && c[0].includes('batch-resolve')
+            (c: any[]) => c[1]?.method === 'POST' && typeof c[0] === 'string' && c[0].includes('resolve-with-ai')
         );
         expect(postCalls).toHaveLength(1);
         const body = JSON.parse(postCalls[0][1].body);
-        expect(body.diffContent).toBe('diff content');
-        expect(body.context).toBeDefined();
+        expect(body.oldRef).toBe(mockContextA.oldRef);
+        expect(body.newRef).toBe(mockContextA.newRef);
+        expect(body.filePath).toBe(mockContextA.filePath);
+        expect(body.diffContent).toBeUndefined();
     });
 
     it('resolveWithAI throws on error response', async () => {
@@ -789,17 +791,17 @@ describe('useDiffComments — runRelocation', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         await expect(
-            act(async () => { await result.current.resolveWithAI('diff'); })
+            act(async () => { await result.current.resolveWithAI(); })
         ).rejects.toThrow('No open comments');
     });
 
     // ── fixWithAI — single comment resolve ───────────────────────────
 
-    it('fixWithAI posts to ask-ai with commandId=resolve', async () => {
+    it('fixWithAI posts to resolve-with-ai with commentId', async () => {
         fetchMock
             // Initial fetch
             .mockResolvedValueOnce({ ok: true, json: async () => ({ comments: [makeComment()] }) })
-            // ask-ai POST (resolve)
+            // resolve-with-ai POST
             .mockResolvedValueOnce({ ok: true, json: async () => ({ taskId: 'task-2' }) })
             // poll task (completed)
             .mockResolvedValueOnce({ ok: true, json: async () => ({ task: { status: 'completed', result: {} } }) })
@@ -810,17 +812,20 @@ describe('useDiffComments — runRelocation', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         await act(async () => {
-            await result.current.fixWithAI('comment-1', 'diff content');
+            await result.current.fixWithAI('comment-1');
         });
 
-        // Verify ask-ai was called with resolve commandId
+        // Verify resolve-with-ai was called with commentId
         const postCalls = fetchMock.mock.calls.filter(
-            (c: any[]) => c[1]?.method === 'POST' && typeof c[0] === 'string' && c[0].includes('ask-ai')
+            (c: any[]) => c[1]?.method === 'POST' && typeof c[0] === 'string' && c[0].includes('resolve-with-ai')
         );
         expect(postCalls).toHaveLength(1);
         const body = JSON.parse(postCalls[0][1].body);
-        expect(body.commandId).toBe('resolve');
-        expect(body.diffContent).toBe('diff content');
+        expect(body.commentId).toBe('comment-1');
+        expect(body.oldRef).toBe(mockContextA.oldRef);
+        expect(body.newRef).toBe(mockContextA.newRef);
+        expect(body.filePath).toBe(mockContextA.filePath);
+        expect(body.diffContent).toBeUndefined();
     });
 
     it('fixWithAI sets and clears aiLoadingIds', async () => {
@@ -835,7 +840,7 @@ describe('useDiffComments — runRelocation', () => {
         // Start fixWithAI (it will hang on the fetch)
         let fixPromise: Promise<void>;
         act(() => {
-            fixPromise = result.current.fixWithAI('comment-1', 'diff');
+            fixPromise = result.current.fixWithAI('comment-1');
         });
 
         // aiLoadingIds should include the comment

@@ -362,4 +362,160 @@ describe('useAllCommitComments', () => {
 
         expect(ws.closed).toBe(true);
     });
+
+    // ── resolveWithAI — commit-level batch resolve ───────────────────
+
+    it('resolveWithAI calls resolve-with-ai endpoint with oldRef/newRef and refreshes', async () => {
+        const comment = makeComment();
+        fetchMock
+            .mockResolvedValueOnce(listResponse([comment]))        // initial fetch
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ taskId: 'task-1' }) })  // resolve-with-ai POST
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ task: { status: 'completed', result: {} } }) }) // poll
+            .mockResolvedValueOnce(listResponse([]));              // refresh
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.resolveWithAI();
+        });
+
+        // Verify resolve-with-ai was called
+        const postCalls = fetchMock.mock.calls.filter(
+            (c: any[]) => c[1]?.method === 'POST' && typeof c[0] === 'string' && c[0].includes('resolve-with-ai')
+        );
+        expect(postCalls).toHaveLength(1);
+        const body = JSON.parse(postCalls[0][1].body);
+        expect(body.oldRef).toBe('abc123^');
+        expect(body.newRef).toBe('abc123');
+        expect(body.filePath).toBeUndefined();
+    });
+
+    it('resolveWithAI sets and clears resolving state', async () => {
+        let resolvePost: any;
+        fetchMock
+            .mockResolvedValueOnce(listResponse([makeComment()]))
+            .mockImplementationOnce(() => new Promise(r => { resolvePost = r; }));
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let resolvePromise: Promise<void>;
+        act(() => {
+            resolvePromise = result.current.resolveWithAI();
+        });
+
+        await waitFor(() => expect(result.current.resolving).toBe(true));
+
+        resolvePost!({ ok: true, json: async () => ({}) });
+        fetchMock.mockResolvedValueOnce(listResponse([]));
+        await act(async () => { await resolvePromise!; });
+
+        expect(result.current.resolving).toBe(false);
+    });
+
+    // ── fixWithAI — single comment resolve ────────────────────────────
+
+    it('fixWithAI calls resolve-with-ai with commentId and filePath from comment context', async () => {
+        const comment = makeComment({ id: 'c1' });
+        fetchMock
+            .mockResolvedValueOnce(listResponse([comment]))        // initial fetch
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ taskId: 'task-2' }) })  // resolve-with-ai POST
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ task: { status: 'completed', result: {} } }) }) // poll
+            .mockResolvedValueOnce(listResponse([]));              // refresh
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.fixWithAI('c1');
+        });
+
+        const postCalls = fetchMock.mock.calls.filter(
+            (c: any[]) => c[1]?.method === 'POST' && typeof c[0] === 'string' && c[0].includes('resolve-with-ai')
+        );
+        expect(postCalls).toHaveLength(1);
+        const body = JSON.parse(postCalls[0][1].body);
+        expect(body.commentId).toBe('c1');
+        expect(body.oldRef).toBe(comment.context.oldRef);
+        expect(body.newRef).toBe(comment.context.newRef);
+        expect(body.filePath).toBe(comment.context.filePath);
+    });
+
+    it('fixWithAI sets and clears aiLoadingIds', async () => {
+        let resolvePost: any;
+        fetchMock
+            .mockResolvedValueOnce(listResponse([makeComment({ id: 'c1' })]))
+            .mockImplementationOnce(() => new Promise(r => { resolvePost = r; }));
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let fixPromise: Promise<void>;
+        act(() => {
+            fixPromise = result.current.fixWithAI('c1');
+        });
+
+        await waitFor(() => expect(result.current.aiLoadingIds.has('c1')).toBe(true));
+
+        resolvePost!({ ok: true, json: async () => ({}) });
+        fetchMock.mockResolvedValueOnce(listResponse([]));
+        await act(async () => { await fixPromise!; });
+
+        expect(result.current.aiLoadingIds.has('c1')).toBe(false);
+    });
+
+    it('fixWithAI sets aiErrors on failure', async () => {
+        fetchMock
+            .mockResolvedValueOnce(listResponse([makeComment({ id: 'c1' })]))
+            .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Server Error', json: async () => ({}) });
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.fixWithAI('c1');
+        });
+
+        expect(result.current.aiErrors.has('c1')).toBe(true);
+    });
+
+    it('fixWithAI no-ops when comment not found', async () => {
+        fetchMock.mockResolvedValueOnce(listResponse([]));
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        const fetchCountBefore = fetchMock.mock.calls.length;
+
+        await act(async () => {
+            await result.current.fixWithAI('nonexistent');
+        });
+
+        // No additional fetch calls
+        expect(fetchMock.mock.calls.length).toBe(fetchCountBefore);
+    });
+
+    // ── clearAiError ─────────────────────────────────────────────────
+
+    it('clearAiError removes error for a specific comment', async () => {
+        fetchMock
+            .mockResolvedValueOnce(listResponse([makeComment({ id: 'c1' })]))
+            .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Server Error', json: async () => ({}) });
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.fixWithAI('c1');
+        });
+
+        expect(result.current.aiErrors.has('c1')).toBe(true);
+
+        act(() => {
+            result.current.clearAiError('c1');
+        });
+
+        expect(result.current.aiErrors.has('c1')).toBe(false);
+    });
 });
