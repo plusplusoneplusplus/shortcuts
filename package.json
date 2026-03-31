@@ -4033,7 +4033,7 @@
     "test:packages": "npm run test:run -w packages/forge && npm run test:run -w packages/coc && npm run test:run -w packages/deep-wiki",
     "test:all": "npm run test",
     "build:packages": "npm run build -w packages/forge && npm run build -w packages/coc && npm run build -w packages/deep-wiki",
-    "coc:link": "cd packages/forge && npm run build && npm link && cd ../coc && npm run build && npm link && rm -rf node_modules/@plusplusoneplusplus/forge",
+    "coc:link": "cd packages/forge && npm run build && npm link && cd ../coc && npm run build && npm link && node -e \"require('fs').rmSync('node_modules/@plusplusoneplusplus/forge', {recursive:true,force:true})\"",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
     "vsce:package": "vsce package",
     "vsce:publish": "vsce publish",
