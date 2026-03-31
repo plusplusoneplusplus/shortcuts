@@ -54,15 +54,14 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
     async executeTask(task: QueuedTask): Promise<ChatModeExecutionResult & { revisedContent?: string; commentIds: string[] }> {
         const payload = task.payload as unknown as ChatPayload;
         const rc = payload.context?.resolveComments;
-        const rdc = payload.context?.resolveDiffComments;
         const aiPrompt = payload.prompt;
         const processId = `queue_${task.id}`;
 
         const rdcm = payload.context?.resolveDiffCommentsMulti;
-        const payloadCommentIds = rc?.commentIds ?? rdc?.commentIds ?? rdcm?.files?.flatMap((f: any) => f.commentIds) ?? [];
+        const payloadCommentIds = rc?.commentIds ?? rdcm?.files?.flatMap((f: any) => f.commentIds) ?? [];
         const commentCount = payloadCommentIds.length;
         const fileCount = rdcm?.files?.length;
-        const targetFile = rc?.filePath || rc?.documentUri || rdc?.filePath || (fileCount ? `${fileCount} file(s)` : 'document');
+        const targetFile = rc?.filePath || rc?.documentUri || (fileCount ? `${fileCount} file(s)` : 'document');
         const previewPrefix = fileCount ? `Resolve ${commentCount} comment(s) across ${fileCount} file(s)` : `Resolve ${commentCount} comment(s) in ${targetFile}`;
         try {
             await this.store.updateProcess(processId, {
@@ -94,35 +93,6 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
                                     wsServer.broadcastFileEvent(rc.filePath, {
                                         type: 'comment-resolved',
                                         filePath: rc.filePath,
-                                        commentId: id,
-                                    });
-                                }
-                            } catch {
-                                // Non-fatal: best-effort resolution
-                            }
-                        })
-                    );
-                } catch {
-                    // Non-fatal: server-side resolution is best-effort
-                }
-            }
-
-            // Server-side resolution for diff comments
-            if (this.dataDir && rdc?.wsId && commentIds.length > 0) {
-                try {
-                    const { DiffCommentsManager } = await import('../diff-comments-manager');
-                    const mgr = new DiffCommentsManager(this.dataDir);
-                    const wsServer = this.getWsServer?.();
-                    await Promise.all(
-                        commentIds.map(async (id) => {
-                            try {
-                                await mgr.updateComment(rdc.wsId, rdc.storageKey, id, { status: 'resolved' });
-                                if (wsServer) {
-                                    wsServer.broadcastProcessEvent({
-                                        type: 'diff-comment-updated',
-                                        action: 'updated',
-                                        workspaceId: rdc.wsId,
-                                        storageKey: rdc.storageKey,
                                         commentId: id,
                                     });
                                 }

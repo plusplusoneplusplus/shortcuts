@@ -67,14 +67,6 @@ export interface ChatContext {
         filePath: string;
         wsId?: string;
     };
-    /** Resolve-diff-comments preset (server-side diff comment resolution data). */
-    resolveDiffComments?: {
-        storageKey: string;
-        commentIds: string[];
-        diffContent: string;
-        filePath: string;
-        wsId: string;
-    };
     /** Resolve-diff-comments-multi preset (multi-file, ref-based, no diff content). */
     resolveDiffCommentsMulti?: {
         files: Array<{
@@ -187,11 +179,6 @@ export function hasTaskGenerationContext(payload: Record<string, unknown>): bool
 /** Check whether a chat payload carries resolve-comments context. */
 export function hasResolveCommentsContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.resolveComments;
-}
-
-/** Check whether a chat payload carries resolve-diff-comments context. */
-export function hasResolveDiffCommentsContext(payload: Record<string, unknown>): boolean {
-    return isChatPayload(payload) && !!payload.context?.resolveDiffComments;
 }
 
 /** Check whether a chat payload carries resolve-diff-comments-multi context. */

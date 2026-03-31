@@ -1340,8 +1340,8 @@ describe('Diff Comments Resolve AI Routes', () => {
         return `${baseUrl}/api/diff-comments/${WS_ID}/${key}/${id}/ask-ai`;
     }
 
-    function batchResolveUrl() {
-        return `${baseUrl}/api/diff-comments/${WS_ID}/batch-resolve`;
+    function resolveWithAiUrl() {
+        return `${baseUrl}/api/diff-comments/${WS_ID}/resolve-with-ai`;
     }
 
     function makePostBody(ctxOverrides: Partial<DiffCommentContext> = {}) {
@@ -1356,7 +1356,7 @@ describe('Diff Comments Resolve AI Routes', () => {
     }
 
     describe('POST /ask-ai with commandId=resolve', () => {
-        it('returns 202 with taskId on success', async () => {
+        it('returns 410 Gone', async () => {
             const createRes = await postJSON(collectionUrl(), makePostBody());
             const { comment } = JSON.parse(createRes.body);
             const manager = new DiffCommentsManager(tmpDir);
@@ -1367,45 +1367,14 @@ describe('Diff Comments Resolve AI Routes', () => {
                 diffContent: '--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1 +1 @@\n-old\n+new',
             });
 
-            expect(res.status).toBe(202);
+            expect(res.status).toBe(410);
             const body = JSON.parse(res.body);
-            expect(body.taskId).toBe('task-123');
-        });
-
-        it('returns 400 when diffContent is missing', async () => {
-            const createRes = await postJSON(collectionUrl(), makePostBody());
-            const { comment } = JSON.parse(createRes.body);
-            const manager = new DiffCommentsManager(tmpDir);
-            const key = manager.hashContext(makeContext());
-
-            const res = await postJSON(askAiUrl(key, comment.id), {
-                commandId: 'resolve',
-            });
-
-            expect(res.status).toBe(400);
-            const body = JSON.parse(res.body);
-            expect(body.error).toContain('diffContent');
-        });
-
-        it('returns 503 when queue enqueue returns undefined', async () => {
-            mockEnqueue.mockResolvedValueOnce(undefined);
-
-            const createRes = await postJSON(collectionUrl(), makePostBody());
-            const { comment } = JSON.parse(createRes.body);
-            const manager = new DiffCommentsManager(tmpDir);
-            const key = manager.hashContext(makeContext());
-
-            const res = await postJSON(askAiUrl(key, comment.id), {
-                commandId: 'resolve',
-                diffContent: 'some diff',
-            });
-
-            expect(res.status).toBe(503);
+            expect(body.error).toContain('resolve-with-ai');
         });
     });
 
-    describe('POST /batch-resolve', () => {
-        it('returns 202 with taskId and totalCount on success', async () => {
+    describe('POST /resolve-with-ai', () => {
+        it('returns 202 with taskId and totalCount for commit-level mode', async () => {
             // Create two open comments
             await postJSON(collectionUrl(), makePostBody());
             await postJSON(collectionUrl(), {
@@ -1413,9 +1382,9 @@ describe('Diff Comments Resolve AI Routes', () => {
                 comment: 'Another comment',
             });
 
-            const res = await postJSON(batchResolveUrl(), {
-                context: makeContext(),
-                diffContent: '--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1 +1 @@\n-old\n+new',
+            const res = await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
             });
 
             expect(res.status).toBe(202);
@@ -1424,10 +1393,61 @@ describe('Diff Comments Resolve AI Routes', () => {
             expect(body.totalCount).toBe(2);
         });
 
-        it('returns 400 when no open comments exist', async () => {
-            const res = await postJSON(batchResolveUrl(), {
-                context: makeContext(),
-                diffContent: 'some diff',
+        it('returns 202 for single-file mode', async () => {
+            await postJSON(collectionUrl(), makePostBody());
+
+            const res = await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
+                filePath: 'src/index.ts',
+            });
+
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBe('task-123');
+            expect(body.totalCount).toBe(1);
+        });
+
+        it('returns 202 for single-comment mode', async () => {
+            const createRes = await postJSON(collectionUrl(), makePostBody());
+            const { comment } = JSON.parse(createRes.body);
+
+            const res = await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
+                commentId: comment.id,
+            });
+
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBe('task-123');
+            expect(body.totalCount).toBe(1);
+        });
+
+        it('returns 400 when oldRef is missing', async () => {
+            const res = await postJSON(resolveWithAiUrl(), {
+                newRef: 'feature-branch',
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('oldRef');
+        });
+
+        it('returns 400 when newRef is missing', async () => {
+            const res = await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('newRef');
+        });
+
+        it('returns 400 when no open comments found', async () => {
+            const res = await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
             });
 
             expect(res.status).toBe(400);
@@ -1435,30 +1455,12 @@ describe('Diff Comments Resolve AI Routes', () => {
             expect(body.error).toContain('No open comments');
         });
 
-        it('returns 400 when context is missing', async () => {
-            const res = await postJSON(batchResolveUrl(), {
-                diffContent: 'some diff',
-            });
-
-            expect(res.status).toBe(400);
-        });
-
-        it('returns 400 when diffContent is missing', async () => {
-            const res = await postJSON(batchResolveUrl(), {
-                context: makeContext(),
-            });
-
-            expect(res.status).toBe(400);
-            const body = JSON.parse(res.body);
-            expect(body.error).toContain('diffContent');
-        });
-
-        it('enqueues correct payload shape', async () => {
+        it('enqueues correct payload shape with resolveDiffCommentsMulti', async () => {
             await postJSON(collectionUrl(), makePostBody());
 
-            await postJSON(batchResolveUrl(), {
-                context: makeContext(),
-                diffContent: 'the diff',
+            await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
             });
 
             expect(mockEnqueue).toHaveBeenCalledTimes(1);
@@ -1467,10 +1469,12 @@ describe('Diff Comments Resolve AI Routes', () => {
             expect(input.payload.kind).toBe('chat');
             expect(input.payload.mode).toBe('autopilot');
             expect(input.payload.tools).toContain('resolve-comments');
-            expect(input.payload.context.resolveDiffComments).toBeDefined();
-            expect(input.payload.context.resolveDiffComments.filePath).toBe('src/index.ts');
-            expect(input.payload.context.resolveDiffComments.wsId).toBe(WS_ID);
-            expect(input.payload.context.resolveDiffComments.commentIds).toHaveLength(1);
+            expect(input.payload.context.resolveDiffCommentsMulti).toBeDefined();
+            expect(input.payload.context.resolveDiffCommentsMulti.files).toHaveLength(1);
+            expect(input.payload.context.resolveDiffCommentsMulti.files[0].filePath).toBe('src/index.ts');
+            expect(input.payload.context.resolveDiffCommentsMulti.wsId).toBe(WS_ID);
+            expect(input.payload.context.resolveDiffCommentsMulti.oldRef).toBe('main');
+            expect(input.payload.context.resolveDiffCommentsMulti.newRef).toBe('feature-branch');
         });
     });
 });

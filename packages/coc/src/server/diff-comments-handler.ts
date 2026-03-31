@@ -21,7 +21,7 @@ import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { isValidWorkspaceId } from './base-comments-manager';
 import { DiffCommentsManager, isValidStorageKey, isValidContext } from './diff-comments-manager';
-import { buildDiffEnrichedPrompt, buildDiffAIPrompt, buildDiffBatchResolvePrompt, DEFAULT_AI_COMMANDS } from './diff-comments-ai';
+import { buildDiffEnrichedPrompt, buildDiffAIPrompt, buildMultiFileBatchResolvePrompt, DEFAULT_AI_COMMANDS } from './diff-comments-ai';
 import { invokeCommentAI } from './comments-ai-helpers';
 
 // Re-export types and classes so existing importers don't break
@@ -53,8 +53,8 @@ const replyPattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/([0-9a-f]{64})\/(
 // /api/diff-comments/:wsId/:storageKey/:id/ask-ai
 const askAiPattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/([0-9a-f]{64})\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/ask-ai$/;
 
-// /api/diff-comments/:wsId/batch-resolve
-const batchResolvePattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/batch-resolve$/;
+// /api/diff-comments/:wsId/resolve-with-ai
+const resolveWithAiPattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/resolve-with-ai$/;
 
 // ============================================================================
 // Route Registration
@@ -102,17 +102,17 @@ export function registerDiffCommentsRoutes(
         }
     }
 
-    async function enqueueDiffResolveTask(
+    async function enqueueDiffResolveMultiTask(
         wsId: string,
-        storageKey: string,
-        commentIds: string[],
+        files: Array<{ storageKey: string; commentIds: string[]; filePath: string }>,
         prompt: string,
-        diffContent: string,
-        filePath: string,
+        oldRef: string,
+        newRef: string,
     ): Promise<string | undefined> {
         const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
         bridge.getOrCreateBridge(wsRootPath);
         const queueManager = bridge.registry.getQueueForRepo(wsRootPath);
+        const totalComments = files.reduce((sum, f) => sum + f.commentIds.length, 0);
         const input: CreateTaskInput = {
             type: 'chat',
             priority: 'normal',
@@ -123,17 +123,18 @@ export function registerDiffCommentsRoutes(
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
                 context: {
-                    resolveDiffComments: {
-                        storageKey,
-                        commentIds,
-                        diffContent,
-                        filePath,
+                    resolveDiffCommentsMulti: {
+                        files,
                         wsId,
+                        oldRef,
+                        newRef,
                     },
                 },
             },
             config: {},
-            displayName: `Resolve diff comments: ${filePath}`,
+            displayName: files.length === 1
+                ? `Resolve diff comments: ${files[0].filePath}`
+                : `Resolve diff comments: ${files.length} files (${oldRef}..${newRef})`,
         };
         return queueManager.enqueue(input);
     }
@@ -462,30 +463,9 @@ export function registerDiffCommentsRoutes(
                 const commandId: string | undefined = body.commandId;
                 const customQuestion: string | undefined = body.customQuestion;
 
-                // Resolve branch — async enqueue, returns 202
+                // Resolve branch — deprecated, use POST /api/diff-comments/:wsId/resolve-with-ai
                 if (commandId === 'resolve') {
-                    const diffContent: string | undefined = body.diffContent;
-                    if (!diffContent || typeof diffContent !== 'string') {
-                        return sendError(res, 400, 'Missing required field: diffContent');
-                    }
-                    const prompt = buildDiffBatchResolvePrompt(
-                        [comment], diffContent,
-                        comment.context.filePath, comment.context.oldRef, comment.context.newRef
-                    );
-                    if (!prompt) {
-                        return sendError(res, 400, 'Comment is not open');
-                    }
-                    try {
-                        const taskId = await enqueueDiffResolveTask(
-                            wsId, storageKey, [comment.id], prompt, diffContent, comment.context.filePath
-                        );
-                        if (taskId) {
-                            return sendJSON(res, 202, { taskId });
-                        }
-                    } catch {
-                        // Fall through to error response
-                    }
-                    return sendError(res, 503, 'Queue unavailable: unable to enqueue resolve task');
+                    return sendJSON(res, 410, { error: 'Use POST /api/diff-comments/:wsId/resolve-with-ai instead' });
                 }
 
                 // Non-resolve commands (Clarify, Go Deeper, Custom) — sync path
@@ -533,11 +513,12 @@ export function registerDiffCommentsRoutes(
     });
 
     // ------------------------------------------------------------------
-    // POST /api/diff-comments/:wsId/batch-resolve — batch resolve all open comments
+    // POST /api/diff-comments/:wsId/resolve-with-ai — unified resolve endpoint
+    // Modes: commit-level (no filePath/commentId), single-file (filePath), single-comment (commentId)
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
-        pattern: batchResolvePattern,
+        pattern: resolveWithAiPattern,
         handler: async (req, res, match) => {
             const [, wsId] = match!;
             if (!isValidWorkspaceId(wsId)) {
@@ -550,37 +531,89 @@ export function registerDiffCommentsRoutes(
                 return sendError(res, 400, 'Invalid JSON');
             }
             try {
-                const context = body.context;
-                const diffContent: string | undefined = body.diffContent;
-                if (!context || !isValidContext(context)) {
-                    return sendError(res, 400, 'Missing or invalid context');
+                const { oldRef, newRef, filePath, commentId } = body;
+                if (!oldRef || !newRef) {
+                    return sendError(res, 400, 'Missing required fields: oldRef, newRef');
                 }
-                if (!diffContent || typeof diffContent !== 'string') {
-                    return sendError(res, 400, 'Missing required field: diffContent');
+
+                let targetComments: Array<{ comment: any; storageKey: string }> = [];
+
+                if (commentId) {
+                    // Single-comment mode: find the comment by scanning all comments
+                    const allComments = await manager.listAllComments(wsId);
+                    const found = allComments.find(c => c.id === commentId);
+                    if (found) {
+                        const sk = manager.hashContext(found.context);
+                        targetComments.push({ comment: found, storageKey: sk });
+                    }
+                } else if (filePath) {
+                    // Single-file mode: build context, hash, get comments for that file
+                    const context = { repositoryId: '', oldRef, newRef, filePath };
+                    // We need to find comments matching oldRef/newRef/filePath.
+                    // Scan all comments and filter.
+                    const allComments = await manager.listAllComments(wsId);
+                    for (const c of allComments) {
+                        if (c.context.oldRef === oldRef && c.context.newRef === newRef && c.context.filePath === filePath) {
+                            const sk = manager.hashContext(c.context);
+                            targetComments.push({ comment: c, storageKey: sk });
+                        }
+                    }
+                } else {
+                    // Commit-level mode: all comments matching oldRef/newRef
+                    const allComments = await manager.listAllComments(wsId);
+                    for (const c of allComments) {
+                        if (c.context.oldRef === oldRef && c.context.newRef === newRef) {
+                            const sk = manager.hashContext(c.context);
+                            targetComments.push({ comment: c, storageKey: sk });
+                        }
+                    }
                 }
-                const storageKey = manager.hashContext(context);
-                const allComments = await manager.getComments(wsId, storageKey);
-                const openComments = allComments.filter(c => c.status === 'open');
-                if (openComments.length === 0) {
-                    return sendError(res, 400, 'No open comments to resolve');
+
+                // Filter to open comments (unless single commentId, include regardless of status)
+                if (!commentId) {
+                    targetComments = targetComments.filter(tc => tc.comment.status === 'open');
                 }
-                const prompt = buildDiffBatchResolvePrompt(
-                    openComments, diffContent, context.filePath, context.oldRef, context.newRef
-                );
-                const commentIds = openComments.map(c => c.id);
+
+                if (targetComments.length === 0) {
+                    return sendError(res, 400, 'No open comments found');
+                }
+
+                // Group by storageKey
+                const grouped = new Map<string, { storageKey: string; commentIds: string[]; filePath: string }>();
+                for (const tc of targetComments) {
+                    const sk = tc.storageKey;
+                    if (!grouped.has(sk)) {
+                        grouped.set(sk, { storageKey: sk, commentIds: [], filePath: tc.comment.context.filePath });
+                    }
+                    grouped.get(sk)!.commentIds.push(tc.comment.id);
+                }
+
+                const files = Array.from(grouped.values());
+
+                // Build file entries for prompt (need comments per file)
+                const fileEntries = files.map(f => ({
+                    filePath: f.filePath,
+                    comments: targetComments
+                        .filter(tc => tc.storageKey === f.storageKey)
+                        .map(tc => tc.comment),
+                }));
+
+                const prompt = buildMultiFileBatchResolvePrompt(fileEntries, oldRef, newRef);
+                if (!prompt) {
+                    return sendError(res, 400, 'No open comments found');
+                }
+
                 try {
-                    const taskId = await enqueueDiffResolveTask(
-                        wsId, storageKey, commentIds, prompt, diffContent, context.filePath
-                    );
+                    const taskId = await enqueueDiffResolveMultiTask(wsId, files, prompt, oldRef, newRef);
                     if (taskId) {
-                        return sendJSON(res, 202, { taskId, totalCount: openComments.length });
+                        return sendJSON(res, 202, { taskId, totalCount: targetComments.length });
                     }
                 } catch {
                     // Fall through to error response
                 }
                 return sendError(res, 503, 'Queue unavailable: unable to enqueue resolve task');
             } catch {
-                sendError(res, 500, 'Failed to process batch resolve request');
+                sendError(res, 500, 'Failed to process resolve-with-ai request');
             }
         },
     });

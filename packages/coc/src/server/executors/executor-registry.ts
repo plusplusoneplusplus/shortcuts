@@ -1,6 +1,6 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext } from '../task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext } from '../task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
 import { ReplicateTemplateStrategy } from '../task-strategies/replicate-template-strategy';
@@ -118,7 +118,7 @@ export class ExecutorRegistry {
     private resolveChatExecutor(task: QueuedTask, payload: ChatPayload): ITaskExecutor {
         if (hasTaskGenerationContext(task.payload)) return this.taskGenerationExecutor;
         if (hasReplicationContext(task.payload)) return { execute: (t: QueuedTask) => this.strategyRegistry.get('replicate-template')!.execute(t, this.buildExecutionContext(t)) };
-        if (hasResolveCommentsContext(task.payload) || hasResolveDiffCommentsContext(task.payload) || hasResolveDiffCommentsMultiContext(task.payload) || payload.tools?.includes('resolve-comments')) return { execute: (t: QueuedTask) => this.resolveCommentsExecutor.executeTask(t) };
+        if (hasResolveCommentsContext(task.payload) || hasResolveDiffCommentsMultiContext(task.payload) || payload.tools?.includes('resolve-comments')) return { execute: (t: QueuedTask) => this.resolveCommentsExecutor.executeTask(t) };
         const mode = payload.mode;
         if (mode === 'plan') return this.planExecutor;
         if (mode === 'autopilot') return this.autopilotExecutor;
