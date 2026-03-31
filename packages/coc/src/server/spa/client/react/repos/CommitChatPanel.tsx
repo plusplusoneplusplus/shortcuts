@@ -26,7 +26,7 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
     };
 
     return (
-        <div className="flex flex-col w-[360px] min-w-[280px] border-l border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden h-full"
+        <div className="flex flex-col bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden h-full w-full"
              data-testid="commit-chat-panel">
 
             {/* Header — only shown in empty/loading state. ActivityChatDetail has its own header. */}

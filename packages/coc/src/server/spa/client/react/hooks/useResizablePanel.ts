@@ -1,18 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
 export interface UseResizablePanelOptions {
-    /** Initial width of the left panel in pixels. Default: 320 */
+    /** Initial width of the panel in pixels. Default: 320 */
     initialWidth?: number;
-    /** Minimum width of the left panel in pixels. Default: 160 */
+    /** Minimum width of the panel in pixels. Default: 160 */
     minWidth?: number;
-    /** Maximum width of the left panel in pixels. Default: 600 */
+    /** Maximum width of the panel in pixels. Default: 600 */
     maxWidth?: number;
     /** localStorage key to persist width. If set, the width is saved/restored. */
     storageKey?: string;
+    /** Which side the resizable panel is on. 'left' (default): drag right to widen. 'right': drag left to widen. */
+    direction?: 'left' | 'right';
 }
 
 export interface UseResizablePanelReturn {
-    /** Current width of the left panel in px. */
+    /** Current width of the panel in px. */
     width: number;
     /** Whether the user is currently dragging the resize handle. */
     isDragging: boolean;
@@ -42,6 +44,7 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
         minWidth = 160,
         maxWidth = 600,
         storageKey,
+        direction = 'left',
     } = options;
 
     const [width, setWidth] = useState(() => {
@@ -53,10 +56,11 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
     const startWidthRef = useRef(0);
 
     const onMove = useCallback((clientX: number) => {
-        const delta = clientX - startXRef.current;
+        const rawDelta = clientX - startXRef.current;
+        const delta = direction === 'right' ? -rawDelta : rawDelta;
         const newWidth = Math.min(Math.max(startWidthRef.current + delta, minWidth), maxWidth);
         setWidth(newWidth);
-    }, [minWidth, maxWidth]);
+    }, [minWidth, maxWidth, direction]);
 
     const onEnd = useCallback(() => {
         setIsDragging(false);

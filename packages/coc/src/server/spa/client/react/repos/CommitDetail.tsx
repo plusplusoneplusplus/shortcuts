@@ -25,6 +25,7 @@ import { useQueue } from '../context/QueueContext';
 import { BranchCommitStrip } from './BranchCommitStrip';
 import { BranchAllFilesDiff } from './BranchAllFilesDiff';
 import { CommitChatPanel } from './CommitChatPanel';
+import { useResizablePanel } from '../hooks/useResizablePanel';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
@@ -93,6 +94,13 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
             return next;
         });
     }, []);
+    const chatResize = useResizablePanel({
+        initialWidth: 360,
+        minWidth: 200,
+        maxWidth: 600,
+        storageKey: 'coc.commitChatPanel.width',
+        direction: 'right',
+    });
     const [popupState, setPopupState] = useState<PopupState>(null);
     const [activePopoverComment, setActivePopoverComment] = useState<AnyComment | null>(null);
     const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
@@ -650,12 +658,23 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                 )}
 
                 {chatOpen && hash && (
-                    <CommitChatPanel
-                        workspaceId={workspaceId}
-                        commitHash={hash}
-                        commitMessage={commit?.subject}
-                        onClose={toggleChat}
-                    />
+                    <>
+                        <div
+                            className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 bg-[#e0e0e0] dark:bg-[#3c3c3c] shrink-0"
+                            onMouseDown={chatResize.handleMouseDown}
+                            onTouchStart={chatResize.handleTouchStart}
+                            role="separator"
+                            aria-label="Resize chat panel"
+                        />
+                        <div style={{ width: chatResize.width }} className="shrink-0 h-full">
+                            <CommitChatPanel
+                                workspaceId={workspaceId}
+                                commitHash={hash}
+                                commitMessage={commit?.subject}
+                                onClose={toggleChat}
+                            />
+                        </div>
+                    </>
                 )}
             </div>
 
