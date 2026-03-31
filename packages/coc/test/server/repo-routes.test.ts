@@ -2,7 +2,7 @@
  * Tests for repo-routes — HTTP handler unit tests using in-process HTTP.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -11,6 +11,26 @@ import * as childProcess from 'child_process';
 import { createRouter } from '../../src/server/shared/router';
 import { registerRepoRoutes } from '../../src/server/repos/repo-routes';
 import type { Route } from '../../src/server/types';
+
+// Partially mock child_process: intercept only OS reveal commands (explorer.exe,
+// open -R, xdg-open) used by the reveal route, forwarding all other spawn calls
+// (e.g. git check-ignore) to the real implementation.
+const REVEAL_COMMANDS = new Set(['explorer.exe', 'open', 'xdg-open']);
+const { revealSpawnCalls } = vi.hoisted(() => ({
+    revealSpawnCalls: [] as any[][],
+}));
+vi.mock('child_process', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('child_process')>();
+    const realSpawn = actual.spawn;
+    const wrappedSpawn = function (this: unknown, command: string, ...rest: any[]) {
+        if (REVEAL_COMMANDS.has(command)) {
+            revealSpawnCalls.push([command, ...rest]);
+            return { unref: () => {}, on: () => {}, pid: 12345 } as any;
+        }
+        return (realSpawn as any).call(this, command, ...rest);
+    } as typeof actual.spawn;
+    return { ...actual, spawn: wrappedSpawn };
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -457,6 +477,10 @@ describe('GET /api/repos/:repoId/search', () => {
 });
 
 describe('GET /api/repos/:repoId/reveal', () => {
+    beforeEach(() => {
+        revealSpawnCalls.length = 0;
+    });
+
     it('returns 204 for a valid file path', async () => {
         seedDefaultRepo();
         fs.writeFileSync(path.join(repoDir, 'README.md'), '# Hello');
@@ -473,6 +497,29 @@ describe('GET /api/repos/:repoId/reveal', () => {
         expect(res.status).toBe(204);
     });
 
+    it('calls spawn with platform-appropriate command', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'README.md'), '# Hello');
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/reveal?path=README.md`);
+
+        expect(revealSpawnCalls).toHaveLength(1);
+        const [cmd, args, opts] = revealSpawnCalls[0];
+        const absPath = path.resolve(repoDir, 'README.md');
+
+        if (process.platform === 'win32') {
+            expect(cmd).toBe('explorer.exe');
+            expect(args).toEqual(['/select,', absPath]);
+        } else if (process.platform === 'darwin') {
+            expect(cmd).toBe('open');
+            expect(args).toEqual(['-R', absPath]);
+        } else {
+            expect(cmd).toBe('xdg-open');
+            expect(args).toEqual([path.dirname(absPath)]);
+        }
+        expect(opts).toMatchObject({ detached: true, stdio: 'ignore' });
+    });
+
     it('returns 400 when path is missing', async () => {
         seedDefaultRepo();
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/reveal`);
@@ -487,6 +534,12 @@ describe('GET /api/repos/:repoId/reveal', () => {
         expect(res.status).toBe(400);
         const body = await res.json() as any;
         expect(body.error).toMatch(/directory traversal/i);
+    });
+
+    it('does not call spawn for invalid requests', async () => {
+        seedDefaultRepo();
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/reveal?path=../../etc/passwd`);
+        expect(revealSpawnCalls).toHaveLength(0);
     });
 
     it('returns 404 for unknown repo', async () => {
