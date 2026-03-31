@@ -47,7 +47,7 @@ suite('Permission Handler Tests', () => {
             if (request.kind === 'read') {
                 return { kind: 'approved' };
             }
-            return { kind: 'denied-by-rules' };
+            return { kind: 'denied-by-rules', rules: [] };
         };
 
         const readRequest: PermissionRequest = { kind: 'read' };
