@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useCommitChatBinding } from '../hooks/useCommitChatBinding';
 import { ActivityChatDetail } from './ActivityChatDetail';
+import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 
@@ -91,15 +92,17 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
 
             {/* Active chat — delegate entirely to ActivityChatDetail */}
             {taskId && !loading && (
-                <ActivityChatDetail
-                    taskId={taskId}
-                    workspaceId={workspaceId}
-                    variant="floating"
-                    standalone
-                    title={`Commit Chat · ${commitHash.slice(0, 7)}`}
-                    hideModeSelector
-                    onBack={onClose}
-                />
+                <ChatPreferencesProvider workspaceId={workspaceId}>
+                    <ActivityChatDetail
+                        taskId={taskId}
+                        workspaceId={workspaceId}
+                        variant="floating"
+                        standalone
+                        title={`Commit Chat · ${commitHash.slice(0, 7)}`}
+                        hideModeSelector
+                        onBack={onClose}
+                    />
+                </ChatPreferencesProvider>
             )}
         </div>
     );

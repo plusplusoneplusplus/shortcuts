@@ -13,6 +13,7 @@ import { AppProvider } from '../context/AppContext';
 import { QueueProvider } from '../context/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../context/ToastContext';
+import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 import { ToastContainer, useToast } from '../shared';
 import { ActivityChatDetail } from '../repos/ActivityChatDetail';
 import { usePopOutChannel, type PopOutMessage } from '../hooks/usePopOutChannel';
@@ -63,13 +64,15 @@ function PopOutContent({ taskId, workspaceId }: { taskId: string; workspaceId: s
 
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
-            <div className="flex flex-col h-screen bg-white dark:bg-[#1e1e1e]" data-testid="popout-shell">
-                <ActivityChatDetail
-                    taskId={taskId}
-                    workspaceId={workspaceId ?? undefined}
-                    isPopOut={true}
-                />
-            </div>
+            <ChatPreferencesProvider workspaceId={workspaceId ?? ''}>
+                <div className="flex flex-col h-screen bg-white dark:bg-[#1e1e1e]" data-testid="popout-shell">
+                    <ActivityChatDetail
+                        taskId={taskId}
+                        workspaceId={workspaceId ?? undefined}
+                        isPopOut={true}
+                    />
+                </div>
+            </ChatPreferencesProvider>
             <ToastContainer toasts={toasts} removeToast={removeToast} />
         </ToastProvider>
     );
