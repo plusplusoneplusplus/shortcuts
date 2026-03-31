@@ -13,6 +13,7 @@ import { FloatingChatContent } from '../repos/FloatingChatContent';
 import { useFloatingChats, type FloatingChatEntry } from '../context/FloatingChatsContext';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { useApp } from '../context/AppContext';
+import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 
 // ── Per-chat item ─────────────────────────────────────────────────────────────
 
@@ -68,7 +69,9 @@ function FloatingChatItem({ entry }: FloatingChatItemProps) {
             noPadding
             id={`floating-chat-${entry.taskId}`}
         >
-            <FloatingChatContent taskId={entry.taskId} workspaceId={entry.workspaceId} />
+            <ChatPreferencesProvider workspaceId={entry.workspaceId ?? ''}>
+                <FloatingChatContent taskId={entry.taskId} workspaceId={entry.workspaceId} />
+            </ChatPreferencesProvider>
         </FloatingDialog>
     );
 }

@@ -210,6 +210,31 @@ describe('FloatingChatManager: structure', () => {
     });
 });
 
+// ── FloatingChatManager: ChatPreferencesProvider wrapping ─────────────────────
+
+describe('FloatingChatManager: ChatPreferencesProvider wrapping', () => {
+    it('imports ChatPreferencesProvider', () => {
+        expect(FLOATING_MANAGER_SOURCE).toContain("import { ChatPreferencesProvider }");
+    });
+
+    it('wraps FloatingChatContent with ChatPreferencesProvider', () => {
+        expect(FLOATING_MANAGER_SOURCE).toContain('<ChatPreferencesProvider');
+        expect(FLOATING_MANAGER_SOURCE).toContain('</ChatPreferencesProvider>');
+    });
+
+    it('passes entry.workspaceId with fallback to empty string', () => {
+        expect(FLOATING_MANAGER_SOURCE).toContain("workspaceId={entry.workspaceId ?? ''}");
+    });
+
+    it('ChatPreferencesProvider wraps FloatingChatContent (correct nesting order)', () => {
+        const providerOpen = FLOATING_MANAGER_SOURCE.indexOf('<ChatPreferencesProvider');
+        const contentOpen = FLOATING_MANAGER_SOURCE.indexOf('<FloatingChatContent');
+        const providerClose = FLOATING_MANAGER_SOURCE.indexOf('</ChatPreferencesProvider>');
+        expect(providerOpen).toBeLessThan(contentOpen);
+        expect(contentOpen).toBeLessThan(providerClose);
+    });
+});
+
 // ── FloatingChatManager: workspace name prefix in pill label ──────────────────
 
 describe('FloatingChatManager: workspace name prefix in pill label', () => {
