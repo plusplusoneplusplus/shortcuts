@@ -58,13 +58,16 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
         const aiPrompt = payload.prompt;
         const processId = `queue_${task.id}`;
 
-        const payloadCommentIds = rc?.commentIds ?? rdc?.commentIds ?? [];
+        const rdcm = payload.context?.resolveDiffCommentsMulti;
+        const payloadCommentIds = rc?.commentIds ?? rdc?.commentIds ?? rdcm?.files?.flatMap((f: any) => f.commentIds) ?? [];
         const commentCount = payloadCommentIds.length;
-        const targetFile = rc?.filePath || rc?.documentUri || rdc?.filePath || 'document';
+        const fileCount = rdcm?.files?.length;
+        const targetFile = rc?.filePath || rc?.documentUri || rdc?.filePath || (fileCount ? `${fileCount} file(s)` : 'document');
+        const previewPrefix = fileCount ? `Resolve ${commentCount} comment(s) across ${fileCount} file(s)` : `Resolve ${commentCount} comment(s) in ${targetFile}`;
         try {
             await this.store.updateProcess(processId, {
                 fullPrompt: aiPrompt,
-                promptPreview: `Resolve ${commentCount} comment(s) in ${targetFile}`,
+                promptPreview: previewPrefix,
             });
         } catch {
             // Non-fatal: store may be a stub
@@ -133,6 +136,45 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
                 }
             }
 
+            // Server-side resolution for multi-file diff comments
+            if (this.dataDir && rdcm?.wsId && commentIds.length > 0) {
+                try {
+                    const { DiffCommentsManager } = await import('../diff-comments-manager');
+                    const manager = new DiffCommentsManager(this.dataDir);
+                    const wsServer = this.getWsServer?.();
+                    // Build a commentId→storageKey lookup from files[]
+                    const commentToStorageKey = new Map<string, string>();
+                    for (const file of rdcm.files) {
+                        for (const id of file.commentIds) {
+                            commentToStorageKey.set(id, file.storageKey);
+                        }
+                    }
+                    // Resolve each comment the AI addressed
+                    await Promise.all(
+                        commentIds.map(async (commentId) => {
+                            try {
+                                const storageKey = commentToStorageKey.get(commentId);
+                                if (!storageKey) return;
+                                await manager.updateComment(rdcm.wsId, storageKey, commentId, { status: 'resolved' });
+                                if (wsServer) {
+                                    wsServer.broadcastProcessEvent({
+                                        type: 'diff-comment-updated',
+                                        action: 'updated',
+                                        workspaceId: rdcm.wsId,
+                                        storageKey,
+                                        commentId,
+                                    });
+                                }
+                            } catch {
+                                // Non-fatal: best-effort resolution
+                            }
+                        })
+                    );
+                } catch {
+                    // Non-fatal: server-side resolution is best-effort
+                }
+            }
+
             return { ...chatResult, revisedContent: chatResult.response, commentIds };
         } finally {
             this.resolvedIdGetters.delete(processId);
@@ -147,8 +189,10 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
         const processId = `queue_${task.id}`;
         const { tool, getResolvedIds } = createResolveCommentTool();
         this.resolvedIdGetters.set(processId, getResolvedIds);
+        const payload = task.payload as unknown as ChatPayload;
+        const isMultiFile = !!payload.context?.resolveDiffCommentsMulti;
         return {
-            agentMode: undefined,
+            agentMode: isMultiFile ? 'autopilot' : undefined,
             systemMessage: undefined,
             tools: [tool as Tool<unknown>],
             effectivePrompt: prompt,

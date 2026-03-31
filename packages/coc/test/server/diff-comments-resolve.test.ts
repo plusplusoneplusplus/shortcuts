@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/forge';
 import { buildDiffBatchResolvePrompt } from '../../src/server/diff-comments-ai';
-import { hasResolveDiffCommentsContext, hasResolveCommentsContext } from '../../src/server/task-types';
+import { hasResolveDiffCommentsContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext } from '../../src/server/task-types';
 import { ResolveCommentsExecutor } from '../../src/server/executors/resolve-comments-executor';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
@@ -269,5 +269,65 @@ describe('ResolveCommentsExecutor — diff comment integration', () => {
         await executor.executeTask(task);
 
         // The test verifies the code path doesn't throw, even if the dynamic import fails
+    });
+});
+
+// ============================================================================
+// Tests — Multi-file Dispatch Guard
+// ============================================================================
+
+describe('hasResolveDiffCommentsMultiContext dispatch', () => {
+    it('returns true for valid multi-file payloads', () => {
+        const payload = {
+            kind: 'chat',
+            prompt: 'resolve multi',
+            context: {
+                resolveDiffCommentsMulti: {
+                    wsId: 'ws-multi',
+                    oldRef: 'abc^',
+                    newRef: 'abc',
+                    files: [
+                        { storageKey: 'sk-1', filePath: 'src/a.ts', commentIds: ['c1'] },
+                    ],
+                },
+            },
+        };
+        expect(hasResolveDiffCommentsMultiContext(payload)).toBe(true);
+    });
+
+    it('returns false for single-file resolveDiffComments payloads', () => {
+        const payload = makeDiffResolveTask().payload as Record<string, unknown>;
+        expect(hasResolveDiffCommentsMultiContext(payload)).toBe(false);
+    });
+
+    it('returns false for plain chat payload', () => {
+        expect(hasResolveDiffCommentsMultiContext({ kind: 'chat', prompt: 'hello' })).toBe(false);
+    });
+});
+
+// ============================================================================
+// Tests — Registry Routing for Multi-file Context
+// ============================================================================
+
+describe('Executor registry routes multi-file context', () => {
+    it('dispatches to resolveCommentsExecutor for multi-file context', async () => {
+        // Verify the guard returns true which is the condition for routing
+        const multiPayload = {
+            kind: 'chat',
+            prompt: 'resolve multi',
+            context: {
+                resolveDiffCommentsMulti: {
+                    wsId: 'ws-multi',
+                    oldRef: 'abc^',
+                    newRef: 'abc',
+                    files: [
+                        { storageKey: 'sk-1', filePath: 'src/a.ts', commentIds: ['c1'] },
+                    ],
+                },
+            },
+        };
+        expect(hasResolveDiffCommentsMultiContext(multiPayload)).toBe(true);
+        expect(hasResolveCommentsContext(multiPayload)).toBe(false);
+        expect(hasResolveDiffCommentsContext(multiPayload)).toBe(false);
     });
 });
