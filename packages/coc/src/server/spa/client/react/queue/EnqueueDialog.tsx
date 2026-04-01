@@ -511,7 +511,11 @@ export function EnqueueDialog() {
                 variant="primary"
                 onClick={handleSubmit}
                 loading={submitting}
-                disabled={selectedSkills.length === 0 && !prompt.trim()}
+                disabled={
+                    activeTab === 'templates'
+                        ? selectedTemplateId === null
+                        : selectedSkills.length === 0 && !prompt.trim()
+                }
                 title="Ctrl+Enter"
             >
                 {submitLabel}

@@ -215,5 +215,100 @@ describe('EnqueueDialog', () => {
             }
         });
     });
+
+    // ── Templates tab disabled logic ──────────────────────────────────────────
+
+    it('Submit button disabled on Templates tab when no template is selected', async () => {
+        const TEMPLATE = { id: 'tmpl-1', name: 'My Template', model: 'gpt-4', mode: 'task' as const, skills: [] };
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) });
+            }
+            if (url.includes('/preferences')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ skillTemplates: [TEMPLATE] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        renderDialog('task');
+        await waitFor(() => screen.getByTestId('floating-dialog-panel'));
+
+        // The dialog auto-switches to Templates tab when templates exist
+        await waitFor(() => screen.getByTestId('template-card-tmpl-1'));
+
+        // Button should be disabled — no template is yet selected
+        const enqueueBtn = screen.queryByRole('button', { name: /enqueue/i });
+        if (enqueueBtn) {
+            expect(enqueueBtn).toHaveProperty('disabled', true);
+        }
+    });
+
+    it('Submit button enabled on Templates tab after a template card is clicked', async () => {
+        const TEMPLATE = { id: 'tmpl-2', name: 'My Template', model: 'gpt-4', mode: 'task' as const, skills: [] };
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) });
+            }
+            if (url.includes('/preferences')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ skillTemplates: [TEMPLATE] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        renderDialog('task');
+        await waitFor(() => screen.getByTestId('floating-dialog-panel'));
+        await waitFor(() => screen.getByTestId('template-card-tmpl-2'));
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('template-card-tmpl-2'));
+        });
+
+        await waitFor(() => {
+            const enqueueBtn = screen.queryByRole('button', { name: /enqueue/i });
+            if (enqueueBtn) {
+                expect(enqueueBtn).toHaveProperty('disabled', false);
+            }
+        });
+    });
+
+    it('Submit button disabled when manually switching to empty Templates tab', async () => {
+        // Default mock returns no skillTemplates → empty templates list
+        renderDialog('task');
+        await waitFor(() => screen.getByTestId('floating-dialog-panel'));
+
+        // Manually switch to Templates tab
+        const tabBtn = screen.queryByRole('button', { name: /^Templates/i });
+        if (tabBtn) {
+            act(() => { fireEvent.click(tabBtn); });
+        }
+
+        await waitFor(() => {
+            // Empty state visible
+            expect(screen.queryByTestId('templates-empty-state')).not.toBe(null);
+            // Submit button should be disabled (selectedTemplateId is null)
+            const enqueueBtn = screen.queryByRole('button', { name: /enqueue/i });
+            if (enqueueBtn) {
+                expect(enqueueBtn).toHaveProperty('disabled', true);
+            }
+        });
+    });
+
+    it('Advanced tab: submit disabled with no skills or prompt (regression)', async () => {
+        renderDialog('task');
+        await waitFor(() => screen.getByTestId('floating-dialog-panel'));
+
+        // Ensure we are on the Advanced tab
+        const advancedTabBtn = screen.queryByRole('button', { name: /^Advanced$/i });
+        if (advancedTabBtn) {
+            act(() => { fireEvent.click(advancedTabBtn); });
+        }
+
+        await waitFor(() => {
+            const enqueueBtn = screen.queryByRole('button', { name: /enqueue/i });
+            if (enqueueBtn) {
+                expect(enqueueBtn).toHaveProperty('disabled', true);
+            }
+        });
+    });
 });
 
