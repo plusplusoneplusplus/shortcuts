@@ -1031,6 +1031,28 @@
     cursor: not-allowed;
 }
 
+.refresh-btn {
+    border: 1px solid #c0c0c0;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 2px 7px;
+    line-height: 1.4;
+    color: #1e1e1e;
+    user-select: none;
+    margin-left: 4px;
+}
+
+.refresh-btn:hover:not(:disabled) {
+    background: #e8e8e8;
+}
+
+.refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .task-status-select {
     margin-left: 8px;
     padding: 2px 6px;
@@ -1104,6 +1126,16 @@
 }
 
 .dark .mode-btn:hover:not(.active) {
+    background: #3c3c3c;
+}
+
+.dark .refresh-btn {
+    border-color: #555;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
+.dark .refresh-btn:hover:not(:disabled) {
     background: #3c3c3c;
 }
 
@@ -1444,6 +1476,12 @@
         min-height: 44px;
         font-size: 14px;
         padding: 8px 16px;
+    }
+
+    .refresh-btn {
+        min-height: 44px;
+        font-size: 16px;
+        padding: 8px 14px;
     }
 
     /* Task 5: Fix horizontal overflow for code blocks and tables */

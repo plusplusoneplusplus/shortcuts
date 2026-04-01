@@ -113,6 +113,7 @@ export function MarkdownReviewEditor({
     const [viewMode, setViewModeRaw] = useState<'review' | 'source'>(initialViewMode);
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
+    const [refreshCounter, setRefreshCounter] = useState(0);
     const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | null>(null);
     const [resolveDialogState, setResolveDialogState] = useState<{
         open: boolean;
@@ -278,7 +279,7 @@ export function MarkdownReviewEditor({
 
         void load();
         return () => { cancelled = true; };
-    }, [wsId, filePath, fetchMode]);
+    }, [wsId, filePath, fetchMode, refreshCounter]);
 
     // Restore scroll position after content finishes loading (for minimize/restore)
     useEffect(() => {
@@ -316,6 +317,26 @@ export function MarkdownReviewEditor({
             setSaving(false);
         }
     }, [isDirty, saving, wsId, filePath, editedContent]);
+
+    const handleRefresh = useCallback(() => {
+        if (isDirty) {
+            if (!window.confirm('You have unsaved changes. Discard and refresh?')) return;
+            setEditedContent(rawContent);
+        }
+        setRefreshCounter(c => c + 1);
+    }, [isDirty, rawContent]);
+
+    // Ctrl/Cmd+Shift+R keyboard shortcut for refresh
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
+                e.preventDefault();
+                handleRefresh();
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [handleRefresh]);
 
     // Ctrl/Cmd+S keyboard shortcut for saving in source mode
     useEffect(() => {
@@ -643,7 +664,7 @@ export function MarkdownReviewEditor({
         if (comment) handleCommentClick(comment);
     }, [comments, handleCommentClick]);
 
-    if (loading) {
+    if (loading && refreshCounter === 0) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Spinner size="lg" />
@@ -703,6 +724,14 @@ export function MarkdownReviewEditor({
                                 {saving ? 'Saving…' : 'Save'}
                             </button>
                         )}
+                        <button
+                            className="refresh-btn"
+                            onClick={handleRefresh}
+                            disabled={loading}
+                            data-testid="markdown-review-refresh-btn"
+                            aria-label="Refresh"
+                            title="Refresh (Ctrl+Shift+R)"
+                        >{loading ? '⏳' : '↻'}</button>
                         {(filePath.endsWith('.md') || filePath.endsWith('.markdown')) && (
                             <select
                                 value={taskStatus ?? ''}
