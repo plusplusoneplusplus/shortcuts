@@ -101,6 +101,11 @@ export interface ISessionEvent {
         toolRequests?: Array<{ toolCallId: string; name: string; arguments?: unknown }>;
         // Abort reason
         reason?: string;
+        // Background tasks (session.idle, background_tasks_changed)
+        backgroundTasks?: {
+            agents?: Array<{ id: string; type?: string; description?: string }>;
+            shells?: Array<{ id: string; type?: string; description?: string }>;
+        };
     };
 }
 
@@ -137,6 +142,9 @@ export class StreamingSession {
     // ── Promise control ──────────────────────────────────────────────────────
     private resolve?: (value: StreamingResult) => void;
     private reject?: (error: Error) => void;
+
+    // ── Background task tracking ────────────────────────────────────────────
+    private waitingForBackgroundTasks = false;
 
     // ── Misc ─────────────────────────────────────────────────────────────────
     private streamingStartTime = 0;
@@ -293,13 +301,14 @@ export class StreamingSession {
             case 'assistant.message':         this.handleMessage(event);       break;
             case 'assistant.turn_start':      this.handleTurnStart();          break;
             case 'assistant.turn_end':        this.handleTurnEnd();            break;
-            case 'session.idle':              this.handleSessionIdle();        break;
+            case 'session.idle':              this.handleSessionIdle(event);   break;
             case 'session.error':             this.handleSessionError(event);  break;
             case 'assistant.usage':           this.handleUsage(event);         break;
             case 'session.usage_info':        this.handleUsageInfo(event);     break;
             case 'tool.execution_start':      this.handleToolStart(event);     break;
             case 'tool.execution_complete':   this.handleToolComplete(event);  break;
             case 'tool.execution_progress':   this.handleToolProgress(event);  break;
+            case 'background_tasks_changed':  this.handleBackgroundTasksChanged(event); break;
             case 'assistant.intent':
                 this.sessionLog.debug({ intent: event.data?.intent }, 'Assistant intent');
                 break;
@@ -373,9 +382,42 @@ export class StreamingSession {
         }
     }
 
-    private handleSessionIdle(): void {
+    private handleSessionIdle(event: ISessionEvent): void {
+        const bgTasks = event.data?.backgroundTasks;
+        const activeAgents = bgTasks?.agents?.length ?? 0;
+        const activeShells = bgTasks?.shells?.length ?? 0;
+        const totalActive = activeAgents + activeShells;
+
+        if (totalActive > 0) {
+            this.waitingForBackgroundTasks = true;
+            this.sessionLog.debug(
+                { agents: activeAgents, shells: activeShells },
+                'Session idle with active background tasks — deferring settle',
+            );
+            return;
+        }
+
         this.sessionLog.debug({ turns: this.telemetry.turnCount }, 'Session idle');
+        this.waitingForBackgroundTasks = false;
         this.settleWithResult();
+    }
+
+    private handleBackgroundTasksChanged(event: ISessionEvent): void {
+        const bgTasks = event.data?.backgroundTasks;
+        const activeAgents = bgTasks?.agents?.length ?? 0;
+        const activeShells = bgTasks?.shells?.length ?? 0;
+        const totalActive = activeAgents + activeShells;
+
+        this.sessionLog.debug(
+            { agents: activeAgents, shells: activeShells, waiting: this.waitingForBackgroundTasks },
+            'Background tasks changed',
+        );
+
+        if (this.waitingForBackgroundTasks && totalActive === 0) {
+            this.sessionLog.debug('All background tasks drained — settling');
+            this.waitingForBackgroundTasks = false;
+            this.settleWithResult();
+        }
     }
 
     private handleSessionError(event: ISessionEvent): void {

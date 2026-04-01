@@ -392,3 +392,259 @@ describe('StreamingSession — race condition guard', () => {
         expect(resolveCount.count + rejectCount.count).toBe(1);
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Background task gating
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('StreamingSession — background task gating', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('session.idle with no backgroundTasks settles immediately (backward compat)', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+
+        emit({ type: 'assistant.message', data: { content: 'done' } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.response).toBe('done');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('session.idle with undefined data settles immediately (backward compat)', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect((ss as any).state).toBe(StreamingState.Settled);
+        expect(result.response).toBe('');
+    });
+
+    it('session.idle with empty backgroundTasks settles immediately', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+
+        emit({ type: 'assistant.message', data: { content: 'hello' } });
+        emit({ type: 'session.idle', data: { backgroundTasks: { agents: [], shells: [] } } });
+
+        const result = await promise;
+        expect(result.response).toBe('hello');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('session.idle with active agents does NOT settle', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.message', data: { content: 'working' } });
+        emit({
+            type: 'session.idle',
+            data: {
+                backgroundTasks: {
+                    agents: [{ id: 'agent-1', type: 'sub-agent', description: 'research' }],
+                    shells: [],
+                },
+            },
+        });
+
+        // Should still be streaming — not settled
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+        expect((ss as any).waitingForBackgroundTasks).toBe(true);
+
+        // Clean up by settling
+        emit({ type: 'session.idle', data: { backgroundTasks: { agents: [], shells: [] } } });
+        await promise;
+    });
+
+    it('session.idle with active shells does NOT settle', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.message', data: { content: 'running' } });
+        emit({
+            type: 'session.idle',
+            data: {
+                backgroundTasks: {
+                    agents: [],
+                    shells: [{ id: 'shell-1' }],
+                },
+            },
+        });
+
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+        expect((ss as any).waitingForBackgroundTasks).toBe(true);
+
+        // Clean up
+        emit({ type: 'session.idle' });
+        await promise;
+    });
+
+    it('session.idle with bg tasks → background_tasks_changed empty → settles', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.message', data: { content: 'result from agent' } });
+
+        // First idle: background tasks active
+        emit({
+            type: 'session.idle',
+            data: {
+                backgroundTasks: {
+                    agents: [{ id: 'a1' }],
+                    shells: [],
+                },
+            },
+        });
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+
+        // Background tasks drain
+        emit({
+            type: 'background_tasks_changed',
+            data: { backgroundTasks: { agents: [], shells: [] } },
+        });
+
+        const result = await promise;
+        expect(result.response).toBe('result from agent');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('multiple session.idle events: first with tasks, second without → settles on second', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.message', data: { content: 'multi-idle' } });
+
+        // First idle with active background tasks
+        emit({
+            type: 'session.idle',
+            data: { backgroundTasks: { agents: [{ id: 'a1' }], shells: [] } },
+        });
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+
+        // Second idle with no background tasks
+        emit({ type: 'session.idle', data: { backgroundTasks: { agents: [], shells: [] } } });
+
+        const result = await promise;
+        expect(result.response).toBe('multi-idle');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('background_tasks_changed without prior idle is a no-op', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.message', data: { content: 'hello' } });
+
+        // background_tasks_changed fires but we never received idle with bg tasks
+        emit({
+            type: 'background_tasks_changed',
+            data: { backgroundTasks: { agents: [], shells: [] } },
+        });
+
+        // Should still be streaming — not waiting, so no settle
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+        expect((ss as any).waitingForBackgroundTasks).toBe(false);
+
+        // Settle normally
+        emit({ type: 'session.idle' });
+        const result = await promise;
+        expect(result.response).toBe('hello');
+    });
+
+    it('background_tasks_changed with non-zero tasks while waiting does not settle', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.message', data: { content: 'waiting' } });
+
+        // Enter waiting state
+        emit({
+            type: 'session.idle',
+            data: { backgroundTasks: { agents: [{ id: 'a1' }, { id: 'a2' }], shells: [] } },
+        });
+        expect((ss as any).waitingForBackgroundTasks).toBe(true);
+
+        // One agent finishes but one remains
+        emit({
+            type: 'background_tasks_changed',
+            data: { backgroundTasks: { agents: [{ id: 'a2' }], shells: [] } },
+        });
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+        expect((ss as any).waitingForBackgroundTasks).toBe(true);
+
+        // Last agent finishes
+        emit({
+            type: 'background_tasks_changed',
+            data: { backgroundTasks: { agents: [], shells: [] } },
+        });
+
+        const result = await promise;
+        expect(result.response).toBe('waiting');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('wall-clock timeout wins over background task waiting', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 1000 }));
+
+        emit({ type: 'assistant.message', data: { content: 'in progress' } });
+
+        // Enter waiting state
+        emit({
+            type: 'session.idle',
+            data: { backgroundTasks: { agents: [{ id: 'a1' }], shells: [] } },
+        });
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+
+        // Wall-clock timeout fires
+        vi.advanceTimersByTime(1001);
+
+        await expect(promise).rejects.toThrow('timed out after 1000ms');
+        expect((ss as any).state).toBe(StreamingState.Cancelled);
+    });
+
+    it('turn count is preserved across background task waiting', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.turn_start' });
+        emit({ type: 'assistant.message', data: { content: 'turn 1' } });
+        emit({ type: 'assistant.turn_end' });
+
+        emit({ type: 'assistant.turn_start' });
+        emit({ type: 'assistant.message', data: { content: 'turn 2' } });
+        emit({ type: 'assistant.turn_end' });
+
+        // Idle with background tasks
+        emit({
+            type: 'session.idle',
+            data: { backgroundTasks: { agents: [{ id: 'a1' }], shells: [] } },
+        });
+
+        // Tasks drain
+        emit({
+            type: 'background_tasks_changed',
+            data: { backgroundTasks: { agents: [], shells: [] } },
+        });
+
+        const result = await promise;
+        expect(result.turnCount).toBe(2);
+        expect(result.response).toContain('turn 1');
+        expect(result.response).toContain('turn 2');
+    });
+});
