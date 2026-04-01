@@ -15,6 +15,7 @@ import { SourceEditor } from './SourceEditor';
 import { Button } from './Button';
 import { FollowPromptDialog } from './FollowPromptDialog';
 import { UpdateDocumentDialog } from './UpdateDocumentDialog';
+import { ResolveContextDialog, shouldSkipResolveDialog } from './ResolveContextDialog';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -113,6 +114,12 @@ export function MarkdownReviewEditor({
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
     const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | null>(null);
+    const [resolveDialogState, setResolveDialogState] = useState<{
+        open: boolean;
+        mode: 'batch' | 'fix' | 'custom-ask';
+        commentId?: string;
+        title?: string;
+    }>({ open: false, mode: 'batch' });
     const [taskStatus, setTaskStatus] = useState<string | undefined>(undefined);
     const taskName = filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? filePath;
 
@@ -508,9 +515,12 @@ export function MarkdownReviewEditor({
     const handleCustomAskAIFromSelection = useCallback(async () => {
         if (!savedSelection) return;
         setContextMenuVisible(false);
+        setResolveDialogState({ open: true, mode: 'custom-ask', title: 'Ask AI about Selection' });
+    }, [savedSelection]);
 
-        const question = window.prompt('Ask AI a custom question about the selection:');
-        if (!question?.trim()) return;
+    const handleCustomAskSubmit = useCallback(async (question: string, skills: string[]) => {
+        setResolveDialogState(s => ({ ...s, open: false }));
+        if (!savedSelection || !question?.trim()) return;
 
         const selection: CommentSelection = {
             startLine: savedSelection.startLine,
@@ -541,27 +551,65 @@ export function MarkdownReviewEditor({
     }, [savedSelection, rawContent, filePath, addComment, askAI]);
 
     const handleResolveAllWithAI = useCallback(async () => {
-        try {
-            const result = await resolveWithAI(rawContent, filePath);
-            addToast(`Batch resolve queued for ${result.totalCount} open comment(s).`, 'info');
-        } catch (err) {
-            addToast(`Batch resolve failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+        const openCount = comments.filter(c => c.status === 'open').length;
+        if (openCount === 0) return;
+        if (shouldSkipResolveDialog()) {
+            try {
+                const result = await resolveWithAI(rawContent, filePath);
+                addToast(`Batch resolve queued for ${result.totalCount} open comment(s).`, 'info');
+            } catch (err) {
+                addToast(`Batch resolve failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+            }
+            return;
         }
-    }, [resolveWithAI, rawContent, filePath, addToast]);
+        setResolveDialogState({ open: true, mode: 'batch', title: 'Resolve with AI' });
+    }, [comments, resolveWithAI, rawContent, filePath, addToast]);
 
     const handleFixWithAI = useCallback(async (id: string) => {
-        try {
-            await fixWithAI(id, rawContent, filePath);
-            addToast('Fix with AI queued.', 'info');
-        } catch (err) {
-            addToast(`Fix failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+        if (shouldSkipResolveDialog()) {
+            try {
+                await fixWithAI(id, rawContent, filePath);
+                addToast('Fix with AI queued.', 'info');
+            } catch (err) {
+                addToast(`Fix failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+            }
+            return;
         }
+        setResolveDialogState({ open: true, mode: 'fix', commentId: id, title: 'Fix with AI' });
     }, [fixWithAI, rawContent, filePath, addToast]);
 
     const handleCopyPrompt = useCallback(() => {
         copyResolvePrompt(rawContent, filePath);
         addToast('Resolve prompt copied to clipboard.', 'success');
     }, [copyResolvePrompt, rawContent, filePath, addToast]);
+
+    const handleResolveDialogSubmit = useCallback(async (userContext: string, skills: string[]) => {
+        const { mode, commentId } = resolveDialogState;
+        setResolveDialogState(s => ({ ...s, open: false }));
+        const ctx = userContext || undefined;
+        const sk = skills.length > 0 ? skills : undefined;
+
+        if (mode === 'custom-ask') {
+            await handleCustomAskSubmit(userContext, skills);
+            return;
+        }
+
+        if (mode === 'batch') {
+            try {
+                const result = await resolveWithAI(rawContent, filePath, ctx, sk);
+                addToast(`Batch resolve queued for ${result.totalCount} open comment(s).`, 'info');
+            } catch (err) {
+                addToast(`Batch resolve failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+            }
+        } else if (mode === 'fix' && commentId) {
+            try {
+                await fixWithAI(commentId, rawContent, filePath, ctx, sk);
+                addToast('Fix with AI queued.', 'info');
+            } catch (err) {
+                addToast(`Fix failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+            }
+        }
+    }, [resolveDialogState, resolveWithAI, fixWithAI, rawContent, filePath, addToast, handleCustomAskSubmit]);
 
     const handleCopyWithContext = useCallback(async () => {
         const text = savedSelection?.text || rawContent;
@@ -865,6 +913,14 @@ export function MarkdownReviewEditor({
                     onClose={() => setAiDialogType(null)}
                 />
             )}
+            <ResolveContextDialog
+                open={resolveDialogState.open}
+                onClose={() => setResolveDialogState(s => ({ ...s, open: false }))}
+                onSubmit={handleResolveDialogSubmit}
+                commentCount={resolveDialogState.mode === 'fix' ? 1 : comments.filter(c => c.status === 'open').length}
+                title={resolveDialogState.title}
+                wsId={wsId}
+            />
         </div>
     );
 }

@@ -32,8 +32,8 @@ export interface UseAllCommitCommentsReturn {
     unresolveComment: (comment: DiffComment) => Promise<void>;
     deleteComment: (comment: DiffComment) => Promise<void>;
     updateComment: (comment: DiffComment, updates: UpdateDiffCommentRequest) => Promise<void>;
-    resolveWithAI: () => Promise<void>;
-    fixWithAI: (id: string) => Promise<void>;
+    resolveWithAI: (userContext?: string, skills?: string[]) => Promise<void>;
+    fixWithAI: (id: string, userContext?: string, skills?: string[]) => Promise<void>;
     clearAiError: (id: string) => void;
     copyAllCommentsAsPrompt: () => void;
 }
@@ -137,13 +137,13 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
     // resolveWithAI — commit-level batch resolve via AI
     // ------------------------------------------------------------------
 
-    const resolveWithAI = useCallback(async () => {
+    const resolveWithAI = useCallback(async (userContext?: string, skills?: string[]) => {
         setResolving(true);
         try {
             const response = await fetchApi(`/diff-comments/${encodeURIComponent(wsId)}/resolve-with-ai`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ oldRef: `${hash}^`, newRef: hash }),
+                body: JSON.stringify({ oldRef: `${hash}^`, newRef: hash, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
             });
             if (response.taskId) await pollTaskResult(response.taskId as string);
             await fetchComments();
@@ -156,7 +156,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
     // fixWithAI — resolve a single comment via AI
     // ------------------------------------------------------------------
 
-    const fixWithAI = useCallback(async (id: string) => {
+    const fixWithAI = useCallback(async (id: string, userContext?: string, skills?: string[]) => {
         const comment = commentsRef.current.find(c => c.id === id);
         if (!comment) return;
         setAiLoadingIds(prev => new Set(prev).add(id));
@@ -169,6 +169,8 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
                     newRef: comment.context.newRef,
                     filePath: comment.context.filePath,
                     commentId: id,
+                    ...(userContext ? { userContext } : {}),
+                    ...(skills?.length ? { skills } : {}),
                 }),
             });
             if (response.taskId) await pollTaskResult(response.taskId as string);

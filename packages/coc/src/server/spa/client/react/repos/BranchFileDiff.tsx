@@ -21,6 +21,7 @@ import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../context/QueueContext';
 import { useCrossFileNav } from './useCrossFileNav';
+import { ResolveContextDialog, shouldSkipResolveDialog } from '../shared/ResolveContextDialog';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
 import type { TaskCommentCategory } from '../../task-comments-types';
@@ -92,6 +93,12 @@ export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateT
             clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
             resolveWithAI, fixWithAI } = useDiffComments(workspaceId, diffContext);
 
+    const [resolveDialogState, setResolveDialogState] = useState<{
+        open: boolean;
+        mode: 'batch' | 'fix';
+        commentId?: string;
+    }>({ open: false, mode: 'batch' });
+
     const fetchDiff = useCallback((full = false) => {
         setLoading(true);
         setError(null);
@@ -152,12 +159,32 @@ export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateT
     );
 
     const handleResolveAllWithAI = useCallback(() => {
-        void resolveWithAI();
+        if (shouldSkipResolveDialog()) {
+            void resolveWithAI();
+            return;
+        }
+        setResolveDialogState({ open: true, mode: 'batch' });
     }, [resolveWithAI]);
 
     const handleFixWithAI = useCallback((id: string) => {
-        void fixWithAI(id);
+        if (shouldSkipResolveDialog()) {
+            void fixWithAI(id);
+            return;
+        }
+        setResolveDialogState({ open: true, mode: 'fix', commentId: id });
     }, [fixWithAI]);
+
+    const handleResolveDialogSubmit = useCallback((userContext: string, skills: string[]) => {
+        const { mode, commentId } = resolveDialogState;
+        setResolveDialogState(s => ({ ...s, open: false }));
+        const ctx = userContext || undefined;
+        const sk = skills.length > 0 ? skills : undefined;
+        if (mode === 'batch') {
+            void resolveWithAI(ctx, sk);
+        } else if (mode === 'fix' && commentId) {
+            void fixWithAI(commentId, ctx, sk);
+        }
+    }, [resolveDialogState, resolveWithAI, fixWithAI]);
 
     const handleAskAIDiff = useCallback(
         (selection: DiffCommentSelection, selectedText: string) => {
@@ -324,6 +351,14 @@ export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateT
                     isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
             )}
+            <ResolveContextDialog
+                open={resolveDialogState.open}
+                onClose={() => setResolveDialogState(s => ({ ...s, open: false }))}
+                onSubmit={handleResolveDialogSubmit}
+                commentCount={resolveDialogState.mode === 'fix' ? 1 : comments.filter(c => c.status === 'open').length}
+                title={resolveDialogState.mode === 'fix' ? 'Fix with AI' : 'Resolve with AI'}
+                wsId={workspaceId}
+            />
         </div>
     );
 }

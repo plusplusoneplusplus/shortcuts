@@ -99,8 +99,8 @@ export interface UseTaskCommentsReturn {
     clearAiError: (id: string) => void;
     resolvingIds: Set<string>;
     deletingIds: Set<string>;
-    resolveWithAI: (documentContent: string, filePath: string) => Promise<ResolveWithAIResult>;
-    fixWithAI: (id: string, documentContent: string, filePath: string) => Promise<FixWithAIResult>;
+    resolveWithAI: (documentContent: string, filePath: string, userContext?: string, skills?: string[]) => Promise<ResolveWithAIResult>;
+    fixWithAI: (id: string, documentContent: string, filePath: string, userContext?: string, skills?: string[]) => Promise<FixWithAIResult>;
     copyResolvePrompt: (documentContent: string, filePath: string) => void;
     refresh: () => Promise<void>;
 }
@@ -285,12 +285,12 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     }, [taskPath, refresh]);
 
     const resolveWithAI = useCallback(
-        async (documentContent: string, filePath: string): Promise<ResolveWithAIResult> => {
+        async (documentContent: string, filePath: string, userContext?: string, skills?: string[]): Promise<ResolveWithAIResult> => {
             const totalCount = comments.filter(c => c.status === 'open').length;
             const aiRes = await fetch(commentsUrl(wsId, taskPath) + '/batch-resolve', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ documentContent }),
+                body: JSON.stringify({ documentContent, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
             });
             if (!aiRes.ok) throw new Error('Batch resolve failed');
             await aiRes.json(); // consume response (contains taskId)
@@ -300,11 +300,11 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     );
 
     const fixWithAI = useCallback(
-        async (id: string, documentContent: string, filePath: string): Promise<FixWithAIResult> => {
+        async (id: string, documentContent: string, filePath: string, userContext?: string, skills?: string[]): Promise<FixWithAIResult> => {
             const aiRes = await fetch(commentUrl(wsId, taskPath, id) + '/ask-ai', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ commandId: 'resolve', documentContent }),
+                body: JSON.stringify({ commandId: 'resolve', documentContent, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
             });
             if (!aiRes.ok) throw new Error('AI resolve failed');
             await aiRes.json(); // consume response (contains taskId)

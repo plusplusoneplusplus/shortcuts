@@ -106,6 +106,7 @@ export function buildMultiFileBatchResolvePrompt(
     fileEntries: Array<{ filePath: string; comments: DiffComment[] }>,
     oldRef: string,
     newRef: string,
+    userContext?: string,
 ): string {
     // Collect open comments per file, filtering and sorting
     const filesWithOpen = fileEntries
@@ -173,6 +174,11 @@ export function buildMultiFileBatchResolvePrompt(
     prompt += '3. Call `resolve_comment(commentId, summary)` for each comment you address.\n';
     prompt += '4. Do NOT call `resolve_comment` for comments you cannot address.\n';
     prompt += '5. Comments span multiple files — consider cross-file relationships.\n';
+
+    if (userContext?.trim()) {
+        prompt += '\n## Additional Context from User\n\n';
+        prompt += userContext.trim() + '\n';
+    }
 
     return prompt;
 }

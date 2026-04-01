@@ -118,6 +118,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         commentIds: string[],
         prompt: string,
         documentContent: string,
+        skills?: string[],
     ): Promise<string | undefined> {
         const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
         bridge.getOrCreateBridge(wsRootPath);
@@ -139,6 +140,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                         filePath: taskPath,
                         wsId,
                     },
+                    ...(skills?.length ? { skills } : {}),
                 },
             },
             config: {},
@@ -307,12 +309,14 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                     if (!documentContent || typeof documentContent !== 'string') {
                         return sendError(res, 400, 'Missing required field: documentContent');
                     }
+                    const userContext: string | undefined = body.userContext;
+                    const skills: string[] | undefined = Array.isArray(body.skills) ? body.skills : undefined;
                     const taskRoot = await resolveTaskRootPath(wsId);
                     const absoluteTaskPath = taskRoot ? path.join(taskRoot, taskPath) : taskPath;
-                    const resolvePrompt = buildBatchResolvePrompt([comment], absoluteTaskPath, taskPath);
+                    const resolvePrompt = buildBatchResolvePrompt([comment], absoluteTaskPath, taskPath, userContext);
 
                     try {
-                        const taskId = await enqueueResolveTask(wsId, taskPath, [comment.id], resolvePrompt, documentContent);
+                        const taskId = await enqueueResolveTask(wsId, taskPath, [comment.id], resolvePrompt, documentContent, skills);
                         if (taskId) {
                             return sendJSON(res, 202, { taskId });
                         }
@@ -383,6 +387,9 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 return sendError(res, 400, 'Missing required field: documentContent');
             }
 
+            const userContext: string | undefined = body.userContext;
+            const skills: string[] | undefined = Array.isArray(body.skills) ? body.skills : undefined;
+
             // Load and filter open comments
             const allComments = await manager.getComments(wsId, taskPath);
             const openComments = allComments.filter(c => c.status === 'open');
@@ -393,11 +400,11 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             // Build prompt and invoke AI
             const taskRoot = await resolveTaskRootPath(wsId);
             const absoluteTaskPath = taskRoot ? path.join(taskRoot, taskPath) : taskPath;
-            const prompt = buildBatchResolvePrompt(openComments, absoluteTaskPath, taskPath);
+            const prompt = buildBatchResolvePrompt(openComments, absoluteTaskPath, taskPath, userContext);
             const commentIds = openComments.map(c => c.id);
 
             try {
-                const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent);
+                const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent, skills);
                 if (taskId) {
                     return sendJSON(res, 202, { taskId });
                 }

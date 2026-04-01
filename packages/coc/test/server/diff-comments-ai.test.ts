@@ -183,4 +183,38 @@ describe('buildMultiFileBatchResolvePrompt', () => {
         expect(result).toContain('has-open.ts');
         expect(result).toContain('### File 1: `src/has-open.ts`');
     });
+
+    it('appends userContext when provided', () => {
+        const entries = [
+            {
+                filePath: 'src/a.ts',
+                comments: [makeDiffComment({ id: 'a1' })],
+            },
+        ];
+        const result = buildMultiFileBatchResolvePrompt(entries, 'a', 'b', 'Use the error handling pattern');
+        expect(result).toContain('## Additional Context from User');
+        expect(result).toContain('Use the error handling pattern');
+    });
+
+    it('does not include user context section when userContext is empty', () => {
+        const entries = [
+            {
+                filePath: 'src/a.ts',
+                comments: [makeDiffComment({ id: 'a1' })],
+            },
+        ];
+        const result = buildMultiFileBatchResolvePrompt(entries, 'a', 'b', '');
+        expect(result).not.toContain('Additional Context from User');
+    });
+
+    it('does not include user context section when userContext is undefined', () => {
+        const entries = [
+            {
+                filePath: 'src/a.ts',
+                comments: [makeDiffComment({ id: 'a1' })],
+            },
+        ];
+        const result = buildMultiFileBatchResolvePrompt(entries, 'a', 'b');
+        expect(result).not.toContain('Additional Context from User');
+    });
 });

@@ -111,6 +111,9 @@ function setupFetchSpy() {
         if (url.includes('/comments/')) {
             return Promise.resolve(mockJsonResponse({ comments: [] }));
         }
+        if (url.includes('/skills/all')) {
+            return Promise.resolve(mockJsonResponse({ merged: [] }));
+        }
         return Promise.resolve(mockJsonResponse({}));
     });
     return fetchSpy;
@@ -335,9 +338,7 @@ describe('MarkdownReviewEditor', () => {
             );
         });
 
-        it('clicking "Custom..." prompts user and calls addComment then askAI with customQuestion', async () => {
-            const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('What does this mean?');
-
+        it('clicking "Custom..." opens the resolve context dialog', async () => {
             await renderAndWaitForContent();
             const preview = document.querySelector('#task-preview-body')! as HTMLElement;
             simulateTextSelection(preview);
@@ -355,24 +356,13 @@ describe('MarkdownReviewEditor', () => {
                 fireEvent.click(screen.getByText('💬 Custom...'));
             });
 
-            expect(promptSpy).toHaveBeenCalled();
-            expect(mockAddComment).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    comment: 'What does this mean?',
-                    category: 'question',
-                })
-            );
-            expect(mockAskAI).toHaveBeenCalledWith(
-                'new-comment-1',
-                expect.objectContaining({ customQuestion: 'What does this mean?' })
-            );
-
-            promptSpy.mockRestore();
+            // The resolve context dialog should now be open
+            await waitFor(() => {
+                expect(screen.getByTestId('resolve-dialog-submit')).toBeTruthy();
+            });
         });
 
-        it('cancelling the custom prompt does not call addComment or askAI', async () => {
-            const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null);
-
+        it('cancelling the custom dialog does not call addComment or askAI', async () => {
             await renderAndWaitForContent();
             const preview = document.querySelector('#task-preview-body')! as HTMLElement;
             simulateTextSelection(preview);
@@ -390,11 +380,17 @@ describe('MarkdownReviewEditor', () => {
                 fireEvent.click(screen.getByText('💬 Custom...'));
             });
 
-            expect(promptSpy).toHaveBeenCalled();
+            // Dialog should be open; click cancel
+            await waitFor(() => {
+                expect(screen.getByTestId('resolve-dialog-cancel')).toBeTruthy();
+            });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('resolve-dialog-cancel'));
+            });
+
             expect(mockAddComment).not.toHaveBeenCalled();
             expect(mockAskAI).not.toHaveBeenCalled();
-
-            promptSpy.mockRestore();
         });
 
         it('context menu closes before addComment is awaited', async () => {

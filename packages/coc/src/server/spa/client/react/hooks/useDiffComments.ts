@@ -49,8 +49,8 @@ export interface UseDiffCommentsReturn {
     resolveComment: (id: string) => Promise<DiffComment>;
     unresolveComment: (id: string) => Promise<DiffComment>;
     askAI: (id: string, options?: AskAIOptions) => Promise<void>;
-    resolveWithAI: () => Promise<{ totalCount: number }>;
-    fixWithAI: (id: string) => Promise<void>;
+    resolveWithAI: (userContext?: string, skills?: string[]) => Promise<{ totalCount: number }>;
+    fixWithAI: (id: string, userContext?: string, skills?: string[]) => Promise<void>;
     copyResolvePrompt: (diffContent: string) => void;
     aiLoadingIds: Set<string>;
     aiErrors: Map<string, string>;
@@ -400,7 +400,7 @@ export function useDiffComments(
     // resolveWithAI — batch resolve all open comments via AI
     // ------------------------------------------------------------------
 
-    const resolveWithAI = useCallback(async (): Promise<{ totalCount: number }> => {
+    const resolveWithAI = useCallback(async (userContext?: string, skills?: string[]): Promise<{ totalCount: number }> => {
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
         setResolving(true);
@@ -410,7 +410,7 @@ export function useDiffComments(
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ oldRef: ctx.oldRef, newRef: ctx.newRef, filePath: ctx.filePath }),
+                    body: JSON.stringify({ oldRef: ctx.oldRef, newRef: ctx.newRef, filePath: ctx.filePath, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
                 }
             );
             if (!response.ok) {
@@ -432,7 +432,7 @@ export function useDiffComments(
     // fixWithAI — resolve a single comment via AI
     // ------------------------------------------------------------------
 
-    const fixWithAI = useCallback(async (id: string): Promise<void> => {
+    const fixWithAI = useCallback(async (id: string, userContext?: string, skills?: string[]): Promise<void> => {
         const ctx = contextRef.current;
         if (!ctx) return;
         setAiLoadingIds(prev => new Set(prev).add(id));
@@ -442,7 +442,7 @@ export function useDiffComments(
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ oldRef: ctx.oldRef, newRef: ctx.newRef, filePath: ctx.filePath, commentId: id }),
+                    body: JSON.stringify({ oldRef: ctx.oldRef, newRef: ctx.newRef, filePath: ctx.filePath, commentId: id, ...(userContext ? { userContext } : {}), ...(skills?.length ? { skills } : {}) }),
                 }
             );
             if (!response.ok) throw new Error('Fix with AI failed');

@@ -47,7 +47,8 @@ export function buildEnrichedPrompt(
 export function buildBatchResolvePrompt(
     comments: TaskComment[],
     absoluteFilePath: string,
-    displayPath: string
+    displayPath: string,
+    userContext?: string,
 ): string {
     const openComments = comments
         .filter(c => c.status === 'open')
@@ -106,6 +107,11 @@ export function buildBatchResolvePrompt(
     prompt += '4. Do NOT include any markdown fencing or explanation — output ONLY the revised document\n';
     prompt += '5. You have a `resolve_comment` tool available. For each comment you address, call `resolve_comment` with the comment\'s ID and a brief summary of the change.\n';
     prompt += '6. Do NOT call `resolve_comment` for comments you cannot address (e.g., ambiguous, need clarification, out of scope).\n';
+
+    if (userContext?.trim()) {
+        prompt += '\n## Additional Context from User\n\n';
+        prompt += userContext.trim() + '\n';
+    }
 
     return prompt;
 }

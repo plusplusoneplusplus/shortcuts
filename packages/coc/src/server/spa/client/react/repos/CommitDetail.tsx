@@ -26,6 +26,7 @@ import { BranchCommitStrip } from './BranchCommitStrip';
 import { BranchAllFilesDiff } from './BranchAllFilesDiff';
 import { CommitChatPanel } from './CommitChatPanel';
 import { useResizablePanel } from '../hooks/useResizablePanel';
+import { ResolveContextDialog, shouldSkipResolveDialog } from '../shared/ResolveContextDialog';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
@@ -186,6 +187,12 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
             clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
             resolveWithAI, fixWithAI } = useDiffComments(workspaceId, diffContext);
 
+    const [resolveDialogState, setResolveDialogState] = useState<{
+        open: boolean;
+        mode: 'batch' | 'fix' | 'commit-batch' | 'commit-fix';
+        commentId?: string;
+    }>({ open: false, mode: 'batch' });
+
     // Commit-level comments (only active when !filePath and !rangeMode)
     const {
         comments: allCommitComments,
@@ -232,20 +239,52 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
     );
 
     const handleResolveAllWithAI = useCallback(() => {
-        void resolveWithAI();
+        if (shouldSkipResolveDialog()) {
+            void resolveWithAI();
+            return;
+        }
+        setResolveDialogState({ open: true, mode: 'batch' });
     }, [resolveWithAI]);
 
     const handleFixWithAI = useCallback((id: string) => {
-        void fixWithAI(id);
+        if (shouldSkipResolveDialog()) {
+            void fixWithAI(id);
+            return;
+        }
+        setResolveDialogState({ open: true, mode: 'fix', commentId: id });
     }, [fixWithAI]);
 
     const handleResolveAllCommitWithAI = useCallback(() => {
-        void commitResolveWithAI();
+        if (shouldSkipResolveDialog()) {
+            void commitResolveWithAI();
+            return;
+        }
+        setResolveDialogState({ open: true, mode: 'commit-batch' });
     }, [commitResolveWithAI]);
 
     const handleFixCommitWithAI = useCallback((id: string) => {
-        void commitFixWithAI(id);
+        if (shouldSkipResolveDialog()) {
+            void commitFixWithAI(id);
+            return;
+        }
+        setResolveDialogState({ open: true, mode: 'commit-fix', commentId: id });
     }, [commitFixWithAI]);
+
+    const handleResolveDialogSubmit = useCallback((userContext: string, skills: string[]) => {
+        const { mode, commentId } = resolveDialogState;
+        setResolveDialogState(s => ({ ...s, open: false }));
+        const ctx = userContext || undefined;
+        const sk = skills.length > 0 ? skills : undefined;
+        if (mode === 'batch') {
+            void resolveWithAI(ctx, sk);
+        } else if (mode === 'fix' && commentId) {
+            void fixWithAI(commentId, ctx, sk);
+        } else if (mode === 'commit-batch') {
+            void commitResolveWithAI(ctx, sk);
+        } else if (mode === 'commit-fix' && commentId) {
+            void commitFixWithAI(commentId, ctx, sk);
+        }
+    }, [resolveDialogState, resolveWithAI, fixWithAI, commitResolveWithAI, commitFixWithAI]);
 
     const handleAskAIDiff = useCallback(
         (selection: DiffCommentSelection, selectedText: string) => {
@@ -719,6 +758,20 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                     isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
             )}
+            <ResolveContextDialog
+                open={resolveDialogState.open}
+                onClose={() => setResolveDialogState(s => ({ ...s, open: false }))}
+                onSubmit={handleResolveDialogSubmit}
+                commentCount={
+                    resolveDialogState.mode === 'fix' || resolveDialogState.mode === 'commit-fix'
+                        ? 1
+                        : resolveDialogState.mode === 'commit-batch'
+                            ? allCommitComments.filter(c => c.status === 'open').length
+                            : comments.filter(c => c.status === 'open').length
+                }
+                title={resolveDialogState.mode === 'fix' || resolveDialogState.mode === 'commit-fix' ? 'Fix with AI' : 'Resolve with AI'}
+                wsId={workspaceId}
+            />
         </div>
     );
 }
