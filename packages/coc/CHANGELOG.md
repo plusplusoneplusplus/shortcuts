@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.7
+
+### Patch Changes
+
+- Minor updates
+- Updated dependencies
+  - @plusplusoneplusplus/forge@1.0.2
+
 ## 1.0.6
 
 ### Patch Changes
