@@ -647,4 +647,82 @@ describe('StreamingSession — background task gating', () => {
         expect(result.response).toContain('turn 1');
         expect(result.response).toContain('turn 2');
     });
+
+    it('turn_end grace timer does NOT settle while waiting for background tasks', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.turn_start' });
+        emit({ type: 'assistant.message', data: { content: 'partial result' } });
+        emit({ type: 'assistant.turn_end' });
+        // turn_end starts the 2s grace timer
+
+        // session.idle arrives with active background tasks — defers settlement
+        emit({
+            type: 'session.idle',
+            data: { backgroundTasks: { agents: [{ id: 'a1' }], shells: [] } },
+        });
+        expect((ss as any).waitingForBackgroundTasks).toBe(true);
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+
+        // Grace timer fires — should NOT settle because bg tasks are active
+        vi.advanceTimersByTime(3000);
+        expect((ss as any).state).toBe(StreamingState.Streaming);
+
+        // Background tasks drain — now it settles
+        emit({
+            type: 'background_tasks_changed',
+            data: { backgroundTasks: { agents: [], shells: [] } },
+        });
+
+        const result = await promise;
+        expect(result.response).toBe('partial result');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
+
+    it('handleSessionIdle cancels pending turn_end grace timer when bg tasks active', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.turn_start' });
+        emit({ type: 'assistant.message', data: { content: 'hello' } });
+        emit({ type: 'assistant.turn_end' });
+        // Grace timer now ticking
+
+        expect((ss as any).timers.hasTurnEndGraceTimer).toBe(true);
+
+        // session.idle with bg tasks should cancel the grace timer
+        emit({
+            type: 'session.idle',
+            data: { backgroundTasks: { agents: [{ id: 'a1' }], shells: [] } },
+        });
+
+        expect((ss as any).timers.hasTurnEndGraceTimer).toBe(false);
+
+        // Clean up
+        emit({
+            type: 'background_tasks_changed',
+            data: { backgroundTasks: { agents: [], shells: [] } },
+        });
+        await promise;
+    });
+
+    it('turn_end grace timer works normally when no background tasks are active', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
+
+        emit({ type: 'assistant.turn_start' });
+        emit({ type: 'assistant.message', data: { content: 'quick answer' } });
+        emit({ type: 'assistant.turn_end' });
+
+        // No session.idle with bg tasks — grace timer should work as before
+        vi.advanceTimersByTime(3000);
+
+        const result = await promise;
+        expect(result.response).toBe('quick answer');
+        expect((ss as any).state).toBe(StreamingState.Settled);
+    });
 });

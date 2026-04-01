@@ -213,6 +213,10 @@ export class StreamingSession {
                     this.settleError(new Error(`Request idle-timed out after ${effectiveIdleMs}ms with no activity`));
                 },
                 onTurnEndGrace: () => {
+                    if (this.waitingForBackgroundTasks) {
+                        this.sessionLog.debug('Turn-end grace fired but background tasks still active — skipping');
+                        return;
+                    }
                     if (this.stateMachine.isStreaming && (this.telemetry.allMessages.length > 0 || this.telemetry.response)) {
                         this.sessionLog.debug({ turn: this.telemetry.turnCount }, 'Settling after turn_end grace period');
                         this.settleWithResult();
@@ -390,6 +394,7 @@ export class StreamingSession {
 
         if (totalActive > 0) {
             this.waitingForBackgroundTasks = true;
+            this.timers.cancelTurnEndGrace();
             this.sessionLog.debug(
                 { agents: activeAgents, shells: activeShells },
                 'Session idle with active background tasks — deferring settle',
