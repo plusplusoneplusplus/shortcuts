@@ -306,6 +306,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
                         resolvingIds={resolvingIds}
                         deletingIds={deletingIds}
                         onCopyPrompt={copyAllCommentsAsPrompt}
+                        onClose={() => setSidebarOpen(false)}
                         data-testid="diff-comment-sidebar"
                     />
                 )}

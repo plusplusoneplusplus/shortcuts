@@ -676,6 +676,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                         resolvingIds={resolvingIds}
                         deletingIds={deletingIds}
                         onCopyPrompt={copyAllCommentsAsPrompt}
+                        onClose={() => setSidebarOpen(false)}
                         data-testid="diff-comment-sidebar"
                     />
                 )}
@@ -708,6 +709,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                         onClearAiError={clearCommitAiError}
                         onCommentClick={handleSidebarCommentClick}
                         onCopyPrompt={copyAllCommitCommentsAsPrompt}
+                        onClose={() => setSidebarOpen(false)}
                         data-testid="diff-comment-sidebar"
                     />
                 )}

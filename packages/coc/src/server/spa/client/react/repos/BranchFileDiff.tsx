@@ -321,6 +321,7 @@ export function BranchFileDiff({ workspaceId, filePath, branchFiles, onNavigateT
                         resolvingIds={resolvingIds}
                         deletingIds={deletingIds}
                         onCopyPrompt={copyAllCommentsAsPrompt}
+                        onClose={() => setSidebarOpen(false)}
                         data-testid="diff-comment-sidebar"
                     />
                 )}

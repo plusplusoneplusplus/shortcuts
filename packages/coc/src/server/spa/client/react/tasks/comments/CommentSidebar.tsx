@@ -37,6 +37,8 @@ export interface CommentSidebarProps {
     deletingIds?: Set<string>;
     onResolveAllWithAI?: () => void;
     onCopyPrompt?: () => void;
+    /** When provided, renders a ✕ close button in the sidebar header. */
+    onClose?: () => void;
 }
 
 export function CommentSidebar({
@@ -63,6 +65,7 @@ export function CommentSidebar({
     deletingIds,
     onResolveAllWithAI,
     onCopyPrompt,
+    onClose,
 }: CommentSidebarProps) {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
@@ -117,7 +120,7 @@ export function CommentSidebar({
                     <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
                         Comments ({comments.length})
                     </span>
-                    {comments.length > 0 && (
+                    {(comments.length > 0 || onClose) && (
                         <div className="flex items-center gap-1">
                             {openCount > 0 && onCopyPrompt && (
                                 <button
@@ -142,6 +145,17 @@ export function CommentSidebar({
                                     className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
                                 >
                                     🤖 Resolve All
+                                </button>
+                            )}
+                            {onClose && (
+                                <button
+                                    onClick={onClose}
+                                    title="Close comments"
+                                    aria-label="Close comments"
+                                    data-testid="close-sidebar-btn"
+                                    className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-xs"
+                                >
+                                    ✕
                                 </button>
                             )}
                         </div>

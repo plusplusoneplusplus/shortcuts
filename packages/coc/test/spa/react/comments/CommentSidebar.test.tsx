@@ -294,3 +294,86 @@ describe('CommentSidebar — orphaned comments', () => {
         expect(screen.getAllByTestId('orphaned-badge')).toHaveLength(1);
     });
 });
+
+// ============================================================================
+// Close button tests
+// ============================================================================
+
+describe('CommentSidebar — close button', () => {
+    it('renders ✕ close button when onClose is provided', () => {
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[makeComment()]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+                onClose={noop}
+            />
+        );
+        expect(screen.getByTestId('close-sidebar-btn')).toBeTruthy();
+        expect(screen.getByTestId('close-sidebar-btn').textContent).toBe('✕');
+    });
+
+    it('does NOT render close button when onClose is not provided', () => {
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[makeComment()]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+            />
+        );
+        expect(screen.queryByTestId('close-sidebar-btn')).toBeNull();
+    });
+
+    it('calls onClose when close button is clicked', () => {
+        const onClose = vi.fn();
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[makeComment()]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+                onClose={onClose}
+            />
+        );
+        fireEvent.click(screen.getByTestId('close-sidebar-btn'));
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('renders close button even when there are no comments', () => {
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+                onClose={noop}
+            />
+        );
+        expect(screen.getByTestId('close-sidebar-btn')).toBeTruthy();
+    });
+
+    it('close button has correct title and aria-label', () => {
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[makeComment()]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+                onClose={noop}
+            />
+        );
+        const btn = screen.getByTestId('close-sidebar-btn');
+        expect(btn.getAttribute('title')).toBe('Close comments');
+        expect(btn.getAttribute('aria-label')).toBe('Close comments');
+    });
+
+    it('close button is not rendered when showHeader is false', () => {
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[makeComment()]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+                onClose={noop}
+                showHeader={false}
+            />
+        );
+        expect(screen.queryByTestId('close-sidebar-btn')).toBeNull();
+    });
+});
