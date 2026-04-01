@@ -160,9 +160,21 @@ export function ActivityListPane({
         setSearchVisible(false);
     }, [workspaceId]);
 
+    const detailPaneFocusedRef = useRef(false);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            const detailPane = document.querySelector('[data-pane="detail"]');
+            detailPaneFocusedRef.current = !!detailPane?.contains(e.target as Node);
+        };
+        document.addEventListener('mousedown', handler, true);
+        return () => document.removeEventListener('mousedown', handler, true);
+    }, []);
+
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                if (detailPaneFocusedRef.current) return;
                 e.preventDefault();
                 setSearchVisible(true);
                 setTimeout(() => searchInputRef.current?.focus(), 0);

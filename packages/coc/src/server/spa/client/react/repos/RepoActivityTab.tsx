@@ -270,7 +270,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             <ChatPreferencesProvider workspaceId={workspaceId}>
                 <div className="flex flex-col h-full overflow-hidden" data-testid="activity-split-panel">
                     {mobileShowDetail && selectedTaskId ? (
-                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel">
+                        <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel" data-pane="detail">
                             <ActivityDetailPane
                                 selectedTaskId={selectedTaskId}
                                 selectedTask={selectedTask}
@@ -313,7 +313,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             />
 
             {/* Right panel — detail or placeholder */}
-            <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel">
+            <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel" data-pane="detail">
                 <ActivityDetailPane
                     selectedTaskId={selectedTaskId}
                     selectedTask={selectedTask}

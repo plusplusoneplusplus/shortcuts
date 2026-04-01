@@ -109,6 +109,16 @@ describe('RepoActivityTab: split-panel layout', () => {
     it('has data-testid for the detail panel', () => {
         expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-detail-panel"');
     });
+
+    it('marks detail panel with data-pane="detail" for context-aware keyboard handling', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-pane="detail"');
+    });
+
+    it('applies data-pane="detail" to both desktop and mobile detail panels', () => {
+        const matches = ACTIVITY_TAB_SOURCE.match(/data-pane="detail"/g);
+        expect(matches).not.toBeNull();
+        expect(matches!.length).toBeGreaterThanOrEqual(2);
+    });
 });
 
 // ── Activity-specific selectTask behavior ──────────────────────────────

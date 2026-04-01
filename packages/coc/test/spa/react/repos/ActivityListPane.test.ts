@@ -719,7 +719,7 @@ describe('ActivityListPane pinned chats', () => {
         it('prevents default browser find on Ctrl+F', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 100,
+                source.indexOf("e.key === 'f'") + 300,
             );
             expect(handler).toContain('e.preventDefault()');
         });
@@ -727,9 +727,30 @@ describe('ActivityListPane pinned chats', () => {
         it('sets searchVisible to true on Ctrl+F', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 200,
+                source.indexOf("e.key === 'f'") + 300,
             );
             expect(handler).toContain('setSearchVisible(true)');
+        });
+
+        it('skips interception when last click was inside detail pane', () => {
+            // Tracks last-clicked pane via mousedown listener
+            expect(source).toContain('detailPaneFocusedRef = useRef(false)');
+            expect(source).toContain("document.querySelector('[data-pane=\"detail\"]')");
+            expect(source).toContain('detailPane?.contains(e.target as Node)');
+            // mousedown listener uses capture phase
+            expect(source).toContain("document.addEventListener('mousedown', handler, true)");
+        });
+
+        it('checks detailPaneFocusedRef before intercepting Ctrl+F', () => {
+            const handler = source.substring(
+                source.indexOf("e.key === 'f'"),
+                source.indexOf("e.key === 'f'") + 300,
+            );
+            expect(handler).toContain('if (detailPaneFocusedRef.current) return');
+            // The ref check must come before preventDefault
+            const refIdx = handler.indexOf('detailPaneFocusedRef.current');
+            const preventIdx = handler.indexOf('e.preventDefault()');
+            expect(refIdx).toBeLessThan(preventIdx);
         });
 
         it('Escape key closes search when visible', () => {
