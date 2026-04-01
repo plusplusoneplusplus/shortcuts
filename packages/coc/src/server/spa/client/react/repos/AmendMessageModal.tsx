@@ -56,7 +56,7 @@ export function AmendMessageModal({ commit, onConfirm, onCancel, titleOnly }: Am
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-[var(--vscode-descriptionForeground,#999)]">
                         Title{title.length > TITLE_MAX_SOFT && (
-                            <span className="ml-2 text-[#f0ad4e]">({title.length} chars — consider keeping under {TITLE_MAX_SOFT})</span>
+                        <span className="ml-2 text-[#f0ad4e]">({title.length} chars — Git convention recommends ≤{TITLE_MAX_SOFT})</span>
                         )}
                     </label>
                     <input

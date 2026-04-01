@@ -712,15 +712,19 @@ export class BranchService {
             return { success: false, error: 'Commit title must not be empty' };
         }
         const message = body ? `${title}\n\n${body}` : title;
-        const escaped = message.replace(/"/g, '\\"');
+        const tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-amend-'));
+        const msgPath = path.join(tmpDir, 'COMMIT_MSG');
         try {
-            await this.execGitAsync(`git commit --amend --only -m "${escaped}"`, { cwd: repoRoot });
+            fs.writeFileSync(msgPath, message, 'utf-8');
+            await this.execGitAsync(`git commit --amend --only -F "${msgPath}"`, { cwd: repoRoot });
             const hash = this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
             return { success: true, hash };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             getLogger().error('Git', 'Failed to amend commit message', error instanceof Error ? error : undefined);
             return { success: false, error: errorMessage };
+        } finally {
+            try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
         }
     }
 
@@ -845,10 +849,11 @@ export class BranchService {
         if (!commitOrder.length) {
             return { success: false, error: 'No commits to reorder' };
         }
+        let tmpDir: string | undefined;
         try {
             // Build the todo list for the rebase
             const todoContent = commitOrder.map(hash => `pick ${hash}`).join('\n') + '\n';
-            const tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-reorder-'));
+            tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-reorder-'));
             const todoPath = path.join(tmpDir, 'todo');
             fs.writeFileSync(todoPath, todoContent, 'utf-8');
 
@@ -857,7 +862,7 @@ export class BranchService {
             if (process.platform === 'win32') {
                 const scriptPath = path.join(tmpDir, 'editor.cmd');
                 // On Windows, write a batch script that copies our todo file over the rebase todo
-                fs.writeFileSync(scriptPath, `@copy /Y "${todoPath.replace(/\\/g, '\\\\')}" %1 >nul\n`, 'utf-8');
+                fs.writeFileSync(scriptPath, `@copy /Y "${todoPath}" %1 >nul\n`, 'utf-8');
                 seqEditor = scriptPath;
             } else {
                 const scriptPath = path.join(tmpDir, 'editor.sh');
@@ -874,14 +879,15 @@ export class BranchService {
                 env: { GIT_SEQUENCE_EDITOR: seqEditor },
             });
 
-            // Clean up temp files
-            try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
-
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             getLogger().error('Git', 'Failed to reorder commits', error instanceof Error ? error : undefined);
             return { success: false, error: errorMessage };
+        } finally {
+            if (tmpDir) {
+                try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
+            }
         }
     }
 
@@ -897,11 +903,12 @@ export class BranchService {
         if (!title || !title.trim()) {
             return { success: false, error: 'Commit title must not be empty' };
         }
+        let tmpDir: string | undefined;
         try {
             const fullHash = this.execGitSync(`git rev-parse ${hash}`, { cwd: repoRoot }).trim();
             const parentHash = this.execGitSync(`git rev-parse ${fullHash}~1`, { cwd: repoRoot }).trim();
 
-            const tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-reword-'));
+            tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-reword-'));
             const msgPath = path.join(tmpDir, 'message');
             fs.writeFileSync(msgPath, title.trim(), 'utf-8');
 
@@ -919,7 +926,7 @@ export class BranchService {
 
                 const msgScriptPath = path.join(tmpDir, 'msg-editor.cmd');
                 fs.writeFileSync(msgScriptPath,
-                    `@copy /Y "${msgPath.replace(/\\/g, '\\\\')}" %1 >nul\r\n`,
+                    `@copy /Y "${msgPath}" %1 >nul\r\n`,
                     'utf-8');
                 msgEditor = msgScriptPath;
             } else {
@@ -943,13 +950,15 @@ export class BranchService {
                 env: { GIT_SEQUENCE_EDITOR: seqEditor, GIT_EDITOR: msgEditor },
             });
 
-            try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
-
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             getLogger().error('Git', 'Failed to reword commit', error instanceof Error ? error : undefined);
             return { success: false, error: errorMessage };
+        } finally {
+            if (tmpDir) {
+                try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
+            }
         }
     }
 

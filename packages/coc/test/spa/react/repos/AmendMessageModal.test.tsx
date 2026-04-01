@@ -96,9 +96,9 @@ describe('AmendMessageModal — 72-char soft warning', () => {
         const titleInput = screen.getByDisplayValue('feat: initial commit');
         await user.clear(titleInput);
         await user.type(titleInput, 'a'.repeat(73));
-        // Warning includes the char count and the threshold
+        // Warning includes the char count and recommendation text
         expect(screen.getByText(/73 chars/)).toBeTruthy();
-        expect(screen.getByText(/72/)).toBeTruthy();
+        expect(screen.getByText(/Git convention recommends/)).toBeTruthy();
     });
 
     it('does not show soft warning when title is within 72 chars', () => {

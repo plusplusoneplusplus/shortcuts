@@ -8,6 +8,7 @@ import { execAsync } from '../../src/utils/exec-utils';
 import { BranchService } from '../../src/git/branch-service';
 import { setLogger, nullLogger } from '../../src/logger';
 import * as fs from 'fs';
+import * as path from 'path';
 
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
@@ -734,6 +735,12 @@ describe('BranchService', () => {
 // ── amendCommitMessage ───────────────────────────────────────
 describe('BranchService.amendCommitMessage', () => {
     let service: BranchService;
+    const mockedMkdtempSync = fs.mkdtempSync as Mock;
+    const mockedWriteFileSync = fs.writeFileSync as Mock;
+    const mockedRmSync = fs.rmSync as Mock;
+
+    const MOCK_TMP_DIR = path.join('/repo', '.git', 'tmp-amend-xyz');
+    const MOCK_MSG_PATH = path.join(MOCK_TMP_DIR, 'COMMIT_MSG');
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -741,29 +748,39 @@ describe('BranchService.amendCommitMessage', () => {
         service = new BranchService();
     });
 
-    it('runs git commit --amend --only -m with title only', async () => {
+    function setupMocks() {
+        mockedMkdtempSync.mockReturnValueOnce(MOCK_TMP_DIR);
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+    }
+
+    it('writes message to temp file and runs git commit --amend --only -F', async () => {
+        setupMocks();
         mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('abc1234\n');
 
         const result = await service.amendCommitMessage('/repo', 'Fix typo in README');
 
         expect(result).toEqual({ success: true, hash: 'abc1234' });
+        expect(mockedWriteFileSync).toHaveBeenCalledWith(MOCK_MSG_PATH, 'Fix typo in README', 'utf-8');
         expect(mockedExecAsync).toHaveBeenCalledWith(
-            'git commit --amend --only -m "Fix typo in README"',
+            `git commit --amend --only -F "${MOCK_MSG_PATH}"`,
             expect.objectContaining({ cwd: '/repo' })
         );
     });
 
-    it('includes body separated by double newline', async () => {
+    it('includes body separated by double newline in temp file', async () => {
+        setupMocks();
         mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('def5678\n');
 
         const result = await service.amendCommitMessage('/repo', 'feat: add button', 'Extended description here.');
 
         expect(result.success).toBe(true);
-        expect(mockedExecAsync).toHaveBeenCalledWith(
-            'git commit --amend --only -m "feat: add button\n\nExtended description here."',
-            expect.objectContaining({ cwd: '/repo' })
+        expect(mockedWriteFileSync).toHaveBeenCalledWith(
+            MOCK_MSG_PATH,
+            'feat: add button\n\nExtended description here.',
+            'utf-8'
         );
     });
 
@@ -783,6 +800,7 @@ describe('BranchService.amendCommitMessage', () => {
     });
 
     it('returns error result on git failure', async () => {
+        setupMocks();
         mockedExecAsync.mockRejectedValueOnce(new Error('nothing to amend'));
 
         const result = await service.amendCommitMessage('/repo', 'Some title');
@@ -791,16 +809,90 @@ describe('BranchService.amendCommitMessage', () => {
         expect(result.error).toBe('nothing to amend');
     });
 
-    it('escapes double quotes in the message', async () => {
+    it('handles messages with double quotes', async () => {
+        setupMocks();
         mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
         mockedExecSync.mockReturnValueOnce('aaa0001\n');
 
         await service.amendCommitMessage('/repo', 'Fix "the" bug');
 
-        expect(mockedExecAsync).toHaveBeenCalledWith(
-            'git commit --amend --only -m "Fix \\"the\\" bug"',
-            expect.anything()
-        );
+        expect(mockedWriteFileSync).toHaveBeenCalledWith(MOCK_MSG_PATH, 'Fix "the" bug', 'utf-8');
+    });
+
+    it('handles messages with shell metacharacters ($, backticks, !)', async () => {
+        setupMocks();
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('bbb0002\n');
+
+        const title = 'Fix $HOME expansion and `command` injection!';
+        await service.amendCommitMessage('/repo', title);
+
+        expect(mockedWriteFileSync).toHaveBeenCalledWith(MOCK_MSG_PATH, title, 'utf-8');
+    });
+
+    it('handles messages with Windows-specific characters (% and ^)', async () => {
+        setupMocks();
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('ccc0003\n');
+
+        const title = 'Fix 100% of ^caret issues';
+        await service.amendCommitMessage('/repo', title);
+
+        expect(mockedWriteFileSync).toHaveBeenCalledWith(MOCK_MSG_PATH, title, 'utf-8');
+    });
+
+    it('handles messages with Unicode and emoji', async () => {
+        setupMocks();
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('ddd0004\n');
+
+        const title = '🐛 Fix bug in über-feature — résumé handling';
+        await service.amendCommitMessage('/repo', title);
+
+        expect(mockedWriteFileSync).toHaveBeenCalledWith(MOCK_MSG_PATH, title, 'utf-8');
+    });
+
+    it('handles very long messages (>500 chars)', async () => {
+        setupMocks();
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('eee0005\n');
+
+        const title = 'Fix: ' + 'a'.repeat(600);
+        const result = await service.amendCommitMessage('/repo', title);
+
+        expect(result.success).toBe(true);
+        expect(mockedWriteFileSync).toHaveBeenCalledWith(MOCK_MSG_PATH, title, 'utf-8');
+    });
+
+    it('handles multi-line body with embedded quotes and special chars', async () => {
+        setupMocks();
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('fff0006\n');
+
+        const title = 'feat: add "login" feature';
+        const body = 'This fixes $HOME issues.\nAlso handles `backticks`.\n\n- item "one"\n- item \'two\'';
+        await service.amendCommitMessage('/repo', title, body);
+
+        expect(mockedWriteFileSync).toHaveBeenCalledWith(MOCK_MSG_PATH, `${title}\n\n${body}`, 'utf-8');
+    });
+
+    it('cleans up temp directory on success', async () => {
+        setupMocks();
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('ggg0007\n');
+
+        await service.amendCommitMessage('/repo', 'Some title');
+
+        expect(mockedRmSync).toHaveBeenCalledWith(MOCK_TMP_DIR, { recursive: true });
+    });
+
+    it('cleans up temp directory on failure', async () => {
+        setupMocks();
+        mockedExecAsync.mockRejectedValueOnce(new Error('git error'));
+
+        await service.amendCommitMessage('/repo', 'Some title');
+
+        expect(mockedRmSync).toHaveBeenCalledWith(MOCK_TMP_DIR, { recursive: true });
     });
 });
 
@@ -1243,11 +1335,56 @@ describe('BranchService.rewordCommit', () => {
             .mockReturnValueOnce('parent000\n');
         mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reword-xyz');
         mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
         mockedExecAsync.mockRejectedValueOnce(new Error('rebase conflict'));
 
         const result = await service.rewordCommit('/repo', 'abc1234', 'New title');
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('rebase conflict');
+    });
+
+    it('cleans up temp directory on success', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reword-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        await service.rewordCommit('/repo', 'abc1234', 'New title');
+
+        expect(mockedRmSync).toHaveBeenCalledWith('/repo/.git/tmp-reword-xyz', { recursive: true });
+    });
+
+    it('cleans up temp directory on failure', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reword-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockRejectedValueOnce(new Error('rebase conflict'));
+
+        await service.rewordCommit('/repo', 'abc1234', 'New title');
+
+        expect(mockedRmSync).toHaveBeenCalledWith('/repo/.git/tmp-reword-xyz', { recursive: true });
+    });
+
+    it('handles title with special shell characters', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('abc1234full\n')
+            .mockReturnValueOnce('parent000\n');
+        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reword-xyz');
+        mockedWriteFileSync.mockReturnValue(undefined);
+        mockedRmSync.mockReturnValue(undefined);
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const title = 'Fix $HOME and `cmd` and "quotes" and 100%!';
+        await service.rewordCommit('/repo', 'abc1234', title);
+
+        const msgCall = mockedWriteFileSync.mock.calls[0];
+        expect(msgCall[1]).toBe(title.trim());
     });
 });
