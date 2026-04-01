@@ -72,6 +72,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             comments,
             onAddComment,
             onAskAI,
+            onCopyAsContext,
             onCommentClick,
         },
         ref
@@ -397,6 +398,11 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                         onAskAI={onAskAI ? () => {
                             if (toolbar.selection) {
                                 onAskAI(toolbar.selection, toolbar.selectedText, { top: toolbar.position.y, left: toolbar.position.x });
+                            }
+                        } : undefined}
+                        onCopyAsContext={onCopyAsContext ? () => {
+                            if (toolbar.selection) {
+                                onCopyAsContext(toolbar.selection, toolbar.selectedText);
                             }
                         } : undefined}
                         onClose={() => setToolbar(t => ({ ...t, visible: false }))}

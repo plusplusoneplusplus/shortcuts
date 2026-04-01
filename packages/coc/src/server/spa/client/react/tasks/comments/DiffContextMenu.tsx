@@ -11,13 +11,15 @@ export interface DiffContextMenuProps {
     onAddComment: () => void;
     onClose: () => void;
     onAskAI?: () => void;
+    onCopyAsContext?: () => void;
 }
 
-export function DiffContextMenu({ visible, position, onAddComment, onClose, onAskAI }: DiffContextMenuProps) {
+export function DiffContextMenu({ visible, position, onAddComment, onClose, onAskAI, onCopyAsContext }: DiffContextMenuProps) {
     if (!visible) return null;
     const items = [
         { label: 'Add comment', icon: '💬', onClick: onAddComment },
         ...(onAskAI ? [{ label: 'Ask AI', icon: '🤖', onClick: onAskAI }] : []),
+        ...(onCopyAsContext ? [{ label: 'Copy as context', icon: '📋', onClick: onCopyAsContext }] : []),
     ];
     return (
         <ContextMenu

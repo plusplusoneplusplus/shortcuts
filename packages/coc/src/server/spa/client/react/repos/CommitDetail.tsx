@@ -27,6 +27,7 @@ import { BranchAllFilesDiff } from './BranchAllFilesDiff';
 import { CommitChatPanel } from './CommitChatPanel';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResolveContextDialog, shouldSkipResolveDialog } from '../shared/ResolveContextDialog';
+import { buildDiffContext } from '../../diff-context-utils';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
@@ -288,23 +289,18 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
 
     const handleAskAIDiff = useCallback(
         (selection: DiffCommentSelection, selectedText: string) => {
-            const lineRange = (selection.newLineStart && selection.newLineEnd)
-                ? `${selection.newLineStart}-${selection.newLineEnd}`
-                : `${selection.diffLineStart}-${selection.diffLineEnd}`;
-            const contextStr = [
-                'Context from code review:',
-                `- Commit: ${hash}`,
-                ...(filePath ? [`- File: ${filePath}`] : []),
-                `- Lines ${lineRange}:`,
-                '```',
-                selectedText,
-                '```',
-                '',
-                '',
-            ].join('\n');
+            const contextStr = buildDiffContext({ selectedText, selection, commitHash: hash, filePath });
             queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt: contextStr });
         },
         [hash, filePath, workspaceId, queueDispatch],
+    );
+
+    const handleCopyAsContext = useCallback(
+        (selection: DiffCommentSelection, selectedText: string) => {
+            const contextStr = buildDiffContext({ selectedText, selection, commitHash: hash, filePath });
+            void copyToClipboard(contextStr);
+        },
+        [hash, filePath],
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
@@ -630,6 +626,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                                 onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
                                 onAddComment={filePath ? handleAddComment : undefined}
                                 onAskAI={filePath ? handleAskAIDiff : undefined}
+                                onCopyAsContext={filePath ? handleCopyAsContext : undefined}
                                 onCommentClick={filePath ? handleCommentClick : undefined}
                                 data-testid="diff-content"
                             />
@@ -644,6 +641,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                                 onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
                                 onAddComment={filePath ? handleAddComment : undefined}
                                 onAskAI={filePath ? handleAskAIDiff : undefined}
+                                onCopyAsContext={filePath ? handleCopyAsContext : undefined}
                                 onCommentClick={filePath ? handleCommentClick : undefined}
                                 data-testid="diff-content"
                             />

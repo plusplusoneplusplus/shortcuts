@@ -119,4 +119,82 @@ describe('DiffContextMenu', () => {
         });
         expect(onAskAI).toHaveBeenCalledOnce();
     });
+
+    it('does not render "Copy as context" item when onCopyAsContext is not provided', () => {
+        render(
+            <DiffContextMenu
+                visible={true}
+                position={{ x: 100, y: 50 }}
+                onAddComment={vi.fn()}
+                onClose={vi.fn()}
+            />
+        );
+        expect(screen.queryByText(/Copy as context/)).toBeNull();
+    });
+
+    it('renders "Copy as context" item when onCopyAsContext is provided', () => {
+        render(
+            <DiffContextMenu
+                visible={true}
+                position={{ x: 100, y: 50 }}
+                onAddComment={vi.fn()}
+                onClose={vi.fn()}
+                onCopyAsContext={vi.fn()}
+            />
+        );
+        expect(screen.getByText(/Copy as context/)).toBeTruthy();
+    });
+
+    it('calls onCopyAsContext when Copy as context menu item is clicked', async () => {
+        const onCopyAsContext = vi.fn();
+        render(
+            <DiffContextMenu
+                visible={true}
+                position={{ x: 100, y: 50 }}
+                onAddComment={vi.fn()}
+                onClose={vi.fn()}
+                onCopyAsContext={onCopyAsContext}
+            />
+        );
+        await act(async () => {
+            // "Copy as context" is index 1 when onAskAI is absent
+            fireEvent.click(screen.getByTestId('context-menu-item-1'));
+        });
+        expect(onCopyAsContext).toHaveBeenCalledOnce();
+    });
+
+    it('renders all three items when both onAskAI and onCopyAsContext are provided', () => {
+        render(
+            <DiffContextMenu
+                visible={true}
+                position={{ x: 100, y: 50 }}
+                onAddComment={vi.fn()}
+                onClose={vi.fn()}
+                onAskAI={vi.fn()}
+                onCopyAsContext={vi.fn()}
+            />
+        );
+        expect(screen.getByText(/Add comment/)).toBeTruthy();
+        expect(screen.getByText(/Ask AI/)).toBeTruthy();
+        expect(screen.getByText(/Copy as context/)).toBeTruthy();
+    });
+
+    it('calls onCopyAsContext from correct index when all items present', async () => {
+        const onCopyAsContext = vi.fn();
+        render(
+            <DiffContextMenu
+                visible={true}
+                position={{ x: 100, y: 50 }}
+                onAddComment={vi.fn()}
+                onClose={vi.fn()}
+                onAskAI={vi.fn()}
+                onCopyAsContext={onCopyAsContext}
+            />
+        );
+        await act(async () => {
+            // index 2: Add comment(0), Ask AI(1), Copy as context(2)
+            fireEvent.click(screen.getByTestId('context-menu-item-2'));
+        });
+        expect(onCopyAsContext).toHaveBeenCalledOnce();
+    });
 });
