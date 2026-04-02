@@ -77,7 +77,7 @@ describe('ReferencesDropdown', () => {
     it('popover has max-width and scroll constraints', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
-        const popover = document.querySelector('.max-w-\\[520px\\]');
+        const popover = document.querySelector('.max-w-\\[600px\\]');
         expect(popover).not.toBeNull();
     });
 
@@ -88,10 +88,12 @@ describe('ReferencesDropdown', () => {
         expect(popover).not.toBeNull();
     });
 
-    it('FilePathLink inside dropdown receives wider max-w className', () => {
+    it('FilePathLink inside dropdown uses noTruncate (break-all) and sans-serif font', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
         const link = document.querySelector('[data-full-path="/plan.md"]');
-        expect(link?.className).toContain('max-w-[460px]');
+        expect(link?.className).toContain('break-all');
+        expect(link?.className).toContain('text-xs');
+        expect(link?.className).toContain('font-sans');
     });
 });
