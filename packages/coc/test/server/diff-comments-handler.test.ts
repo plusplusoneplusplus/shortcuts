@@ -507,7 +507,7 @@ describe('DiffCommentsManager', () => {
             // Ensure the workspace dir exists first so the write reaches the rename
             await manager.addComment('ws1', ctx, makeCommentData(ctx));
             const key = manager.hashContext(ctx);
-            const wsDir = path.join(tmpDir, 'diff-comments', 'ws1');
+            const wsDir = path.join(tmpDir, 'repos', 'ws1', 'diff-comments');
             const storageFile = path.join(wsDir, `${key}.json`);
             const tempFile = `${storageFile}.tmp`;
 

@@ -5,7 +5,7 @@
  * Stores comments in JSON files under the CoC data directory.
  *
  * Storage layout:
- *   {dataDir}/diff-comments/{workspaceId}/{sha256(repoId+oldRef+newRef+filePath)}.json
+ *   {dataDir}/repos/{workspaceId}/diff-comments/{sha256(repoId+oldRef+newRef+filePath)}.json
  *
  * For working-tree diffs (newRef === 'working-tree'), the storage key is
  *   sha256(repoId+filePath+'working-tree') and every comment is ephemeral.

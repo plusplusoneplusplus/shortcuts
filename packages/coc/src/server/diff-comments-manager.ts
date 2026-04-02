@@ -9,6 +9,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getRepoDataPath } from './paths';
 import { BaseCommentsManager } from './base-comments-manager';
 import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/forge';
 
@@ -85,19 +86,19 @@ export function isValidContext(ctx: any): ctx is DiffCommentContext {
  * Extends BaseCommentsManager for shared CRUD, read, and write logic.
  */
 export class DiffCommentsManager extends BaseCommentsManager<DiffComment, DiffCommentReply> {
-    private readonly commentsRoot: string;
+    private readonly dataDir: string;
 
     /**
      * @param dataDir - Root data directory (e.g. ~/.coc)
      */
     constructor(dataDir: string) {
         super();
-        this.commentsRoot = path.join(dataDir, DIFF_COMMENTS_DIR_NAME);
+        this.dataDir = dataDir;
     }
 
-    /** Return the workspace directory (commentsRoot/<wsId>). */
+    /** Return the workspace directory (repos/<wsId>/diff-comments). */
     protected getWorkspaceDir(wsId: string): string {
-        return path.join(this.commentsRoot, wsId);
+        return getRepoDataPath(this.dataDir, wsId, DIFF_COMMENTS_DIR_NAME);
     }
 
     /** Wrap comments in the diff-specific storage envelope. */
