@@ -5,7 +5,9 @@ import {
     getToolGroupStatus,
     groupConsecutiveToolChunks,
     isSingleLineHtml,
+    filterWhisperChunks,
 } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
+import type { WhisperGroupChunk } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
 
 // ---------------------------------------------------------------------------
 // getToolGroupCategory
@@ -826,5 +828,169 @@ describe('groupConsecutiveToolChunks — agent grouping', () => {
         );
         expect(result).toHaveLength(1);
         expect((result[0] as any).agentId).toBeUndefined();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// filterWhisperChunks
+// ---------------------------------------------------------------------------
+
+describe('filterWhisperChunks', () => {
+    it('returns [] for empty input', () => {
+        expect(filterWhisperChunks([], new Map())).toEqual([]);
+    });
+
+    it('keeps only last content chunk and task_complete, collapses the rest', () => {
+        const chunks = [
+            { kind: 'content', key: 'c1', html: '<p>Let me check...</p>' },
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c2', html: '<p>Found it.</p>' },
+            { kind: 'tool', key: 'k-t3', toolId: 't3' },
+            { kind: 'content', key: 'c3', html: '<p>I fixed the bug.</p>' },
+            { kind: 'tool', key: 'k-tc', toolId: 'tc' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'grep', status: 'completed' }],
+            ['t2', { toolName: 'view', status: 'completed' }],
+            ['t3', { toolName: 'edit', status: 'completed' }],
+            ['tc', { toolName: 'task_complete', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        // Should be: [whisper-group, last-content (c3), task_complete (tc)]
+        expect(result).toHaveLength(3);
+        expect(result[0].kind).toBe('whisper-group');
+        expect(result[1].kind).toBe('content');
+        expect((result[1] as any).key).toBe('c3');
+        expect(result[2].kind).toBe('tool');
+        expect((result[2] as any).toolId).toBe('tc');
+    });
+
+    it('whisper summary counts tool calls and messages correctly', () => {
+        const chunks = [
+            { kind: 'content', key: 'c1', html: '<p>msg1</p>' },
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c2', html: '<p>msg2</p>' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c3', html: '<p>Final message.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'view', status: 'completed', startTime: '2024-01-01T00:00:01Z', endTime: '2024-01-01T00:00:02Z' }],
+            ['t2', { toolName: 'grep', status: 'completed', startTime: '2024-01-01T00:00:03Z', endTime: '2024-01-01T00:00:05Z' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        expect(result).toHaveLength(2); // whisper-group + last content
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.kind).toBe('whisper-group');
+        expect(wg.summary.toolCallCount).toBe(2);
+        expect(wg.summary.messageCount).toBe(2); // c1, c2 (c3 is tail)
+        expect(wg.summary.startTime).toBe(new Date('2024-01-01T00:00:01Z').getTime());
+        expect(wg.summary.endTime).toBe(new Date('2024-01-01T00:00:05Z').getTime());
+    });
+
+    it('no whisper group when only tail items exist (content + task_complete)', () => {
+        const chunks = [
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+            { kind: 'tool', key: 'k-tc', toolId: 'tc' },
+        ];
+        const toolById = makeMap([
+            ['tc', { toolName: 'task_complete', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        // Both are tail items → no whisper group
+        expect(result).toHaveLength(2);
+        expect(result[0].kind).toBe('content');
+        expect(result[1].kind).toBe('tool');
+    });
+
+    it('only task_complete with no content — shows only task_complete', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'tool', key: 'k-tc', toolId: 'tc' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'view', status: 'completed' }],
+            ['t2', { toolName: 'edit', status: 'completed' }],
+            ['tc', { toolName: 'task_complete', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        expect(result).toHaveLength(2); // whisper-group + task_complete
+        expect(result[0].kind).toBe('whisper-group');
+        expect(result[1].kind).toBe('tool');
+        expect((result[1] as any).toolId).toBe('tc');
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.toolCallCount).toBe(2);
+        expect(wg.summary.messageCount).toBe(0);
+    });
+
+    it('endTime is undefined when some tools are still running', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Working...</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'view', status: 'completed', startTime: '2024-01-01T00:00:01Z', endTime: '2024-01-01T00:00:02Z' }],
+            ['t2', { toolName: 'view', status: 'running', startTime: '2024-01-01T00:00:03Z' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.endTime).toBeUndefined();
+    });
+
+    it('preceding chunks includes tool-group chunks and counts their tools', () => {
+        const chunks = [
+            {
+                kind: 'tool-group', key: 'group-1', category: 'read',
+                toolIds: ['t1', 't2', 't3'],
+                contentItems: [], orderedItems: [],
+                startTime: 1000, endTime: 3000, allSucceeded: true,
+            },
+            { kind: 'content', key: 'c1', html: '<p>Result.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'view', status: 'completed', startTime: '2024-01-01T00:00:01Z', endTime: '2024-01-01T00:00:02Z' }],
+            ['t2', { toolName: 'view', status: 'completed', startTime: '2024-01-01T00:00:02Z', endTime: '2024-01-01T00:00:03Z' }],
+            ['t3', { toolName: 'view', status: 'completed', startTime: '2024-01-01T00:00:03Z', endTime: '2024-01-01T00:00:04Z' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        expect(result).toHaveLength(2); // whisper-group + content
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.toolCallCount).toBe(3);
+        expect(wg.summary.messageCount).toBe(0);
+    });
+
+    it('single content chunk only → no whisper group, returned as-is', () => {
+        const chunks = [
+            { kind: 'content', key: 'c1', html: '<p>Just text.</p>' },
+        ];
+        const result = filterWhisperChunks(chunks, new Map());
+        expect(result).toHaveLength(1);
+        expect(result[0].kind).toBe('content');
+    });
+
+    it('preserves preceding chunks inside whisper group for drill-down', () => {
+        const chunks = [
+            { kind: 'content', key: 'c1', html: '<p>Let me check...</p>' },
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c2', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'grep', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        expect(result).toHaveLength(2); // whisper-group + last content
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.precedingChunks).toHaveLength(2); // c1 + t1
+        expect(wg.precedingChunks[0].kind).toBe('content');
+        expect(wg.precedingChunks[1].kind).toBe('tool');
     });
 });

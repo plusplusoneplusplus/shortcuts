@@ -53,7 +53,7 @@ export function AdminPanel() {
 
     // Display settings
     const [showReportIntent, setShowReportIntent] = useState(false);
-    const [toolCompactness, setToolCompactness] = useState<0 | 1 | 2>(0);
+    const [toolCompactness, setToolCompactness] = useState<0 | 1 | 2 | 3>(0);
     const [displaySaving, setDisplaySaving] = useState(false);
 
     // Chat settings
@@ -113,7 +113,7 @@ export function AdminPanel() {
                 output: resolved.output ?? 'table',
             });
             setShowReportIntent(resolved.showReportIntent ?? false);
-            setToolCompactness((resolved.toolCompactness ?? 1) as 0 | 1 | 2);
+            setToolCompactness((resolved.toolCompactness ?? 1) as 0 | 1 | 2 | 3);
             setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
             setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
         } catch (err: any) {
@@ -205,7 +205,7 @@ export function AdminPanel() {
         }
     }, [showReportIntent, addToast]);
 
-    const handleChangeToolCompactness = useCallback(async (newValue: 0 | 1 | 2) => {
+    const handleChangeToolCompactness = useCallback(async (newValue: 0 | 1 | 2 | 3) => {
         const prevValue = toolCompactness;
         setToolCompactness(newValue);
         setDisplaySaving(true);
@@ -592,6 +592,7 @@ export function AdminPanel() {
                                                     [0, 'Full'],
                                                     [1, 'Compact'],
                                                     [2, 'Minimal'],
+                                                    [3, 'Whisper'],
                                                 ] as const).map(([level, label]) => (
                                                     <button
                                                         key={level}

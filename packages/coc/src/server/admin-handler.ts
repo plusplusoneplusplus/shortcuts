@@ -244,9 +244,9 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     typeof body.toolCompactness !== 'number' ||
                     !Number.isInteger(body.toolCompactness) ||
                     body.toolCompactness < 0 ||
-                    body.toolCompactness > 2
+                    body.toolCompactness > 3
                 ) {
-                    errors.push('toolCompactness must be 0, 1, or 2');
+                    errors.push('toolCompactness must be 0, 1, 2, or 3');
                 }
             }
             if ('groupSingleLineMessages' in body) {

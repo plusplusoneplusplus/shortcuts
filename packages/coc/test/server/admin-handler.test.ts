@@ -849,13 +849,28 @@ describe('Admin Handler', () => {
             expect(body.resolved.toolCompactness).toBe(2);
         });
 
-        it('should reject toolCompactness 3', async () => {
+        it('should accept toolCompactness 3', async () => {
             const configPath = path.join(dataDir, 'config.yaml');
             const srv = await startServerWithConfig(configPath);
 
             const res = await request(`${srv.url}/api/admin/config`, {
                 method: 'PUT',
                 body: JSON.stringify({ toolCompactness: 3 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.toolCompactness).toBe(3);
+        });
+
+        it('should reject toolCompactness 4', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ toolCompactness: 4 }),
                 headers: { 'Content-Type': 'application/json' },
             });
 

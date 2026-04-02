@@ -11,7 +11,7 @@ import type { ClientConversationTurn } from '../../../src/server/spa/client/reac
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
 // Controllable toolCompactness
-let mockToolCompactness: 0 | 1 | 2 = 0;
+let mockToolCompactness: 0 | 1 | 2 | 3 = 0;
 vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
     useDisplaySettings: () => ({ showReportIntent: false, toolCompactness: mockToolCompactness }),
 }));
@@ -54,6 +54,21 @@ vi.mock('../../../src/server/spa/client/react/processes/ToolCallGroupView', () =
             data-tool-count={toolCalls.length}
             data-is-streaming={String(isStreaming)}
             data-compactness={String(compactness)}
+        />
+    ),
+}));
+
+// Track WhisperCollapsedGroup renders
+vi.mock('../../../src/server/spa/client/react/processes/WhisperCollapsedGroup', () => ({
+    WhisperCollapsedGroup: ({
+        summary,
+    }: {
+        summary: { toolCallCount: number; messageCount: number };
+    }) => (
+        <div
+            data-testid="whisper-collapsed-group"
+            data-tool-count={String(summary.toolCallCount)}
+            data-message-count={String(summary.messageCount)}
         />
     ),
 }));
@@ -233,5 +248,63 @@ describe('ConversationTurnBubble — compact tool grouping', () => {
             />
         );
         expect(container.querySelector('[data-testid="tool-call-group-view"]')).toBeNull();
+    });
+
+    it('renders WhisperCollapsedGroup when toolCompactness === 3', () => {
+        mockToolCompactness = 3;
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    content: 'Final answer',
+                    timeline: [
+                        ...makeLeafReadTimeline(['t1', 't2', 't3']),
+                        {
+                            type: 'tool-start' as const,
+                            toolCall: { id: 'tc', toolName: 'task_complete', args: { summary: 'Done' }, status: 'completed' },
+                        },
+                    ],
+                })}
+            />
+        );
+        const whisper = container.querySelector('[data-testid="whisper-collapsed-group"]');
+        expect(whisper).toBeTruthy();
+        expect(whisper?.getAttribute('data-tool-count')).toBe('3');
+    });
+
+    it('does not render WhisperCollapsedGroup when toolCompactness === 2', () => {
+        mockToolCompactness = 2;
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    content: 'Final answer',
+                    timeline: [
+                        ...makeLeafReadTimeline(['t1', 't2', 't3']),
+                        {
+                            type: 'tool-start' as const,
+                            toolCall: { id: 'tc', toolName: 'task_complete', args: { summary: 'Done' }, status: 'completed' },
+                        },
+                    ],
+                })}
+            />
+        );
+        expect(container.querySelector('[data-testid="whisper-collapsed-group"]')).toBeNull();
+    });
+
+    it('no whisper group when turn is just text + task_complete', () => {
+        mockToolCompactness = 3;
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    content: 'Just text',
+                    timeline: [
+                        {
+                            type: 'tool-start' as const,
+                            toolCall: { id: 'tc', toolName: 'task_complete', args: { summary: 'Done' }, status: 'completed' },
+                        },
+                    ],
+                })}
+            />
+        );
+        expect(container.querySelector('[data-testid="whisper-collapsed-group"]')).toBeNull();
     });
 });

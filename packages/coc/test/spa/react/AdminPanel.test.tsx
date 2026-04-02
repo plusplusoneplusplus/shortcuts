@@ -406,9 +406,21 @@ describe('AdminPanel', () => {
             const full = screen.getByTestId('tool-compactness-full') as HTMLButtonElement;
             const compact = screen.getByTestId('tool-compactness-compact') as HTMLButtonElement;
             const minimal = screen.getByTestId('tool-compactness-minimal') as HTMLButtonElement;
+            const whisper = screen.getByTestId('tool-compactness-whisper') as HTMLButtonElement;
             expect(full.getAttribute('aria-pressed')).toBe('false');
             expect(compact.getAttribute('aria-pressed')).toBe('true');
             expect(minimal.getAttribute('aria-pressed')).toBe('false');
+            expect(whisper.getAttribute('aria-pressed')).toBe('false');
+        });
+
+        it('renders Whisper button with correct aria-pressed when toolCompactness is 3', async () => {
+            mockConfig(3);
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => {
+                expect(screen.getByTestId('tool-compactness-whisper')).toBeDefined();
+            });
+            const whisper = screen.getByTestId('tool-compactness-whisper') as HTMLButtonElement;
+            expect(whisper.getAttribute('aria-pressed')).toBe('true');
         });
 
         it('clicking a segment fires PUT with the new value', async () => {

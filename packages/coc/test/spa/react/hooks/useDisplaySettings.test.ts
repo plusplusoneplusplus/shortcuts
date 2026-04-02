@@ -26,7 +26,7 @@ describe('useDisplaySettings', () => {
     });
 
     it('includes toolCompactness in DisplaySettings interface', () => {
-        expect(source).toContain('toolCompactness: 0 | 1 | 2');
+        expect(source).toContain('toolCompactness: 0 | 1 | 2 | 3');
     });
 
     it('includes toolCompactness default of 1 in DEFAULT_SETTINGS', () => {

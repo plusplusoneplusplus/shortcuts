@@ -211,6 +211,16 @@ describe('CLIConfigSchema', () => {
 
     it('rejects toolCompactness 3', () => {
         expect(() => CLIConfigSchema.parse({ toolCompactness: 3 }))
+            .not.toThrow();
+    });
+
+    it('validates toolCompactness 3', () => {
+        const result = CLIConfigSchema.parse({ toolCompactness: 3 });
+        expect(result.toolCompactness).toBe(3);
+    });
+
+    it('rejects toolCompactness 4', () => {
+        expect(() => CLIConfigSchema.parse({ toolCompactness: 4 }))
             .toThrow();
     });
 

@@ -16,8 +16,10 @@ import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../
 import { linkifyFilePaths } from '../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
-import { groupConsecutiveToolChunks } from './toolGroupUtils';
+import { groupConsecutiveToolChunks, filterWhisperChunks } from './toolGroupUtils';
+import type { WhisperGroupChunk } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
+import { WhisperCollapsedGroup } from './WhisperCollapsedGroup';
 
 const chatMarked = new Marked({
     gfm: true,
@@ -622,12 +624,16 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
             ...assistantRender.toolsWithChildren,
             ...assistantRender.toolParentById.keys(),
         ]);
-        return groupConsecutiveToolChunks(
+        const grouped = groupConsecutiveToolChunks(
             assistantRender.chunks,
             assistantRender.toolById,
             excludeFromGrouping,
             { groupSingleLineMessages },
         );
+        if (toolCompactness === 3) {
+            return filterWhisperChunks(grouped, assistantRender.toolById);
+        }
+        return grouped;
     }, [assistantRender, toolCompactness, groupSingleLineMessages]);
 
     // Lazy image fetching state
@@ -931,6 +937,22 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                         isStreaming={!!turn.streaming}
                                         compactness={toolCompactness}
                                         agentId={chunk.agentId}
+                                        renderToolTree={renderToolTree}
+                                    />
+                                );
+                            } else if (chunk.kind === 'whisper-group') {
+                                flushContent();
+                                const wg = chunk as unknown as WhisperGroupChunk;
+                                nodes.push(
+                                    <WhisperCollapsedGroup
+                                        key={wg.key}
+                                        precedingChunks={wg.precedingChunks}
+                                        summary={wg.summary}
+                                        toolById={assistantRender.toolById as any}
+                                        toolsWithChildren={assistantRender.toolsWithChildren}
+                                        toolParentById={assistantRender.toolParentById}
+                                        isStreaming={!!turn.streaming}
+                                        groupSingleLineMessages={groupSingleLineMessages}
                                         renderToolTree={renderToolTree}
                                     />
                                 );

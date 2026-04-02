@@ -38,8 +38,8 @@ export const CLIConfigSchema = z.object({
     persist: z.boolean().optional(),
     /** Show report_intent tool calls in conversation views (default: false) */
     showReportIntent: z.boolean().optional(),
-    /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal (default: 0) */
-    toolCompactness: z.number().int().min(0).max(2).optional(),
+    /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal, 3=whisper (default: 0) */
+    toolCompactness: z.number().int().min(0).max(3).optional(),
     /** Absorb single-line messages between same-category tool groups (default: true) */
     groupSingleLineMessages: z.boolean().optional(),
     chat: z.object({

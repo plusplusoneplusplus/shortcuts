@@ -30,7 +30,7 @@ export interface CLIConfig {
     timeout?: number;
     persist?: boolean;
     showReportIntent?: boolean;
-    toolCompactness?: 0 | 1 | 2;
+    toolCompactness?: 0 | 1 | 2 | 3;
     groupSingleLineMessages?: boolean;
     chat?: {
         followUpSuggestions?: {

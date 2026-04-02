@@ -293,3 +293,120 @@ export function groupConsecutiveToolChunks(
 
     return result;
 }
+
+// ---------------------------------------------------------------------------
+// Whisper-level (level 3) filtering
+// ---------------------------------------------------------------------------
+
+/**
+ * Summary of the "preceding" chunks that Whisper mode collapses.
+ */
+export interface WhisperSummary {
+    toolCallCount: number;
+    messageCount: number;
+    /** Epoch ms — earliest startTime among all tool calls. */
+    startTime?: number;
+    /** Epoch ms — latest endTime among all tool calls (undefined if any still running). */
+    endTime?: number;
+}
+
+export interface WhisperGroupChunk {
+    kind: 'whisper-group';
+    key: string;
+    /** Chunks hidden behind the collapsed summary. */
+    precedingChunks: ToolChunk[];
+    summary: WhisperSummary;
+}
+
+/**
+ * Partitions an array of chunks into a single collapsed Whisper summary group
+ * plus the "tail" items (last content chunk + any task_complete tool calls).
+ *
+ * Returns the original array unchanged if there are no preceding items to collapse.
+ */
+export function filterWhisperChunks(
+    chunks: ToolChunk[],
+    toolById: Map<string, ToolLike>,
+): (ToolChunk | WhisperGroupChunk)[] {
+    if (chunks.length === 0) return [];
+
+    // Identify tail items:
+    //  - The last chunk with kind === 'content' and non-empty html
+    //  - Any chunk whose tool is task_complete
+    let lastContentIndex = -1;
+    const taskCompleteIndices = new Set<number>();
+
+    for (let i = chunks.length - 1; i >= 0; i--) {
+        const c = chunks[i];
+        if (c.kind === 'content' && c.html && lastContentIndex === -1) {
+            lastContentIndex = i;
+        }
+        if (c.kind === 'tool' && c.toolId) {
+            const tool = toolById.get(c.toolId);
+            if (tool && tool.toolName === 'task_complete') {
+                taskCompleteIndices.add(i);
+            }
+        }
+    }
+
+    const tailIndices = new Set<number>(taskCompleteIndices);
+    if (lastContentIndex >= 0) tailIndices.add(lastContentIndex);
+
+    const preceding: ToolChunk[] = [];
+    const tail: ToolChunk[] = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+        if (tailIndices.has(i)) {
+            tail.push(chunks[i]);
+        } else {
+            preceding.push(chunks[i]);
+        }
+    }
+
+    // Nothing to collapse — return tail as-is
+    if (preceding.length === 0) return tail;
+
+    // Build summary counts
+    let toolCallCount = 0;
+    let messageCount = 0;
+    const startTimes: number[] = [];
+    const endTimes: number[] = [];
+    let allEnded = true;
+
+    for (const c of preceding) {
+        if (c.kind === 'content' && c.html) {
+            messageCount++;
+        } else if (c.kind === 'tool' && c.toolId) {
+            toolCallCount++;
+            const tool = toolById.get(c.toolId);
+            if (tool?.startTime) startTimes.push(new Date(tool.startTime).getTime());
+            if (tool?.endTime) endTimes.push(new Date(tool.endTime).getTime());
+            else allEnded = false;
+        } else if (c.kind === 'tool-group' && (c as any).toolIds) {
+            const ids = (c as any).toolIds as string[];
+            toolCallCount += ids.length;
+            for (const id of ids) {
+                const tool = toolById.get(id);
+                if (tool?.startTime) startTimes.push(new Date(tool.startTime).getTime());
+                if (tool?.endTime) endTimes.push(new Date(tool.endTime).getTime());
+                else allEnded = false;
+            }
+        }
+    }
+
+    const summary: WhisperSummary = {
+        toolCallCount,
+        messageCount,
+        startTime: startTimes.length ? Math.min(...startTimes) : undefined,
+        endTime: allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
+    };
+
+    const whisperGroup: WhisperGroupChunk = {
+        kind: 'whisper-group',
+        key: 'whisper-group-0',
+        precedingChunks: preceding,
+        summary,
+    };
+
+    return [whisperGroup, ...tail];
+}

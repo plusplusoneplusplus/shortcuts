@@ -8,7 +8,7 @@ import { getApiBase } from '../utils/config';
 
 interface DisplaySettings {
     showReportIntent: boolean;
-    toolCompactness: 0 | 1 | 2;
+    toolCompactness: 0 | 1 | 2 | 3;
     groupSingleLineMessages: boolean;
 }
 
@@ -24,7 +24,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
         const data = await res.json();
         return {
             showReportIntent: data?.resolved?.showReportIntent ?? false,
-            toolCompactness: (data?.resolved?.toolCompactness ?? 1) as 0 | 1 | 2,
+            toolCompactness: (data?.resolved?.toolCompactness ?? 1) as 0 | 1 | 2 | 3,
             groupSingleLineMessages: data?.resolved?.groupSingleLineMessages ?? true,
         };
     } catch {

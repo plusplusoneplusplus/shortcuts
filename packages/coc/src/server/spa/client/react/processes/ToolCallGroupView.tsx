@@ -26,7 +26,7 @@ export interface ToolCallGroupViewProps {
     contentItems?: GroupContentItem[];
     /** Interleaved order of tools and content for faithful rendering. */
     orderedItems?: GroupOrderedItem[];
-    compactness: 0 | 1 | 2;
+    compactness: 0 | 1 | 2 | 3;
     isStreaming?: boolean;
     /** The shared agent_id when category === 'agent'. */
     agentId?: string;

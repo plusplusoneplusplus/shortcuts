@@ -37,8 +37,8 @@ export interface CLIConfig {
     persist?: boolean;
     /** Show report_intent tool calls in conversation views (default: false) */
     showReportIntent?: boolean;
-    /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal */
-    toolCompactness?: 0 | 1 | 2;
+    /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal, 3=whisper */
+    toolCompactness?: 0 | 1 | 2 | 3;
     /** Absorb single-line messages between same-category tool groups (default: true) */
     groupSingleLineMessages?: boolean;
     /** Chat settings */
@@ -117,7 +117,7 @@ export interface ResolvedCLIConfig {
     timeout?: number;
     persist: boolean;
     showReportIntent: boolean;
-    toolCompactness: 0 | 1 | 2;
+    toolCompactness: 0 | 1 | 2 | 3;
     groupSingleLineMessages: boolean;
     chat: {
         followUpSuggestions: {
@@ -299,7 +299,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         timeout: override.timeout ?? base.timeout,
         persist: override.persist ?? base.persist,
         showReportIntent: override.showReportIntent ?? base.showReportIntent,
-        toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2,
+        toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2 | 3,
         groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,
         chat: {
             followUpSuggestions: {
