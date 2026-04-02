@@ -24,7 +24,7 @@ export interface HookStepEvent {
 }
 
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -71,6 +71,14 @@ export interface ProcessOutputEvent {
     queuePosition?: number;
     /** Hook step event data (for 'hook-step' events). */
     hookStep?: HookStepEvent;
+    /** Active background agents (for 'background-tasks' events). */
+    backgroundAgents?: Array<{ id: string; type?: string; description?: string }>;
+    /** Active background shells (for 'background-tasks' events). */
+    backgroundShells?: Array<{ id: string; type?: string; description?: string }>;
+    /** Total number of active background tasks (for 'background-tasks' events). */
+    backgroundTotalActive?: number;
+    /** Whether the session is waiting for background tasks to drain (for 'background-tasks' events). */
+    backgroundWaitingForDrain?: boolean;
 }
 
 /**

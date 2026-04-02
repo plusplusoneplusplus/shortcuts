@@ -14,7 +14,7 @@
  * No execution-mode logic (chat, plan, autopilot, workflows, scripts) lives here.
  */
 
-import type { ProcessStore, TimelineItem, ToolEvent } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
 import { mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../output-file-manager';
 
@@ -215,6 +215,28 @@ export abstract class BaseExecutor {
             }
             // Trigger throttled flush so tool-only sessions persist timeline
             this.checkThrottleAndFlush(processId);
+        };
+    }
+
+    /**
+     * Builds the onBackgroundTasksChanged handler for a given process.
+     * Emits a 'background-tasks' ProcessOutputEvent so SSE can relay it to the frontend.
+     */
+    protected buildBackgroundTaskHandler(
+        processId: string,
+    ): (tasks: BackgroundTasksInfo) => void {
+        return (tasks: BackgroundTasksInfo) => {
+            try {
+                this.store.emitProcessEvent(processId, {
+                    type: 'background-tasks',
+                    backgroundAgents: tasks.backgroundAgents,
+                    backgroundShells: tasks.backgroundShells,
+                    backgroundTotalActive: tasks.backgroundTotalActive,
+                    backgroundWaitingForDrain: tasks.backgroundWaitingForDrain,
+                });
+            } catch {
+                // Non-fatal
+            }
         };
     }
 

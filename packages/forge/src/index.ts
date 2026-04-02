@@ -336,6 +336,7 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
+    BackgroundTasksInfo,
     // Model Metadata Store
     modelMetadataStore,
     ModelInfo,

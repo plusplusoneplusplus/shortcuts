@@ -90,6 +90,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
+    const [backgroundTasks, setBackgroundTasks] = useState<import('../hooks/useChatSSE').BackgroundTasksState | null>(null);
     const lastFailedMessageRef = useRef<string>('');
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
@@ -201,6 +202,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setSuggestions,
         setSessionTokenLimit,
         setSessionCurrentTokens,
+        setBackgroundTasks,
         setTurnsAndRef,
         refreshConversation,
         onSendComplete,
@@ -475,6 +477,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     error={error}
                     turns={turns}
                     pendingQueue={pendingQueue}
+                    backgroundTasks={backgroundTasks}
                     isScrolledUp={isScrolledUp}
                     scrollRef={conversationContainerRef}
                     turnsContainerRef={turnsContainerRef}

@@ -288,6 +288,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                         try { captureHandler!(event); } catch { /* non-fatal */ }
                     }
                     : toolEventHandler,
+                onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
             });
 
             if (!result.success) {

@@ -74,6 +74,7 @@ export function emitMessageSteering(store: ProcessStore, processId: string, payl
  *   event: item-process     → { itemIndex, processId, status, phase, itemLabel?, error? }
  *   event: suggestions       → { suggestions: string[], turnIndex: number }
  *   event: token-usage       → { turnIndex, tokenUsage, sessionTokenLimit?, sessionCurrentTokens? }
+ *   event: background-tasks  → { backgroundAgents, backgroundShells, backgroundTotalActive, backgroundWaitingForDrain }
  *   event: status             → { status, result?, error?, duration? }
  *   event: done               → { processId }
  *   event: heartbeat          → {}
@@ -204,6 +205,13 @@ export async function handleProcessStream(
             });
         } else if (event.type === 'hook-step') {
             sendEvent(res, 'hook-step', { hookStep: event.hookStep });
+        } else if (event.type === 'background-tasks') {
+            sendEvent(res, 'background-tasks', {
+                backgroundAgents: event.backgroundAgents,
+                backgroundShells: event.backgroundShells,
+                backgroundTotalActive: event.backgroundTotalActive,
+                backgroundWaitingForDrain: event.backgroundWaitingForDrain,
+            });
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {
                 status: event.status,

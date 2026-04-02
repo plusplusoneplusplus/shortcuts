@@ -70,6 +70,7 @@ function makeOptions(overrides: Partial<Parameters<typeof useChatSSE>[0]> = {}):
         setSuggestions: vi.fn(),
         setSessionTokenLimit: vi.fn(),
         setSessionCurrentTokens: vi.fn(),
+        setBackgroundTasks: vi.fn(),
         setTurnsAndRef: vi.fn(),
         refreshConversation: vi.fn().mockResolvedValue(undefined),
         onSendComplete: vi.fn(),

@@ -347,6 +347,12 @@ export interface SendMessageOptions {
     onToolEvent?: (event: ToolEvent) => void;
 
     /**
+     * Callback invoked whenever background task state changes (agents/shells start or stop).
+     * Receives a snapshot of active background tasks.
+     */
+    onBackgroundTasksChanged?: (tasks: import('./streaming-session').BackgroundTasksInfo) => void;
+
+    /**
      * Custom tools to register on the AI session.
      * These are SDK-native tools (not MCP) — each tool has a name, optional
      * description/parameters, and a handler function invoked by the AI.

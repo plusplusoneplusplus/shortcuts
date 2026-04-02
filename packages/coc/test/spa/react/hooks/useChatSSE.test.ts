@@ -63,6 +63,7 @@ function makeOptions(overrides: Partial<UseChatSSEOptions> = {}): UseChatSSEOpti
         setSuggestions: vi.fn(),
         setSessionTokenLimit: vi.fn(),
         setSessionCurrentTokens: vi.fn(),
+        setBackgroundTasks: vi.fn(),
         setTurnsAndRef: vi.fn(),
         refreshConversation: vi.fn().mockResolvedValue(undefined),
         onSendComplete: vi.fn(),
@@ -181,5 +182,31 @@ describe('useChatSSE', () => {
             useChatSSE(makeOptions({ processId: 'pid with spaces' })),
         );
         expect(MockEventSource.last.url).toBe('/api/processes/pid%20with%20spaces/stream');
+    });
+
+    it('updates backgroundTasks state on background-tasks event', () => {
+        const setBackgroundTasks = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setBackgroundTasks })));
+        act(() => {
+            MockEventSource.last._emit('background-tasks', {
+                backgroundAgents: [{ id: 'a1', description: 'research' }],
+                backgroundShells: [{ id: 's1' }],
+                backgroundTotalActive: 2,
+                backgroundWaitingForDrain: true,
+            });
+        });
+        expect(setBackgroundTasks).toHaveBeenCalledWith({
+            backgroundAgents: [{ id: 'a1', description: 'research' }],
+            backgroundShells: [{ id: 's1' }],
+            backgroundTotalActive: 2,
+            backgroundWaitingForDrain: true,
+        });
+    });
+
+    it('clears backgroundTasks on done event', async () => {
+        const setBackgroundTasks = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setBackgroundTasks })));
+        await act(async () => { MockEventSource.last._emit('done', {}); });
+        expect(setBackgroundTasks).toHaveBeenCalledWith(null);
     });
 });

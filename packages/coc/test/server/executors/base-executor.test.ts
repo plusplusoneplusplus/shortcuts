@@ -49,6 +49,9 @@ class TestExecutor extends BaseExecutor {
     public static get THROTTLE_CHUNK_COUNT_PUBLIC(): number {
         return BaseExecutor.THROTTLE_CHUNK_COUNT;
     }
+    public buildBackgroundTaskHandlerPublic(processId: string) {
+        return this.buildBackgroundTaskHandler(processId);
+    }
 }
 
 // ============================================================================
@@ -407,6 +410,59 @@ describe('BaseExecutor', () => {
 
         it('THROTTLE_CHUNK_COUNT is a positive number', () => {
             expect(TestExecutor.THROTTLE_CHUNK_COUNT_PUBLIC).toBeGreaterThan(0);
+        });
+    });
+
+    // ========================================================================
+    // Background task handler
+    // ========================================================================
+
+    describe('buildBackgroundTaskHandler', () => {
+        it('emits background-tasks ProcessOutputEvent with correct fields', () => {
+            const handler = executor.buildBackgroundTaskHandlerPublic('proc-bg');
+            handler({
+                backgroundAgents: [{ id: 'a1', description: 'research' }],
+                backgroundShells: [{ id: 's1', description: 'npm test' }],
+                backgroundTotalActive: 2,
+                backgroundWaitingForDrain: true,
+            });
+
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-bg', {
+                type: 'background-tasks',
+                backgroundAgents: [{ id: 'a1', description: 'research' }],
+                backgroundShells: [{ id: 's1', description: 'npm test' }],
+                backgroundTotalActive: 2,
+                backgroundWaitingForDrain: true,
+            });
+        });
+
+        it('emits background-tasks with zero active when tasks drain', () => {
+            const handler = executor.buildBackgroundTaskHandlerPublic('proc-bg2');
+            handler({
+                backgroundAgents: [],
+                backgroundShells: [],
+                backgroundTotalActive: 0,
+                backgroundWaitingForDrain: false,
+            });
+
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-bg2', {
+                type: 'background-tasks',
+                backgroundAgents: [],
+                backgroundShells: [],
+                backgroundTotalActive: 0,
+                backgroundWaitingForDrain: false,
+            });
+        });
+
+        it('does not throw when store.emitProcessEvent throws', () => {
+            store.emitProcessEvent = vi.fn(() => { throw new Error('store crash'); });
+            const handler = executor.buildBackgroundTaskHandlerPublic('proc-bg3');
+            expect(() => handler({
+                backgroundAgents: [],
+                backgroundShells: [],
+                backgroundTotalActive: 0,
+                backgroundWaitingForDrain: false,
+            })).not.toThrow();
         });
     });
 });

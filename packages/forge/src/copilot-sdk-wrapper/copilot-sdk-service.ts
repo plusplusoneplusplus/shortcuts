@@ -30,7 +30,7 @@ import {
 } from './types';
 import { ModelInfo } from './model-info';
 import { fetchModelsFromClient } from './model-registry';
-export type { StreamingResult, IStreamableSession, StreamingState, StreamingSessionRunOptions } from './streaming-session';
+export type { StreamingResult, IStreamableSession, StreamingState, StreamingSessionRunOptions, BackgroundTasksInfo } from './streaming-session';
 import { SessionManager } from './session-manager';
 import { StreamErrorGuard, isStreamDestroyedError } from './stream-error-guard';
 import { RequestRunner } from './request-runner';

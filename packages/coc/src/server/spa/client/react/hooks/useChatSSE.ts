@@ -5,6 +5,14 @@ import type { QueuedMessage } from '../utils/chatUtils';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
+/** Snapshot of active background tasks relayed from the SDK via SSE. */
+export interface BackgroundTasksState {
+    backgroundAgents: Array<{ id: string; type?: string; description?: string }>;
+    backgroundShells: Array<{ id: string; type?: string; description?: string }>;
+    backgroundTotalActive: number;
+    backgroundWaitingForDrain: boolean;
+}
+
 export interface UseChatSSEOptions {
     taskId: string;
     task: any;
@@ -15,6 +23,7 @@ export interface UseChatSSEOptions {
     setSuggestions: (v: string[]) => void;
     setSessionTokenLimit: (v: number | undefined) => void;
     setSessionCurrentTokens: (v: number | undefined) => void;
+    setBackgroundTasks: (v: BackgroundTasksState | null) => void;
     setTurnsAndRef: SetTurnsAndRef;
     refreshConversation: (pid: string) => Promise<void>;
     onSendComplete: () => void;
@@ -31,6 +40,7 @@ export function useChatSSE({
     setSuggestions,
     setSessionTokenLimit,
     setSessionCurrentTokens,
+    setBackgroundTasks,
     setTurnsAndRef,
     refreshConversation,
     onSendComplete,
@@ -147,6 +157,7 @@ export function useChatSSE({
 
         const finish = () => {
             closeSSE();
+            setBackgroundTasks(null);
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: 'completed' as const } : prev);
             void refreshConversation(processId);
             setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
@@ -182,6 +193,18 @@ export function useChatSSE({
                             : t
                     ));
                 }
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('background-tasks', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                setBackgroundTasks({
+                    backgroundAgents: data.backgroundAgents ?? [],
+                    backgroundShells: data.backgroundShells ?? [],
+                    backgroundTotalActive: data.backgroundTotalActive ?? 0,
+                    backgroundWaitingForDrain: data.backgroundWaitingForDrain ?? false,
+                });
             } catch { /* ignore */ }
         });
 

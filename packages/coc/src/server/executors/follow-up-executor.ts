@@ -228,6 +228,7 @@ export class FollowUpExecutor extends BaseExecutor {
                     processId,
                     () => process.conversationTurns?.length ?? 0,
                 ),
+                onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
             });
 
             if (resolvedDeliveryMode === 'immediate') {

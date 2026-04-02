@@ -84,6 +84,8 @@ export {
     tryConvertImageFileToDataUrl,
 } from './copilot-sdk-service';
 
+export type { BackgroundTasksInfo } from './copilot-sdk-service';
+
 // Session Manager
 export {
     SessionManager,

@@ -3,14 +3,17 @@ import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import { cn } from '../shared/cn';
 import { QueuedBubble } from './QueuedBubble';
+import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { QueuedMessage } from '../utils/chatUtils';
+import type { BackgroundTasksState } from '../hooks/useChatSSE';
 
 export interface ConversationAreaProps {
     loading: boolean;
     error: string | null;
     turns: ClientConversationTurn[];
     pendingQueue: QueuedMessage[];
+    backgroundTasks?: BackgroundTasksState | null;
     isScrolledUp: boolean;
     scrollRef: React.RefObject<HTMLDivElement>;
     /** Ref attached to the inner turns container (for minimap navigation) */
@@ -31,6 +34,7 @@ export function ConversationArea({
     error,
     turns,
     pendingQueue,
+    backgroundTasks,
     isScrolledUp,
     scrollRef,
     turnsContainerRef,
@@ -83,6 +87,9 @@ export function ConversationArea({
                             ));
                         })()}
                         {pendingQueue.map(msg => <QueuedBubble key={msg.id} msg={msg} />)}
+                        {backgroundTasks && backgroundTasks.backgroundTotalActive > 0 && (
+                            <BackgroundTasksIndicator backgroundTasks={backgroundTasks} />
+                        )}
                     </div>
                 )}
             </div>

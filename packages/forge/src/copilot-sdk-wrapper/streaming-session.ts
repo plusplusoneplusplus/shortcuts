@@ -109,6 +109,15 @@ export interface ISessionEvent {
     };
 }
 
+/** Snapshot of active background tasks (agents and shells) spawned by the SDK. */
+export interface BackgroundTasksInfo {
+    backgroundAgents: Array<{ id: string; type?: string; description?: string }>;
+    backgroundShells: Array<{ id: string; type?: string; description?: string }>;
+    backgroundTotalActive: number;
+    /** True when the session has deferred settlement because of active tasks. */
+    backgroundWaitingForDrain: boolean;
+}
+
 /** Options passed to StreamingSession.run(). */
 export interface StreamingSessionRunOptions {
     prompt: string;
@@ -117,6 +126,8 @@ export interface StreamingSessionRunOptions {
     /** Shared map; mutated in place so callers can read captured calls after run(). */
     toolCallsMap?: Map<string, ToolCall>;
     onToolEvent?: (event: ToolEvent) => void;
+    /** Callback invoked whenever background task state changes (agents/shells start or stop). */
+    onBackgroundTasksChanged?: (tasks: BackgroundTasksInfo) => void;
     idleTimeoutMs?: number;
     attachments?: Attachment[];
     deliveryMode?: DeliveryMode;
@@ -388,17 +399,18 @@ export class StreamingSession {
 
     private handleSessionIdle(event: ISessionEvent): void {
         const bgTasks = event.data?.backgroundTasks;
-        const activeAgents = bgTasks?.agents?.length ?? 0;
-        const activeShells = bgTasks?.shells?.length ?? 0;
-        const totalActive = activeAgents + activeShells;
+        const activeAgents = bgTasks?.agents ?? [];
+        const activeShells = bgTasks?.shells ?? [];
+        const totalActive = activeAgents.length + activeShells.length;
 
         if (totalActive > 0) {
             this.waitingForBackgroundTasks = true;
             this.timers.cancelTurnEndGrace();
             this.sessionLog.debug(
-                { agents: activeAgents, shells: activeShells },
+                { agents: activeAgents.length, shells: activeShells.length },
                 'Session idle with active background tasks — deferring settle',
             );
+            this.notifyBackgroundTasksChanged(activeAgents, activeShells, true);
             return;
         }
 
@@ -409,19 +421,41 @@ export class StreamingSession {
 
     private handleBackgroundTasksChanged(event: ISessionEvent): void {
         const bgTasks = event.data?.backgroundTasks;
-        const activeAgents = bgTasks?.agents?.length ?? 0;
-        const activeShells = bgTasks?.shells?.length ?? 0;
-        const totalActive = activeAgents + activeShells;
+        const activeAgents = bgTasks?.agents ?? [];
+        const activeShells = bgTasks?.shells ?? [];
+        const totalActive = activeAgents.length + activeShells.length;
 
         this.sessionLog.debug(
-            { agents: activeAgents, shells: activeShells, waiting: this.waitingForBackgroundTasks },
+            { agents: activeAgents.length, shells: activeShells.length, waiting: this.waitingForBackgroundTasks },
             'Background tasks changed',
         );
+
+        this.notifyBackgroundTasksChanged(activeAgents, activeShells, this.waitingForBackgroundTasks);
 
         if (this.waitingForBackgroundTasks && totalActive === 0) {
             this.sessionLog.debug('All background tasks drained — settling');
             this.waitingForBackgroundTasks = false;
+            this.notifyBackgroundTasksChanged([], [], false);
             this.settleWithResult();
+        }
+    }
+
+    /** Fire the onBackgroundTasksChanged callback if provided. */
+    private notifyBackgroundTasksChanged(
+        agents: Array<{ id: string; type?: string; description?: string }>,
+        shells: Array<{ id: string; type?: string; description?: string }>,
+        waitingForDrain: boolean,
+    ): void {
+        if (!this.options.onBackgroundTasksChanged) return;
+        try {
+            this.options.onBackgroundTasksChanged({
+                backgroundAgents: agents,
+                backgroundShells: shells,
+                backgroundTotalActive: agents.length + shells.length,
+                backgroundWaitingForDrain: waitingForDrain,
+            });
+        } catch {
+            // non-fatal
         }
     }
 
