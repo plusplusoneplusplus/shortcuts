@@ -297,6 +297,10 @@ export interface QueueExecutorOptions {
      * Default: () => true (all exclusive — preserves current serial behavior).
      */
     isExclusive?: (task: QueuedTask) => boolean;
+    /** Delay in ms before the executor starts processing after start(). Used to give
+     *  dependencies (e.g. AI service) time to stabilize after a server restart.
+     *  Default: 0 (no delay). */
+    initialDelayMs?: number;
 }
 
 /**
@@ -308,6 +312,7 @@ export const DEFAULT_EXECUTOR_OPTIONS: Required<QueueExecutorOptions> = {
     sharedConcurrency: 5,
     exclusiveConcurrency: 1,
     isExclusive: () => true,
+    initialDelayMs: 0,
 };
 
 // ============================================================================

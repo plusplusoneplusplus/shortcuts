@@ -305,8 +305,35 @@ describe('validateConfigWithSchema', () => {
 });
 
 // ============================================================================
-// logging: section schema
+// queue.restartPickupDelayMs schema
 // ============================================================================
+
+describe('queue.restartPickupDelayMs schema validation', () => {
+    it('accepts restartPickupDelayMs = 0', () => {
+        const result = CLIConfigSchema.parse({ queue: { restartPickupDelayMs: 0 } });
+        expect(result.queue?.restartPickupDelayMs).toBe(0);
+    });
+
+    it('accepts restartPickupDelayMs positive integer', () => {
+        const result = CLIConfigSchema.parse({ queue: { restartPickupDelayMs: 30000 } });
+        expect(result.queue?.restartPickupDelayMs).toBe(30000);
+    });
+
+    it('rejects restartPickupDelayMs negative', () => {
+        expect(() => CLIConfigSchema.parse({ queue: { restartPickupDelayMs: -1 } }))
+            .toThrow();
+    });
+
+    it('rejects restartPickupDelayMs decimal', () => {
+        expect(() => CLIConfigSchema.parse({ queue: { restartPickupDelayMs: 1.5 } }))
+            .toThrow();
+    });
+
+    it('rejects restartPickupDelayMs string', () => {
+        expect(() => CLIConfigSchema.parse({ queue: { restartPickupDelayMs: '5000' } }))
+            .toThrow();
+    });
+});
 
 describe('logging schema validation', () => {
     it('accepts empty logging section', () => {

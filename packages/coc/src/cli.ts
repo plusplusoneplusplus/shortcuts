@@ -131,6 +131,7 @@ export function createProgram(): Command {
         .option('--no-drain', 'Skip graceful queue draining on shutdown')
         .option('--queue-restart-policy <policy>', 'Policy for tasks running at restart: fail, requeue, requeue-if-retriable')
         .option('--queue-history-limit <number>', 'Max history entries to persist per repo', (v: string) => parseInt(v, 10))
+        .option('--queue-restart-delay <ms>', 'Delay in ms before processing restored tasks after restart', (v: string) => parseInt(v, 10))
         .option('--log-level <level>', 'Log level: trace, debug, info, warn, error, fatal', 'info')
         .option('--log-dir <path>', 'Directory for .ndjson log files (default: <data-dir>/logs)')
         .option('--no-color', 'Disable colored output')

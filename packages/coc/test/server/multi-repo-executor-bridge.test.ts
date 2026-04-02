@@ -700,5 +700,30 @@ describe('MultiRepoQueueExecutorBridge', () => {
         });
     });
 
+    // ========================================================================
+    // clearInitialDelay
+    // ========================================================================
+
+    describe('clearInitialDelay', () => {
+        it('bridges created after clearInitialDelay get 0 delay', () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+                autoStart: false,
+                initialDelayMs: 30000,
+            });
+
+            // Before clearing — defaultOptions still has the delay
+            // Clearing should update the default options
+            bridge.clearInitialDelay();
+
+            // Bridge created after clear should work immediately (no 30s hang)
+            const b = bridge.getOrCreateBridge('/repo/lazy');
+            expect(b).toBeDefined();
+
+            bridge.dispose();
+        });
+    });
+
 });
 

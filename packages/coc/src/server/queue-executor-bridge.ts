@@ -20,6 +20,7 @@ export interface CLITaskExecutorOptions {
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
     isExclusive?: (task: QueuedTask) => boolean; autoStart?: boolean;
+    initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
     executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
@@ -97,6 +98,6 @@ export function defaultIsExclusive(task: QueuedTask): boolean {
 export function createQueueExecutorBridge(queueManager: TaskQueueManager, store: ProcessStore, options: QueueExecutorBridgeOptions = {}): { executor: QueueExecutor; bridge: QueueExecutorBridge } {
     const bridge = new CLITaskExecutor(store, options);
     bridge.setQueueManager(queueManager);
-    const executor = createQueueExecutor(queueManager, bridge, { sharedConcurrency: options.sharedConcurrency ?? 5, exclusiveConcurrency: options.exclusiveConcurrency ?? 1, isExclusive: options.isExclusive ?? defaultIsExclusive, autoStart: options.autoStart !== false });
+    const executor = createQueueExecutor(queueManager, bridge, { sharedConcurrency: options.sharedConcurrency ?? 5, exclusiveConcurrency: options.exclusiveConcurrency ?? 1, isExclusive: options.isExclusive ?? defaultIsExclusive, autoStart: options.autoStart !== false, initialDelayMs: options.initialDelayMs });
     return { executor, bridge };
 }

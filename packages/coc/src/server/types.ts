@@ -34,6 +34,8 @@ export interface ServeCommandOptions {
     queueRestartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
     /** Maximum number of history entries to persist per repo (default: 100). */
     queueHistoryLimit?: number;
+    /** Delay in ms before restored tasks are picked up after server restart (default: 0). */
+    queueRestartDelay?: number;
     /** Log level for Pino logger (default: 'info'). */
     logLevel?: string;
     /** Directory for .ndjson log files. Defaults to <dataDir>/logs for serve. */
@@ -84,6 +86,8 @@ export interface ExecutionServerOptions {
         historyLimit?: number;
         /** Whether to auto-start the queue executor (default: true). Set to false in tests to prevent task consumption. */
         autoStart?: boolean;
+        /** Delay in ms before restored tasks are picked up after server restart (default: 0). */
+        restartPickupDelayMs?: number;
     };
 }
 

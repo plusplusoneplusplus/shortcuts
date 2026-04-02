@@ -66,6 +66,7 @@ export function createQueueInfrastructure(
         defaultTimeoutMs,
         followUpSuggestions,
         getWsServer,
+        initialDelayMs: options.queue?.restartPickupDelayMs,
     });
 
     // Restore persisted queue state before executor starts processing
@@ -74,6 +75,9 @@ export function createQueueInfrastructure(
         maxPersistedHistory: options.queue?.historyLimit,
     });
     queuePersistence.restore();
+
+    // Clear the startup delay so lazily-created bridges after this point get no delay
+    bridge.clearInitialDelay();
 
     const queueFacade = bridge.createAggregateFacade();
 

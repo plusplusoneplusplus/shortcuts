@@ -57,6 +57,7 @@ export const CLIConfigSchema = z.object({
     queue: z.object({
         historyLimit: z.number().int().positive().optional(),
         restartPolicy: z.enum(['fail', 'requeue', 'requeue-if-retriable']).optional(),
+        restartPickupDelayMs: z.number().int().min(0).optional(),
     }).strict().optional(),
     models: z.object({
         enabled: z.array(z.string()).optional(),

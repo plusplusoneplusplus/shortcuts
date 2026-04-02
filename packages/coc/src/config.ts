@@ -59,6 +59,7 @@ export interface CLIConfig {
     queue?: {
         historyLimit?: number;
         restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
+        restartPickupDelayMs?: number;
     };
     /** Models whitelist configuration */
     models?: {
@@ -133,6 +134,7 @@ export interface ResolvedCLIConfig {
     queue?: {
         historyLimit?: number;
         restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
+        restartPickupDelayMs?: number;
     };
     /** Models whitelist — list of enabled model IDs */
     models?: {
@@ -314,6 +316,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         queue: (override.queue || base.queue) ? {
             historyLimit: override.queue?.historyLimit ?? base.queue?.historyLimit,
             restartPolicy: override.queue?.restartPolicy ?? base.queue?.restartPolicy,
+            restartPickupDelayMs: override.queue?.restartPickupDelayMs ?? base.queue?.restartPickupDelayMs,
         } : undefined,
         models: (override.models || base.models) ? {
             enabled: override.models?.enabled ?? base.models?.enabled,

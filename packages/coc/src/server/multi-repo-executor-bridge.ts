@@ -42,7 +42,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     /** Exposed for StaleTaskDetector and MultiRepoQueuePersistence to access per-repo managers. */
     readonly registry: RepoQueueRegistry;
     private readonly store: ProcessStore;
-    private readonly defaultOptions: QueueExecutorBridgeOptions;
+    private defaultOptions: QueueExecutorBridgeOptions;
 
     /** normalized rootPath → { executor, bridge } */
     private readonly bridges: Map<string, RepoBridge> = new Map();
@@ -68,6 +68,14 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
             const repoId = this.getRepoIdForPath(repoPath);
             this.emit('queueChange', { repoPath, repoId, ...event });
         });
+    }
+
+    /**
+     * Clear the `initialDelayMs` from default options so bridges created
+     * after the startup/restore window do not inherit the delay.
+     */
+    clearInitialDelay(): void {
+        this.defaultOptions = { ...this.defaultOptions, initialDelayMs: 0 };
     }
 
     /**

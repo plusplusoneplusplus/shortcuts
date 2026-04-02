@@ -71,9 +71,10 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
             store,
             theme: options.theme ?? 'auto',
             fileConfig,
-            queue: (options.queueRestartPolicy || options.queueHistoryLimit) ? {
+            queue: (options.queueRestartPolicy || options.queueHistoryLimit || options.queueRestartDelay !== undefined) ? {
                 restartPolicy: options.queueRestartPolicy,
                 historyLimit: options.queueHistoryLimit,
+                restartPickupDelayMs: options.queueRestartDelay,
             } : undefined,
         });
 

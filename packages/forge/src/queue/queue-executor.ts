@@ -291,6 +291,14 @@ export class QueueExecutor extends EventEmitter {
      * Main processing loop
      */
     private async processLoop(): Promise<void> {
+        // Apply initial startup delay (e.g. after server restart)
+        const delayMs = this.options.initialDelayMs;
+        if (delayMs > 0) {
+            this.emit('startup-delay-start', delayMs);
+            await this.delay(delayMs);
+            this.emit('startup-delay-end');
+        }
+
         while (this.running && !this.stopRequested) {
             // Check if queue is paused
             if (this.queueManager.isPaused()) {

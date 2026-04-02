@@ -1110,11 +1110,106 @@ describe('QueueExecutor', () => {
             expect(completedCount).toBe(2);
         });
     });
-});
 
-// ============================================================================
-// Test Helpers
-// ============================================================================
+    // ========================================================================
+    // initialDelayMs
+    // ========================================================================
+
+    describe('initialDelayMs', () => {
+        it('delays task processing by the specified amount', async () => {
+            const completed: number[] = [];
+            taskExecutor = createSimpleTaskExecutor(async () => {
+                completed.push(Date.now());
+                return 'ok';
+            });
+
+            const startTime = Date.now();
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                initialDelayMs: 200,
+            });
+            queueManager.enqueue(createTestTask());
+
+            await waitFor(() => completed.length > 0, 2000);
+
+            const elapsed = completed[0] - startTime;
+            expect(elapsed).toBeGreaterThanOrEqual(150); // allow small timing slack
+        });
+
+        it('emits startup-delay-start and startup-delay-end events', async () => {
+            const events: string[] = [];
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                autoStart: false,
+                initialDelayMs: 100,
+            });
+            executor.on('startup-delay-start', (ms: number) => {
+                events.push(`start:${ms}`);
+            });
+            executor.on('startup-delay-end', () => {
+                events.push('end');
+            });
+            executor.start();
+
+            await waitFor(() => events.includes('end'), 1000);
+
+            expect(events).toEqual(['start:100', 'end']);
+        });
+
+        it('does not delay when initialDelayMs is 0', async () => {
+            const completed: number[] = [];
+            taskExecutor = createSimpleTaskExecutor(async () => {
+                completed.push(Date.now());
+                return 'ok';
+            });
+
+            const startTime = Date.now();
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                initialDelayMs: 0,
+            });
+            queueManager.enqueue(createTestTask());
+
+            await waitFor(() => completed.length > 0, 1000);
+
+            const elapsed = completed[0] - startTime;
+            expect(elapsed).toBeLessThan(150);
+        });
+
+        it('does not emit startup delay events when initialDelayMs is 0', async () => {
+            const events: string[] = [];
+            const completed: string[] = [];
+            taskExecutor = createSimpleTaskExecutor(async (task) => {
+                completed.push(task.id);
+                return 'ok';
+            });
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                initialDelayMs: 0,
+            });
+            executor.on('startup-delay-start', () => events.push('start'));
+            executor.on('startup-delay-end', () => events.push('end'));
+
+            queueManager.enqueue(createTestTask());
+            await waitFor(() => completed.length > 0, 1000);
+
+            expect(events).toEqual([]);
+        });
+
+        it('defaults to no delay when initialDelayMs is not set', async () => {
+            const completed: number[] = [];
+            taskExecutor = createSimpleTaskExecutor(async () => {
+                completed.push(Date.now());
+                return 'ok';
+            });
+
+            const startTime = Date.now();
+            executor = new QueueExecutor(queueManager, taskExecutor);
+            queueManager.enqueue(createTestTask());
+
+            await waitFor(() => completed.length > 0, 1000);
+
+            const elapsed = completed[0] - startTime;
+            expect(elapsed).toBeLessThan(150);
+        });
+    });
+});
 
 function createTestTask(
     overrides: Partial<CreateTaskInput> = {}

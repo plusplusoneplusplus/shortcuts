@@ -71,6 +71,7 @@ export function resolveServeOptions(
         noDrain: opts.drain === false,
         queueRestartPolicy: (opts.queueRestartPolicy as ServeCommandOptions['queueRestartPolicy'] | undefined) ?? config.queue?.restartPolicy,
         queueHistoryLimit: (opts.queueHistoryLimit as number | undefined) ?? config.queue?.historyLimit,
+        queueRestartDelay: (opts.queueRestartDelay as number | undefined) ?? config.queue?.restartPickupDelayMs,
         logLevel: opts.logLevel as string | undefined,
         logDir: opts.logDir as string | undefined,
     };
