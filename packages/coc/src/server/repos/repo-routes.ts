@@ -304,7 +304,7 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
 
                 const platform = process.platform;
                 if (platform === 'win32') {
-                    child_process.spawn('explorer.exe', ['/select,', absPath], { detached: true, stdio: 'ignore' });
+                    child_process.spawn('explorer.exe', [`/select,${absPath}`], { detached: true, stdio: 'ignore' });
                 } else if (platform === 'darwin') {
                     child_process.spawn('open', ['-R', absPath], { detached: true, stdio: 'ignore' });
                 } else {

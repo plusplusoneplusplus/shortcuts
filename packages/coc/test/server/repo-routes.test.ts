@@ -509,7 +509,7 @@ describe('GET /api/repos/:repoId/reveal', () => {
 
         if (process.platform === 'win32') {
             expect(cmd).toBe('explorer.exe');
-            expect(args).toEqual(['/select,', absPath]);
+            expect(args).toEqual([`/select,${absPath}`]);
         } else if (process.platform === 'darwin') {
             expect(cmd).toBe('open');
             expect(args).toEqual(['-R', absPath]);
