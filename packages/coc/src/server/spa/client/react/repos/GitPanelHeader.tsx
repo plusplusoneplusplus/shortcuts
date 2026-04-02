@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { formatRelativeTime } from '../utils/format';
 
 interface GitPanelHeaderProps {
     branch: string;
@@ -22,17 +23,26 @@ interface GitPanelHeaderProps {
     pulling?: boolean;
     pushing?: boolean;
     rebasing?: boolean;
+    lastRefreshedAt?: number | null;
 }
 
 const spinKeyframes = `@keyframes gitRefreshSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .git-refresh-spin { animation: gitRefreshSpin 1s linear infinite; }`;
 
-export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, onRebaseAutosquash, fetching, pulling, pushing, rebasing }: GitPanelHeaderProps) {
+export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, onRebaseAutosquash, fetching, pulling, pushing, rebasing, lastRefreshedAt }: GitPanelHeaderProps) {
     const hasAheadBehind = ahead > 0 || behind > 0;
     const hasAnyAction = onFetch || onPull || onPush || onRebaseAutosquash;
     const isActioning = fetching || pulling || pushing || rebasing;
 
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Force re-render every 30s so the relative timestamp stays current
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        if (lastRefreshedAt == null) return;
+        const id = setInterval(() => setTick(t => t + 1), 30_000);
+        return () => clearInterval(id);
+    }, [lastRefreshedAt]);
 
     useEffect(() => {
         if (!dropdownOpen) return;
@@ -196,6 +206,17 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* Last refreshed timestamp */}
+            {lastRefreshedAt != null && (
+                <span
+                    className="text-xs text-[#999] dark:text-[#777] whitespace-nowrap hidden sm:inline"
+                    title={new Date(lastRefreshedAt).toLocaleString()}
+                    data-testid="git-last-refreshed"
+                >
+                    {formatRelativeTime(new Date(lastRefreshedAt).toISOString())}
+                </span>
             )}
 
             {/* Refresh button */}

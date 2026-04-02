@@ -375,6 +375,32 @@ describe('RepoGitTab', () => {
         it('passes pushing state to GitPanelHeader', () => {
             expect(source).toContain('pushing={pushing}');
         });
+
+        it('passes lastRefreshedAt to GitPanelHeader', () => {
+            expect(source).toContain('lastRefreshedAt={lastRefreshedAt}');
+        });
+    });
+
+    describe('lastRefreshedAt state', () => {
+        it('declares lastRefreshedAt state', () => {
+            expect(source).toContain('const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null)');
+        });
+
+        it('updates lastRefreshedAt after initial load', () => {
+            // The initial Promise.all .then should call setLastRefreshedAt(Date.now())
+            expect(source).toMatch(/Promise\.all\(\[fetchCommits\(\), fetchBranchRange\(\)\]\)\s*\.then\(\(\[loaded, rangeInfo\]\) => \{[\s\S]*?setLastRefreshedAt\(Date\.now\(\)\)/);
+        });
+
+        it('updates lastRefreshedAt after refreshAll', () => {
+            // refreshAll's Promise.all .then should call setLastRefreshedAt(Date.now())
+            expect(source).toMatch(/fetchCommits\(true, 0, searchQuery\), fetchBranchRange\(true\)[\s\S]*?setLastRefreshedAt\(Date\.now\(\)\)/);
+        });
+
+        it('updates lastRefreshedAt after WebSocket git-changed refresh', () => {
+            // The git-changed handler's fetchCommits.then should call setLastRefreshedAt
+            const wsBlock = source.slice(source.indexOf('git-changed'));
+            expect(wsBlock).toContain('setLastRefreshedAt(Date.now())');
+        });
     });
 
     describe('scenario banner', () => {

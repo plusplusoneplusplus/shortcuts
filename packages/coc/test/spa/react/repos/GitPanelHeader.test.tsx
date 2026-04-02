@@ -2,8 +2,8 @@
  * Tests for GitPanelHeader — split action dropdown button.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { GitPanelHeader } from '../../../../src/server/spa/client/react/repos/GitPanelHeader';
 
 const defaultProps = {
@@ -200,5 +200,63 @@ describe('disabled state', () => {
         renderHeader({ refreshing: true });
         const icon = screen.getByTestId('git-refresh-icon');
         expect(icon.getAttribute('class')).toContain('git-refresh-spin');
+    });
+});
+
+// ── Last refreshed timestamp ──────────────────────────────────────────────────
+
+describe('last refreshed timestamp', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('does NOT render timestamp when lastRefreshedAt is null', () => {
+        renderHeader({ lastRefreshedAt: null });
+        expect(screen.queryByTestId('git-last-refreshed')).toBeNull();
+    });
+
+    it('does NOT render timestamp when lastRefreshedAt is undefined', () => {
+        renderHeader();
+        expect(screen.queryByTestId('git-last-refreshed')).toBeNull();
+    });
+
+    it('renders "just now" when lastRefreshedAt is recent', () => {
+        vi.setSystemTime(new Date('2026-04-02T12:00:00Z'));
+        renderHeader({ lastRefreshedAt: Date.now() - 5_000 });
+        const el = screen.getByTestId('git-last-refreshed');
+        expect(el.textContent).toBe('just now');
+    });
+
+    it('renders relative time for older timestamps', () => {
+        vi.setSystemTime(new Date('2026-04-02T12:00:00Z'));
+        renderHeader({ lastRefreshedAt: Date.now() - 5 * 60_000 });
+        const el = screen.getByTestId('git-last-refreshed');
+        expect(el.textContent).toBe('5m ago');
+    });
+
+    it('shows full datetime as tooltip', () => {
+        const ts = Date.now();
+        renderHeader({ lastRefreshedAt: ts });
+        const el = screen.getByTestId('git-last-refreshed');
+        expect(el.getAttribute('title')).toBe(new Date(ts).toLocaleString());
+    });
+
+    it('live-updates the displayed text every 30 seconds', () => {
+        vi.setSystemTime(new Date('2026-04-02T12:00:00Z'));
+        const ts = Date.now();
+        renderHeader({ lastRefreshedAt: ts });
+        const el = screen.getByTestId('git-last-refreshed');
+        expect(el.textContent).toBe('just now');
+
+        // Advance 2 minutes
+        act(() => { vi.advanceTimersByTime(2 * 60_000); });
+        expect(el.textContent).toBe('2m ago');
+
+        // Advance another 3 minutes (total 5m)
+        act(() => { vi.advanceTimersByTime(3 * 60_000); });
+        expect(el.textContent).toBe('5m ago');
     });
 });

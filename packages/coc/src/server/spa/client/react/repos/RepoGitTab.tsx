@@ -177,6 +177,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     // Repo state (merge/rebase/cherry-pick in progress)
     const [repoState, setRepoState] = useState<{ operation: string; conflictFiles: string[] } | null>(null);
 
+    // Last-refreshed timestamp (epoch ms) — updated after any successful git data fetch
+    const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
+
     // Reorder state: pendingReorder holds the new commit order before user confirms
     const [pendingReorder, setPendingReorder] = useState<GitCommitItem[] | null>(null);
 
@@ -298,6 +301,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         fetchRepoState();
         Promise.all([fetchCommits(), fetchBranchRange()])
             .then(([loaded, rangeInfo]) => {
+                setLastRefreshedAt(Date.now());
                 if (initialCommitHash === 'branch-range') {
                     // Restore branch-range deep link
                     if (initialFilePath) {
@@ -365,6 +369,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
         Promise.all([fetchCommits(true, 0, searchQuery), fetchBranchRange(true)])
             .then(([loaded]) => {
+                setLastRefreshedAt(Date.now());
                 // Retain selection if the commit still exists
                 if (prevSelectedHash) {
                     const found = loaded.find((c: GitCommitItem) => c.hash === prevSelectedHash);
@@ -417,6 +422,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     prevCommitsRef.current = commits;
                     // Re-fetch commits and working tree but NOT branch range (cached)
                     fetchCommits(true, 0, searchQuery).then((newCommits: GitCommitItem[]) => {
+                        setLastRefreshedAt(Date.now());
                         // Heuristic rebind: match old→new commits by identity
                         const pairs = matchCommitsByIdentity(prevCommitsRef.current, newCommits);
                         for (const { oldHash, newHash } of pairs) {
@@ -1341,6 +1347,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     pulling={pulling}
                     pushing={pushing}
                     rebasing={rebasing}
+                    lastRefreshedAt={lastRefreshedAt}
                 />
                 {/* Search input */}
                 <div className="px-2 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-search-bar">
