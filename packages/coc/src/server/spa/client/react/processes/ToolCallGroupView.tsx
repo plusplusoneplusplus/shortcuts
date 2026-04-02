@@ -28,6 +28,8 @@ export interface ToolCallGroupViewProps {
     orderedItems?: GroupOrderedItem[];
     compactness: 0 | 1 | 2;
     isStreaming?: boolean;
+    /** The shared agent_id when category === 'agent'. */
+    agentId?: string;
     renderToolTree: (toolId: string, depth: number) => React.ReactNode;
 }
 
@@ -35,6 +37,7 @@ export const CATEGORY_ICONS: Record<ToolGroupCategory, string> = {
     read:  '📄',
     write: '✏️',
     shell: '💻',
+    agent: '🤖',
 };
 
 /** Formats the startTime of the earliest tool call as `MM/DD HH:MM:SSZ`. */
@@ -83,6 +86,7 @@ export function ToolCallGroupView({
     orderedItems,
     compactness,
     isStreaming,
+    agentId,
     renderToolTree,
 }: ToolCallGroupViewProps) {
     const [expanded, setExpanded] = useState(false);
@@ -106,7 +110,7 @@ export function ToolCallGroupView({
     const { icon: statusIcon, summary: statusSummary } = getToolGroupStatus(
         toolCalls.map(tc => tc.status)
     );
-    const summaryLabel = getCategoryLabel(category, buildCounts(toolCalls.map(tc => tc.toolName)));
+    const summaryLabel = getCategoryLabel(category, buildCounts(toolCalls.map(tc => tc.toolName)), agentId);
     const messageCount = contentItems?.length ?? 0;
     const startLabel   = groupStartLabel(toolCalls);
     const duration     = groupDuration(toolCalls);

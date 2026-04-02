@@ -3,7 +3,7 @@
  * groupConsecutiveToolChunks algorithm for compact tool-call display.
  */
 
-export type ToolGroupCategory = 'read' | 'write' | 'shell';
+export type ToolGroupCategory = 'read' | 'write' | 'shell' | 'agent';
 
 export interface GroupContentItem {
     key: string;
@@ -33,9 +33,14 @@ export const CATEGORY_ICONS: Record<ToolGroupCategory, string> = {
     read:  '📖',
     write: '✏️',
     shell: '🖥️',
+    agent: '🤖',
 };
 
-export function getToolGroupCategory(toolName: string): ToolGroupCategory | null {
+export function getToolGroupCategory(
+    toolName: string,
+    args?: Record<string, unknown>,
+): ToolGroupCategory | null {
+    if (toolName === 'read_agent' && args?.agent_id) return 'agent';
     return CATEGORY_MAP[toolName] ?? null;
 }
 
@@ -46,9 +51,14 @@ export function getToolGroupCategory(toolName: string): ToolGroupCategory | null
  */
 export function getCategoryLabel(
     category: ToolGroupCategory,
-    counts: Record<string, number>
+    counts: Record<string, number>,
+    agentId?: string,
 ): string {
     const total = Object.values(counts).reduce((s, n) => s + n, 0);
+    if (category === 'agent') {
+        const id = agentId ?? 'unknown';
+        return `${total} poll${total !== 1 ? 's' : ''} → ${id}`;
+    }
     const detail = Object.entries(counts)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([name, n]) => `${name}×${n}`)
@@ -92,6 +102,7 @@ interface ToolLike {
     status?: string;
     startTime?: string;
     endTime?: string;
+    args?: Record<string, unknown>;
 }
 
 interface ToolChunk {
@@ -115,6 +126,8 @@ interface ToolGroupChunk {
     endTime?: number;
     allSucceeded: boolean;
     parentToolId?: string;
+    /** Set when category === 'agent' — the shared agent_id for the group. */
+    agentId?: string;
 }
 
 function parseMs(iso: string): number {
@@ -171,12 +184,17 @@ export function groupConsecutiveToolChunks(
             continue;
         }
 
-        const category = getToolGroupCategory(tool.toolName);
+        const category = getToolGroupCategory(tool.toolName, tool.args);
         if (!category) {
             result.push(chunk);
             i++;
             continue;
         }
+
+        // For agent polling groups, track the shared agent_id
+        const runAgentId = category === 'agent'
+            ? String(tool.args?.agent_id ?? '')
+            : undefined;
 
         // Start a run
         const run: ToolChunk[] = [chunk];
@@ -191,9 +209,14 @@ export function groupConsecutiveToolChunks(
             if (next.kind === 'tool' && next.toolId) {
                 const nextTool = toolById.get(next.toolId);
                 if (!nextTool || parentToolIds.has(next.toolId)) break;
-                const nextCat = getToolGroupCategory(nextTool.toolName);
+                const nextCat = getToolGroupCategory(nextTool.toolName, nextTool.args);
                 if (nextCat !== category) break;
                 if (next.parentToolId !== chunk.parentToolId) break;
+                // For agent groups, also require matching agent_id
+                if (category === 'agent') {
+                    const nextAgentId = String(nextTool.args?.agent_id ?? '');
+                    if (nextAgentId !== runAgentId) break;
+                }
                 run.push(next);
                 orderedItems.push({ type: 'tool', toolId: next.toolId });
                 j++;
@@ -215,9 +238,14 @@ export function groupConsecutiveToolChunks(
                         if (
                             afterTool &&
                             !parentToolIds.has(after.toolId) &&
-                            getToolGroupCategory(afterTool.toolName) === category &&
+                            getToolGroupCategory(afterTool.toolName, afterTool.args) === category &&
                             after.parentToolId === chunk.parentToolId
                         ) {
+                            // For agent groups, also require matching agent_id
+                            if (category === 'agent') {
+                                const afterAgentId = String(afterTool.args?.agent_id ?? '');
+                                if (afterAgentId !== runAgentId) break;
+                            }
                             const contentItem = { key: next.key, html: next.html as string };
                             absorbedContent.push(contentItem);
                             orderedItems.push({ type: 'content', ...contentItem });
@@ -258,6 +286,7 @@ export function groupConsecutiveToolChunks(
             endTime:        allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
             allSucceeded:   tools.every(t => t.status === 'completed'),
             parentToolId:   chunk.parentToolId,
+            ...(runAgentId ? { agentId: runAgentId } : {}),
         });
         i = j;
     }

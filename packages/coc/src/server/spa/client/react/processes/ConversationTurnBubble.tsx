@@ -930,6 +930,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                         orderedItems={chunk.orderedItems}
                                         isStreaming={!!turn.streaming}
                                         compactness={toolCompactness}
+                                        agentId={chunk.agentId}
                                         renderToolTree={renderToolTree}
                                     />
                                 );

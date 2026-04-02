@@ -34,6 +34,15 @@ describe('getToolGroupCategory', () => {
         expect(getToolGroupCategory('unknown')).toBeNull();
         expect(getToolGroupCategory('')).toBeNull();
     });
+
+    it('returns agent for read_agent with agent_id in args', () => {
+        expect(getToolGroupCategory('read_agent', { agent_id: 'my-agent' })).toBe('agent');
+    });
+
+    it('returns null for read_agent without agent_id', () => {
+        expect(getToolGroupCategory('read_agent', {})).toBeNull();
+        expect(getToolGroupCategory('read_agent')).toBeNull();
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -55,6 +64,18 @@ describe('getCategoryLabel', () => {
 
     it('empty counts', () => {
         expect(getCategoryLabel('write', {})).toBe('0 write operations');
+    });
+
+    it('agent category with agentId', () => {
+        expect(getCategoryLabel('agent', { read_agent: 3 }, 'my-agent')).toBe('3 polls → my-agent');
+    });
+
+    it('agent category without agentId falls back to unknown', () => {
+        expect(getCategoryLabel('agent', { read_agent: 1 })).toBe('1 poll → unknown');
+    });
+
+    it('agent category singular poll', () => {
+        expect(getCategoryLabel('agent', { read_agent: 1 }, 'x')).toBe('1 poll → x');
     });
 });
 
@@ -123,6 +144,7 @@ interface MockTool {
     status?: string;
     startTime?: string;
     endTime?: string;
+    args?: Record<string, unknown>;
 }
 
 function makeChunk(toolId: string, parentToolId?: string) {
@@ -679,5 +701,130 @@ describe('groupConsecutiveToolChunks — orderedItems', () => {
             { type: 'tool', toolId: 't1' },
             { type: 'tool', toolId: 't2' },
         ]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// groupConsecutiveToolChunks — agent (read_agent) grouping
+// ---------------------------------------------------------------------------
+
+describe('groupConsecutiveToolChunks — agent grouping', () => {
+    it('two consecutive read_agent with same agent_id → grouped', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+        const result = groupConsecutiveToolChunks(
+            [c1, c2],
+            makeMap([
+                ['t1', { toolName: 'read_agent', args: { agent_id: 'my-agent' } }],
+                ['t2', { toolName: 'read_agent', args: { agent_id: 'my-agent' } }],
+            ]),
+            new Set()
+        );
+        expect(result).toHaveLength(1);
+        const g = result[0] as any;
+        expect(g.kind).toBe('tool-group');
+        expect(g.category).toBe('agent');
+        expect(g.toolIds).toEqual(['t1', 't2']);
+        expect(g.agentId).toBe('my-agent');
+    });
+
+    it('three consecutive polls, same agent_id → single group of 3', () => {
+        const chunks = ['t1', 't2', 't3'].map(id => makeChunk(id));
+        const result = groupConsecutiveToolChunks(
+            chunks,
+            makeMap([
+                ['t1', { toolName: 'read_agent', args: { agent_id: 'a1' } }],
+                ['t2', { toolName: 'read_agent', args: { agent_id: 'a1' } }],
+                ['t3', { toolName: 'read_agent', args: { agent_id: 'a1' } }],
+            ]),
+            new Set()
+        );
+        expect(result).toHaveLength(1);
+        const g = result[0] as any;
+        expect(g.toolIds).toHaveLength(3);
+        expect(g.agentId).toBe('a1');
+    });
+
+    it('two read_agent with different agent_id → NOT grouped', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+        const result = groupConsecutiveToolChunks(
+            [c1, c2],
+            makeMap([
+                ['t1', { toolName: 'read_agent', args: { agent_id: 'a1' } }],
+                ['t2', { toolName: 'read_agent', args: { agent_id: 'a2' } }],
+            ]),
+            new Set()
+        );
+        expect(result).toEqual([c1, c2]);
+    });
+
+    it('read_agent followed by non-read_agent → NOT grouped', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+        const result = groupConsecutiveToolChunks(
+            [c1, c2],
+            makeMap([
+                ['t1', { toolName: 'read_agent', args: { agent_id: 'a1' } }],
+                ['t2', { toolName: 'view' }],
+            ]),
+            new Set()
+        );
+        expect(result).toEqual([c1, c2]);
+    });
+
+    it('single read_agent → emitted as-is (no group)', () => {
+        const c1 = makeChunk('t1');
+        const result = groupConsecutiveToolChunks(
+            [c1],
+            makeMap([
+                ['t1', { toolName: 'read_agent', args: { agent_id: 'a1' } }],
+            ]),
+            new Set()
+        );
+        expect(result).toEqual([c1]);
+    });
+
+    it('read_agent without agent_id → not groupable', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+        const result = groupConsecutiveToolChunks(
+            [c1, c2],
+            makeMap([
+                ['t1', { toolName: 'read_agent', args: {} }],
+                ['t2', { toolName: 'read_agent', args: {} }],
+            ]),
+            new Set()
+        );
+        expect(result).toEqual([c1, c2]);
+    });
+
+    it('agent group preserves parentToolId boundary', () => {
+        const c1 = makeChunk('t1', 'p1');
+        const c2 = makeChunk('t2', 'p2');
+        const result = groupConsecutiveToolChunks(
+            [c1, c2],
+            makeMap([
+                ['t1', { toolName: 'read_agent', args: { agent_id: 'a1' } }],
+                ['t2', { toolName: 'read_agent', args: { agent_id: 'a1' } }],
+            ]),
+            new Set()
+        );
+        expect(result).toEqual([c1, c2]);
+    });
+
+    it('agent group has no agentId for non-agent categories', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+        const result = groupConsecutiveToolChunks(
+            [c1, c2],
+            makeMap([
+                ['t1', { toolName: 'view', status: 'completed' }],
+                ['t2', { toolName: 'view', status: 'completed' }],
+            ]),
+            new Set()
+        );
+        expect(result).toHaveLength(1);
+        expect((result[0] as any).agentId).toBeUndefined();
     });
 });
