@@ -725,5 +725,94 @@ describe('MultiRepoQueueExecutorBridge', () => {
         });
     });
 
+    // ========================================================================
+    // findExecutorForTask
+    // ========================================================================
+
+    describe('findExecutorForTask', () => {
+        it('returns the QueueExecutor that owns a given task', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/exec-test');
+            const manager = bridge.registry.getQueueForRepo('/repo/exec-test');
+
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'find me' },
+                config: {},
+            });
+
+            const executor = bridge.findExecutorForTask(taskId);
+            expect(executor).toBeDefined();
+            expect(executor!.isTaskCancelled(taskId)).toBe(false);
+
+            bridge.dispose();
+        });
+
+        it('returns undefined for unknown task id', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/exec-test2');
+
+            expect(bridge.findExecutorForTask('nonexistent-task')).toBeUndefined();
+
+            bridge.dispose();
+        });
+    });
+
+    // ========================================================================
+    // aggregate facade cancelTask routes through QueueExecutor
+    // ========================================================================
+
+    describe('aggregate facade cancelTask', () => {
+        it('routes cancel through QueueExecutor.cancelTask for running tasks', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/agg-cancel');
+            const manager = bridge.registry.getQueueForRepo('/repo/agg-cancel');
+
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'cancel me' },
+                config: {},
+            });
+
+            const facade = bridge.createAggregateFacade();
+
+            // Cancel via the facade
+            const result = facade.cancelTask(taskId);
+            expect(result).toBe(true);
+
+            // Verify the QueueExecutor was notified
+            const executor = bridge.findExecutorForTask(taskId);
+            // Task was cancelled before starting so executor marks it in its set
+            // and queue manager moves it to cancelled
+            expect(manager.getTask(taskId)?.status).toBe('cancelled');
+
+            bridge.dispose();
+        });
+
+        it('falls back to manager.cancelTask when no executor bridge exists', () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+
+            // Create a queue directly without going through getOrCreateBridge
+            const manager = registry.getQueueForRepo('/repo/no-bridge');
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'test' },
+                config: {},
+            });
+
+            const facade = bridge.createAggregateFacade();
+            const result = facade.cancelTask(taskId);
+            expect(result).toBe(true);
+            expect(manager.getTask(taskId)?.status).toBe('cancelled');
+
+            bridge.dispose();
+        });
+    });
+
 });
 

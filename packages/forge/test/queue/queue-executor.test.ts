@@ -512,6 +512,61 @@ describe('QueueExecutor', () => {
             executor.cancelTask(taskId);
             expect(executor.isTaskCancelled(taskId)).toBe(true);
         });
+
+        it('cancel running exclusive task frees slot for next task', async () => {
+            let task1Started = false;
+            let task1Resolve: (() => void) | undefined;
+            const task1Promise = new Promise<void>(resolve => { task1Resolve = resolve; });
+            let task2Completed = false;
+
+            taskExecutor = createSimpleTaskExecutor(async (task) => {
+                if (task.displayName === 'task1') {
+                    task1Started = true;
+                    await task1Promise;
+                    return 'task1-done';
+                }
+                task2Completed = true;
+                return 'task2-done';
+            });
+
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                exclusiveConcurrency: 1,
+                isExclusive: () => true,
+                autoStart: true,
+            });
+
+            const task1Id = queueManager.enqueue(createTestTask({ displayName: 'task1' }));
+            queueManager.enqueue(createTestTask({ displayName: 'task2' }));
+
+            // Wait for task1 to start executing
+            await waitFor(() => task1Started);
+
+            // task2 should still be queued (only 1 exclusive slot)
+            expect(task2Completed).toBe(false);
+
+            // Cancel task1 — should free the exclusive slot
+            executor.cancelTask(task1Id);
+            // Unblock task1's promise so the limiter slot is released
+            task1Resolve!();
+
+            // task2 should now pick up and complete
+            await waitFor(() => task2Completed, 2000);
+            expect(task2Completed).toBe(true);
+        });
+
+        it('cancelTask notifies taskExecutor.cancel()', () => {
+            const cancelSpy = vi.fn();
+            const customExecutor: TaskExecutor = {
+                execute: async () => ({ success: true, durationMs: 0 }),
+                cancel: cancelSpy,
+            };
+            executor = new QueueExecutor(queueManager, customExecutor, { autoStart: false });
+
+            const taskId = queueManager.enqueue(createTestTask());
+            executor.cancelTask(taskId);
+
+            expect(cancelSpy).toHaveBeenCalledWith(taskId);
+        });
     });
 
     // ========================================================================

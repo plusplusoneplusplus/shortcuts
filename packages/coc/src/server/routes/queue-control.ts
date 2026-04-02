@@ -412,6 +412,14 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
                 return sendError(res, 404, 'Task not found');
             }
 
+            // Try routing through QueueExecutor for proper slot release + SDK abort
+            const executor = bridge.findExecutorForTask(id);
+            if (executor) {
+                executor.cancelTask(id);
+                sendJSON(res, 200, { cancelled: true });
+                return;
+            }
+            // Fallback: task may be queued but no executor bridge exists yet
             const mgr = bridge.findManagerForTask(id);
             const cancelled = mgr?.cancelTask(id) ?? false;
             if (!cancelled) {

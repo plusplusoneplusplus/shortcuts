@@ -34,6 +34,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly defaultWorkingDirectory?: string;
     private readonly aiService: CopilotSDKService;
     private queueManager?: TaskQueueManager;
+    private queueExecutor?: QueueExecutor;
     private readonly executors: ExecutorRegistry;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
@@ -59,6 +60,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     setQueueManager(qm: TaskQueueManager): void { this.queueManager = qm; }
+    setQueueExecutor(qe: QueueExecutor): void { this.queueExecutor = qe; }
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { generateTitleIfNeededFn(processId, turns, this.store, this.aiService, this.defaultWorkingDirectory, this.queueManager); }
     private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> { const ws = (await this.store.getWorkspaces()).find(w => path.resolve(w.rootPath) === path.resolve(rootPath)); return ws?.id ?? rootPath; }
 
@@ -78,7 +80,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     cancel(taskId: string): void { this.cancelledTasks.add(taskId); }
 
     async cancelProcess(processId: string): Promise<void> {
-        this.cancelledTasks.add(processId.replace('queue_', ''));
+        const taskId = processId.replace('queue_', '');
+        // Route through QueueExecutor so both cancelledTasks sets are updated
+        // and the queue slot is freed once the SDK abort propagates
+        if (this.queueExecutor) {
+            this.queueExecutor.cancelTask(taskId);
+        } else {
+            this.cancelledTasks.add(taskId);
+        }
         try { const proc = await this.store.getProcess(processId); if (proc?.sdkSessionId) { await this.aiService.abortSession(proc.sdkSessionId); } } catch { /* Non-fatal */ }
     }
 
@@ -99,5 +108,6 @@ export function createQueueExecutorBridge(queueManager: TaskQueueManager, store:
     const bridge = new CLITaskExecutor(store, options);
     bridge.setQueueManager(queueManager);
     const executor = createQueueExecutor(queueManager, bridge, { sharedConcurrency: options.sharedConcurrency ?? 5, exclusiveConcurrency: options.exclusiveConcurrency ?? 1, isExclusive: options.isExclusive ?? defaultIsExclusive, autoStart: options.autoStart !== false, initialDelayMs: options.initialDelayMs });
+    bridge.setQueueExecutor(executor);
     return { executor, bridge };
 }

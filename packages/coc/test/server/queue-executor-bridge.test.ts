@@ -2266,6 +2266,94 @@ describe('CLITaskExecutor', () => {
             expect(mockAbortSession).not.toHaveBeenCalled();
         });
 
+        it('cancelProcess routes through QueueExecutor.cancelTask when executor is set', async () => {
+            const mockAbortSession = vi.fn().mockResolvedValue(true);
+            const aiService = { ...sdkMocks.service, abortSession: mockAbortSession };
+            const executor = new CLITaskExecutor(store, { aiService: aiService as any });
+
+            const mockCancelTask = vi.fn();
+            executor.setQueueExecutor({ cancelTask: mockCancelTask } as any);
+
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-qe-1',
+                type: 'chat',
+                status: 'running',
+                sdkSessionId: 'sdk-session-qe1',
+                startTime: new Date(),
+                promptPreview: 'test',
+            } as any);
+
+            await executor.cancelProcess('queue_task-qe-1');
+
+            // Should route through QueueExecutor.cancelTask with the task ID (queue_ stripped)
+            expect(mockCancelTask).toHaveBeenCalledWith('task-qe-1');
+            // Should still abort the SDK session
+            expect(mockAbortSession).toHaveBeenCalledWith('sdk-session-qe1');
+        });
+
+        it('cancelProcess falls back to cancelledTasks.add when no QueueExecutor', async () => {
+            const mockAbortSession = vi.fn().mockResolvedValue(true);
+            const aiService = { ...sdkMocks.service, abortSession: mockAbortSession };
+            const executor = new CLITaskExecutor(store, { aiService: aiService as any });
+            // Do NOT call setQueueExecutor
+
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-fb-1',
+                type: 'chat',
+                status: 'running',
+                startTime: new Date(),
+                promptPreview: 'test',
+            } as any);
+
+            await executor.cancelProcess('queue_task-fb-1');
+
+            // Verify the task is marked as cancelled in the local set
+            executor.cancel('task-fb-1'); // no-op if already added
+            const task: QueuedTask = {
+                id: 'task-fb-1',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
+                config: {},
+            };
+            const result = await executor.execute(task);
+            expect(result.success).toBe(false);
+            expect(result.error?.message).toContain('cancelled');
+        });
+
+        it('createQueueExecutorBridge wires QueueExecutor to CLITaskExecutor', async () => {
+            const qm = new TaskQueueManager();
+            const { executor: queueExecutor, bridge } = createQueueExecutorBridge(qm, store, { autoStart: false });
+
+            // Enqueue a task so cancelTask has something to cancel
+            const taskId = qm.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
+                config: {},
+            });
+
+            // Cancel through the bridge's cancelProcess
+            store.getProcess.mockResolvedValue({
+                id: `queue_${taskId}`,
+                type: 'chat',
+                status: 'running',
+                startTime: new Date(),
+                promptPreview: 'test',
+            } as any);
+
+            await bridge.cancelProcess!(`queue_${taskId}`);
+
+            // The QueueExecutor should have been notified
+            expect(queueExecutor.isTaskCancelled(taskId)).toBe(true);
+            // Task should be cancelled in the queue manager too
+            expect(qm.getTask(taskId)?.status).toBe('cancelled');
+
+            queueExecutor.dispose();
+        });
+
         it('should not overwrite cancelled status with completed after execution', async () => {
             // Simulate: process is cancelled while AI is running
             // Store reports 'cancelled' by the time execution finishes

@@ -175,6 +175,17 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
+     * Find the QueueExecutor that owns a given task by id.
+     * Returns undefined if the task is not found in any repo queue.
+     */
+    findExecutorForTask(taskId: string): QueueExecutor | undefined {
+        for (const [rootPath, m] of this.registry.getAllQueues()) {
+            if (m.getTask(taskId)) return this.bridges.get(rootPath)?.executor;
+        }
+        return undefined;
+    }
+
+    /**
      * Get the TaskQueueManager for a given repoId (workspace ID).
      * Returns undefined if no manager has been registered for that repoId.
      */
@@ -396,7 +407,15 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
                 return undefined;
             },
             getStats: aggregateStats,
-            cancelTask: (id: string): boolean => findManagerForTask(id)?.cancelTask(id) ?? false,
+            cancelTask: (id: string): boolean => {
+                // Route through QueueExecutor so both cancelledTasks sets are updated
+                const executor = bridgeRef.findExecutorForTask(id);
+                if (executor) {
+                    executor.cancelTask(id);
+                    return true;
+                }
+                return findManagerForTask(id)?.cancelTask(id) ?? false;
+            },
             clear: (): void => { for (const m of allManagers()) m.clear(); },
             clearHistory: (): void => { for (const m of allManagers()) m.clearHistory(); },
             moveToTop: (id: string): boolean => findManagerForTask(id)?.moveToTop(id) ?? false,
