@@ -173,20 +173,9 @@ export class FollowUpExecutor extends BaseExecutor {
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         try {
-            // Save user turn before the AI call so it is always serialized
-            // ahead of the assistant turn in the write-queue.
-            await this.store.appendConversationTurn(
-                processId,
-                (turnIndex) => ({
-                    role: 'user' as const,
-                    content: message,
-                    timestamp: new Date(),
-                    turnIndex,
-                    timeline: [],
-                    images,
-                }),
-                { additionalUpdates: { status: 'running' } },
-            );
+            // User turn is already persisted by the POST /message route handler
+            // (atomically with the status: 'running' update) so the executor
+            // only needs to handle the AI call and assistant turn.
 
             const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
             const followUpMessage = followUpSuffix ? `${message}${followUpSuffix}` : message;

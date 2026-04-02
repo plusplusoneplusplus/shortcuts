@@ -1,19 +1,16 @@
 /**
  * Follow-Up Turn Order Race Condition Regression Test
  *
- * Verifies the invariant: for every follow-up exchange, the user turn is
- * always saved before the assistant turn in the write queue. This prevents
- * the race where a concurrent HTTP request could interleave and produce
- * out-of-order conversation turns.
+ * Verifies the invariant: user turns are persisted by the POST /message route
+ * handler (atomically with the status change) before the executor starts.
+ * The executor only appends assistant turns. This eliminates the race where
+ * an SSE snapshot could replay without the user turn.
  *
- * Scenario reproduced:
+ * Scenario:
  *   1. Process has 2 turns: [user-0, assistant-1]
- *   2. Two rapid follow-ups fire concurrently
- *   3. Each follow-up must produce (user, assistant) in that order
- *   4. Final turns must alternate user→assistant without interleaving
- *
- * This is a regression test for the fix that moved user-turn persistence
- * from the HTTP handler into FollowUpExecutor.executeFollowUp.
+ *   2. Route handler pre-persists user turn → [user-0, assistant-1, user-2]
+ *   3. Executor appends assistant turn → [user-0, assistant-1, user-2, assistant-3]
+ *   4. Final turns always have user before its paired assistant
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -61,6 +58,22 @@ vi.mock('../../src/server/queue/image-blob-store', async (importOriginal) => {
 
 import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
 
+// Helper: simulate what the POST /message handler does — pre-persist user turn
+function addUserTurn(proc: AIProcess, content: string, images?: string[]): AIProcess {
+    const turns = proc.conversationTurns ?? [];
+    const turnIndex = turns.length;
+    turns.push({
+        role: 'user' as const,
+        content,
+        timestamp: new Date(),
+        turnIndex,
+        timeline: [],
+        ...(images ? { images } : {}),
+    });
+    proc.conversationTurns = turns;
+    return proc;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -75,9 +88,10 @@ describe('Follow-up turn order race condition (regression)', () => {
 
     it('user turn always precedes assistant turn in a single follow-up', async () => {
         const proc = createCompletedProcessWithSession('proc-race-1', 'sess-1');
+        // Simulate handler pre-persisting user turn
+        addUserTurn(proc, 'Question A');
         await store.addProcess(proc);
 
-        // Simulate a slow AI response to widen any potential race window
         sdkMocks.mockSendMessage.mockImplementation(async () => {
             await new Promise(r => setTimeout(r, 10));
             return { success: true, response: 'Reply A', sessionId: 'sess-1' };
@@ -89,7 +103,7 @@ describe('Follow-up turn order race condition (regression)', () => {
         const updated = store.processes.get('proc-race-1');
         const turns = updated?.conversationTurns ?? [];
 
-        // Initial 2 turns + 1 user + 1 assistant = 4
+        // Initial 2 turns + 1 pre-persisted user + 1 assistant = 4
         expect(turns).toHaveLength(4);
         expect(turns[2].role).toBe('user');
         expect(turns[2].content).toBe('Question A');
@@ -100,6 +114,8 @@ describe('Follow-up turn order race condition (regression)', () => {
 
     it('two rapid sequential follow-ups produce correctly ordered turns', async () => {
         const proc = createCompletedProcessWithSession('proc-race-2', 'sess-2');
+        // Simulate handler pre-persisting first user turn
+        addUserTurn(proc, 'Question 1');
         await store.addProcess(proc);
 
         let callCount = 0;
@@ -114,6 +130,12 @@ describe('Follow-up turn order race condition (regression)', () => {
 
         // Follow-up 1
         await executor.executeFollowUp('proc-race-2', 'Question 1');
+
+        // Simulate handler pre-persisting second user turn
+        const afterFirst = store.processes.get('proc-race-2')!;
+        addUserTurn(afterFirst, 'Question 2');
+        store.processes.set('proc-race-2', afterFirst);
+
         // Follow-up 2
         await executor.executeFollowUp('proc-race-2', 'Question 2');
 
@@ -141,20 +163,22 @@ describe('Follow-up turn order race condition (regression)', () => {
 
     it('concurrent follow-ups never interleave user/assistant turns', async () => {
         const proc = createCompletedProcessWithSession('proc-race-3', 'sess-3');
+        // Pre-persist both user turns (simulating two rapid handler calls)
+        addUserTurn(proc, 'Concurrent Q1');
+        addUserTurn(proc, 'Concurrent Q2');
         await store.addProcess(proc);
 
         let callCount = 0;
         sdkMocks.mockSendMessage.mockImplementation(async () => {
             callCount++;
             const reply = `Concurrent reply ${callCount}`;
-            // Vary response time to maximize race window
             await new Promise(r => setTimeout(r, callCount === 1 ? 20 : 5));
             return { success: true, response: reply, sessionId: 'sess-3' };
         });
 
         const executor = new CLITaskExecutor(store);
 
-        // Fire two follow-ups concurrently (the scenario that triggered the bug)
+        // Fire two follow-ups concurrently
         await Promise.all([
             executor.executeFollowUp('proc-race-3', 'Concurrent Q1'),
             executor.executeFollowUp('proc-race-3', 'Concurrent Q2'),
@@ -163,19 +187,15 @@ describe('Follow-up turn order race condition (regression)', () => {
         const updated = store.processes.get('proc-race-3');
         const turns = updated?.conversationTurns ?? [];
 
-        // With the mock store (no serialized write queue), concurrent writes
-        // may interleave user turns before assistant turns. The real FileProcessStore
-        // serializes them and produces strict alternation.
-        // We verify the weaker invariant: all user and assistant turns are present,
-        // and each user turn appears before its paired assistant turn in the array.
-        expect(turns.length).toBeGreaterThanOrEqual(4); // at least initial pair + one follow-up pair
+        // At least initial 2 + 2 pre-persisted users + 2 assistant = 6
+        expect(turns.length).toBeGreaterThanOrEqual(4);
 
         const followUpTurns = turns.slice(2);
         const userTurns = followUpTurns.filter(t => t.role === 'user');
         const assistantTurns = followUpTurns.filter(t => t.role === 'assistant');
 
-        // At least one complete follow-up exchange survived
-        expect(userTurns.length).toBeGreaterThanOrEqual(1);
+        // Both user turns and at least one assistant turn survived
+        expect(userTurns.length).toBeGreaterThanOrEqual(2);
         expect(assistantTurns.length).toBeGreaterThanOrEqual(1);
 
         // Each user turn's index in the array is less than at least one assistant turn
@@ -193,6 +213,8 @@ describe('Follow-up turn order race condition (regression)', () => {
 
     it('user turn is saved even when AI call fails', async () => {
         const proc = createCompletedProcessWithSession('proc-race-fail', 'sess-fail');
+        // Simulate handler pre-persisting user turn
+        addUserTurn(proc, 'Will fail');
         await store.addProcess(proc);
 
         sdkMocks.mockSendMessage.mockRejectedValue(new Error('Network timeout'));
@@ -203,7 +225,7 @@ describe('Follow-up turn order race condition (regression)', () => {
         const updated = store.processes.get('proc-race-fail');
         const turns = updated?.conversationTurns ?? [];
 
-        // Initial 2 + user + error assistant = 4
+        // Initial 2 + pre-persisted user + error assistant = 4
         expect(turns).toHaveLength(4);
         expect(turns[2].role).toBe('user');
         expect(turns[2].content).toBe('Will fail');
@@ -211,8 +233,11 @@ describe('Follow-up turn order race condition (regression)', () => {
         expect(turns[3].content).toContain('Error: Network timeout');
     });
 
-    it('images are persisted on user turn through executor', async () => {
+    it('images are preserved on pre-persisted user turn through executor', async () => {
         const proc = createCompletedProcessWithSession('proc-race-img', 'sess-img');
+        const images = ['data:image/png;base64,iVBOR', 'data:image/jpeg;base64,/9j/4'];
+        // Simulate handler pre-persisting user turn with images
+        addUserTurn(proc, 'Check images', images);
         await store.addProcess(proc);
 
         sdkMocks.mockSendMessage.mockResolvedValue({
@@ -221,9 +246,8 @@ describe('Follow-up turn order race condition (regression)', () => {
             sessionId: 'sess-img',
         });
 
-        const images = ['data:image/png;base64,iVBOR', 'data:image/jpeg;base64,/9j/4'];
         const executor = new CLITaskExecutor(store);
-        await executor.executeFollowUp('proc-race-img', 'Check images', undefined, undefined, undefined, images);
+        await executor.executeFollowUp('proc-race-img', 'Check images');
 
         const updated = store.processes.get('proc-race-img');
         const userTurn = updated?.conversationTurns?.find(

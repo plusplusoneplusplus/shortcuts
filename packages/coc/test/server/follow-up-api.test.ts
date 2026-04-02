@@ -137,7 +137,7 @@ describe('POST /api/processes/:id/message', () => {
             expect(body.turnIndex).toBe(2);
         });
 
-        it('should not append user turn (executor saves it); handler only sets status to running', async () => {
+        it('should persist user turn and set status to running atomically', async () => {
             const proc: AIProcess = {
                 id: 'proc-2',
                 type: 'clarification',
@@ -155,8 +155,10 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             const updated = await store.getProcess('proc-2');
-            // Handler no longer saves user turns; that is now the executor's job
-            expect(updated?.conversationTurns).toHaveLength(0);
+            // Handler persists the user turn atomically with the status change
+            expect(updated?.conversationTurns).toHaveLength(1);
+            expect(updated?.conversationTurns![0].role).toBe('user');
+            expect(updated?.conversationTurns![0].content).toBe('Hello');
             expect(updated?.status).toBe('running');
         });
 
@@ -647,7 +649,7 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
 
     describe('conversation history', () => {
-        it('should not accumulate turns in store (executor saves them)', async () => {
+        it('should accumulate user turns in store across multiple follow-ups', async () => {
             const proc: AIProcess = {
                 id: 'proc-8',
                 type: 'clarification',
@@ -665,9 +667,11 @@ describe('POST /api/processes/:id/message', () => {
             // Second follow-up
             await postJSON(`${baseUrl}/api/processes/proc-8/message`, { content: 'Second' });
 
-            // Handler no longer saves turns; executor does
+            // Handler persists user turns atomically
             const updated = await store.getProcess('proc-8');
-            expect(updated?.conversationTurns).toHaveLength(0);
+            expect(updated?.conversationTurns).toHaveLength(2);
+            expect(updated?.conversationTurns![0].content).toBe('First');
+            expect(updated?.conversationTurns![1].content).toBe('Second');
             // Verify both enqueue calls were made
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             expect(enqueueFn).toHaveBeenCalledTimes(2);
@@ -1057,7 +1061,7 @@ describe('POST /api/processes/:id/message', () => {
             expect(body.turnIndex).toBe(3);
         });
 
-        it('should return same estimated turnIndex when handler does not persist turns', async () => {
+        it('should return incrementing turnIndex as handler persists user turns', async () => {
             const existingTurns = Array.from({ length: 5 }, (_, i) => ({
                 role: i % 2 === 0 ? 'user' as const : 'assistant' as const,
                 content: `turn-${i}`,
@@ -1082,11 +1086,11 @@ describe('POST /api/processes/:id/message', () => {
             });
             expect(JSON.parse(res1.body).turnIndex).toBe(5);
 
-            // Handler doesn't save turns, so array length is still 5
+            // Handler persists turns, so array length increments
             const res2 = await postJSON(`${baseUrl}/api/processes/proc-tidx-incr/message`, {
                 content: 'second-follow-up',
             });
-            expect(JSON.parse(res2.body).turnIndex).toBe(5);
+            expect(JSON.parse(res2.body).turnIndex).toBe(6);
         });
 
         it('should start at turnIndex 0 when conversationTurns is undefined', async () => {

@@ -173,6 +173,8 @@ describe('executor session tracking', () => {
                 conversationTurns: [
                     { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
                     { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                    // User turn pre-persisted by the POST /message handler
+                    { role: 'user', content: 'What about Y?', timestamp: new Date(), turnIndex: 2, timeline: [] },
                 ],
             };
             await store.addProcess(proc);
@@ -201,6 +203,8 @@ describe('executor session tracking', () => {
                 { role: 'user' as const, content: 'Q1', timestamp: new Date(), turnIndex: 0 , timeline: [] },
                 { role: 'assistant' as const, content: 'A1', timestamp: new Date(), turnIndex: 1 , timeline: [] },
                 { role: 'user' as const, content: 'Q2', timestamp: new Date(), turnIndex: 2 , timeline: [] },
+                // User turn pre-persisted by the POST /message handler
+                { role: 'user' as const, content: 'follow up', timestamp: new Date(), turnIndex: 3 , timeline: [] },
             ];
             const proc: AIProcess = {
                 id: processId,
@@ -229,7 +233,7 @@ describe('executor session tracking', () => {
             expect(updated!.conversationTurns![0].content).toBe('Q1');
             expect(updated!.conversationTurns![1].content).toBe('A1');
             expect(updated!.conversationTurns![2].content).toBe('Q2');
-            // New user + assistant turns appended
+            // Pre-persisted user turn + executor-appended assistant turn
             expect(updated!.conversationTurns![3].content).toBe('follow up');
             expect(updated!.conversationTurns![4].content).toBe('A2');
         });
@@ -346,6 +350,8 @@ describe('executor session tracking', () => {
                 sdkSessionId: 'sess-err-2',
                 conversationTurns: [
                     { role: 'user', content: 'Q1', timestamp: new Date(), turnIndex: 0 , timeline: [] },
+                    // User turn pre-persisted by the POST /message handler
+                    { role: 'user', content: 'question', timestamp: new Date(), turnIndex: 1 , timeline: [] },
                 ],
             };
             await store.addProcess(proc);
@@ -359,7 +365,7 @@ describe('executor session tracking', () => {
             await executor.executeFollowUp(processId, 'question');
 
             const updated = store.processes.get(processId);
-            // Should have original user turn + new user turn + error turn
+            // Should have original user turn + pre-persisted user turn + error turn
             expect(updated?.conversationTurns).toHaveLength(3);
             expect(updated!.conversationTurns![1].role).toBe('user');
             expect(updated!.conversationTurns![2].role).toBe('assistant');

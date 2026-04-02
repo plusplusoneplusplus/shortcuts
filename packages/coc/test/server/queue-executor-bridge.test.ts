@@ -2808,6 +2808,10 @@ describe('CLITaskExecutor.executeFollowUp', () => {
             fullPrompt: 'test',
             status: 'completed',
             startTime: new Date(),
+            // User turn pre-persisted by the POST /message handler
+            conversationTurns: [
+                { role: 'user', content: 'msg', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            ],
         };
         await store.addProcess(process);
 
@@ -2833,6 +2837,8 @@ describe('CLITaskExecutor.executeFollowUp', () => {
             workingDirectory: '/workspace/shortcuts',
             conversationTurns: [
                 { role: 'user', content: 'initial question', timestamp: new Date(), turnIndex: 0 , timeline: [] },
+                // User turn pre-persisted by the POST /message handler
+                { role: 'user', content: 'follow up', timestamp: new Date(), turnIndex: 1 , timeline: [] },
             ],
         };
         await store.addProcess(process);
@@ -2847,7 +2853,7 @@ describe('CLITaskExecutor.executeFollowUp', () => {
             onStreamingChunk: expect.any(Function),
         }));
 
-        // Verify the process was updated with user + assistant turns
+        // Verify the process was updated with assistant turn only (user turn pre-persisted)
         const updated = await store.getProcess('proc-2');
         expect(updated?.status).toBe('completed');
         expect(updated?.conversationTurns).toHaveLength(3);
@@ -2872,7 +2878,10 @@ describe('CLITaskExecutor.executeFollowUp', () => {
             status: 'running',
             startTime: new Date(),
             sdkSessionId: 'sess-456',
-            conversationTurns: [],
+            conversationTurns: [
+                // User turn pre-persisted by the POST /message handler
+                { role: 'user', content: 'follow up', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            ],
         };
         await store.addProcess(process);
 
@@ -2941,21 +2950,35 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         const process = createCompletedProcessWithSession('proc-multi', 'sess-multi', [
             { role: 'user', content: 'Question 1', timestamp: new Date(), turnIndex: 0 , timeline: [] },
             { role: 'assistant', content: 'Reply 1', timestamp: new Date(), turnIndex: 1 , timeline: [] },
+            // User turn pre-persisted by the POST /message handler
+            { role: 'user', content: 'Question 2', timestamp: new Date(), turnIndex: 2 , timeline: [] },
         ]);
         await store.addProcess(process);
 
         mockSendMessage.mockResolvedValueOnce({ success: true, response: 'Reply 2', sessionId: 'session-123' });
         const executor = new CLITaskExecutor(store);
 
-        // Follow-up 1 (executor saves user + assistant turns)
+        // Follow-up 1 (executor saves only assistant turn)
         await executor.executeFollowUp('proc-multi', 'Question 2');
 
+        // Simulate handler pre-persisting next user turn
+        const afterFirst = store.processes.get('proc-multi')!;
+        const nextIdx1 = afterFirst.conversationTurns!.length;
+        afterFirst.conversationTurns!.push({ role: 'user', content: 'Question 3', timestamp: new Date(), turnIndex: nextIdx1, timeline: [] });
+        store.processes.set('proc-multi', afterFirst);
+
         mockSendMessage.mockResolvedValueOnce({ success: true, response: 'Reply 3', sessionId: 'session-123' });
-        // Follow-up 2 (executor saves user + assistant turns)
+        // Follow-up 2 (executor saves only assistant turn)
         await executor.executeFollowUp('proc-multi', 'Question 3');
 
+        // Simulate handler pre-persisting next user turn
+        const afterSecond = store.processes.get('proc-multi')!;
+        const nextIdx2 = afterSecond.conversationTurns!.length;
+        afterSecond.conversationTurns!.push({ role: 'user', content: 'Question 4', timestamp: new Date(), turnIndex: nextIdx2, timeline: [] });
+        store.processes.set('proc-multi', afterSecond);
+
         mockSendMessage.mockResolvedValueOnce({ success: true, response: 'Reply 4', sessionId: 'session-123' });
-        // Follow-up 3 (executor saves user + assistant turns)
+        // Follow-up 3 (executor saves only assistant turn)
         await executor.executeFollowUp('proc-multi', 'Question 4');
 
         const final = await store.getProcess('proc-multi');
@@ -2977,6 +3000,8 @@ describe('executeFollowUp - chat conversation scenarios', () => {
 
     it('should use "(No text response)" fallback when SDK returns empty response', async () => {
         const process = createCompletedProcessWithSession('proc-empty', 'sess-empty');
+        // Pre-persist user turn
+        process.conversationTurns!.push({ role: 'user', content: 'What happened?', timestamp: new Date(), turnIndex: 2, timeline: [] });
         await store.addProcess(process);
 
         mockSendMessage.mockResolvedValueOnce({ success: true, response: '', sessionId: 'session-123' });
@@ -2984,7 +3009,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         await executor.executeFollowUp('proc-empty', 'What happened?');
 
         const updated = await store.getProcess('proc-empty');
-        expect(updated!.conversationTurns).toHaveLength(4); // 2 initial + 1 user + 1 assistant
+        expect(updated!.conversationTurns).toHaveLength(4); // 2 initial + 1 pre-persisted user + 1 assistant
         expect(updated!.conversationTurns![3].content).toBe('(No text response)');
         expect(updated!.status).toBe('completed');
         // Empty string is falsy → result stored as empty/undefined
@@ -2993,6 +3018,8 @@ describe('executeFollowUp - chat conversation scenarios', () => {
 
     it('should append error turn when sendFollowUp throws (session expired)', async () => {
         const process = createCompletedProcessWithSession('proc-dying', 'sess-dying');
+        // Pre-persist user turn
+        process.conversationTurns!.push({ role: 'user', content: 'Are you still there?', timestamp: new Date(), turnIndex: 2, timeline: [] });
         await store.addProcess(process);
 
         mockSendMessage.mockRejectedValueOnce(new Error('Session expired: connection reset'));
@@ -3147,7 +3174,10 @@ describe('executeFollowUp - chat conversation scenarios', () => {
     });
 
     it('should handle follow-up when conversationTurns is empty array', async () => {
-        const process = createCompletedProcessWithSession('proc-empty-turns', 'sess-empty-turns', []);
+        const process = createCompletedProcessWithSession('proc-empty-turns', 'sess-empty-turns', [
+            // User turn pre-persisted by the POST /message handler
+            { role: 'user', content: 'hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
+        ]);
         await store.addProcess(process);
 
         mockSendMessage.mockResolvedValueOnce({ success: true, response: 'first reply', sessionId: 'session-123' });
@@ -3169,7 +3199,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         });
     });
 
-    it('should handle follow-up when conversationTurns is undefined', async () => {
+    it('should handle follow-up when conversationTurns has only pre-persisted user turn', async () => {
         const process: AIProcess = {
             id: 'proc-undef-turns',
             type: 'clarification',
@@ -3178,6 +3208,10 @@ describe('executeFollowUp - chat conversation scenarios', () => {
             status: 'completed',
             startTime: new Date(),
             sdkSessionId: 'sess-undef-turns',
+            // User turn pre-persisted by the POST /message handler
+            conversationTurns: [
+                { role: 'user', content: 'hi', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            ],
         };
         await store.addProcess(process);
 
@@ -3259,7 +3293,7 @@ describe('session tracking and conversation turns', () => {
     });
 
     it('should append turns at correct indices on follow-up', async () => {
-        // Setup: process with 2 existing turns
+        // Setup: process with 2 existing turns + pre-persisted user turn
         const processId = 'proc-followup-turns';
         const process: AIProcess = {
             id: processId,
@@ -3272,6 +3306,8 @@ describe('session tracking and conversation turns', () => {
             conversationTurns: [
                 { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0 , timeline: [] },
                 { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1 , timeline: [] },
+                // User turn pre-persisted by the POST /message handler
+                { role: 'user', content: 'What about Y?', timestamp: new Date(), turnIndex: 2 , timeline: [] },
             ],
         };
         await store.addProcess(process);
@@ -3286,7 +3322,7 @@ describe('session tracking and conversation turns', () => {
         await executor.executeFollowUp(processId, 'What about Y?');
 
         const updated = store.processes.get(processId);
-        // Existing 2 turns + 1 user turn + 1 assistant turn appended by executor
+        // Existing 2 turns + 1 pre-persisted user turn + 1 assistant turn appended by executor
         expect(updated?.conversationTurns).toHaveLength(4);
         expect(updated?.conversationTurns![2].role).toBe('user');
         expect(updated?.conversationTurns![2].content).toBe('What about Y?');

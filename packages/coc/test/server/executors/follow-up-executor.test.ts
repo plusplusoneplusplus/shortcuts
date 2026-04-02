@@ -325,7 +325,7 @@ describe('FollowUpExecutor', () => {
     // User turn serialization (regression: turn ordering race)
     // -------------------------------------------------------------------------
 
-    it('saves user turn before assistant turn to guarantee ordering', async () => {
+    it('appends only assistant turn (user turn pre-persisted by route handler)', async () => {
         sdkMocks.mockSendMessage.mockResolvedValue({
             success: true,
             response: 'AI reply',
@@ -337,6 +337,8 @@ describe('FollowUpExecutor', () => {
             conversationTurns: [
                 { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
                 { role: 'assistant', content: 'first reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                // User turn pre-persisted by the POST /message handler
+                { role: 'user', content: 'follow-up question', timestamp: new Date(), turnIndex: 2, timeline: [] },
             ],
         });
         await store.addProcess(proc);
@@ -346,7 +348,8 @@ describe('FollowUpExecutor', () => {
 
         const updated = store.processes.get('proc-order');
         const turns = updated?.conversationTurns ?? [];
-        // User turn must appear before assistant turn
+        // Pre-existing user turn preserved, executor only adds assistant turn
+        expect(turns).toHaveLength(4);
         expect(turns[2].role).toBe('user');
         expect(turns[2].content).toBe('follow-up question');
         expect(turns[3].role).toBe('assistant');
@@ -354,19 +357,25 @@ describe('FollowUpExecutor', () => {
         expect(turns[2].turnIndex).toBeLessThan(turns[3].turnIndex);
     });
 
-    it('persists images on the user turn when provided', async () => {
+    it('preserves pre-existing user turn images when appending assistant turn', async () => {
         sdkMocks.mockSendMessage.mockResolvedValue({
             success: true,
             response: 'seen image',
             sessionId: 'sess-img',
         });
 
-        const proc = makeProcess({ id: 'proc-img' });
+        const images = ['data:image/png;base64,abc123'];
+        const proc = makeProcess({
+            id: 'proc-img',
+            conversationTurns: [
+                // User turn with images pre-persisted by the POST /message handler
+                { role: 'user', content: 'look at this', timestamp: new Date(), turnIndex: 0, timeline: [], images },
+            ],
+        });
         await store.addProcess(proc);
 
-        const images = ['data:image/png;base64,abc123'];
         const executor = makeExecutor(store);
-        await executor.executeFollowUp('proc-img', 'look at this', undefined, undefined, undefined, images);
+        await executor.executeFollowUp('proc-img', 'look at this');
 
         const updated = store.processes.get('proc-img');
         const userTurn = updated?.conversationTurns?.find(
@@ -374,6 +383,10 @@ describe('FollowUpExecutor', () => {
         );
         expect(userTurn).toBeDefined();
         expect(userTurn!.images).toEqual(images);
+        // Assistant turn also added
+        const assistantTurn = updated?.conversationTurns?.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+        expect(assistantTurn!.content).toBe('seen image');
     });
 
     // -------------------------------------------------------------------------

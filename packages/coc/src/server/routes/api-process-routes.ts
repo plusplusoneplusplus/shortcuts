@@ -414,14 +414,27 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // Read optional client-provided optimistic ID for reconciliation
             const optimisticId: string | undefined = typeof body.optimisticId === 'string' ? body.optimisticId : undefined;
 
-            // Mark process as running; user turn is saved inside the executor
-            // so it is serialized before the assistant turn in the write-queue.
-            const turnIndex = proc.conversationTurns?.length ?? 0;
-            await store.updateProcess(id, { status: 'running' });
-
             // Pass content through as-is — /skill tokens are kept in the prompt
             // so the AI SDK receives the full user intent (e.g. "/impl fix the bug").
             const messageContent = (body.content as string);
+
+            // Persist the user turn and mark the process as running atomically.
+            // This ensures the SSE snapshot always includes the user message,
+            // preventing a race where the snapshot replaces optimistic UI state
+            // before the executor has written the turn.
+            const appendResult = await store.appendConversationTurn(
+                id,
+                (turnIndex) => ({
+                    role: 'user' as const,
+                    content: messageContent,
+                    timestamp: new Date(),
+                    turnIndex,
+                    timeline: [],
+                    images: validatedImages,
+                }),
+                { additionalUpdates: { status: 'running' } },
+            );
+            const turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
 
             if (bridge.enqueue) {
                 const displayName = truncateDisplayName(messageContent.trim());
