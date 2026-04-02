@@ -24,7 +24,7 @@ function StubView({ id, label }: { id: string; label: string }) {
 }
 
 export function tabFromHash(hash: string): DashboardTab | null {
-    const h = hash.replace(/^#/, '').split('/')[0];
+    const h = hash.replace(/^#/, '').split('/')[0].split('?')[0];
     if (h === 'processes' || h === 'process' || h === 'session') return 'processes';
     if (h === 'repos' || h === 'tasks') return 'repos';
     if (h === 'wiki') return 'wiki';

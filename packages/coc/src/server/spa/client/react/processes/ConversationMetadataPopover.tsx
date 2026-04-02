@@ -177,24 +177,22 @@ export function ConversationMetadataPopover({ process, turnsCount }: { process: 
                     <div key={row.label} className="contents">
                         <span className="text-[#848484]">{row.label}</span>
                         {row.link ? (
-                            <>
-                                <span
-                                    className={[
-                                        'text-[#1e1e1e] dark:text-[#cccccc]',
-                                        row.breakAll ? 'break-all' : 'break-words',
-                                        row.mono ? 'font-mono' : '',
-                                    ].join(' ')}
-                                >
+                            <div className={[
+                                'flex flex-wrap items-baseline gap-x-1.5',
+                                row.breakAll ? 'break-all' : 'break-words',
+                                row.mono ? 'font-mono' : '',
+                            ].join(' ')}>
+                                <span className="text-[#1e1e1e] dark:text-[#cccccc]">
                                     {row.value}
                                 </span>
                                 <a
                                     href={row.link}
-                                    className="ml-1.5 text-[#0078d4] dark:text-[#3794ff] hover:underline text-[10px]"
+                                    className="text-[#0078d4] dark:text-[#3794ff] hover:underline text-[10px]"
                                     title="View logs for this session"
                                 >
                                     🔍 logs
                                 </a>
-                            </>
+                            </div>
                         ) : (
                             <span
                                 className={[

@@ -236,6 +236,78 @@ describe('getSessionIdFromProcess', () => {
     });
 });
 
+describe('buildRows – Session ID link', () => {
+    it('includes a link property for the Session ID row when session ID is present', () => {
+        const rows = buildRows({ id: 'p-1', sdkSessionId: 'sess-abc' });
+        const sessionRow = rows.find(r => r.label === 'Session ID');
+        expect(sessionRow).toBeDefined();
+        expect(sessionRow!.link).toBe('#logs?sessionId=sess-abc');
+    });
+
+    it('URL-encodes the session ID in the link', () => {
+        const rows = buildRows({ id: 'p-1', sdkSessionId: 'sess/special chars&more' });
+        const sessionRow = rows.find(r => r.label === 'Session ID');
+        expect(sessionRow).toBeDefined();
+        expect(sessionRow!.link).toBe('#logs?sessionId=' + encodeURIComponent('sess/special chars&more'));
+    });
+
+    it('does not include a link when no session ID exists', () => {
+        const rows = buildRows({ id: 'p-1', status: 'running' });
+        const sessionRow = rows.find(r => r.label === 'Session ID');
+        expect(sessionRow).toBeUndefined();
+    });
+
+    it('sets breakAll and mono on the Session ID row', () => {
+        const rows = buildRows({ id: 'p-1', sdkSessionId: 'sess-xyz' });
+        const sessionRow = rows.find(r => r.label === 'Session ID');
+        expect(sessionRow!.breakAll).toBe(true);
+        expect(sessionRow!.mono).toBe(true);
+    });
+});
+
+describe('ConversationMetadataPopover – log link rendering', () => {
+    it('renders an <a> tag with correct href when session ID is present', async () => {
+        renderPopover(BASE_PROCESS);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        const link = document.querySelector('a[title="View logs for this session"]') as HTMLAnchorElement;
+        expect(link).not.toBeNull();
+        expect(link.href).toContain('#logs?sessionId=sdk-sess-789');
+        expect(link.textContent).toContain('logs');
+    });
+
+    it('does not render a log link when no session ID exists', async () => {
+        renderPopover({ id: 'p-no-session', status: 'running' });
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        const link = document.querySelector('a[title="View logs for this session"]');
+        expect(link).toBeNull();
+    });
+
+    it('wraps value and link in a single grid cell (no overflow children)', async () => {
+        renderPopover(BASE_PROCESS);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+
+        await act(async () => {
+            fireEvent.click(trigger);
+        });
+
+        // Each .contents div should have exactly 2 direct children (label + value/wrapper)
+        const contentsDivs = document.querySelectorAll('.contents');
+        for (const div of contentsDivs) {
+            expect(div.children.length).toBe(2);
+        }
+    });
+});
+
 describe('buildRows – model default fallback', () => {
     it('shows "default" when no model is set', () => {
         const rows = buildRows({ id: 'p-1', status: 'running' });
