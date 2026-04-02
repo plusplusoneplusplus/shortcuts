@@ -21,7 +21,9 @@ import {
     getLogEmitter,
     getLogHistory,
     type LogLevel,
+    type LogEntry,
     type LogHistoryOptions,
+    levelToNum,
 } from './server-log-capture';
 
 // ============================================================================
@@ -58,6 +60,8 @@ export function registerLogsRoutes(routes: Route[], logDir?: string): void {
         handler: async (req: IncomingMessage, res: ServerResponse) => {
             const parsedUrl = url.parse(req.url ?? '', true);
             const minLevel = parseLevel(parsedUrl.query.level);
+            const sessionId = typeof parsedUrl.query.sessionId === 'string' && parsedUrl.query.sessionId
+                ? parsedUrl.query.sessionId : undefined;
 
             // Set SSE headers
             res.writeHead(200, {
@@ -71,6 +75,7 @@ export function registerLogsRoutes(routes: Route[], logDir?: string): void {
             // Send buffered history as initial batch (newest-last order for stream)
             const historyOpts: LogHistoryOptions = { limit: 200 };
             if (minLevel) historyOpts.level = minLevel;
+            if (sessionId) historyOpts.sessionId = sessionId;
             const history = getLogHistory(historyOpts).reverse(); // oldest-first for initial replay
             if (history.length > 0) {
                 sendSseEvent(res, 'history', history);
@@ -82,17 +87,11 @@ export function registerLogsRoutes(routes: Route[], logDir?: string): void {
 
             const onEntry = (entry: unknown) => {
                 if (closed) return;
+                const e = entry as LogEntry;
                 // Level filter
-                if (minLevel) {
-                    const e = entry as { level: string };
-                    const LEVEL_NUM: Record<string, number> = {
-                        trace: 10, debug: 20, info: 30, warn: 40, error: 50, fatal: 60,
-                    };
-                    const VALID_LEVEL_NUM: Record<LogLevel, number> = {
-                        trace: 10, debug: 20, info: 30, warn: 40, error: 50, fatal: 60,
-                    };
-                    if ((LEVEL_NUM[e.level] ?? 0) < VALID_LEVEL_NUM[minLevel]) return;
-                }
+                if (minLevel && levelToNum(e.level) < levelToNum(minLevel)) return;
+                // Session filter
+                if (sessionId && e.sessionId !== sessionId) return;
                 sendSseEvent(res, 'log-entry', entry);
             };
 
@@ -129,6 +128,10 @@ export function registerLogsRoutes(routes: Route[], logDir?: string): void {
 
             if (typeof parsedUrl.query.component === 'string' && parsedUrl.query.component) {
                 opts.component = parsedUrl.query.component;
+            }
+
+            if (typeof parsedUrl.query.sessionId === 'string' && parsedUrl.query.sessionId) {
+                opts.sessionId = parsedUrl.query.sessionId;
             }
 
             if (parsedUrl.query.limit) {

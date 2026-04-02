@@ -241,6 +241,7 @@ export function LogsView() {
     const [search, setSearch] = useState('');
     const [paused, setPaused] = useState(false);
     const [sseStatus, setSseStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
+    const [sessionFilter, setSessionFilter] = useState<string | null>(null);
 
     const listRef = useRef<HTMLDivElement>(null);
     const pausedRef = useRef(false);
@@ -249,6 +250,18 @@ export function LogsView() {
 
     // Keep ref in sync
     pausedRef.current = paused;
+
+    // Parse sessionId from URL hash on mount & hash changes
+    useEffect(() => {
+        const readHash = () => {
+            const hash = location.hash.replace(/^#logs\??/, '');
+            const params = new URLSearchParams(hash);
+            setSessionFilter(params.get('sessionId') || null);
+        };
+        readHash();
+        window.addEventListener('hashchange', readHash);
+        return () => window.removeEventListener('hashchange', readHash);
+    }, []);
 
     const scrollToBottom = useCallback(() => {
         if (!listRef.current) return;
@@ -267,13 +280,18 @@ export function LogsView() {
         }
     }, [scrollToBottom]);
 
-    // SSE connection
+    // SSE connection — reconnects when sessionFilter changes
     useEffect(() => {
         const apiBase = getApiBase();
-        const url = `${apiBase}/logs/stream`;
+        const params = sessionFilter ? `?sessionId=${encodeURIComponent(sessionFilter)}` : '';
+        const streamUrl = `${apiBase}/logs/stream${params}`;
+
+        // Clear entries when filter changes
+        setEntries([]);
+        entriesRef.current = [];
 
         const connect = () => {
-            const es = new EventSource(url);
+            const es = new EventSource(streamUrl);
             sseRef.current = es;
             setSseStatus('connecting');
 
@@ -314,7 +332,7 @@ export function LogsView() {
             sseRef.current?.close();
             sseRef.current = null;
         };
-    }, [appendEntries]);
+    }, [appendEntries, sessionFilter]);
 
     // Auto-scroll when paused state changes from true→false
     useEffect(() => {
@@ -326,6 +344,10 @@ export function LogsView() {
     const handleClear = useCallback(() => {
         setEntries([]);
         entriesRef.current = [];
+    }, []);
+
+    const handleClearSessionFilter = useCallback(() => {
+        location.hash = '#logs';
     }, []);
 
     // Filtered entries (client-side only)
@@ -418,6 +440,22 @@ export function LogsView() {
                     Clear
                 </button>
             </div>
+
+            {/* Session filter chip */}
+            {sessionFilter && (
+                <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fff8e1] dark:bg-[#3e2c00] shrink-0" data-testid="session-filter-chip">
+                    <span className="text-xs text-[#a07500] dark:text-[#cca700]">
+                        🔗 Session: <span className="font-mono">{sessionFilter.length > 20 ? sessionFilter.slice(0, 20) + '…' : sessionFilter}</span>
+                    </span>
+                    <button
+                        className="text-xs text-[#a07500] dark:text-[#cca700] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
+                        onClick={handleClearSessionFilter}
+                        data-testid="clear-session-filter"
+                    >
+                        ✕ Clear
+                    </button>
+                </div>
+            )}
 
             {/* Log list */}
             <div

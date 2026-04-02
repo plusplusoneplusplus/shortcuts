@@ -23,6 +23,8 @@ export interface LogEntry {
     level: LogLevel;
     /** Source component (http, websocket, queue, ai-service, coc-service, …) */
     component?: string;
+    /** AI session identifier (present on SDK wrapper logs) */
+    sessionId?: string;
     /** Log message */
     msg: string;
     /** Any extra structured fields from the log call */
@@ -34,11 +36,13 @@ export interface LogHistoryOptions {
     level?: LogLevel;
     /** Only include entries from this component */
     component?: string;
+    /** Only include entries from this AI session */
+    sessionId?: string;
     /** Return at most this many entries newest-first (default: 200, max: 1000) */
     limit?: number;
     /** Return only entries with ts < this ISO timestamp */
     before?: string;
-    /** Free-text search (case-insensitive match on msg + component) */
+    /** Free-text search (case-insensitive match on msg + component + sessionId) */
     search?: string;
 }
 
@@ -118,10 +122,11 @@ export function getLogHistory(opts: LogHistoryOptions = {}): LogEntry[] {
         const e = buffer[i];
         if (levelToNum(e.level) < minLevel) continue;
         if (opts.component && e.component !== opts.component) continue;
+        if (opts.sessionId && e.sessionId !== opts.sessionId) continue;
         const entryMs = Date.parse(e.ts);
         if (entryMs >= beforeMs) continue;
         if (search) {
-            const hay = (e.msg + ' ' + (e.component ?? '')).toLowerCase();
+            const hay = (e.msg + ' ' + (e.component ?? '') + ' ' + (e.sessionId ?? '')).toLowerCase();
             if (!hay.includes(search)) continue;
         }
         results.push(e);

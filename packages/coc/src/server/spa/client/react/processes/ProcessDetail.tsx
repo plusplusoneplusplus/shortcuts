@@ -342,6 +342,19 @@ export function ProcessDetail() {
                                     Resume CLI
                                 </Button>
                             )}
+                            {resumeSessionId && (
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    data-testid="view-logs-btn"
+                                    onClick={() => {
+                                        location.hash = '#logs?sessionId=' + encodeURIComponent(resumeSessionId);
+                                    }}
+                                    title="View logs for this session"
+                                >
+                                    🔍 Logs
+                                </Button>
+                            )}
                             <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
                             <button
                                 title="Copy conversation as HTML"

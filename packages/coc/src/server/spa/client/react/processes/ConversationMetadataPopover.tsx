@@ -9,6 +9,7 @@ interface MetaRow {
     value: string;
     breakAll?: boolean;
     mono?: boolean;
+    link?: string;
 }
 
 function toStringValue(value: unknown): string | null {
@@ -52,10 +53,10 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     if (!process) return [];
 
     const rows: MetaRow[] = [];
-    const push = (label: string, value: unknown, opts?: { breakAll?: boolean; mono?: boolean }) => {
+    const push = (label: string, value: unknown, opts?: { breakAll?: boolean; mono?: boolean; link?: string }) => {
         const str = toStringValue(value);
         if (!str) return;
-        rows.push({ label, value: str, breakAll: opts?.breakAll, mono: opts?.mono });
+        rows.push({ label, value: str, breakAll: opts?.breakAll, mono: opts?.mono, link: opts?.link });
     };
 
     const processId = toStringValue(process.id);
@@ -77,7 +78,7 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     push('Status', process.status);
     push('Model', process?.metadata?.model || process?.config?.model || process?.model || 'default');
     push('Mode', process?.metadata?.mode || process?.mode);
-    push('Session ID', sessionId, { breakAll: true, mono: true });
+    push('Session ID', sessionId, { breakAll: true, mono: true, link: sessionId ? `#logs?sessionId=${encodeURIComponent(sessionId)}` : undefined });
     push('Backend', process?.metadata?.backend);
     push('Started', formatTimestamp(startedAt));
     push('Ended', formatTimestamp(endedAt));
@@ -175,15 +176,36 @@ export function ConversationMetadataPopover({ process, turnsCount }: { process: 
                 {rows.map((row) => (
                     <div key={row.label} className="contents">
                         <span className="text-[#848484]">{row.label}</span>
-                        <span
-                            className={[
-                                'text-[#1e1e1e] dark:text-[#cccccc]',
-                                row.breakAll ? 'break-all' : 'break-words',
-                                row.mono ? 'font-mono' : '',
-                            ].join(' ')}
-                        >
-                            {row.value}
-                        </span>
+                        {row.link ? (
+                            <>
+                                <span
+                                    className={[
+                                        'text-[#1e1e1e] dark:text-[#cccccc]',
+                                        row.breakAll ? 'break-all' : 'break-words',
+                                        row.mono ? 'font-mono' : '',
+                                    ].join(' ')}
+                                >
+                                    {row.value}
+                                </span>
+                                <a
+                                    href={row.link}
+                                    className="ml-1.5 text-[#0078d4] dark:text-[#3794ff] hover:underline text-[10px]"
+                                    title="View logs for this session"
+                                >
+                                    🔍 logs
+                                </a>
+                            </>
+                        ) : (
+                            <span
+                                className={[
+                                    'text-[#1e1e1e] dark:text-[#cccccc]',
+                                    row.breakAll ? 'break-all' : 'break-words',
+                                    row.mono ? 'font-mono' : '',
+                                ].join(' ')}
+                            >
+                                {row.value}
+                            </span>
+                        )}
                     </div>
                 ))}
             </div>
