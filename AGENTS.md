@@ -159,6 +159,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `preferences.json` — per-repo UI preferences
 - `tasks/` — task and plan files
 - `processes/` — per-repo process store (`index.json` + one JSON file per process, 500-process cap)
+- `outputs/` — AI conversation output markdown files (`<processId>.md`), managed by `OutputFileManager`
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/coc/src/server/`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
 
