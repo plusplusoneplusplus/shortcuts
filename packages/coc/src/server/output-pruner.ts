@@ -1,24 +1,20 @@
 /**
  * Output Pruner
  *
- * Cleans up orphaned output files in `<dataDir>/outputs/` when processes
- * are removed, cleared, or pruned. Also purges stale queue.json entries.
+ * Cleans up orphaned output files under per-repo outputs/ directories when
+ * processes are removed, cleared, or pruned. Also purges stale queue.json entries.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * No VS Code dependencies -- uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
 import * as path from 'path';
-import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { StoredProcessEntry, ProcessChangeCallback } from '@plusplusoneplusplus/forge';
-
-const OUTPUTS_SUBDIR = 'outputs';
 
 export class OutputPruner {
     private readonly store: ProcessStore;
-    private readonly outputDir: string;
     private readonly dataDir: string;
     private previousChangeCallback?: ProcessChangeCallback;
     private listening = false;
@@ -26,35 +22,44 @@ export class OutputPruner {
     constructor(store: ProcessStore, dataDir: string) {
         this.store = store;
         this.dataDir = dataDir;
-        this.outputDir = path.join(dataDir, OUTPUTS_SUBDIR);
     }
 
     /**
-     * Scan outputDir, delete files not matching any process ID in store.
-     * Returns the number of orphaned files deleted.
+     * Scan all per-repo outputs/ directories, delete files not matching any
+     * process ID in the store. Returns the number of orphaned files deleted.
      */
     async cleanupOrphans(): Promise<number> {
-        let files: string[];
+        const reposDir = path.join(this.dataDir, 'repos');
+        let repoDirs: string[];
         try {
-            files = await fs.readdir(this.outputDir);
+            const entries = await fs.readdir(reposDir, { withFileTypes: true });
+            repoDirs = entries.filter(e => e.isDirectory()).map(e => path.join(reposDir, e.name, 'outputs'));
         } catch {
-            return 0; // Directory doesn't exist yet
+            return 0;
         }
 
         const allProcesses = await this.store.getAllProcesses();
         const processIds = new Set(allProcesses.map(p => p.id));
 
         let deleted = 0;
-        for (const file of files) {
-            // Extract process ID from filename: "<processId>.md"
-            const ext = path.extname(file);
-            const processId = path.basename(file, ext);
-            if (!processIds.has(processId)) {
-                try {
-                    await fs.unlink(path.join(this.outputDir, file));
-                    deleted++;
-                } catch {
-                    // Ignore errors (file may have been deleted concurrently)
+        for (const outputDir of repoDirs) {
+            let files: string[];
+            try {
+                files = await fs.readdir(outputDir);
+            } catch {
+                continue;
+            }
+
+            for (const file of files) {
+                const ext = path.extname(file);
+                const processId = path.basename(file, ext);
+                if (!processIds.has(processId)) {
+                    try {
+                        await fs.unlink(path.join(outputDir, file));
+                        deleted++;
+                    } catch {
+                        // Ignore errors (file may have been deleted concurrently)
+                    }
                 }
             }
         }
@@ -62,32 +67,38 @@ export class OutputPruner {
     }
 
     /**
-     * Delete the output file for a single process ID.
-     * No-op if the file doesn't exist.
+     * Delete the output file for a single process.
+     * Uses the stored rawStdoutFilePath if available, otherwise no-op.
      */
     async deleteOutputFile(processId: string): Promise<void> {
-        const filePath = path.join(this.outputDir, `${processId}.md`);
         try {
-            await fs.unlink(filePath);
+            const proc = await this.store.getProcess(processId);
+            if (proc?.rawStdoutFilePath) {
+                await fs.unlink(proc.rawStdoutFilePath);
+            }
         } catch {
-            // Ignore if already deleted or doesn't exist
+            // Ignore if already deleted or process not found
         }
     }
 
     /**
-     * Delete output files for multiple process IDs.
+     * Delete output files for multiple process entries.
+     * Uses rawStdoutFilePath from each entry's process object.
      */
-    async deleteOutputFiles(processIds: string[]): Promise<void> {
-        await Promise.all(processIds.map(id => this.deleteOutputFile(id)));
+    async deleteOutputFiles(entries: StoredProcessEntry[]): Promise<void> {
+        await Promise.all(entries.map(async (entry) => {
+            const filePath = entry.process.rawStdoutFilePath;
+            if (filePath) {
+                try { await fs.unlink(filePath); } catch { /* ignore */ }
+            }
+        }));
     }
 
     /**
      * Handle pruned entries from FileProcessStore's onPrune callback.
      */
     handlePrunedEntries(entries: StoredProcessEntry[]): void {
-        const ids = entries.map(e => e.process.id);
-        // Fire-and-forget — pruning cleanup should not block addProcess
-        this.deleteOutputFiles(ids).catch(() => {});
+        this.deleteOutputFiles(entries).catch(() => {});
     }
 
     /**
@@ -100,14 +111,14 @@ export class OutputPruner {
         try {
             raw = await fs.readFile(queuePath, 'utf-8');
         } catch {
-            return 0; // File doesn't exist
+            return 0;
         }
 
         let state: { version?: number; pending?: Array<{ id: string; processId?: string }>; history?: Array<{ id: string; processId?: string }> };
         try {
             state = JSON.parse(raw);
         } catch {
-            return 0; // Corrupt file
+            return 0;
         }
 
         const allProcesses = await this.store.getAllProcesses();
@@ -115,17 +126,15 @@ export class OutputPruner {
 
         let removedCount = 0;
 
-        // Clean pending entries whose processId is not in the store
         if (Array.isArray(state.pending)) {
             const original = state.pending.length;
             state.pending = state.pending.filter(entry => {
-                if (!entry.processId) { return true; } // No linked process — keep
+                if (!entry.processId) { return true; }
                 return processIds.has(entry.processId);
             });
             removedCount += original - state.pending.length;
         }
 
-        // Clean history entries whose processId is not in the store
         if (Array.isArray(state.history)) {
             const original = state.history.length;
             state.history = state.history.filter(entry => {
@@ -141,7 +150,6 @@ export class OutputPruner {
                 await fs.writeFile(tmpPath, JSON.stringify(state, null, 2), 'utf-8');
                 await fs.rename(tmpPath, queuePath);
             } catch {
-                // Non-fatal: cleanup failure shouldn't crash the server
                 try { await fs.unlink(tmpPath); } catch { /* ignore */ }
             }
         }
@@ -159,17 +167,15 @@ export class OutputPruner {
         this.previousChangeCallback = this.store.onProcessChange;
 
         this.store.onProcessChange = (event) => {
-            // Forward to previous listener first
             this.previousChangeCallback?.(event);
 
             switch (event.type) {
                 case 'process-removed':
-                    if (event.process) {
-                        this.deleteOutputFile(event.process.id).catch(() => {});
+                    if (event.process?.rawStdoutFilePath) {
+                        fs.unlink(event.process.rawStdoutFilePath).catch(() => {});
                     }
                     break;
                 case 'processes-cleared':
-                    // After clear, scan and remove all orphaned output files
                     this.cleanupOrphans().catch(() => {});
                     break;
             }

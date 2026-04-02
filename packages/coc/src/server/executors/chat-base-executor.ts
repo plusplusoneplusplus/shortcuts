@@ -314,7 +314,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);
-            await this.persistOutput(processId, buffer);
+            await this.persistOutput(processId, buffer, payload.workspaceId);
         }
     }
 }

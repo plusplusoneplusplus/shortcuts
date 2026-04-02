@@ -15,6 +15,8 @@ import type { AIProcess, AIProcessStatus } from '@plusplusoneplusplus/forge';
 import { OutputPruner } from '../../src/server/output-pruner';
 import { OutputFileManager } from '../../src/server/output-file-manager';
 
+const TEST_WORKSPACE = 'ws-test';
+
 function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {
     return {
         id,
@@ -50,52 +52,62 @@ describe('OutputPruner', () => {
     describe('cleanupOrphans', () => {
         it('should delete output files for processes not in the store', async () => {
             // Create output files for some "processes"
-            await OutputFileManager.saveOutput('orphan-1', 'content1', tmpDir);
-            await OutputFileManager.saveOutput('orphan-2', 'content2', tmpDir);
-            await OutputFileManager.saveOutput('active-1', 'content3', tmpDir);
+            await OutputFileManager.saveOutput('orphan-1', 'content1', tmpDir, TEST_WORKSPACE);
+            await OutputFileManager.saveOutput('orphan-2', 'content2', tmpDir, TEST_WORKSPACE);
+            const activePath = await OutputFileManager.saveOutput('active-1', 'content3', tmpDir, TEST_WORKSPACE);
 
             // Only active-1 exists in the store
-            await store.addProcess(makeProcess('active-1', { status: 'running' }));
+            await store.addProcess(makeProcess('active-1', { status: 'running', rawStdoutFilePath: activePath! }));
 
             const deleted = await pruner.cleanupOrphans();
 
             expect(deleted).toBe(2);
 
             // Orphan files should be gone
-            await expect(fs.access(path.join(tmpDir, 'outputs', 'orphan-1.md'))).rejects.toThrow();
-            await expect(fs.access(path.join(tmpDir, 'outputs', 'orphan-2.md'))).rejects.toThrow();
+            const outputsDir = path.join(tmpDir, 'repos', TEST_WORKSPACE, 'outputs');
+            await expect(fs.access(path.join(outputsDir, 'orphan-1.md'))).rejects.toThrow();
+            await expect(fs.access(path.join(outputsDir, 'orphan-2.md'))).rejects.toThrow();
 
             // Active file should remain
-            const content = await fs.readFile(path.join(tmpDir, 'outputs', 'active-1.md'), 'utf-8');
+            const content = await fs.readFile(path.join(outputsDir, 'active-1.md'), 'utf-8');
             expect(content).toBe('content3');
         });
 
         it('should preserve output files for running/queued processes', async () => {
-            await OutputFileManager.saveOutput('running-1', 'output', tmpDir);
-            await OutputFileManager.saveOutput('queued-1', 'output', tmpDir);
+            const runningPath = await OutputFileManager.saveOutput('running-1', 'output', tmpDir, TEST_WORKSPACE);
+            const queuedPath = await OutputFileManager.saveOutput('queued-1', 'output', tmpDir, TEST_WORKSPACE);
 
-            await store.addProcess(makeProcess('running-1', { status: 'running' }));
-            await store.addProcess(makeProcess('queued-1', { status: 'queued' }));
+            await store.addProcess(makeProcess('running-1', { status: 'running', rawStdoutFilePath: runningPath! }));
+            await store.addProcess(makeProcess('queued-1', { status: 'queued', rawStdoutFilePath: queuedPath! }));
 
             const deleted = await pruner.cleanupOrphans();
             expect(deleted).toBe(0);
 
             // Both files should remain
-            const content1 = await fs.readFile(path.join(tmpDir, 'outputs', 'running-1.md'), 'utf-8');
+            const outputsDir = path.join(tmpDir, 'repos', TEST_WORKSPACE, 'outputs');
+            const content1 = await fs.readFile(path.join(outputsDir, 'running-1.md'), 'utf-8');
             expect(content1).toBe('output');
-            const content2 = await fs.readFile(path.join(tmpDir, 'outputs', 'queued-1.md'), 'utf-8');
+            const content2 = await fs.readFile(path.join(outputsDir, 'queued-1.md'), 'utf-8');
             expect(content2).toBe('output');
         });
 
-        it('should return 0 when outputs directory does not exist', async () => {
+        it('should return 0 when repos directory does not exist', async () => {
             const deleted = await pruner.cleanupOrphans();
             expect(deleted).toBe(0);
         });
 
         it('should return 0 when outputs directory is empty', async () => {
-            await fs.mkdir(path.join(tmpDir, 'outputs'), { recursive: true });
+            await fs.mkdir(path.join(tmpDir, 'repos', TEST_WORKSPACE, 'outputs'), { recursive: true });
             const deleted = await pruner.cleanupOrphans();
             expect(deleted).toBe(0);
+        });
+
+        it('should scan multiple workspace output directories', async () => {
+            await OutputFileManager.saveOutput('orphan-a', 'content', tmpDir, 'ws-1');
+            await OutputFileManager.saveOutput('orphan-b', 'content', tmpDir, 'ws-2');
+
+            const deleted = await pruner.cleanupOrphans();
+            expect(deleted).toBe(2);
         });
     });
 
@@ -104,15 +116,16 @@ describe('OutputPruner', () => {
     // ========================================================================
 
     describe('deleteOutputFile', () => {
-        it('should delete an existing output file', async () => {
-            await OutputFileManager.saveOutput('proc-1', 'content', tmpDir);
+        it('should delete an existing output file via rawStdoutFilePath', async () => {
+            const filePath = await OutputFileManager.saveOutput('proc-1', 'content', tmpDir, TEST_WORKSPACE);
+            await store.addProcess(makeProcess('proc-1', { rawStdoutFilePath: filePath! }));
 
             await pruner.deleteOutputFile('proc-1');
 
-            await expect(fs.access(path.join(tmpDir, 'outputs', 'proc-1.md'))).rejects.toThrow();
+            await expect(fs.access(filePath!)).rejects.toThrow();
         });
 
-        it('should not throw for missing file', async () => {
+        it('should not throw for missing process', async () => {
             await expect(pruner.deleteOutputFile('non-existent')).resolves.toBeUndefined();
         });
     });
@@ -125,32 +138,32 @@ describe('OutputPruner', () => {
         it('should delete output file when removeProcess is called', async () => {
             pruner.startListening();
 
-            await store.addProcess(makeProcess('proc-1', { status: 'completed' }));
-            await OutputFileManager.saveOutput('proc-1', 'content', tmpDir);
+            const filePath = await OutputFileManager.saveOutput('proc-1', 'content', tmpDir, TEST_WORKSPACE);
+            await store.addProcess(makeProcess('proc-1', { status: 'completed', rawStdoutFilePath: filePath! }));
 
             await store.removeProcess('proc-1');
 
             // Give async cleanup a tick to run
             await new Promise(r => setTimeout(r, 50));
 
-            await expect(fs.access(path.join(tmpDir, 'outputs', 'proc-1.md'))).rejects.toThrow();
+            await expect(fs.access(filePath!)).rejects.toThrow();
         });
 
         it('should clean up all output files when clearProcesses is called', async () => {
             pruner.startListening();
 
-            await store.addProcess(makeProcess('proc-1'));
-            await store.addProcess(makeProcess('proc-2'));
-            await OutputFileManager.saveOutput('proc-1', 'content1', tmpDir);
-            await OutputFileManager.saveOutput('proc-2', 'content2', tmpDir);
+            const filePath1 = await OutputFileManager.saveOutput('proc-1', 'content1', tmpDir, TEST_WORKSPACE);
+            const filePath2 = await OutputFileManager.saveOutput('proc-2', 'content2', tmpDir, TEST_WORKSPACE);
+            await store.addProcess(makeProcess('proc-1', { rawStdoutFilePath: filePath1! }));
+            await store.addProcess(makeProcess('proc-2', { rawStdoutFilePath: filePath2! }));
 
             await store.clearProcesses();
 
             // Give async cleanup a tick to run
             await new Promise(r => setTimeout(r, 100));
 
-            await expect(fs.access(path.join(tmpDir, 'outputs', 'proc-1.md'))).rejects.toThrow();
-            await expect(fs.access(path.join(tmpDir, 'outputs', 'proc-2.md'))).rejects.toThrow();
+            await expect(fs.access(filePath1!)).rejects.toThrow();
+            await expect(fs.access(filePath2!)).rejects.toThrow();
         });
 
         it('should forward events to previous onProcessChange callback', async () => {
@@ -170,15 +183,15 @@ describe('OutputPruner', () => {
             pruner.startListening();
             pruner.stopListening();
 
-            await store.addProcess(makeProcess('proc-1'));
-            await OutputFileManager.saveOutput('proc-1', 'content', tmpDir);
+            const filePath = await OutputFileManager.saveOutput('proc-1', 'content', tmpDir, TEST_WORKSPACE);
+            await store.addProcess(makeProcess('proc-1', { status: 'completed', rawStdoutFilePath: filePath! }));
             await store.removeProcess('proc-1');
 
             // Give time for any cleanup
             await new Promise(r => setTimeout(r, 50));
 
             // File should still exist since pruner stopped listening
-            const content = await fs.readFile(path.join(tmpDir, 'outputs', 'proc-1.md'), 'utf-8');
+            const content = await fs.readFile(filePath!, 'utf-8');
             expect(content).toBe('content');
         });
 
@@ -186,12 +199,12 @@ describe('OutputPruner', () => {
             pruner.startListening();
             pruner.startListening(); // second call should be no-op
 
-            await store.addProcess(makeProcess('proc-1'));
-            await OutputFileManager.saveOutput('proc-1', 'content', tmpDir);
+            const filePath = await OutputFileManager.saveOutput('proc-1', 'content', tmpDir, TEST_WORKSPACE);
+            await store.addProcess(makeProcess('proc-1', { status: 'completed', rawStdoutFilePath: filePath! }));
             await store.removeProcess('proc-1');
 
             await new Promise(r => setTimeout(r, 50));
-            await expect(fs.access(path.join(tmpDir, 'outputs', 'proc-1.md'))).rejects.toThrow();
+            await expect(fs.access(filePath!)).rejects.toThrow();
         });
     });
 
@@ -211,11 +224,12 @@ describe('OutputPruner', () => {
             // Add processes at limit with output files
             for (let i = 0; i < 5; i++) {
                 const id = `proc-${i}`;
+                const filePath = await OutputFileManager.saveOutput(id, `content-${i}`, tmpDir, TEST_WORKSPACE);
                 await prunerStore.addProcess(makeProcess(id, {
                     status: 'completed',
                     startTime: new Date(Date.now() + i * 1000),
+                    rawStdoutFilePath: filePath!,
                 }));
-                await OutputFileManager.saveOutput(id, `content-${i}`, tmpDir);
             }
 
             // Add 3 more to trigger pruning of 3 oldest
@@ -229,17 +243,19 @@ describe('OutputPruner', () => {
             // Give async delete a tick
             await new Promise(r => setTimeout(r, 500));
 
+            const outputsDir = path.join(tmpDir, 'repos', TEST_WORKSPACE, 'outputs');
+
             // The 3 oldest output files should be deleted
             for (let i = 0; i < 3; i++) {
                 await expect(
-                    fs.access(path.join(tmpDir, 'outputs', `proc-${i}.md`))
+                    fs.access(path.join(outputsDir, `proc-${i}.md`))
                 ).rejects.toThrow();
             }
 
             // Remaining files should still exist
             for (let i = 3; i < 5; i++) {
                 const content = await fs.readFile(
-                    path.join(tmpDir, 'outputs', `proc-${i}.md`), 'utf-8'
+                    path.join(outputsDir, `proc-${i}.md`), 'utf-8'
                 );
                 expect(content).toBe(`content-${i}`);
             }

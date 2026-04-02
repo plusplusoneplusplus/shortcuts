@@ -248,10 +248,10 @@ export abstract class BaseExecutor {
      * Persist accumulated conversation output to disk.
      * Non-fatal: errors are silently ignored.
      */
-    protected async persistOutput(processId: string, content: string): Promise<void> {
+    protected async persistOutput(processId: string, content: string, workspaceId?: string): Promise<void> {
         if (!content || !this.dataDir) { return; }
         try {
-            const outputPath = await OutputFileManager.saveOutput(processId, content, this.dataDir);
+            const outputPath = await OutputFileManager.saveOutput(processId, content, this.dataDir, workspaceId);
             if (outputPath) {
                 await this.store.updateProcess(processId, { rawStdoutFilePath: outputPath });
             }

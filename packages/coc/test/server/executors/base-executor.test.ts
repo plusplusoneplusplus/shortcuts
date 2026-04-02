@@ -34,8 +34,8 @@ class TestExecutor extends BaseExecutor {
     public async flushConversationTurnPublic(processId: string, streaming: boolean): Promise<void> {
         return this.flushConversationTurn(processId, streaming);
     }
-    public async persistOutputPublic(processId: string, content: string): Promise<void> {
-        return this.persistOutput(processId, content);
+    public async persistOutputPublic(processId: string, content: string, workspaceId?: string): Promise<void> {
+        return this.persistOutput(processId, content, workspaceId);
     }
     public buildToolEventHandlerPublic(processId: string, computeTurnIndex: () => number) {
         return this.buildToolEventHandler(processId, computeTurnIndex);
