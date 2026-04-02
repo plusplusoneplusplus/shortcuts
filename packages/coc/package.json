@@ -1,6 +1,6 @@
 {
   "name": "@plusplusoneplusplus/coc",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "CoC (Copilot of Copilot) - CLI tool for executing YAML-based AI pipelines",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,7 +23,7 @@
     "@github/copilot-sdk": "^0.2.0",
     "@monaco-editor/react": "^4.7.0",
     "@octokit/rest": "^22.0.1",
-    "@plusplusoneplusplus/forge": "^1.0.2",
+    "@plusplusoneplusplus/forge": "^1.0.3",
     "@uiw/react-json-view": "^2.0.0-alpha.41",
     "azure-devops-node-api": "^14.1.0",
     "commander": "^12.1.0",
