@@ -142,6 +142,12 @@ describe('TopBar responsive behavior', () => {
         expect(btn.className).toContain('md:inline-flex');
     });
 
+    it('models button renders atom symbol icon', () => {
+        render(<TopBar />);
+        const btn = document.getElementById('models-toggle')!;
+        expect(btn.textContent).toContain('⚛');
+    });
+
     it('models button has hidden md:inline-flex classes (hidden on mobile)', () => {
         viewportCleanup = mockViewport(375);
         render(<TopBar />);

@@ -232,7 +232,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     title="Models"
                     onClick={() => switchTab('models')}
                 >
-                    &#127907;
+                    ⚛
                 </button>
                 <button
                     id="admin-toggle"
