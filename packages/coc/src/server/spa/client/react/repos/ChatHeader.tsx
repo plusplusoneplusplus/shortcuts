@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Badge } from '../shared';
 import { Button } from '../shared';
 import { ReferencesDropdown } from '../shared/ReferencesDropdown';
 import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
-import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
+import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration, statusIcon, statusLabel } from '../utils/format';
+import { chatMarkdownToHtml } from '../processes/ConversationTurnBubble';
 import { cn } from '../shared/cn';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useFloatingChats } from '../context/FloatingChatsContext';
@@ -34,6 +36,8 @@ export interface ChatHeaderProps {
     onFloat: () => void;
     /** Override the default "Chat" title */
     title?: string;
+    /** Workspace ID for HTML copy (markdown rendering with image path rewriting) */
+    wsId?: string;
 }
 
 export function ChatHeader({
@@ -60,9 +64,11 @@ export function ChatHeader({
     onPopOut,
     onFloat,
     title,
+    wsId,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
+    const [copiedHtml, setCopiedHtml] = useState(false);
 
     return (
         <div className={cn(
@@ -160,6 +166,24 @@ export function ChatHeader({
                             <path d="M3 2h7a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5"/>
                         </svg>
                     )}
+                </button>
+                <button
+                    title="Copy conversation as HTML"
+                    data-testid="copy-conversation-html-btn"
+                    disabled={loading || turns.length === 0}
+                    onClick={async () => {
+                        try {
+                            const html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId));
+                            await copyHtmlToClipboard(html);
+                            setCopiedHtml(true);
+                            setTimeout(() => setCopiedHtml(false), 2000);
+                        } catch (e) {
+                            console.error('Copy HTML failed:', e);
+                        }
+                    }}
+                    className="inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                >
+                    {copiedHtml ? '✓' : 'HTML'}
                 </button>
                 {!isPending && metadataProcess && (
                     <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />

@@ -179,6 +179,63 @@ export function splitMarkdownSections(content: string): MarkdownSection[] {
     return sections;
 }
 
+/**
+ * Convert an entire conversation to a self-contained HTML string suitable for
+ * pasting into rich-text editors (email, Notion, Google Docs, etc.).
+ *
+ * @param turns       The conversation turns to render.
+ * @param contentToHtml  Converts a single turn's markdown content to HTML.
+ *                       Callers typically pass `(c) => chatMarkdownToHtml(c, wsId)`.
+ * @param truncateAt  Max characters for tool-call args/result previews.
+ */
+export function formatConversationAsHtml(
+    turns: ConversationTurnLike[],
+    contentToHtml: (content: string) => string,
+    truncateAt = 200,
+): string {
+    if (!turns || turns.length === 0) return '';
+
+    const roleBadge = (role: string) => {
+        const bg = role === 'user' ? '#e1f0ff' : '#f0f0f0';
+        const color = role === 'user' ? '#005a9e' : '#1e1e1e';
+        return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;background:${bg};color:${color};">${escapeHtml(role)}</span>`;
+    };
+
+    const sections = turns.map(turn => {
+        const lines: string[] = [];
+        lines.push(`<div style="margin-bottom:16px;">`);
+        lines.push(`  <div style="margin-bottom:4px;">${roleBadge(turn.role)}</div>`);
+        const html = contentToHtml(turn.content || '');
+        if (html) {
+            lines.push(`  <div style="padding-left:4px;">${html}</div>`);
+        }
+        if (turn.toolCalls && turn.toolCalls.length > 0) {
+            lines.push(`  <div style="margin-top:8px;padding-left:4px;">`);
+            for (const tc of turn.toolCalls) {
+                const toolName = tc.toolName || tc.name || 'unknown';
+                const argsJson = JSON.stringify(tc.args ?? {});
+                const argsStr = escapeHtml(truncate(argsJson, truncateAt));
+                lines.push(`    <div style="margin-bottom:4px;font-family:monospace;font-size:12px;background:#f6f6f6;border:1px solid #e0e0e0;border-radius:4px;padding:6px 8px;">`);
+                lines.push(`      <strong style="color:#0078d4;">${escapeHtml(toolName)}</strong>`);
+                lines.push(`      <span style="color:#666;"> args: ${argsStr}</span>`);
+                if (tc.status === 'pending' || tc.status === 'running') {
+                    lines.push(`      <span style="color:#848484;"> (${escapeHtml(tc.status)})</span>`);
+                } else if (tc.error != null) {
+                    lines.push(`      <br/><span style="color:#d32f2f;">error: ${escapeHtml(truncate(tc.error, truncateAt))}</span>`);
+                } else if (tc.result != null) {
+                    lines.push(`      <br/><span style="color:#333;">result: ${escapeHtml(truncate(tc.result, truncateAt))}</span>`);
+                }
+                lines.push(`    </div>`);
+            }
+            lines.push(`  </div>`);
+        }
+        lines.push(`</div>`);
+        return lines.join('\n');
+    });
+
+    return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;">\n${sections.join('\n<hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;"/>\n')}\n</div>`;
+}
+
 export function formatConversationAsText(turns: ConversationTurnLike[], truncateAt = 100): string {
     if (!turns || turns.length === 0) return '';
     return turns.map(turn => {

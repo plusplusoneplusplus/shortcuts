@@ -11,7 +11,8 @@ import { Badge, Button, Spinner, linkifyFilePaths } from '../shared';
 import { ConversationTurnBubble } from './ConversationTurnBubble';
 import { ConversationMiniMap } from './ConversationMiniMap';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from './ConversationMetadataPopover';
-import { formatDuration, statusIcon, statusLabel } from '../utils/format';
+import { formatDuration, statusIcon, statusLabel, copyHtmlToClipboard, formatConversationAsHtml } from '../utils/format';
+import { chatMarkdownToHtml } from './ConversationTurnBubble';
 import { WorkflowDAGSection } from './dag';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import type { ClientConversationTurn } from '../types/dashboard';
@@ -71,6 +72,7 @@ export function ProcessDetail() {
     const [pipelinePhases, setPipelinePhases] = useState<Array<{ phase: string; status: string; timestamp?: string; durationMs?: number; error?: string; itemCount?: number }>>([]);
     const [pipelineProgress, setPipelineProgress] = useState<{ phase: string; totalItems: number; completedItems: number; failedItems: number; percentage: number; message?: string } | null>(null);
     const [hookSteps, setHookSteps] = useState<Array<{ step: string; status: string; script: string; output?: string; durationMs?: number }>>([]);
+    const [copiedHtml, setCopiedHtml] = useState(false);
 
     const process = processes.find((p: any) => p.id === selectedId);
 
@@ -341,6 +343,24 @@ export function ProcessDetail() {
                                 </Button>
                             )}
                             <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                            <button
+                                title="Copy conversation as HTML"
+                                data-testid="copy-conversation-html-btn"
+                                disabled={loading || turns.length === 0}
+                                onClick={async () => {
+                                    try {
+                                        const html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId ?? undefined));
+                                        await copyHtmlToClipboard(html);
+                                        setCopiedHtml(true);
+                                        setTimeout(() => setCopiedHtml(false), 2000);
+                                    } catch (e) {
+                                        console.error('Copy HTML failed:', e);
+                                    }
+                                }}
+                                className="inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                            >
+                                {copiedHtml ? '✓' : 'HTML'}
+                            </button>
                         </div>
                     </div>
                     {wsName && wsId && (

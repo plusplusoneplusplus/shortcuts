@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { formatRelativeTime, formatConversationAsText } from '../../../../src/server/spa/client/react/utils/format';
+import { formatRelativeTime, formatConversationAsText, formatConversationAsHtml, escapeHtml } from '../../../../src/server/spa/client/react/utils/format';
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -221,5 +221,167 @@ describe('formatConversationAsText', () => {
         const output = formatConversationAsText(turns);
         expect(output).toContain('[tool: grep]');
         expect(output).not.toContain('undefined');
+    });
+});
+
+describe('formatConversationAsHtml', () => {
+    const identity = (c: string) => escapeHtml(c);
+
+    it('returns empty string for empty turns', () => {
+        expect(formatConversationAsHtml([], identity)).toBe('');
+    });
+
+    it('returns empty string for null/undefined turns', () => {
+        expect(formatConversationAsHtml(null as any, identity)).toBe('');
+        expect(formatConversationAsHtml(undefined as any, identity)).toBe('');
+    });
+
+    it('wraps output in a container div', () => {
+        const turns = [{ role: 'user' as const, content: 'Hello' }];
+        const html = formatConversationAsHtml(turns, identity);
+        expect(html).toMatch(/^<div style="font-family:/);
+        expect(html).toMatch(/<\/div>$/);
+    });
+
+    it('includes role badges for user and assistant', () => {
+        const turns = [
+            { role: 'user' as const, content: 'Hi' },
+            { role: 'assistant' as const, content: 'Hello' },
+        ];
+        const html = formatConversationAsHtml(turns, identity);
+        expect(html).toContain('>user<');
+        expect(html).toContain('>assistant<');
+    });
+
+    it('calls contentToHtml for each turn content', () => {
+        const converter = vi.fn((c: string) => `<b>${c}</b>`);
+        const turns = [
+            { role: 'user' as const, content: 'Question' },
+            { role: 'assistant' as const, content: 'Answer' },
+        ];
+        formatConversationAsHtml(turns, converter);
+        expect(converter).toHaveBeenCalledTimes(2);
+        expect(converter).toHaveBeenCalledWith('Question');
+        expect(converter).toHaveBeenCalledWith('Answer');
+    });
+
+    it('includes converted HTML content in output', () => {
+        const converter = (c: string) => `<em>${c}</em>`;
+        const turns = [{ role: 'user' as const, content: 'Test' }];
+        const html = formatConversationAsHtml(turns, converter);
+        expect(html).toContain('<em>Test</em>');
+    });
+
+    it('renders tool calls with name, args, and result', () => {
+        const turns = [{
+            role: 'assistant' as const,
+            content: 'Done',
+            toolCalls: [{
+                toolName: 'read_file',
+                args: { path: 'src/foo.ts' },
+                result: 'file content here',
+                status: 'completed',
+            }],
+        }];
+        const html = formatConversationAsHtml(turns, identity);
+        expect(html).toContain('read_file');
+        expect(html).toContain('src/foo.ts');
+        expect(html).toContain('result: file content here');
+    });
+
+    it('renders tool call errors', () => {
+        const turns = [{
+            role: 'assistant' as const,
+            content: 'Oops',
+            toolCalls: [{
+                toolName: 'write_file',
+                args: { path: 'x' },
+                error: 'Permission denied',
+                status: 'failed',
+            }],
+        }];
+        const html = formatConversationAsHtml(turns, identity);
+        expect(html).toContain('error: Permission denied');
+    });
+
+    it('shows status for pending/running tool calls', () => {
+        const turns = [{
+            role: 'assistant' as const,
+            content: 'Working',
+            toolCalls: [
+                { toolName: 'tool_a', args: {}, status: 'pending' },
+                { toolName: 'tool_b', args: {}, status: 'running' },
+            ],
+        }];
+        const html = formatConversationAsHtml(turns, identity);
+        expect(html).toContain('(pending)');
+        expect(html).toContain('(running)');
+        expect(html).not.toContain('result:');
+    });
+
+    it('truncates long tool call args and results', () => {
+        const longStr = 'a'.repeat(300);
+        const turns = [{
+            role: 'assistant' as const,
+            content: 'Done',
+            toolCalls: [{
+                toolName: 'run',
+                args: { data: longStr },
+                result: longStr,
+                status: 'completed',
+            }],
+        }];
+        const html = formatConversationAsHtml(turns, identity, 50);
+        expect(html).not.toContain(longStr);
+        expect(html).toContain('…');
+    });
+
+    it('uses .name field when .toolName is absent', () => {
+        const turns = [{
+            role: 'assistant' as const,
+            content: 'Searching',
+            toolCalls: [{
+                name: 'grep',
+                args: { pattern: 'foo' },
+                result: 'bar',
+                status: 'completed',
+            }] as any[],
+        }];
+        const html = formatConversationAsHtml(turns, identity);
+        expect(html).toContain('grep');
+    });
+
+    it('separates turns with <hr> elements', () => {
+        const turns = [
+            { role: 'user' as const, content: 'A' },
+            { role: 'assistant' as const, content: 'B' },
+        ];
+        const html = formatConversationAsHtml(turns, identity);
+        expect(html).toContain('<hr');
+    });
+
+    it('handles turns with empty content', () => {
+        const turns = [
+            { role: 'assistant' as const, content: '' },
+        ];
+        const html = formatConversationAsHtml(turns, identity);
+        expect(html).toContain('>assistant<');
+    });
+
+    it('escapes HTML in tool call names and args', () => {
+        const turns = [{
+            role: 'assistant' as const,
+            content: 'test',
+            toolCalls: [{
+                toolName: '<script>alert(1)</script>',
+                args: { key: '<img src=x>' },
+                result: 'ok',
+                status: 'completed',
+            }],
+        }];
+        const html = formatConversationAsHtml(turns, identity);
+        expect(html).not.toContain('<script>');
+        expect(html).not.toContain('<img src=x>');
+        expect(html).toContain('&lt;script&gt;');
     });
 });
