@@ -20,6 +20,30 @@ import { getLogger, LogCategory } from '../logger';
 
 // ── mapping helpers ──────────────────────────────────────────
 
+/**
+ * Resolve the browser-friendly web URL for a pull request.
+ * Priority: _links.web.href > constructed from repository.webUrl > converted from API URL > empty.
+ */
+function resolveWebUrl(pr: GitPullRequest): string {
+    if (pr._links?.web?.href) {
+        return pr._links.web.href;
+    }
+    // Construct from repository.webUrl + pullRequestId
+    if (pr.repository?.webUrl && pr.pullRequestId != null) {
+        return `${pr.repository.webUrl}/pullrequest/${pr.pullRequestId}`;
+    }
+    // Convert API URL pattern to web URL:
+    //   .../org/proj/_apis/git/repositories/<guid>/pullRequests/<id>
+    //   → .../org/proj/_git/<repoName>/pullrequest/<id>
+    if (pr.url && pr.repository?.name && pr.pullRequestId != null) {
+        const apiPrefix = pr.url.match(/^(https?:\/\/.+?\/.+?\/.+?)\/_apis\/git\/repositories\//);
+        if (apiPrefix) {
+            return `${apiPrefix[1]}/_git/${pr.repository.name}/pullrequest/${pr.pullRequestId}`;
+        }
+    }
+    return pr.url ?? '';
+}
+
 function mapAdoVoteToReviewVote(vote: number | undefined): ReviewVote {
     switch (vote) {
         case 10: return 'approved';
@@ -77,7 +101,7 @@ function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullReques
         updatedAt: pr.creationDate ? new Date(pr.creationDate) : new Date(0),
         mergedAt: pr.closedDate && status === 'merged' ? new Date(pr.closedDate) : undefined,
         closedAt: pr.closedDate && status === 'closed' ? new Date(pr.closedDate) : undefined,
-        url: pr.url ?? '',
+        url: resolveWebUrl(pr),
         repositoryId,
         reviewers: (pr.reviewers ?? []).map(mapAdoReviewer),
         labels: (pr.labels ?? []).map((l: { name?: string }) => l.name ?? '').filter(Boolean),
@@ -120,27 +144,48 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
     constructor(
         private readonly service: AdoPullRequestsService,
         private readonly project?: string,
+        private readonly repo?: string,
+        private readonly currentUserId?: string,
     ) {}
 
     async listPullRequests(repositoryId: string, criteria?: SearchCriteria): Promise<PullRequest[]> {
         const logger = getLogger();
+        const effectiveRepo = this.repo ?? repositoryId;
         const adoCriteria: Record<string, unknown> = {};
         if (criteria?.sourceBranch) { adoCriteria['sourceRefName'] = `refs/heads/${criteria.sourceBranch}`; }
         if (criteria?.targetBranch) { adoCriteria['targetRefName'] = `refs/heads/${criteria.targetBranch}`; }
-        if (criteria?.status) {
-            logger.info(LogCategory.ADO, `listPullRequests: criteria.status="${criteria.status}" is not mapped to ADO search criteria — ADO defaults to active PRs only`);
+
+        // Status: default to Active when not specified
+        const statusMap: Record<string, AdoPrStatus | undefined> = {
+            'open': AdoPrStatus.Active,
+            'merged': AdoPrStatus.Completed,
+            'closed': AdoPrStatus.Abandoned,
+            'all': AdoPrStatus.All,
+        };
+        const statusValue = criteria?.status ?? 'open';
+        const mappedStatus = statusMap[statusValue];
+        if (mappedStatus !== undefined) {
+            adoCriteria['status'] = mappedStatus;
+        } else {
+            logger.info(LogCategory.ADO, `listPullRequests: criteria.status="${statusValue}" is not a recognized value — defaulting to active PRs only`);
+            adoCriteria['status'] = AdoPrStatus.Active;
         }
 
-        logger.info(LogCategory.ADO, `listPullRequests: repo=${repositoryId} project=${this.project ?? '(default)'} adoCriteria=${JSON.stringify(adoCriteria)}`);
+        // Author: scope=all skips currentUserId default; scope=mine (or unset) uses it
+        const scope = criteria?.scope ?? 'mine';
+        const authorId = criteria?.authorId ?? (scope === 'mine' ? this.currentUserId : undefined);
+        if (authorId) { adoCriteria['creatorId'] = authorId; }
+
+        logger.info(LogCategory.ADO, `listPullRequests: repo=${effectiveRepo} project=${this.project ?? '(default)'} adoCriteria=${JSON.stringify(adoCriteria)}`);
 
         const results = await this.service.listPullRequests(
-            repositoryId,
+            effectiveRepo,
             adoCriteria,
             this.project,
             criteria?.top,
             criteria?.skip,
         );
-        logger.info(LogCategory.ADO, `listPullRequests: mapped ${results.length} PR(s) for repo=${repositoryId}`);
+        logger.info(LogCategory.ADO, `listPullRequests: mapped ${results.length} PR(s) for repo=${effectiveRepo}`);
         return results.map(pr => mapAdoPullRequest(pr, repositoryId));
     }
 
@@ -154,9 +199,10 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
 
     async createPullRequest(repositoryId: string, input: CreatePullRequestInput): Promise<PullRequest> {
         const logger = getLogger();
-        logger.info(LogCategory.ADO, `createPullRequest: repo=${repositoryId} project=${this.project ?? '(default)'} "${input.sourceBranch}" -> "${input.targetBranch}" title="${input.title}"`);
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(LogCategory.ADO, `createPullRequest: repo=${effectiveRepo} project=${this.project ?? '(default)'} "${input.sourceBranch}" -> "${input.targetBranch}" title="${input.title}"`);
         const pr = await this.service.createPullRequest(
-            repositoryId,
+            effectiveRepo,
             {
                 title: input.title,
                 description: input.description,
@@ -176,13 +222,14 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         update: UpdatePullRequestInput,
     ): Promise<PullRequest> {
         const logger = getLogger();
-        logger.info(LogCategory.ADO, `updatePullRequest: repo=${repositoryId} id=${pullRequestId} project=${this.project ?? '(default)'} fields=${Object.keys(update).filter(k => update[k as keyof UpdatePullRequestInput] !== undefined).join(',')}`);
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(LogCategory.ADO, `updatePullRequest: repo=${effectiveRepo} id=${pullRequestId} project=${this.project ?? '(default)'} fields=${Object.keys(update).filter(k => update[k as keyof UpdatePullRequestInput] !== undefined).join(',')}`);
         const adoUpdate: Record<string, unknown> = {};
         if (update.title !== undefined) { adoUpdate['title'] = update.title; }
         if (update.description !== undefined) { adoUpdate['description'] = update.description; }
 
         const pr = await this.service.updatePullRequest(
-            repositoryId,
+            effectiveRepo,
             Number(pullRequestId),
             adoUpdate,
             this.project,
@@ -193,8 +240,9 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
 
     async getThreads(repositoryId: string, pullRequestId: number | string): Promise<CommentThread[]> {
         const logger = getLogger();
-        logger.info(LogCategory.ADO, `getThreads: repo=${repositoryId} id=${pullRequestId} project=${this.project ?? '(default)'}`);
-        const threads = await this.service.getThreads(repositoryId, Number(pullRequestId), this.project);
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(LogCategory.ADO, `getThreads: repo=${effectiveRepo} id=${pullRequestId} project=${this.project ?? '(default)'}`);
+        const threads = await this.service.getThreads(effectiveRepo, Number(pullRequestId), this.project);
         logger.info(LogCategory.ADO, `getThreads: returned ${threads.length} thread(s) for PR #${pullRequestId}`);
         return threads.map(mapAdoThread);
     }
@@ -205,9 +253,10 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         body: string,
     ): Promise<CommentThread> {
         const logger = getLogger();
-        logger.info(LogCategory.ADO, `createThread: repo=${repositoryId} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(LogCategory.ADO, `createThread: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
         const thread = await this.service.createThread(
-            repositoryId,
+            effectiveRepo,
             Number(pullRequestId),
             { comments: [{ content: body, commentType: 1 }] },
             this.project,
@@ -218,8 +267,9 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
 
     async getReviewers(repositoryId: string, pullRequestId: number | string): Promise<Reviewer[]> {
         const logger = getLogger();
-        logger.info(LogCategory.ADO, `getReviewers: repo=${repositoryId} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
-        const reviewers = await this.service.getReviewers(repositoryId, Number(pullRequestId), this.project);
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(LogCategory.ADO, `getReviewers: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
+        const reviewers = await this.service.getReviewers(effectiveRepo, Number(pullRequestId), this.project);
         logger.info(LogCategory.ADO, `getReviewers: returned ${reviewers.length} reviewer(s) for PR #${pullRequestId}`);
         return reviewers.map(mapAdoReviewer);
     }
@@ -230,9 +280,10 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         reviewerIds: string[],
     ): Promise<Reviewer[]> {
         const logger = getLogger();
-        logger.info(LogCategory.ADO, `addReviewers: repo=${repositoryId} PR #${pullRequestId} project=${this.project ?? '(default)'} ids=${reviewerIds.join(',')}`);
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(LogCategory.ADO, `addReviewers: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'} ids=${reviewerIds.join(',')}`);
         const reviewers = await this.service.addReviewers(
-            repositoryId,
+            effectiveRepo,
             Number(pullRequestId),
             reviewerIds.map(id => ({ id })),
             this.project,
@@ -243,10 +294,12 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
 
     async getDiff(repositoryId: string, pullRequestId: number | string): Promise<string> {
         const logger = getLogger();
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(LogCategory.ADO, `getDiff: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
         try {
             // Step 1: get iterations, pick last one
             const iterations = await this.service.getPullRequestIterations(
-                repositoryId,
+                effectiveRepo,
                 Number(pullRequestId),
                 this.project,
             );
@@ -260,7 +313,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             // Step 2: get changed files for that iteration
             const iterationId = lastIteration.id!;
             const changes = await this.service.getPullRequestIterationChanges(
-                repositoryId,
+                effectiveRepo,
                 Number(pullRequestId),
                 iterationId,
                 this.project,
@@ -280,10 +333,10 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
 
                     const baseContent = isAdd
                         ? ''
-                        : await this.service.getFileContent(repositoryId, filePath, baseSha, this.project);
+                        : await this.service.getFileContent(effectiveRepo, filePath, baseSha, this.project);
                     const headContent = isDelete
                         ? ''
-                        : await this.service.getFileContent(repositoryId, filePath, headSha, this.project);
+                        : await this.service.getFileContent(effectiveRepo, filePath, headSha, this.project);
 
                     return buildUnifiedDiff(filePath, originalPath, baseContent, headContent);
                 }),

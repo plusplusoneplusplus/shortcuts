@@ -96,12 +96,15 @@ export interface WorkItem {
 
 export interface SearchCriteria {
     status?: string;
+    /** Explicit author/creator ID for server-side filtering. */
     authorId?: string;
     assigneeId?: string;
     sourceBranch?: string;
     targetBranch?: string;
     top?: number;
     skip?: number;
+    /** Controls whether the adapter scopes results to the current user ('mine') or fetches all ('all'). Defaults to 'mine'. */
+    scope?: 'mine' | 'all';
 }
 
 export interface CreatePullRequestInput {

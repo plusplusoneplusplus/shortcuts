@@ -15,9 +15,9 @@ export interface Reviewer {
 export interface PrComment {
     id: string | number;
     author?: { displayName?: string; email?: string };
-    content: string;
-    publishedDate?: string;
-    createdDate?: string;
+    body: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface CommentThread {

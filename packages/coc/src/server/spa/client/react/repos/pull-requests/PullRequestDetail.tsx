@@ -14,7 +14,16 @@ import { UnifiedDiffViewer } from '../UnifiedDiffViewer';
 import type { PullRequest, CommentThread } from './pr-utils';
 import type { PrDetailTab } from '../../types/dashboard';
 
-const descMarked = new Marked({ gfm: true, breaks: true });
+const descRenderer = {
+    link(href: string, _title: string | null | undefined, text: string) {
+        if (href && /^mailto:/i.test(href)) {
+            return `<span>${text}</span>`;
+        }
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    },
+};
+
+const descMarked = new Marked({ gfm: true, breaks: true, renderer: descRenderer });
 
 export interface PullRequestDetailProps {
     repoId: string;
@@ -157,10 +166,10 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                             href={pr.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 dark:text-blue-400 hover:underline mt-0.5 shrink-0"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline mt-0.5 shrink-0"
                             data-testid="header-external-link"
                         >
-                            🔗
+                            Open in browser 🔗
                         </a>
                     )}
                     <span
@@ -278,20 +287,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                             </div>
                         )}
 
-                        {/* External link */}
-                        {pr.url && (
-                            <div>
-                                <a
-                                    href={pr.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                                    data-testid="overview-external-link"
-                                >
-                                    Open in browser 🔗
-                                </a>
-                            </div>
-                        )}
+
                     </div>
                 )}
 

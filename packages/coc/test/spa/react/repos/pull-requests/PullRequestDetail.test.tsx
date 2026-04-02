@@ -41,7 +41,7 @@ const makePr = (overrides: Partial<any> = {}) => ({
 const makeThreads = (overrides: Partial<any>[] = []) =>
     overrides.map((o, i) => ({
         id: i + 1,
-        comments: [{ id: 1, author: { displayName: 'Bob' }, content: 'LGTM', publishedDate: new Date().toISOString() }],
+        comments: [{ id: 1, author: { displayName: 'Bob' }, body: 'LGTM', createdAt: new Date().toISOString() }],
         ...o,
     }));
 
@@ -134,12 +134,13 @@ describe('successful render', () => {
         await waitFor(() => expect(screen.getAllByTestId('label-chip')).toHaveLength(2));
     });
 
-    it('renders external link', async () => {
+    it('renders "Open in browser" text in the header link', async () => {
         mockFetchBoth(makePr({ url: 'https://example.com/pr/1' }));
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('overview-external-link')).toBeInTheDocument());
-        expect(screen.getByTestId('overview-external-link')).toHaveAttribute('href', 'https://example.com/pr/1');
-        expect(screen.getByTestId('overview-external-link')).toHaveAttribute('target', '_blank');
+        await waitFor(() => expect(screen.getByTestId('header-external-link')).toBeInTheDocument());
+        expect(screen.getByTestId('header-external-link')).toHaveAttribute('href', 'https://example.com/pr/1');
+        expect(screen.getByTestId('header-external-link')).toHaveAttribute('target', '_blank');
+        expect(screen.getByTestId('header-external-link').textContent).toContain('Open in browser');
     });
 
     it('renders header external link next to the PR title', async () => {

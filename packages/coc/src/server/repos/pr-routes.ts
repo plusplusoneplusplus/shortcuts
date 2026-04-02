@@ -51,8 +51,8 @@ interface PrCacheEntry {
 
 const prListCache = new Map<string, PrCacheEntry>();
 
-function makePrCacheKey(repoId: string, status: string): string {
-    return `${repoId}|${status}`;
+function makePrCacheKey(repoId: string, status: string, scope: string): string {
+    return `${repoId}|${status}|${scope}`;
 }
 
 /** Clear all cached PR list entries. Exported for testing. */
@@ -85,10 +85,11 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 const repoId = decodeURIComponent(match![1]);
                 const query = url.parse(req.url ?? '', true).query;
                 const status = typeof query.status === 'string' ? query.status : 'open';
+                const scope = typeof query.scope === 'string' && (query.scope === 'mine' || query.scope === 'all') ? query.scope : 'mine';
                 const top = Math.min(+(query.top ?? 25), 100);
                 const skip = +(query.skip ?? 0);
                 const force = query.force === 'true';
-                const cacheKey = makePrCacheKey(repoId, status);
+                const cacheKey = makePrCacheKey(repoId, status, scope);
 
                 let prs: any[];
 
@@ -112,7 +113,7 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                         return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                     }
 
-                    prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP });
+                    prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
                     prListCache.set(cacheKey, { data: prs, expiresAt: Date.now() + PR_LIST_TTL_MS });
                 }
 

@@ -118,10 +118,143 @@ describe('AdoPullRequestsAdapter', () => {
             await adapter.listPullRequests('repo-id', { sourceBranch: 'feature/fix', targetBranch: 'main', top: 5, skip: 10 });
             expect(service.listPullRequests).toHaveBeenCalledWith(
                 'repo-id',
-                { sourceRefName: 'refs/heads/feature/fix', targetRefName: 'refs/heads/main' },
+                { sourceRefName: 'refs/heads/feature/fix', targetRefName: 'refs/heads/main', status: 1 },
                 'my-project',
                 5,
                 10,
+            );
+        });
+
+        it('defaults to active status when no status is specified', async () => {
+            await adapter.listPullRequests('repo-id');
+            expect(service.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { status: 1 },
+                'my-project',
+                undefined,
+                undefined,
+            );
+        });
+
+        it.each([
+            ['open', 1],      // PullRequestStatus.Active
+            ['merged', 3],    // PullRequestStatus.Completed
+            ['closed', 2],    // PullRequestStatus.Abandoned
+            ['all', 4],       // PullRequestStatus.All
+        ])('maps criteria.status="%s" to ADO status %d', async (status, adoStatus) => {
+            await adapter.listPullRequests('repo-id', { status });
+            expect(service.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { status: adoStatus },
+                'my-project',
+                undefined,
+                undefined,
+            );
+        });
+
+        it('defaults to active status for unrecognized status values', async () => {
+            await adapter.listPullRequests('repo-id', { status: 'unknown-value' });
+            expect(service.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { status: 1 },
+                'my-project',
+                undefined,
+                undefined,
+            );
+        });
+    });
+
+    // ── currentUserId / author filtering ─────────────────────
+
+    describe('currentUserId filtering', () => {
+        it('filters by currentUserId when no authorId in criteria', async () => {
+            const svc = makeMockService();
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', undefined, 'current-user-guid');
+            await a.listPullRequests('repo-id');
+            expect(svc.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { status: 1, creatorId: 'current-user-guid' },
+                'my-project',
+                undefined,
+                undefined,
+            );
+        });
+
+        it('uses explicit authorId over currentUserId', async () => {
+            const svc = makeMockService();
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', undefined, 'current-user-guid');
+            await a.listPullRequests('repo-id', { authorId: 'other-user-guid' });
+            expect(svc.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { status: 1, creatorId: 'other-user-guid' },
+                'my-project',
+                undefined,
+                undefined,
+            );
+        });
+
+        it('does not set creatorId when neither authorId nor currentUserId is provided', async () => {
+            const svc = makeMockService();
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            await a.listPullRequests('repo-id');
+            expect(svc.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { status: 1 },
+                'my-project',
+                undefined,
+                undefined,
+            );
+        });
+
+        it('combines currentUserId with status and branch criteria', async () => {
+            const svc = makeMockService();
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', undefined, 'current-user-guid');
+            await a.listPullRequests('repo-id', { status: 'all', targetBranch: 'main' });
+            expect(svc.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { targetRefName: 'refs/heads/main', status: 4, creatorId: 'current-user-guid' },
+                'my-project',
+                undefined,
+                undefined,
+            );
+        });
+
+        it('scope=all skips currentUserId even when provided', async () => {
+            const svc = makeMockService();
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', undefined, 'current-user-guid');
+            await a.listPullRequests('repo-id', { scope: 'all' });
+            expect(svc.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { status: 1 },
+                'my-project',
+                undefined,
+                undefined,
+            );
+        });
+
+        it('scope=mine uses currentUserId (explicit)', async () => {
+            const svc = makeMockService();
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', undefined, 'current-user-guid');
+            await a.listPullRequests('repo-id', { scope: 'mine' });
+            expect(svc.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { status: 1, creatorId: 'current-user-guid' },
+                'my-project',
+                undefined,
+                undefined,
+            );
+        });
+
+        it('scope=all still allows explicit authorId', async () => {
+            const svc = makeMockService();
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', undefined, 'current-user-guid');
+            await a.listPullRequests('repo-id', { scope: 'all', authorId: 'specific-user' });
+            expect(svc.listPullRequests).toHaveBeenCalledWith(
+                'repo-id',
+                { status: 1, creatorId: 'specific-user' },
+                'my-project',
+                undefined,
+                undefined,
             );
         });
     });
@@ -349,6 +482,94 @@ describe('AdoPullRequestsAdapter', () => {
         });
     });
 
+    // ── URL mapping ────────────────────────────────────────────
+
+    describe('URL mapping', () => {
+        it('uses _links.web.href for url when available', async () => {
+            const prWithWebLink = {
+                ...mockAdoPr,
+                url: 'https://dev.azure.com/org/proj/_apis/git/repositories/repo-guid/pullRequests/42',
+                _links: { web: { href: 'https://dev.azure.com/org/proj/_git/repo/pullrequest/42' } },
+            };
+            const svc = makeMockService({
+                listPullRequests: vi.fn().mockResolvedValue([prWithWebLink]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [pr] = await a.listPullRequests('repo-id');
+            expect(pr.url).toBe('https://dev.azure.com/org/proj/_git/repo/pullrequest/42');
+        });
+
+        it('constructs web URL from repository.webUrl when _links.web.href is absent', async () => {
+            const prWithRepoWebUrl = {
+                ...mockAdoPr,
+                url: 'https://dev.azure.com/org/proj/_apis/git/repositories/repo-guid/pullRequests/42',
+                _links: {},
+                repository: { webUrl: 'https://dev.azure.com/org/proj/_git/my-repo', name: 'my-repo' },
+            };
+            const svc = makeMockService({
+                listPullRequests: vi.fn().mockResolvedValue([prWithRepoWebUrl]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [pr] = await a.listPullRequests('repo-id');
+            expect(pr.url).toBe('https://dev.azure.com/org/proj/_git/my-repo/pullrequest/42');
+        });
+
+        it('converts API URL to web URL using repository.name when webUrl is absent', async () => {
+            const prWithRepoName = {
+                ...mockAdoPr,
+                url: 'https://dev.azure.com/org/proj/_apis/git/repositories/repo-guid/pullRequests/42',
+                _links: {},
+                repository: { name: 'my-repo' },
+            };
+            const svc = makeMockService({
+                listPullRequests: vi.fn().mockResolvedValue([prWithRepoName]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [pr] = await a.listPullRequests('repo-id');
+            expect(pr.url).toBe('https://dev.azure.com/org/proj/_git/my-repo/pullrequest/42');
+        });
+
+        it('never returns an API URL for the web link (regression)', async () => {
+            const prApiUrlOnly = {
+                ...mockAdoPr,
+                url: 'https://dev.azure.com/org/proj/_apis/git/repositories/repo-guid/pullRequests/42',
+                _links: {},
+                repository: { name: 'my-repo' },
+            };
+            const svc = makeMockService({
+                listPullRequests: vi.fn().mockResolvedValue([prApiUrlOnly]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [pr] = await a.listPullRequests('repo-id');
+            expect(pr.url).not.toContain('/_apis/');
+        });
+
+        it('falls back to pr.url when no repository info is available to construct web URL', async () => {
+            const prNoRepoInfo = {
+                ...mockAdoPr,
+                pullRequestId: undefined,
+                url: 'https://dev.azure.com/org/proj/_apis/git/repositories/repo-guid/pullRequests/42',
+                _links: {},
+            };
+            const svc = makeMockService({
+                listPullRequests: vi.fn().mockResolvedValue([prNoRepoInfo]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [pr] = await a.listPullRequests('repo-id');
+            expect(pr.url).toBe('https://dev.azure.com/org/proj/_apis/git/repositories/repo-guid/pullRequests/42');
+        });
+
+        it('defaults to empty string when both _links.web.href and url are missing', async () => {
+            const prNoUrl = { ...mockAdoPr, url: undefined, _links: {} };
+            const svc = makeMockService({
+                listPullRequests: vi.fn().mockResolvedValue([prNoUrl]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [pr] = await a.listPullRequests('repo-id');
+            expect(pr.url).toBe('');
+        });
+    });
+
     // ── vote mapping ─────────────────────────────────────────
 
     describe('vote mapping', () => {
@@ -390,6 +611,97 @@ describe('AdoPullRequestsAdapter', () => {
         });
     });
 
+    // ── repo override (regression: workspace ID vs ADO repo name) ──
+
+    describe('repo override', () => {
+        it('uses constructor repo instead of repositoryId for service calls', async () => {
+            const svc = makeMockService();
+            const adapterWithRepo = new AdoPullRequestsAdapter(svc, 'my-project', 'my-repo');
+
+            await adapterWithRepo.listPullRequests('ws-48cyxk');
+            expect(svc.listPullRequests).toHaveBeenCalledWith('my-repo', expect.any(Object), 'my-project', undefined, undefined);
+
+            await adapterWithRepo.createPullRequest('ws-48cyxk', { title: 'T', description: '', sourceBranch: 'a', targetBranch: 'b' });
+            expect(svc.createPullRequest).toHaveBeenCalledWith('my-repo', expect.any(Object), 'my-project');
+
+            await adapterWithRepo.updatePullRequest('ws-48cyxk', 1, { title: 'U' });
+            expect(svc.updatePullRequest).toHaveBeenCalledWith('my-repo', 1, expect.any(Object), 'my-project');
+
+            await adapterWithRepo.getThreads('ws-48cyxk', 1);
+            expect(svc.getThreads).toHaveBeenCalledWith('my-repo', 1, 'my-project');
+
+            await adapterWithRepo.createThread('ws-48cyxk', 1, 'hi');
+            expect(svc.createThread).toHaveBeenCalledWith('my-repo', 1, expect.any(Object), 'my-project');
+
+            await adapterWithRepo.getReviewers('ws-48cyxk', 1);
+            expect(svc.getReviewers).toHaveBeenCalledWith('my-repo', 1, 'my-project');
+
+            await adapterWithRepo.addReviewers('ws-48cyxk', 1, ['u1']);
+            expect(svc.addReviewers).toHaveBeenCalledWith('my-repo', 1, [{ id: 'u1' }], 'my-project');
+        });
+
+        it('falls back to repositoryId when repo is not set', async () => {
+            const svc = makeMockService();
+            const adapterNoRepo = new AdoPullRequestsAdapter(svc, 'my-project');
+
+            await adapterNoRepo.listPullRequests('fallback-repo');
+            expect(svc.listPullRequests).toHaveBeenCalledWith('fallback-repo', expect.any(Object), 'my-project', undefined, undefined);
+        });
+
+        it('preserves repositoryId in mapped PullRequest even when repo override is used', async () => {
+            const svc = makeMockService();
+            const adapterWithRepo = new AdoPullRequestsAdapter(svc, 'my-project', 'my-repo');
+
+            const [pr] = await adapterWithRepo.listPullRequests('ws-48cyxk');
+            expect(pr.repositoryId).toBe('ws-48cyxk');
+        });
+
+        it('getDiff uses constructor repo instead of repositoryId for all service calls', async () => {
+            const validIteration = {
+                id: 1,
+                sourceRefCommit: { commitId: 'head-sha' },
+                commonRefCommit: { commitId: 'base-sha' },
+            };
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([validIteration]),
+                getPullRequestIterationChanges: vi.fn().mockResolvedValue({
+                    changeEntries: [{ item: { path: '/src/foo.ts' }, changeType: VersionControlChangeType.Edit }],
+                }),
+                getFileContent: vi.fn().mockResolvedValue('content\n'),
+            });
+            const adapterWithRepo = new AdoPullRequestsAdapter(svc, 'my-project', 'my-repo');
+
+            await adapterWithRepo.getDiff('ws-48cyxk', 99);
+
+            // All three service calls must use 'my-repo', not the workspace id 'ws-48cyxk'
+            expect(svc.getPullRequestIterations).toHaveBeenCalledWith('my-repo', 99, 'my-project');
+            expect(svc.getPullRequestIterationChanges).toHaveBeenCalledWith('my-repo', 99, 1, 'my-project');
+            expect(svc.getFileContent).toHaveBeenCalledWith('my-repo', expect.any(String), expect.any(String), 'my-project');
+        });
+
+        it('getDiff falls back to repositoryId when repo is not set', async () => {
+            const validIteration = {
+                id: 1,
+                sourceRefCommit: { commitId: 'head-sha' },
+                commonRefCommit: { commitId: 'base-sha' },
+            };
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([validIteration]),
+                getPullRequestIterationChanges: vi.fn().mockResolvedValue({
+                    changeEntries: [{ item: { path: '/src/foo.ts' }, changeType: VersionControlChangeType.Edit }],
+                }),
+                getFileContent: vi.fn().mockResolvedValue('content\n'),
+            });
+            const adapterNoRepo = new AdoPullRequestsAdapter(svc, 'my-project');
+
+            await adapterNoRepo.getDiff('fallback-repo', 99);
+
+            expect(svc.getPullRequestIterations).toHaveBeenCalledWith('fallback-repo', 99, 'my-project');
+            expect(svc.getPullRequestIterationChanges).toHaveBeenCalledWith('fallback-repo', 99, 1, 'my-project');
+            expect(svc.getFileContent).toHaveBeenCalledWith('fallback-repo', expect.any(String), expect.any(String), 'my-project');
+        });
+    });
+
     // ── logging ──────────────────────────────────────────────
 
     describe('logging', () => {
@@ -407,11 +719,11 @@ describe('AdoPullRequestsAdapter', () => {
             expect(infoCalls.some(m => m.includes('listPullRequests') && m.includes('mapped') && m.includes('PR(s)'))).toBe(true);
         });
 
-        it('logs info warning when criteria.status is provided (not mapped to ADO)', async () => {
-            await adapter.listPullRequests('repo-id', { status: 'merged' });
+        it('logs info warning when criteria.status is unrecognized', async () => {
+            await adapter.listPullRequests('repo-id', { status: 'unknown-value' });
 
             const infoCalls = (mockLogger.info as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
-            expect(infoCalls.some(m => m.includes('criteria.status') && m.includes('merged') && m.includes('not mapped'))).toBe(true);
+            expect(infoCalls.some(m => m.includes('criteria.status') && m.includes('unknown-value') && m.includes('not a recognized value'))).toBe(true);
         });
 
         it('logs info with PR details when getting a single PR', async () => {

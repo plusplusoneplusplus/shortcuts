@@ -107,7 +107,7 @@ test.describe('Pull Requests — detail view', () => {
             { timeout: 10000 },
         );
         await expect(page.getByTestId('thread-list')).toContainText(
-            firstThread.comments[0].content,
+            firstThread.comments[0].body,
             { timeout: 10000 },
         );
     });

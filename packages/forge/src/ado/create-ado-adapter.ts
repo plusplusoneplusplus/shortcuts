@@ -12,9 +12,11 @@ export function createAdoPullRequestsAdapter(params: {
     orgUrl: string;
     token: string;
     project?: string;
+    repo?: string;
+    currentUserId?: string;
 }): IPullRequestsService {
     const authHandler = azdev.getBearerHandler(params.token);
     const connection = new azdev.WebApi(params.orgUrl, authHandler);
     const service = new AdoPullRequestsService(connection);
-    return new AdoPullRequestsAdapter(service, params.project);
+    return new AdoPullRequestsAdapter(service, params.project, params.repo, params.currentUserId);
 }

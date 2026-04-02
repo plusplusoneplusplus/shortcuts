@@ -56,9 +56,9 @@ export function createMockPrComment(overrides?: Partial<PrComment>): PrComment {
             displayName: 'Alice Developer',
             email: 'alice@example.com',
         },
-        content: 'This is a comment.',
-        publishedDate: '2024-01-15T11:00:00.000Z',
-        createdDate: '2024-01-15T11:00:00.000Z',
+        body: 'This is a comment.',
+        createdAt: '2024-01-15T11:00:00.000Z',
+        updatedAt: '2024-01-15T11:00:00.000Z',
         ...overrides,
     };
 }
@@ -150,15 +150,15 @@ export const MOCK_PR_THREADS: CommentThread[] = [
         comments: [
             createMockPrComment({
                 id: 1,
-                content: 'Please consider extracting this into a helper.',
+                body: 'Please consider extracting this into a helper.',
                 author: { displayName: 'Bob Reviewer', email: 'bob@example.com' },
             }),
             createMockPrComment({
                 id: 2,
-                content: 'Good point, I will refactor this.',
+                body: 'Good point, I will refactor this.',
                 author: { displayName: 'Alice Developer', email: 'alice@example.com' },
-                publishedDate: '2024-01-15T11:30:00.000Z',
-                createdDate: '2024-01-15T11:30:00.000Z',
+                createdAt: '2024-01-15T11:30:00.000Z',
+                updatedAt: '2024-01-15T11:30:00.000Z',
             }),
         ],
     }),
@@ -169,7 +169,7 @@ export const MOCK_PR_THREADS: CommentThread[] = [
         comments: [
             createMockPrComment({
                 id: 3,
-                content: 'Typo in variable name.',
+                body: 'Typo in variable name.',
                 author: { displayName: 'Carol Reviewer', email: 'carol@example.com' },
             }),
         ],

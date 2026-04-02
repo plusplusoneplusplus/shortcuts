@@ -7,7 +7,7 @@ export {
     writeAdoSessionCache,
     isTokenValid,
 } from './ado-session-cache';
-export { resolveAdoIdentity, resolveAndCacheAdoIdentity } from './ado-identity-resolver';
+export { resolveAdoIdentity, resolveAndCacheAdoIdentity, getOrResolveAdoUserId, resolveAdoUserIdFromConnectionData } from './ado-identity-resolver';
 export { AdoWorkItemsService, AdoWorkItemError, type PatchOp, type FieldPatch } from './workitems-service';
 export {
     AdoPullRequestsService,

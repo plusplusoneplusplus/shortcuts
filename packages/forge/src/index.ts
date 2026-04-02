@@ -1199,6 +1199,8 @@ export {
     AdoConnectionFactory,
     getAdoConnectionFactory,
     resetAdoConnectionFactory,
+    getOrResolveAdoUserId,
+    resolveAdoUserIdFromConnectionData,
 } from './ado';
 
 // ============================================================================

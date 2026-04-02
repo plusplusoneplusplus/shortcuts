@@ -7,16 +7,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProviderFactory, ProviderType } from '../../src/server/providers/provider-factory';
 import type { ProvidersFileConfig } from '../../src/server/providers/providers-config';
 
-// Mock execAsync from pipeline-core for az-cli tests
+// Mock execAsync, createAdoPullRequestsAdapter, and getOrResolveAdoUserId from forge
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         execAsync: vi.fn(),
+        createAdoPullRequestsAdapter: vi.fn(actual.createAdoPullRequestsAdapter),
+        getOrResolveAdoUserId: vi.fn(),
     };
 });
 
-import { execAsync } from '@plusplusoneplusplus/forge';
+import { execAsync, createAdoPullRequestsAdapter, getOrResolveAdoUserId } from '@plusplusoneplusplus/forge';
 
 // ── detectProviderType ────────────────────────────────────────────────────────
 
@@ -137,6 +139,8 @@ describe('ProviderFactory.createPullRequestsService', () => {
         vi.clearAllMocks();
         // Default: az CLI fails (not logged in)
         (execAsync as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('az: command not found'));
+        // Default: no cached user identity
+        (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     });
 
     it('returns null when GitHub token is missing', async () => {
@@ -225,5 +229,60 @@ describe('ProviderFactory.createPullRequestsService', () => {
             config,
         );
         expect(result).toEqual({ error: 'no-ado-credentials' });
+    });
+
+    it('passes parsed repo name to createAdoPullRequestsAdapter (regression: workspace ID bug)', async () => {
+        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token-xyz\n', stderr: '' });
+        const config: ProvidersFileConfig = { providers: {} };
+        await ProviderFactory.createPullRequestsService(
+            'https://dev.azure.com/org/proj/_git/MyRepo',
+            config,
+        );
+        expect(createAdoPullRequestsAdapter).toHaveBeenCalledWith(
+            expect.objectContaining({ repo: 'MyRepo' }),
+        );
+    });
+
+    it('passes cached ADO user ID as currentUserId', async () => {
+        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token\n', stderr: '' });
+        (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockResolvedValue('ado-guid-123');
+        const config: ProvidersFileConfig = { providers: {} };
+        await ProviderFactory.createPullRequestsService(
+            'https://dev.azure.com/org/proj/_git/repo',
+            config,
+        );
+        expect(getOrResolveAdoUserId).toHaveBeenCalledWith('https://dev.azure.com/org', 'bearer-token');
+        expect(createAdoPullRequestsAdapter).toHaveBeenCalledWith(
+            expect.objectContaining({ currentUserId: 'ado-guid-123' }),
+        );
+    });
+
+    it('creates adapter without currentUserId when identity resolution returns null', async () => {
+        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token\n', stderr: '' });
+        (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+        const config: ProvidersFileConfig = { providers: {} };
+        await ProviderFactory.createPullRequestsService(
+            'https://dev.azure.com/org/proj/_git/repo',
+            config,
+        );
+        expect(createAdoPullRequestsAdapter).toHaveBeenCalledWith(
+            expect.objectContaining({ currentUserId: undefined }),
+        );
+    });
+
+    it('creates adapter without currentUserId when identity resolution throws', async () => {
+        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token\n', stderr: '' });
+        (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network error'));
+        const config: ProvidersFileConfig = { providers: {} };
+        const result = await ProviderFactory.createPullRequestsService(
+            'https://dev.azure.com/org/proj/_git/repo',
+            config,
+        );
+        // Should still return a valid service, not throw
+        expect(result).not.toBeNull();
+        expect(result).not.toEqual({ error: 'no-ado-credentials' });
+        expect(createAdoPullRequestsAdapter).toHaveBeenCalledWith(
+            expect.objectContaining({ currentUserId: undefined }),
+        );
     });
 });

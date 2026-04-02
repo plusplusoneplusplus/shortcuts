@@ -2,7 +2,8 @@
  * PullRequestsTab — fetches and renders a paginated, filterable list of pull
  * requests for the selected repository.
  *
- * Status filter triggers a server re-fetch; author and search filters are
+ * Scope dropdown controls server-side scoping (Mine / All / Author…).
+ * Status filter triggers a server re-fetch; search filters are
  * applied client-side without additional requests.
  *
  * Desktop: resizable split-panel (list left, detail right).
@@ -27,8 +28,10 @@ export interface PullRequestsTabProps {
 }
 
 type StatusFilter = PrStatus | 'all';
+type ScopeMode = 'mine' | 'all' | 'author';
 
 const PAGE_SIZE = 25;
+const AUTHOR_DEBOUNCE_MS = 300;
 
 interface PrListCacheEntry {
     prs: PullRequest[];
@@ -37,7 +40,7 @@ interface PrListCacheEntry {
     fetchedAt: number | null;
 }
 
-/** Keyed by `${repoId}|${statusFilter}` — persists across mounts. */
+/** Keyed by `${repoId}|${statusFilter}|${scope}|${authorFilter}` — persists across mounts. */
 const prListCache = new Map<string, PrListCacheEntry>();
 
 function formatFetchedAt(ts: number): string {
@@ -56,10 +59,13 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     const [error, setError] = useState<string | null>(null);
     const [unconfigured, setUnconfigured] = useState<{ detected: string | null; remoteUrl?: string; noCredentials?: boolean } | null>(null);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
-    const [authorFilter, setAuthorFilter] = useState('');
+    const [scopeMode, setScopeMode] = useState<ScopeMode>('mine');
+    const [authorInput, setAuthorInput] = useState('');
+    const [committedAuthor, setCommittedAuthor] = useState('');
     const [searchText, setSearchText] = useState('');
     const [hasMore, setHasMore] = useState(false);
     const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+    const [scopeDropdownOpen, setScopeDropdownOpen] = useState(false);
     const { isMobile } = useBreakpoint();
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 288,
@@ -69,17 +75,29 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
-    // Track current offset without causing the callback to change on every fetch.
     const skipRef = useRef(0);
+    const abortRef = useRef<AbortController | null>(null);
+    const authorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const authorInputRef = useRef<HTMLInputElement>(null);
+    const scopeDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Derived: the effective scope param sent to the server
+    const effectiveScope = scopeMode === 'author' ? 'all' : scopeMode;
+    // Derived: the effective author filter for the server
+    const effectiveAuthor = scopeMode === 'author' ? committedAuthor : '';
+
+    const makeCacheKey = useCallback(
+        () => `${repoId}|${statusFilter}|${effectiveScope}|${effectiveAuthor}`,
+        [repoId, statusFilter, effectiveScope, effectiveAuthor],
+    );
 
     const fetchPrs = useCallback((reset = false, force = false) => {
-        const cacheKey = `${repoId}|${statusFilter}`;
+        const cacheKey = makeCacheKey();
 
         if (force) {
             prListCache.delete(cacheKey);
         }
 
-        // Cache hit: restore state and skip the network request
         if (reset && !force) {
             const cached = prListCache.get(cacheKey);
             if (cached) {
@@ -94,6 +112,11 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
             }
         }
 
+        // Abort any in-flight request
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         const offset = reset ? 0 : skipRef.current;
         setLoading(true);
         if (reset) {
@@ -103,8 +126,11 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
             skipRef.current = 0;
         }
 
-        const url = `${getApiBase()}/repos/${encodeURIComponent(repoId)}/pull-requests?status=${statusFilter}&top=${PAGE_SIZE}&skip=${offset}${force ? '&force=true' : ''}`;
-        fetch(url)
+        let fetchUrl = `${getApiBase()}/repos/${encodeURIComponent(repoId)}/pull-requests?status=${statusFilter}&scope=${effectiveScope}&top=${PAGE_SIZE}&skip=${offset}`;
+        if (force) fetchUrl += '&force=true';
+        if (effectiveAuthor) fetchUrl += `&author=${encodeURIComponent(effectiveAuthor)}`;
+
+        fetch(fetchUrl, { signal: controller.signal })
             .then(async res => {
                 const body = await res.json().catch(() => ({}));
                 if (!res.ok) {
@@ -136,6 +162,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                 setFetchedAt(ts);
             })
             .catch(err => {
+                if (err.name === 'AbortError') return;
                 if (err.status === 401 && err.body?.error === 'unconfigured') {
                     setUnconfigured({ detected: err.body.detected ?? null, remoteUrl: err.body.remoteUrl });
                 } else if (err.status === 401 && err.body?.error === 'no-ado-credentials') {
@@ -145,28 +172,104 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                 }
             })
             .finally(() => setLoading(false));
-    }, [repoId, statusFilter]); // intentionally excludes skipRef (stable ref)
+    }, [repoId, statusFilter, effectiveScope, effectiveAuthor, makeCacheKey]);
 
-    // Re-fetch from scratch whenever repoId or statusFilter changes.
+    // Re-fetch from scratch whenever repoId, statusFilter, scope, or committed author changes.
     useEffect(() => {
         fetchPrs(true);
     }, [fetchPrs]);
 
+    // Close scope dropdown on outside click
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (scopeDropdownRef.current && !scopeDropdownRef.current.contains(e.target as Node)) {
+                setScopeDropdownOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Auto-focus author input when entering author mode
+    useEffect(() => {
+        if (scopeMode === 'author') {
+            authorInputRef.current?.focus();
+        }
+    }, [scopeMode]);
+
     const filtered = prs.filter(pr => {
-        const matchesAuthor = !authorFilter || pr.author?.displayName?.toLowerCase().includes(authorFilter.toLowerCase());
         const matchesSearch = !searchText || pr.title.toLowerCase().includes(searchText.toLowerCase());
-        return matchesAuthor && matchesSearch;
+        return matchesSearch;
     });
 
+    function handleScopeSelect(mode: ScopeMode) {
+        setScopeDropdownOpen(false);
+        if (mode === 'author') {
+            setScopeMode('author');
+            setAuthorInput('');
+            setCommittedAuthor('');
+        } else {
+            setScopeMode(mode);
+            setAuthorInput('');
+            setCommittedAuthor('');
+        }
+    }
+
+    function handleAuthorInputChange(value: string) {
+        setAuthorInput(value);
+        if (authorDebounceRef.current) clearTimeout(authorDebounceRef.current);
+        authorDebounceRef.current = setTimeout(() => {
+            setCommittedAuthor(value);
+        }, AUTHOR_DEBOUNCE_MS);
+    }
+
+    function handleAuthorKeyDown(e: React.KeyboardEvent) {
+        if (e.key === 'Escape') {
+            setScopeMode('mine');
+            setAuthorInput('');
+            setCommittedAuthor('');
+        } else if (e.key === 'Enter') {
+            setCommittedAuthor(authorInput);
+        }
+    }
+
+    function handleClearAuthor() {
+        setScopeMode('mine');
+        setAuthorInput('');
+        setCommittedAuthor('');
+    }
+
     function handleRowClick(pr: PullRequest) {
-        // Use pr.number (sequential PR number) not pr.id (GitHub internal DB ID).
-        // GitHub's REST API requires pull_number, not the database id.
         const prNumber = pr.number ?? pr.id;
         dispatch({ type: 'SET_SELECTED_PR', prId: prNumber });
         dispatch({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
         window.location.hash = `#repos/${encodeURIComponent(repoId)}/pull-requests/${prNumber}/overview`;
         if (isMobile) setMobileShowDetail(true);
     }
+
+    // Summary line
+    function getSummaryText(): string {
+        const count = filtered.length;
+        const statusLabel = statusFilter === 'all' ? '' : ` ${statusFilter}`;
+        if (scopeMode === 'mine') {
+            return count === 0
+                ? 'No pull requests found'
+                : `Showing ${count} of your${statusLabel} pull requests`;
+        }
+        if (scopeMode === 'author' && committedAuthor) {
+            return count === 0
+                ? `No pull requests found by "${committedAuthor}"`
+                : `Showing ${count}${statusLabel} pull requests by "${committedAuthor}"`;
+        }
+        return count === 0
+            ? 'No pull requests found'
+            : `Showing ${count}${statusLabel} pull requests`;
+    }
+
+    // Scope dropdown label
+    const scopeLabel = scopeMode === 'mine' ? '👤 Mine'
+        : scopeMode === 'all' ? '👥 All'
+        : committedAuthor ? `👤 ${committedAuthor}` : '👤 Author…';
 
     const listPanel = (
         <>
@@ -179,6 +282,75 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                     onChange={e => setSearchText(e.target.value)}
                     data-testid="search-input"
                 />
+
+                {/* Scope dropdown */}
+                {scopeMode === 'author' ? (
+                    <div className="flex items-center gap-1" data-testid="author-scope-input">
+                        <span className="text-sm">👤</span>
+                        <input
+                            ref={authorInputRef}
+                            className="w-32 text-sm border border-blue-400 dark:border-blue-500 rounded px-2 py-1 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            placeholder="Author name…"
+                            value={authorInput}
+                            onChange={e => handleAuthorInputChange(e.target.value)}
+                            onKeyDown={handleAuthorKeyDown}
+                            data-testid="author-input"
+                        />
+                        <button
+                            className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-1"
+                            onClick={handleClearAuthor}
+                            title="Clear author filter"
+                            data-testid="clear-author"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                ) : (
+                    <div className="relative" ref={scopeDropdownRef}>
+                        <button
+                            className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 whitespace-nowrap"
+                            onClick={() => setScopeDropdownOpen(!scopeDropdownOpen)}
+                            data-testid="scope-dropdown-trigger"
+                        >
+                            {scopeLabel} ▾
+                        </button>
+                        {scopeDropdownOpen && (
+                            <div
+                                className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded shadow-lg z-10 min-w-[140px]"
+                                data-testid="scope-dropdown-menu"
+                            >
+                                <button
+                                    className={cn(
+                                        'w-full text-left text-sm px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700',
+                                        scopeMode === 'mine' && 'font-semibold',
+                                    )}
+                                    onClick={() => handleScopeSelect('mine')}
+                                    data-testid="scope-option-mine"
+                                >
+                                    👤 Mine {scopeMode === 'mine' && '✓'}
+                                </button>
+                                <button
+                                    className={cn(
+                                        'w-full text-left text-sm px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700',
+                                        scopeMode === 'all' && 'font-semibold',
+                                    )}
+                                    onClick={() => handleScopeSelect('all')}
+                                    data-testid="scope-option-all"
+                                >
+                                    👥 All {scopeMode === 'all' && '✓'}
+                                </button>
+                                <button
+                                    className="w-full text-left text-sm px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    onClick={() => handleScopeSelect('author')}
+                                    data-testid="scope-option-author"
+                                >
+                                    ✏️ Author…
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <select
                     className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
                     value={statusFilter}
@@ -191,13 +363,6 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                     <option value="draft">Draft</option>
                     <option value="all">All</option>
                 </select>
-                <input
-                    className="w-32 text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
-                    placeholder="Author..."
-                    value={authorFilter}
-                    onChange={e => setAuthorFilter(e.target.value)}
-                    data-testid="author-filter"
-                />
                 {fetchedAt != null && (
                     <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap" data-testid="fetched-at">
                         {formatFetchedAt(fetchedAt)}
@@ -223,6 +388,22 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                     </svg>
                 </button>
             </div>
+
+            {/* Summary line */}
+            {!loading && !error && !unconfigured && (
+                <div className="px-4 py-1 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800" data-testid="summary-line">
+                    {getSummaryText()}
+                    {scopeMode === 'author' && committedAuthor && filtered.length === 0 && (
+                        <button
+                            className="ml-2 text-blue-600 dark:text-blue-400 hover:underline"
+                            onClick={() => handleScopeSelect('all')}
+                            data-testid="show-all-link"
+                        >
+                            Show all pull requests
+                        </button>
+                    )}
+                </div>
+            )}
 
             {/* Unconfigured provider — prompts user to configure credentials */}
             {unconfigured && (

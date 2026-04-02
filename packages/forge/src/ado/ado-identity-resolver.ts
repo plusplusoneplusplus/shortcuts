@@ -91,6 +91,89 @@ export async function resolveAndCacheAdoIdentity(
     return adoId;
 }
 
+/**
+ * Resolve the current user's ADO identity GUID directly from the
+ * Connection Data API using only a bearer token. No cached UPN required.
+ *
+ * Endpoint: GET {orgUrl}/_apis/connectionData
+ * Returns authenticatedUser.id (GUID) or null on failure.
+ */
+export async function resolveAdoUserIdFromConnectionData(
+    orgUrl: string,
+    bearerToken: string,
+): Promise<string | null> {
+    const logger = getLogger();
+    try {
+        const url = `${orgUrl.replace(/\/$/, '')}/_apis/connectionData`;
+        const https = await import('https');
+        return new Promise((resolve) => {
+            const req = https.get(
+                url,
+                { headers: { Authorization: `Bearer ${bearerToken}`, Accept: 'application/json' } },
+                (res) => {
+                    let data = '';
+                    res.on('data', (chunk: string) => (data += chunk));
+                    res.on('end', () => {
+                        try {
+                            const json = JSON.parse(data);
+                            const id = json?.authenticatedUser?.id ?? null;
+                            if (id) {
+                                logger.info(LogCategory.ADO, `resolveAdoUserIdFromConnectionData: resolved id=${id}`);
+                            }
+                            resolve(id);
+                        } catch {
+                            resolve(null);
+                        }
+                    });
+                },
+            );
+            req.on('error', () => resolve(null));
+        });
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(LogCategory.ADO, `resolveAdoUserIdFromConnectionData failed: ${msg}`);
+        return null;
+    }
+}
+
+/**
+ * High-level convenience function: read cached ADO user ID, or resolve it
+ * via the VSSPS Identities API and cache the result. Falls back to the
+ * Connection Data API when no cached UPN is available.
+ *
+ * Callers only need an org URL and bearer token — no `azure-devops-node-api`
+ * import required.
+ *
+ * Best-effort: returns `null` on any failure (missing cache, no UPN, API error).
+ */
+export async function getOrResolveAdoUserId(
+    orgUrl: string,
+    bearerToken: string,
+    dataDir?: string,
+): Promise<string | null> {
+    try {
+        // Tier 1: cached adoId
+        const cache = await readAdoSessionCache(dataDir);
+        if (cache?.account?.adoId) {
+            return cache.account.adoId;
+        }
+
+        // Tier 1b: resolve via VSSPS Identities API (requires cached UPN)
+        if (cache?.account?.upn) {
+            const azdev = await import('azure-devops-node-api');
+            const authHandler = azdev.getBearerHandler(bearerToken);
+            const connection = new azdev.WebApi(orgUrl, authHandler);
+            const resolved = await resolveAndCacheAdoIdentity(connection, orgUrl, dataDir);
+            if (resolved) return resolved;
+        }
+
+        // Tier 2: resolve via Connection Data API (no cache/UPN needed)
+        return await resolveAdoUserIdFromConnectionData(orgUrl, bearerToken);
+    } catch {
+        return null;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

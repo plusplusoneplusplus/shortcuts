@@ -13,6 +13,7 @@ import {
     createGitHubPullRequestsAdapter,
     createAdoPullRequestsAdapter,
     execAsync,
+    getOrResolveAdoUserId,
 } from '@plusplusoneplusplus/forge';
 import type { ProvidersFileConfig } from './providers-config';
 
@@ -148,10 +149,19 @@ export class ProviderFactory {
                 );
                 const bearerToken = stdout.trim();
                 if (bearerToken) {
+                    // Best-effort: resolve the current user's ADO identity GUID
+                    // so the adapter can filter PRs to the current user.
+                    let currentUserId: string | undefined;
+                    try {
+                        currentUserId = (await getOrResolveAdoUserId(orgUrl, bearerToken)) ?? undefined;
+                    } catch { /* identity resolution is best-effort */ }
+
                     return createAdoPullRequestsAdapter({
                         orgUrl,
                         token: bearerToken,
                         project: parsed?.project,
+                        repo: parsed?.repo,
+                        currentUserId,
                     });
                 }
             } catch {

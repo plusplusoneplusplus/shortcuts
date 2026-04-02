@@ -36,7 +36,7 @@ export function ThreadList({ threads }: ThreadListProps) {
                 if (!first) return null;
                 const isMulti = thread.comments.length > 1;
                 const isExpanded = expanded.has(thread.id);
-                const preview = first.content.slice(0, 80) + (first.content.length > 80 ? '…' : '');
+                const preview = first.body.slice(0, 80) + (first.body.length > 80 ? '…' : '');
 
                 return (
                     <div
@@ -68,7 +68,7 @@ export function ThreadList({ threads }: ThreadListProps) {
                                 <span className="text-xs text-gray-500">— &ldquo;{preview}&rdquo;</span>
                             </div>
                             <span className="text-xs text-gray-400 shrink-0">
-                                {formatRelativeTime(first.publishedDate ?? first.createdDate)}
+                                {formatRelativeTime(first.createdAt)}
                             </span>
                         </button>
                         {(isExpanded || !isMulti) && (
@@ -88,11 +88,11 @@ export function ThreadList({ threads }: ThreadListProps) {
                                                     @{comment.author?.displayName ?? comment.author?.email ?? 'Unknown'}
                                                 </span>
                                                 <span className="text-xs text-gray-400">
-                                                    {formatRelativeTime(comment.publishedDate ?? comment.createdDate)}
+                                                    {formatRelativeTime(comment.createdAt)}
                                                 </span>
                                             </div>
                                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5 whitespace-pre-wrap">
-                                                {comment.content}
+                                                {comment.body}
                                             </p>
                                         </div>
                                     </div>

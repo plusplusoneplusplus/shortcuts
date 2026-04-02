@@ -13,7 +13,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/pull-requests/pr-utils
 const makeSingleThread = (overrides: Partial<any> = {}) => ({
     id: 1,
     comments: [
-        { id: 1, author: { displayName: 'Alice' }, content: 'LGTM', publishedDate: '2024-01-01' },
+        { id: 1, author: { displayName: 'Alice' }, body: 'LGTM', createdAt: '2024-01-01' },
     ],
     ...overrides,
 });
@@ -21,8 +21,8 @@ const makeSingleThread = (overrides: Partial<any> = {}) => ({
 const makeMultiThread = (overrides: Partial<any> = {}) => ({
     id: 2,
     comments: [
-        { id: 1, author: { displayName: 'Bob' }, content: 'Can you add a test?', publishedDate: '2024-01-01' },
-        { id: 2, author: { displayName: 'Alice' }, content: 'Done, check the latest commit.', publishedDate: '2024-01-02' },
+        { id: 1, author: { displayName: 'Bob' }, body: 'Can you add a test?', createdAt: '2024-01-01' },
+        { id: 2, author: { displayName: 'Alice' }, body: 'Done, check the latest commit.', createdAt: '2024-01-02' },
     ],
     ...overrides,
 });

@@ -105,7 +105,7 @@ describe('successful fetch', () => {
         await act(async () => { await renderTab(); });
         expect(screen.getByTestId('search-input')).toBeInTheDocument();
         expect(screen.getByTestId('status-filter')).toBeInTheDocument();
-        expect(screen.getByTestId('author-filter')).toBeInTheDocument();
+        expect(screen.getByTestId('scope-dropdown-trigger')).toBeInTheDocument();
     });
 
     it('shows empty state when no PRs returned', async () => {
@@ -140,19 +140,6 @@ describe('client-side filtering', () => {
         expect((global.fetch as any).mock.calls.length).toBe(callsBefore);
     });
 
-    it('filters PRs by author without re-fetching', async () => {
-        mockFetchOk([
-            makePr({ id: 1, title: 'PR One', author: { displayName: 'Alice' } }),
-            makePr({ id: 2, title: 'PR Two', author: { displayName: 'Bob' } }),
-        ]);
-        await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(2));
-
-        fireEvent.change(screen.getByTestId('author-filter'), { target: { value: 'alice' } });
-        expect(screen.getAllByTestId('pr-row')).toHaveLength(1);
-        expect(screen.getByText('PR One')).toBeInTheDocument();
-    });
-
     it('shows no-results message when filters eliminate all items', async () => {
         mockFetchOk([makePr({ id: 1, title: 'Something' })]);
         await act(async () => { await renderTab(); });
@@ -160,6 +147,102 @@ describe('client-side filtering', () => {
 
         fireEvent.change(screen.getByTestId('search-input'), { target: { value: 'nonexistent' } });
         expect(screen.getByTestId('no-results')).toBeInTheDocument();
+    });
+});
+
+// ── Scope dropdown ─────────────────────────────────────────────────────────────
+
+describe('scope dropdown', () => {
+    it('defaults to "Mine" scope with correct label', async () => {
+        mockFetchOk([makePr()]);
+        await act(async () => { await renderTab(); });
+        const trigger = screen.getByTestId('scope-dropdown-trigger');
+        expect(trigger.textContent).toContain('Mine');
+    });
+
+    it('opens dropdown menu on click and shows options', async () => {
+        mockFetchOk([makePr()]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(1));
+
+        fireEvent.click(screen.getByTestId('scope-dropdown-trigger'));
+        expect(screen.getByTestId('scope-dropdown-menu')).toBeInTheDocument();
+        expect(screen.getByTestId('scope-option-mine')).toBeInTheDocument();
+        expect(screen.getByTestId('scope-option-all')).toBeInTheDocument();
+        expect(screen.getByTestId('scope-option-author')).toBeInTheDocument();
+    });
+
+    it('selecting "All" triggers re-fetch with scope=all', async () => {
+        mockFetchOk([makePr()]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(1));
+
+        const secondFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ pullRequests: [makePr({ id: 2, title: 'All PR' })] }),
+        } as any);
+
+        // Open dropdown and select "All"
+        fireEvent.click(screen.getByTestId('scope-dropdown-trigger'));
+        global.fetch = secondFetch;
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('scope-option-all'));
+        });
+        await waitFor(() => expect(secondFetch).toHaveBeenCalled());
+        const fetchUrl = secondFetch.mock.calls[0][0] as string;
+        expect(fetchUrl).toContain('scope=all');
+    });
+
+    it('selecting "Author…" shows author input field', async () => {
+        mockFetchOk([makePr()]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(1));
+
+        fireEvent.click(screen.getByTestId('scope-dropdown-trigger'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('scope-option-author'));
+        });
+        expect(screen.getByTestId('author-input')).toBeInTheDocument();
+        expect(screen.getByTestId('clear-author')).toBeInTheDocument();
+    });
+
+    it('clear author button reverts to "Mine" scope', async () => {
+        mockFetchOk([makePr()]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(1));
+
+        // Enter author mode
+        fireEvent.click(screen.getByTestId('scope-dropdown-trigger'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('scope-option-author'));
+        });
+        expect(screen.getByTestId('author-input')).toBeInTheDocument();
+
+        // Clear author
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('clear-author'));
+        });
+        expect(screen.getByTestId('scope-dropdown-trigger')).toBeInTheDocument();
+        expect(screen.getByTestId('scope-dropdown-trigger').textContent).toContain('Mine');
+    });
+});
+
+// ── Summary line ───────────────────────────────────────────────────────────────
+
+describe('summary line', () => {
+    it('shows summary line after PRs load', async () => {
+        mockFetchOk([makePr()]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('summary-line')).toBeInTheDocument());
+        expect(screen.getByTestId('summary-line').textContent).toContain('your');
+        expect(screen.getByTestId('summary-line').textContent).toContain('open');
+    });
+
+    it('shows "No pull requests found" in summary when list is empty', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('summary-line')).toBeInTheDocument());
+        expect(screen.getByTestId('summary-line').textContent).toContain('No pull requests found');
     });
 });
 

@@ -155,17 +155,17 @@ describe('GET /api/repos/:id/pull-requests', () => {
 
     it('passes status to upstream and always fetches top 100', async () => {
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=closed&top=10&skip=5`);
-        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'closed', top: 100 });
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'closed', top: 100, scope: 'mine' });
     });
 
     it('always fetches top 100 from upstream regardless of client top', async () => {
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?top=200`);
-        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100 });
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'mine' });
     });
 
     it('defaults status=open and fetches top 100 from upstream', async () => {
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
-        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100 });
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'mine' });
     });
 
     it('returns 401 with unconfigured body when no provider config', async () => {
@@ -276,6 +276,32 @@ describe('GET /api/repos/:id/pull-requests', () => {
         // Both are now cached — no additional calls
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=open`);
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=closed`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+    });
+
+    it('passes scope=all to upstream when requested', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=all`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'all' });
+    });
+
+    it('defaults scope to mine when not specified', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'mine' });
+    });
+
+    it('ignores invalid scope values and defaults to mine', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=invalid`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'mine' });
+    });
+
+    it('uses separate cache entries per scope', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=mine`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=all`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+
+        // Both are now cached
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=mine`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=all`);
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
     });
 });
