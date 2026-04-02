@@ -70,6 +70,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const planPath: string =
         (isAbsolutePath(rawContextFile) ? rawContextFile : undefined) ??
         task?.payload?.planFilePath ??
+        task?.metadata?.planFilePath ??
         '';
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const turnsRef = useRef<ClientConversationTurn[]>([]);
@@ -123,6 +124,40 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
+
+    // Detect .plan.md created mid-conversation and elevate to planPath slot
+    const detectedPlanFile = useMemo(
+        () => createdFiles.find(f => f.filePath.endsWith('.plan.md'))?.filePath ?? '',
+        [createdFiles],
+    );
+    const effectivePlanPath = planPath || detectedPlanFile;
+
+    // Deduplicate: remove the detected plan file from the regular files list
+    const displayFiles = useMemo(
+        () => effectivePlanPath ? createdFiles.filter(f => f.filePath !== effectivePlanPath) : createdFiles,
+        [createdFiles, effectivePlanPath],
+    );
+
+    // Persist detected plan path to process metadata (fire at most once per load)
+    const planPatchedRef = useRef(false);
+    useEffect(() => {
+        if (planPatchedRef.current) return;
+        if (!detectedPlanFile || planPath || task?.metadata?.planFilePath || !processId) return;
+        planPatchedRef.current = true;
+        const merged = { ...(task?.metadata ?? {}), planFilePath: detectedPlanFile };
+        fetchApi(`/processes/${encodeURIComponent(processId)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ metadata: merged }),
+        })
+            .then((data: any) => {
+                if (data?.process) setTask((prev: any) => prev ? { ...prev, metadata: data.process.metadata } : prev);
+            })
+            .catch(() => { /* best-effort persist */ });
+    }, [detectedPlanFile, planPath, task?.metadata?.planFilePath, processId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Reset patch guard when switching tasks
+    useEffect(() => { planPatchedRef.current = false; }, [taskId]);
 
     // Seed tokenLimit from /api/models as soon as sessionModel is known.
     // Only runs when sessionTokenLimit is still undefined to avoid clobbering
@@ -448,8 +483,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             <ChatHeader
                 task={task}
                 metadataProcess={metadataProcess}
-                planPath={planPath}
-                createdFiles={createdFiles}
+                planPath={effectivePlanPath}
+                createdFiles={displayFiles}
                 pinnedFile={pinnedFile}
                 onBack={onBack}
                 variant={variant}

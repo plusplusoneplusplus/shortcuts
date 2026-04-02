@@ -964,6 +964,120 @@ describe('ActivityChatDetail', () => {
         });
     });
 
+    describe('plan file chat reference (mid-conversation .plan.md detection)', () => {
+        it('reads metadata.planFilePath in planPath derivation chain', () => {
+            const planPathBlock = source.substring(
+                source.indexOf('const rawContextFile'),
+                source.indexOf('const rawContextFile') + 400,
+            );
+            expect(planPathBlock).toContain('task?.metadata?.planFilePath');
+        });
+
+        it('planPath fallback order is: context.files[0] → payload.planFilePath → metadata.planFilePath → empty', () => {
+            const planPathBlock = source.substring(
+                source.indexOf('const planPath'),
+                source.indexOf('const planPath') + 300,
+            );
+            const contextIdx = planPathBlock.indexOf('rawContextFile');
+            const payloadIdx = planPathBlock.indexOf('task?.payload?.planFilePath');
+            const metadataIdx = planPathBlock.indexOf('task?.metadata?.planFilePath');
+            const emptyIdx = planPathBlock.indexOf("''");
+            expect(contextIdx).toBeLessThan(payloadIdx);
+            expect(payloadIdx).toBeLessThan(metadataIdx);
+            expect(metadataIdx).toBeLessThan(emptyIdx);
+        });
+
+        it('computes detectedPlanFile from createdFiles scanning for .plan.md', () => {
+            expect(source).toContain('detectedPlanFile');
+            const detectBlock = source.substring(
+                source.indexOf('const detectedPlanFile'),
+                source.indexOf('const detectedPlanFile') + 200,
+            );
+            expect(detectBlock).toContain(".endsWith('.plan.md')");
+            expect(detectBlock).toContain('createdFiles.find');
+        });
+
+        it('computes effectivePlanPath = planPath || detectedPlanFile', () => {
+            expect(source).toContain('const effectivePlanPath = planPath || detectedPlanFile');
+        });
+
+        it('deduplicates displayFiles by filtering out the effectivePlanPath', () => {
+            expect(source).toContain('displayFiles');
+            const displayBlock = source.substring(
+                source.indexOf('const displayFiles'),
+                source.indexOf('const displayFiles') + 200,
+            );
+            expect(displayBlock).toContain('createdFiles.filter');
+            expect(displayBlock).toContain('effectivePlanPath');
+        });
+
+        it('passes effectivePlanPath to ChatHeader instead of raw planPath', () => {
+            expect(source).toContain('planPath={effectivePlanPath}');
+        });
+
+        it('passes displayFiles to ChatHeader instead of raw createdFiles', () => {
+            expect(source).toContain('createdFiles={displayFiles}');
+        });
+
+        it('uses a useRef guard (planPatchedRef) to fire PATCH at most once', () => {
+            expect(source).toContain('planPatchedRef');
+            expect(source).toContain('useRef(false)');
+            const patchBlock = source.substring(
+                source.indexOf('planPatchedRef.current = true'),
+                source.indexOf('planPatchedRef.current = true') + 400,
+            );
+            expect(patchBlock).toContain("method: 'PATCH'");
+        });
+
+        it('PATCH guard checks: no detectedPlanFile, or planPath already set, or metadata already has it', () => {
+            const guardBlock = source.substring(
+                source.indexOf('if (!detectedPlanFile'),
+                source.indexOf('if (!detectedPlanFile') + 200,
+            );
+            expect(guardBlock).toContain('!detectedPlanFile');
+            expect(guardBlock).toContain('planPath');
+            expect(guardBlock).toContain('task?.metadata?.planFilePath');
+            expect(guardBlock).toContain('!processId');
+        });
+
+        it('PATCH merges existing metadata with planFilePath', () => {
+            const mergeBlock = source.substring(
+                source.indexOf('const merged'),
+                source.indexOf('const merged') + 200,
+            );
+            expect(mergeBlock).toContain('...(task?.metadata ?? {})');
+            expect(mergeBlock).toContain('planFilePath: detectedPlanFile');
+        });
+
+        it('updates local task state from PATCH response', () => {
+            const thenBlock = source.substring(
+                source.indexOf('planPatchedRef.current = true'),
+                source.indexOf('planPatchedRef.current = true') + 500,
+            );
+            expect(thenBlock).toContain('setTask');
+            expect(thenBlock).toContain('data.process.metadata');
+        });
+
+        it('resets planPatchedRef when taskId changes', () => {
+            expect(source).toContain('planPatchedRef.current = false');
+            // Verify the reset is in a useEffect with [taskId] dependency
+            const resetIdx = source.indexOf('planPatchedRef.current = false');
+            const surroundingBlock = source.substring(resetIdx - 30, resetIdx + 80);
+            expect(surroundingBlock).toContain('useEffect');
+            expect(surroundingBlock).toContain('taskId');
+        });
+
+        it('takes the first .plan.md found (not the last)', () => {
+            const detectBlock = source.substring(
+                source.indexOf('const detectedPlanFile'),
+                source.indexOf('const detectedPlanFile') + 200,
+            );
+            // .find() returns the first match, not .filter() or .at(-1)
+            expect(detectBlock).toContain('createdFiles.find');
+            expect(detectBlock).not.toContain('findLast');
+        });
+    });
+
     describe('mobile responsiveness', () => {
         it('back button uses compact inline-flex styling without fixed min-h/min-w', () => {
             expect(CHAT_HEADER_SRC).not.toContain('min-h-11 min-w-11');
