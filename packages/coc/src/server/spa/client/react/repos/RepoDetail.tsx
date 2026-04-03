@@ -46,6 +46,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
+    { key: 'wiki', label: 'Wiki', shortcut: 'Alt+I' },
 ];
 
 function getTabSuffix(tab: RepoSubTab, state: AppContextState): string {

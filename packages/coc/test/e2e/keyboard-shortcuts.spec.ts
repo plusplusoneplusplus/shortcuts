@@ -2,8 +2,9 @@
  * Keyboard Shortcuts E2E Tests
  *
  * Tests keyboard shortcuts that operate when on the Repos tab with a repo selected:
- *   'A' → navigate to Activity sub-tab
- *   'W' → navigate to Wiki sub-tab
+ *   Alt+A → navigate to Activity sub-tab
+ *   Alt+I → navigate to Wiki sub-tab
+ *   Bare 'W' → should NOT navigate (no longer a shortcut)
  */
 
 import { test, expect } from './fixtures/server-fixture';
@@ -26,7 +27,7 @@ test.describe('Keyboard shortcuts', () => {
         await expect(page).toHaveURL(/activity/);
     });
 
-    test("pressing 'W' on Repos tab with selected repo navigates to Wiki sub-tab", async ({ page, serverUrl }) => {
+    test("pressing Alt+I on Repos tab with selected repo navigates to Wiki sub-tab", async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-ks-2', 'kb-test-repo-w', '/tmp/kb-test-repo-w');
         await page.goto(serverUrl);
 
@@ -35,11 +36,29 @@ test.describe('Keyboard shortcuts', () => {
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
-        // Press 'W' to jump to Wiki sub-tab
-        await page.keyboard.press('w');
+        // Press Alt+I to jump to Wiki sub-tab
+        await page.keyboard.press('Alt+i');
 
         // Hash should include 'wiki'
         await expect(page).toHaveURL(/wiki/);
+    });
+
+    test("pressing bare 'W' does NOT navigate away from current tab", async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-ks-3', 'kb-test-repo-bare-w', '/tmp/kb-test-repo-bare-w');
+        await page.goto(serverUrl);
+
+        // Wait for repo to appear and select it
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        const urlBefore = page.url();
+
+        // Press bare 'W' — should NOT navigate to wiki
+        await page.keyboard.press('w');
+        await page.waitForTimeout(300);
+
+        expect(page.url()).toBe(urlBefore);
     });
 
     test("keyboard shortcuts are ignored when not on Repos tab", async ({ page, serverUrl }) => {

@@ -200,6 +200,7 @@ export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     w: 'workflows',
     s: 'schedules',
     c: 'settings',
+    i: 'wiki',
 };
 
 
@@ -437,7 +438,6 @@ export function Router() {
 
     // Keyboard shortcuts for repo sub-tabs:
     //   Alt+<letter> → switches to the corresponding sub-tab (see REPO_TAB_SHORTCUTS)
-    //   bare W       → switches to the wiki sub-tab (legacy shortcut, preserved)
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement;
@@ -450,14 +450,6 @@ export function Router() {
                     e.preventDefault();
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab });
                     location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/' + tab;
-                }
-                return;
-            }
-
-            if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-                if (e.key === 'w' || e.key === 'W') {
-                    dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
-                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/wiki';
                 }
             }
         };

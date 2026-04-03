@@ -34,18 +34,19 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 8 entries', () => {
-        expect(SUB_TABS).toHaveLength(8);
+    it('has exactly 9 entries', () => {
+        expect(SUB_TABS).toHaveLength(9);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'workflows', 'schedules']);
+        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'workflows', 'schedules', 'wiki']);
     });
 
-    it('does not include "wiki" entry in visible tabs', () => {
+    it('includes "wiki" entry with Alt+I shortcut', () => {
         const wikiTab = SUB_TABS.find(t => t.key === 'wiki');
-        expect(wikiTab).toBeUndefined();
+        expect(wikiTab).toBeDefined();
+        expect(wikiTab!.shortcut).toBe('Alt+I');
     });
 
     it('has tasks as the third tab (after git)', () => {

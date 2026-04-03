@@ -1158,12 +1158,13 @@ describe('handleHash wiki repo sub-tab dispatch simulation', () => {
     });
 });
 
-// ─── W keyboard shortcut simulation ─────────────────────────────
-// Mirrors the W-key useEffect handler logic from Router.tsx
+// ─── Bare W key no longer navigates to wiki ─────────────────────
+// After removing the bare-W shortcut, pressing W without modifier should NOT dispatch anything.
 
-describe('W keyboard shortcut simulation', () => {
+describe('Bare W key no longer navigates to wiki', () => {
     type MockEvent = {
         key: string;
+        code?: string;
         ctrlKey?: boolean;
         metaKey?: boolean;
         altKey?: boolean;
@@ -1171,76 +1172,38 @@ describe('W keyboard shortcut simulation', () => {
     };
     type MockState = { activeTab: string; selectedRepoId: string | null };
 
-    function simulateWKeyHandler(
+    function simulateKeyHandler(
         e: MockEvent,
         state: MockState,
     ): Array<{ type: string; [key: string]: any }> {
         const dispatches: Array<{ type: string; [key: string]: any }> = [];
         const target = e.target ?? { tagName: 'BODY', isContentEditable: false };
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return dispatches;
-        if (e.ctrlKey || e.metaKey || e.altKey) return dispatches;
         if (state.activeTab !== 'repos' || !state.selectedRepoId) return dispatches;
-        if (e.key === 'w' || e.key === 'W') {
-            dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+        if (e.altKey && !e.ctrlKey && !e.metaKey) {
+            const tab = REPO_TAB_SHORTCUTS[e.code?.replace('Key', '').toLowerCase() ?? ''];
+            if (tab) {
+                dispatches.push({ type: 'SET_REPO_SUB_TAB', tab });
+            }
         }
         return dispatches;
     }
 
     const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
 
-    it('dispatches SET_REPO_SUB_TAB wiki for key W', () => {
-        const dispatches = simulateWKeyHandler({ key: 'W' }, repoState);
+    it('bare W does NOT dispatch any navigation', () => {
+        const dispatches = simulateKeyHandler({ key: 'w' }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('bare uppercase W does NOT dispatch any navigation', () => {
+        const dispatches = simulateKeyHandler({ key: 'W' }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('Alt+I dispatches wiki navigation', () => {
+        const dispatches = simulateKeyHandler({ key: 'i', code: 'KeyI', altKey: true }, repoState);
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
-    });
-
-    it('dispatches SET_REPO_SUB_TAB wiki for lowercase key w', () => {
-        const dispatches = simulateWKeyHandler({ key: 'w' }, repoState);
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
-    });
-
-    it('does not dispatch when activeTab is not repos', () => {
-        const dispatches = simulateWKeyHandler({ key: 'W' }, { activeTab: 'wiki', selectedRepoId: 'my-repo' });
-        expect(dispatches).toHaveLength(0);
-    });
-
-    it('does not dispatch when selectedRepoId is null', () => {
-        const dispatches = simulateWKeyHandler({ key: 'W' }, { activeTab: 'repos', selectedRepoId: null });
-        expect(dispatches).toHaveLength(0);
-    });
-
-    it('does not dispatch when target is INPUT', () => {
-        const dispatches = simulateWKeyHandler({ key: 'W', target: { tagName: 'INPUT' } }, repoState);
-        expect(dispatches).toHaveLength(0);
-    });
-
-    it('does not dispatch when target is TEXTAREA', () => {
-        const dispatches = simulateWKeyHandler({ key: 'W', target: { tagName: 'TEXTAREA' } }, repoState);
-        expect(dispatches).toHaveLength(0);
-    });
-
-    it('does not dispatch when target is contentEditable', () => {
-        const dispatches = simulateWKeyHandler({ key: 'W', target: { tagName: 'DIV', isContentEditable: true } }, repoState);
-        expect(dispatches).toHaveLength(0);
-    });
-
-    it('does not dispatch when ctrlKey is pressed', () => {
-        const dispatches = simulateWKeyHandler({ key: 'W', ctrlKey: true }, repoState);
-        expect(dispatches).toHaveLength(0);
-    });
-
-    it('does not dispatch when metaKey is pressed', () => {
-        const dispatches = simulateWKeyHandler({ key: 'W', metaKey: true }, repoState);
-        expect(dispatches).toHaveLength(0);
-    });
-
-    it('does not dispatch when altKey is pressed', () => {
-        const dispatches = simulateWKeyHandler({ key: 'W', altKey: true }, repoState);
-        expect(dispatches).toHaveLength(0);
-    });
-
-    it('does not dispatch for unrelated keys', () => {
-        const dispatches = simulateWKeyHandler({ key: 'c' }, repoState);
-        expect(dispatches).toHaveLength(0);
     });
 });
 
@@ -1277,8 +1240,8 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
 
     const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
 
-    it('REPO_TAB_SHORTCUTS maps 8 letters to sub-tabs', () => {
-        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(8);
+    it('REPO_TAB_SHORTCUTS maps 9 letters to sub-tabs', () => {
+        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(9);
     });
 
     it.each([
@@ -1290,6 +1253,7 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
         ['w', 'KeyW', 'workflows'],
         ['s', 'KeyS', 'schedules'],
         ['c', 'KeyC', 'settings'],
+        ['i', 'KeyI', 'wiki'],
     ] as [string, string, string][])('Alt+%s dispatches SET_REPO_SUB_TAB %s', (letter, code, tab) => {
         const dispatches = simulateAltKeyHandler({ key: letter, code, altKey: true }, repoState);
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab });
@@ -1703,9 +1667,12 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).toContain("w: 'workflows'");
     });
 
-    it('bare W → wiki shortcut is still present', () => {
-        expect(ROUTER_SOURCE).toContain("e.key === 'w' || e.key === 'W'");
-        expect(ROUTER_SOURCE).toContain("tab: 'wiki'");
+    it('bare W → wiki shortcut has been removed', () => {
+        expect(ROUTER_SOURCE).not.toContain("e.key === 'w' || e.key === 'W'");
+    });
+
+    it('wiki is accessible via Alt+I (i: wiki in REPO_TAB_SHORTCUTS)', () => {
+        expect(ROUTER_SOURCE).toContain("i: 'wiki'");
     });
 
     it('bare A is no longer a shortcut (replaced by Alt+A)', () => {
