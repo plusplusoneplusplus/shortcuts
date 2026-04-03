@@ -124,3 +124,26 @@ describe('RunScriptDialog model filtering', () => {
         expect(RUN_SCRIPT_SOURCE).toContain('enabledModels.length > 0 ? enabledModels : modelInfos');
     });
 });
+
+describe('RunScriptDialog Ctrl+Enter submit shortcut', () => {
+    it('defines a handleKeyDown callback', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('handleKeyDown');
+    });
+
+    it('checks for Ctrl or Meta key combined with Enter', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('e.ctrlKey || e.metaKey');
+        expect(RUN_SCRIPT_SOURCE).toContain("e.key === 'Enter'");
+    });
+
+    it('guards against double-submit by checking submitting flag', () => {
+        expect(RUN_SCRIPT_SOURCE).toMatch(/ctrlKey.*!submitting|!submitting.*ctrlKey/s);
+    });
+
+    it('wires onKeyDown to the dialog content container', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('onKeyDown={handleKeyDown}');
+    });
+
+    it('shows Ctrl+Enter tooltip on the Enqueue button', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('title="Ctrl+Enter"');
+    });
+});

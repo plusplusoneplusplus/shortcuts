@@ -125,6 +125,13 @@ export function RunScriptDialog() {
         }
     }, [script, args, workingDir, model, pauseOnFailure, workspaceId, queueDispatch, close, reset]);
 
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !submitting) {
+            e.preventDefault();
+            handleSubmit();
+        }
+    }, [submitting, handleSubmit]);
+
     const handleSaveTemplate = useCallback(() => {
         if (!saveName.trim() || !script.trim()) return;
         saveTemplate({
@@ -152,7 +159,7 @@ export function RunScriptDialog() {
     if (minimized) return null;
 
     const dialogContent = (
-        <div className="flex flex-col gap-3" data-testid="run-script-dialog">
+        <div className="flex flex-col gap-3" data-testid="run-script-dialog" onKeyDown={handleKeyDown}>
             {/* Tabs */}
             <div className="flex gap-2 mb-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <button
@@ -300,6 +307,7 @@ export function RunScriptDialog() {
                 disabled={!script.trim() || submitting}
                 onClick={handleSubmit}
                 data-testid="enqueue-script-btn"
+                title="Ctrl+Enter"
             >
                 {submitting ? 'Enqueuing…' : '▶ Enqueue'}
             </Button>
