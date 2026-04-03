@@ -10,6 +10,8 @@ import { groupConsecutiveToolChunks } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import type { RenderToolCall } from './ToolCallGroupView';
 import { MarkdownView } from './MarkdownView';
+import { detectCommitsInToolGroup } from './commitDetection';
+import { CommitStrip } from './CommitStrip';
 
 interface ToolLike {
     toolName: string;
@@ -17,6 +19,8 @@ interface ToolLike {
     startTime?: string;
     endTime?: string;
     args?: Record<string, unknown>;
+    id?: string;
+    result?: string;
 }
 
 interface ToolChunk {
@@ -36,6 +40,7 @@ export interface WhisperCollapsedGroupProps {
     toolParentById: Map<string, string>;
     isStreaming?: boolean;
     groupSingleLineMessages: boolean;
+    workspaceId?: string;
     renderToolTree: (toolId: string, depth: number) => React.ReactNode;
 }
 
@@ -54,6 +59,7 @@ export function WhisperCollapsedGroup({
     toolParentById,
     isStreaming,
     groupSingleLineMessages,
+    workspaceId,
     renderToolTree,
 }: WhisperCollapsedGroupProps) {
     const [expanded, setExpanded] = useState(false);
@@ -126,6 +132,26 @@ export function WhisperCollapsedGroup({
                                 const toolNode = renderToolTree(chunk.toolId, 0);
                                 if (toolNode !== null) {
                                     flushContent();
+                                    const tool = toolById.get(chunk.toolId);
+                                    const toolName = tool?.toolName ?? '';
+                                    if ((toolName === 'powershell' || toolName === 'shell') && tool?.result) {
+                                        const commits = detectCommitsInToolGroup([{
+                                            id: chunk.toolId,
+                                            toolName,
+                                            args: tool.args,
+                                            result: tool.result,
+                                            status: tool.status,
+                                        }]);
+                                        if (commits.length > 0) {
+                                            nodes.push(
+                                                <React.Fragment key={chunk.key + '-with-commit'}>
+                                                    {toolNode}
+                                                    <CommitStrip commits={commits} workspaceId={workspaceId} />
+                                                </React.Fragment>
+                                            );
+                                            continue;
+                                        }
+                                    }
                                     nodes.push(toolNode);
                                 }
                             } else if (chunk.kind === 'tool-group' && (chunk as any).toolIds) {
@@ -134,6 +160,9 @@ export function WhisperCollapsedGroup({
                                 const toolCalls = toolIds
                                     .map(id => toolById.get(id))
                                     .filter((tc): tc is NonNullable<typeof tc> => tc != null) as unknown as RenderToolCall[];
+                                const commits = (chunk as any).category === 'shell'
+                                    ? detectCommitsInToolGroup(toolCalls as any)
+                                    : undefined;
                                 nodes.push(
                                     <ToolCallGroupView
                                         key={chunk.key}
@@ -145,6 +174,8 @@ export function WhisperCollapsedGroup({
                                         compactness={1}
                                         agentId={(chunk as any).agentId}
                                         renderToolTree={renderToolTree}
+                                        commits={commits}
+                                        workspaceId={workspaceId}
                                     />
                                 );
                             }

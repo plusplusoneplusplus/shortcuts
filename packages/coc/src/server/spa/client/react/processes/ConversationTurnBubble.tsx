@@ -981,6 +981,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                         toolParentById={assistantRender.toolParentById}
                                         isStreaming={!!turn.streaming}
                                         groupSingleLineMessages={groupSingleLineMessages}
+                                        workspaceId={wsId}
                                         renderToolTree={renderToolTree}
                                     />
                                 );
