@@ -238,6 +238,17 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             💬 Ask
                         </button>
                         <button
+                            data-testid="repo-tab-context-run-script"
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => {
+                                queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id });
+                                setContextMenu(null);
+                            }}
+                        >
+                            ⚙ Run Script
+                        </button>
+                        <button
                             data-testid="repo-tab-context-generate-plan"
                             className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
                             role="menuitem"

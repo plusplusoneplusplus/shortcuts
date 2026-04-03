@@ -626,6 +626,7 @@ describe('RepoTabStrip', () => {
             fireEvent.contextMenu(screen.getByTestId('repo-tab'));
             expect(screen.getByTestId('repo-tab-context-queue-task')).toBeDefined();
             expect(screen.getByTestId('repo-tab-context-ask')).toBeDefined();
+            expect(screen.getByTestId('repo-tab-context-run-script')).toBeDefined();
             expect(screen.getByTestId('repo-tab-context-generate-plan')).toBeDefined();
         });
 
@@ -660,6 +661,23 @@ describe('RepoTabStrip', () => {
             fireEvent.contextMenu(screen.getByTestId('repo-tab'));
             fireEvent.click(screen.getByTestId('repo-tab-context-ask'));
             expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'r1', mode: 'ask' });
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+        });
+
+        it('clicking Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId and closes menu', () => {
+            mockQueueDispatch.mockClear();
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            fireEvent.click(screen.getByTestId('repo-tab-context-run-script'));
+            expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: 'r1' });
             expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
         });
 
