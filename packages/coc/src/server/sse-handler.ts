@@ -66,7 +66,7 @@ export function emitMessageSteering(store: ProcessStore, processId: string, payl
  *   event: conversation-snapshot → { turns: ConversationTurn[] }
  *   event: chunk              → { content: string }
  *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
- *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, result }
+ *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, result }
  *   event: tool-failed        → { turnIndex, toolCallId, parentToolCallId?, error }
  *   event: permission-request → { turnIndex, permissionId, kind, description }
  *   event: workflow-phase    → { phase, status, timestamp, durationMs?, error?, itemCount? }
@@ -159,6 +159,8 @@ export async function handleProcessStream(
                 turnIndex: event.turnIndex,
                 toolCallId: event.toolCallId,
                 parentToolCallId: event.parentToolCallId,
+                toolName: event.toolName,
+                parameters: event.parameters,
                 result: event.result,
             });
         } else if (event.type === 'tool-failed') {

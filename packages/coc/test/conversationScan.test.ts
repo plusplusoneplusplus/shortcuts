@@ -39,6 +39,78 @@ function makeTurn(
     };
 }
 
+/**
+ * Build a turn that mimics persisted data: tool-complete entries
+ * have `name` instead of `toolName`, and args may be empty.
+ */
+function makePersistedTurn(
+    toolCalls: Array<{
+        id?: string;
+        name: string;
+        toolName?: string;
+        args: Record<string, string>;
+        result?: string;
+    }>
+): ClientConversationTurn {
+    return {
+        role: 'assistant',
+        content: '',
+        timeline: toolCalls.map((t, i) => ({
+            type: 'tool-complete' as const,
+            timestamp: '',
+            toolCall: {
+                id: t.id ?? `tc${i}`,
+                toolName: t.toolName ?? '',
+                name: t.name,
+                args: t.args,
+                result: t.result,
+                status: 'completed' as const,
+            } as any,
+        })),
+    };
+}
+
+/**
+ * Build a turn that mimics live SSE data: tool-start has full info,
+ * tool-complete has toolName='unknown' and args={}.
+ */
+function makeLiveSSETurn(
+    toolCalls: Array<{
+        id: string;
+        toolName: string;
+        args: Record<string, string>;
+        result?: string;
+    }>
+): ClientConversationTurn {
+    const timeline: ClientConversationTurn['timeline'] = [];
+    for (const t of toolCalls) {
+        // tool-start: has full toolName + parameters
+        timeline.push({
+            type: 'tool-start' as const,
+            timestamp: '',
+            toolCall: {
+                id: t.id,
+                toolName: t.toolName,
+                args: t.args,
+                status: 'running' as const,
+            },
+        });
+        // tool-complete: toolName='unknown', args={}
+        timeline.push({
+            type: 'tool-complete' as const,
+            timestamp: '',
+            toolCall: {
+                id: t.id,
+                toolName: 'unknown',
+                args: {},
+                result: t.result,
+                status: 'completed' as const,
+            },
+        });
+    }
+    return { role: 'assistant', content: '', timeline };
+}
+
 // ============================================================================
 // scanTurnsForCreatedFiles
 // ============================================================================
@@ -172,5 +244,229 @@ describe('scanTurnsForCreatedFiles', () => {
         const results = scanTurnsForCreatedFiles(turns);
         expect(results[0].turnIndex).toBe(1);
         expect(results[1].turnIndex).toBe(2);
+    });
+
+    // ==================================================================
+    // Bug fix: name vs toolName mismatch (persisted data)
+    // ==================================================================
+
+    describe('name fallback (persisted data shape)', () => {
+        it('detects create when toolName is empty but name="create"', () => {
+            const turns = [
+                makePersistedTurn([{ name: 'create', toolName: '', args: { path: '/tmp/plan.md' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/plan.md');
+        });
+
+        it('detects create when toolName is undefined but name="create"', () => {
+            const turn: ClientConversationTurn = {
+                role: 'assistant',
+                content: '',
+                timeline: [{
+                    type: 'tool-complete',
+                    timestamp: '',
+                    toolCall: {
+                        id: 'tc0',
+                        toolName: undefined as any,
+                        name: 'create',
+                        args: { path: '/tmp/spec.md' },
+                        status: 'completed',
+                    } as any,
+                }],
+            };
+            const results = scanTurnsForCreatedFiles([turn]);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/spec.md');
+        });
+
+        it('detects write_file via name fallback', () => {
+            const turns = [
+                makePersistedTurn([{ name: 'write_file', args: { path: '/tmp/notes.txt' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+        });
+
+        it('prefers toolName over name when both present', () => {
+            const turns = [
+                makePersistedTurn([{
+                    name: 'read_file',
+                    toolName: 'create',
+                    args: { path: '/tmp/doc.md' },
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/doc.md');
+        });
+    });
+
+    // ==================================================================
+    // Bug fix: args resolution via tool-start entries
+    // ==================================================================
+
+    describe('tool-start args resolution (live SSE shape)', () => {
+        it('resolves args from tool-start when tool-complete has empty args', () => {
+            const turns = [
+                makeLiveSSETurn([{
+                    id: 'tc-abc',
+                    toolName: 'create',
+                    args: { path: '/tmp/plan.md' },
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/plan.md');
+        });
+
+        it('resolves toolName from tool-start when tool-complete has "unknown"', () => {
+            const turns = [
+                makeLiveSSETurn([{
+                    id: 'tc-xyz',
+                    toolName: 'create',
+                    args: { path: '/tmp/design.yaml' },
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/design.yaml');
+        });
+
+        it('handles multiple tool calls in same turn via tool-start resolution', () => {
+            const turns = [
+                makeLiveSSETurn([
+                    { id: 'tc1', toolName: 'create', args: { path: '/tmp/a.md' } },
+                    { id: 'tc2', toolName: 'create', args: { path: '/tmp/b.json' } },
+                ]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(2);
+            expect(results.map(r => r.filePath)).toEqual(['/tmp/a.md', '/tmp/b.json']);
+        });
+
+        it('ignores non-create tool-start entries', () => {
+            const turn: ClientConversationTurn = {
+                role: 'assistant',
+                content: '',
+                timeline: [
+                    {
+                        type: 'tool-start',
+                        timestamp: '',
+                        toolCall: { id: 'tc1', toolName: 'read_file', args: { path: '/tmp/read.md' }, status: 'running' as const },
+                    },
+                    {
+                        type: 'tool-complete',
+                        timestamp: '',
+                        toolCall: { id: 'tc1', toolName: 'unknown', args: {}, status: 'completed' as const },
+                    },
+                ],
+            };
+            const results = scanTurnsForCreatedFiles([turn]);
+            expect(results).toHaveLength(0);
+        });
+    });
+
+    // ==================================================================
+    // Bug fix: result string parsing as last resort
+    // ==================================================================
+
+    describe('result string parsing fallback', () => {
+        it('extracts file path from "Created file ..." result text', () => {
+            const turn: ClientConversationTurn = {
+                role: 'assistant',
+                content: '',
+                timeline: [{
+                    type: 'tool-complete',
+                    timestamp: '',
+                    toolCall: {
+                        id: 'tc0',
+                        toolName: 'create',
+                        args: {},
+                        result: 'Created file C:\\Users\\dev\\project\\plan.md with 7893 characters',
+                        status: 'completed',
+                    } as any,
+                }],
+            };
+            const results = scanTurnsForCreatedFiles([turn]);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('C:\\Users\\dev\\project\\plan.md');
+        });
+
+        it('extracts Unix-style path from result text', () => {
+            const turn: ClientConversationTurn = {
+                role: 'assistant',
+                content: '',
+                timeline: [{
+                    type: 'tool-complete',
+                    timestamp: '',
+                    toolCall: {
+                        id: 'tc0',
+                        toolName: 'create',
+                        args: {},
+                        result: 'Created file /home/user/project/notes.txt with 512 characters',
+                        status: 'completed',
+                    } as any,
+                }],
+            };
+            const results = scanTurnsForCreatedFiles([turn]);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/home/user/project/notes.txt');
+        });
+
+        it('does not extract path from non-matching result text', () => {
+            const turn: ClientConversationTurn = {
+                role: 'assistant',
+                content: '',
+                timeline: [{
+                    type: 'tool-complete',
+                    timestamp: '',
+                    toolCall: {
+                        id: 'tc0',
+                        toolName: 'create',
+                        args: {},
+                        result: 'File operation completed successfully',
+                        status: 'completed',
+                    } as any,
+                }],
+            };
+            const results = scanTurnsForCreatedFiles([turn]);
+            expect(results).toHaveLength(0);
+        });
+
+        it('prefers args.path over result parsing', () => {
+            const turn: ClientConversationTurn = {
+                role: 'assistant',
+                content: '',
+                timeline: [{
+                    type: 'tool-complete',
+                    timestamp: '',
+                    toolCall: {
+                        id: 'tc0',
+                        toolName: 'create',
+                        args: { path: '/primary/path.md' },
+                        result: 'Created file /fallback/path.md with 100 characters',
+                        status: 'completed',
+                    } as any,
+                }],
+            };
+            const results = scanTurnsForCreatedFiles([turn]);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/primary/path.md');
+        });
+
+        it('uses result parsing when persisted entry has name but empty args', () => {
+            const turns = [
+                makePersistedTurn([{
+                    name: 'create',
+                    args: {},
+                    result: 'Created file /tmp/recovered.yaml with 200 characters',
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/recovered.yaml');
+        });
     });
 });
