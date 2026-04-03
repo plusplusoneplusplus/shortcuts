@@ -125,7 +125,7 @@ describe('Server', () => {
 
         expect(res.status).toBe(200);
         expect(res.headers['content-type']).toContain('text/html');
-        expect(res.body).toContain('CoC (Copilot Of Copilot)');
+        expect(res.body).toContain('<div id="app-root">');
     });
 
     // ========================================================================
