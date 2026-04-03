@@ -21,6 +21,7 @@ import type { WhisperGroupChunk } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import { WhisperCollapsedGroup } from './WhisperCollapsedGroup';
 import { detectCommitsInToolGroup } from './commitDetection';
+import { CommitStrip } from './CommitStrip';
 
 const chatMarked = new Marked({
     gfm: true,
@@ -921,6 +922,27 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                 const toolNode = renderToolTree(chunk.toolId, 0);
                                 if (toolNode !== null) {
                                     flushContent();
+                                    // Detect commits for individual (ungrouped) shell tool calls
+                                    const tool = assistantRender.toolById.get(chunk.toolId);
+                                    const toolName = tool?.toolName ?? '';
+                                    if ((toolName === 'powershell' || toolName === 'shell') && tool?.result) {
+                                        const commits = detectCommitsInToolGroup([{
+                                            id: chunk.toolId,
+                                            toolName,
+                                            args: tool.args,
+                                            result: tool.result,
+                                            status: tool.status,
+                                        }]);
+                                        if (commits.length > 0) {
+                                            nodes.push(
+                                                <React.Fragment key={chunk.key + '-with-commit'}>
+                                                    {toolNode}
+                                                    <CommitStrip commits={commits} workspaceId={wsId} />
+                                                </React.Fragment>
+                                            );
+                                            continue;
+                                        }
+                                    }
                                     nodes.push(toolNode);
                                 }
                             } else if (chunk.kind === 'tool-group' && chunk.toolIds) {

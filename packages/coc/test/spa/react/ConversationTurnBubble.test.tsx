@@ -1372,3 +1372,77 @@ describe('ConversationTurnBubble — task result deduplication', () => {
         expect(resultLabel).toBeUndefined();
     });
 });
+
+describe('ConversationTurnBubble — commit strip on individual shell tool calls', () => {
+    it('shows commit strip for an ungrouped shell tool call with git commit output', () => {
+        const turn = makeTurn({
+            role: 'assistant',
+            content: '',
+            timeline: [
+                {
+                    type: 'tool-start',
+                    toolCall: {
+                        id: 'ps1',
+                        toolName: 'powershell',
+                        args: { command: 'git add . && git commit -m "fix: stuff"' },
+                    },
+                    timestamp: '2026-01-15T10:30:00Z',
+                },
+                {
+                    type: 'tool-complete',
+                    toolCall: {
+                        id: 'ps1',
+                        toolName: 'powershell',
+                        args: { command: 'git add . && git commit -m "fix: stuff"' },
+                        result: '[main abc1234] fix: stuff\n 1 file changed, 1 insertion(+), 1 deletion(-)\n<exited with exit code 0>',
+                        status: 'completed',
+                        startTime: '2026-01-15T10:30:00Z',
+                        endTime: '2026-01-15T10:30:01Z',
+                    },
+                    timestamp: '2026-01-15T10:30:01Z',
+                },
+            ] as any,
+        });
+
+        const { container } = render(<ConversationTurnBubble turn={turn} wsId="ws-test" />);
+        const strip = container.querySelector('[data-testid="commit-strip"]');
+        expect(strip).toBeTruthy();
+        expect(strip!.textContent).toContain('abc1234');
+        expect(strip!.textContent).toContain('fix: stuff');
+    });
+
+    it('does not show commit strip for non-commit shell tool calls', () => {
+        const turn = makeTurn({
+            role: 'assistant',
+            content: '',
+            timeline: [
+                {
+                    type: 'tool-start',
+                    toolCall: {
+                        id: 'ps1',
+                        toolName: 'powershell',
+                        args: { command: 'npm run build' },
+                    },
+                    timestamp: '2026-01-15T10:30:00Z',
+                },
+                {
+                    type: 'tool-complete',
+                    toolCall: {
+                        id: 'ps1',
+                        toolName: 'powershell',
+                        args: { command: 'npm run build' },
+                        result: 'Build succeeded',
+                        status: 'completed',
+                        startTime: '2026-01-15T10:30:00Z',
+                        endTime: '2026-01-15T10:30:01Z',
+                    },
+                    timestamp: '2026-01-15T10:30:01Z',
+                },
+            ] as any,
+        });
+
+        const { container } = render(<ConversationTurnBubble turn={turn} />);
+        const strip = container.querySelector('[data-testid="commit-strip"]');
+        expect(strip).toBeNull();
+    });
+});
