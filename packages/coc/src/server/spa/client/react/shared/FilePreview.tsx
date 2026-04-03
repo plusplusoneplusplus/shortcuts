@@ -17,6 +17,7 @@ import { Spinner } from './Spinner';
 import { cn } from './cn';
 
 interface FilePreviewResponse {
+    type?: 'file';
     path: string;
     fileName: string;
     lines: string[];
@@ -25,8 +26,25 @@ interface FilePreviewResponse {
     language: string;
 }
 
+interface ImagePreviewResponse {
+    type: 'image';
+    path: string;
+    fileName: string;
+    mimeType: string;
+    content: string;
+    size: number;
+}
+
+interface ImageTooLargeResponse {
+    type: 'image-too-large';
+    fileName: string;
+    size: number;
+}
+
+type PreviewResponseData = FilePreviewResponse | ImagePreviewResponse | ImageTooLargeResponse;
+
 interface CacheEntry {
-    data: FilePreviewResponse | null;
+    data: PreviewResponseData | null;
     error: string | null;
     timestamp: number;
 }
@@ -56,6 +74,12 @@ function isMobile(): boolean {
         /Mobi|Android|iPhone|iPad|Touch/i.test(navigator.userAgent);
 }
 
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export interface FilePreviewProps {
     filePath: string;
     wsId?: string;
@@ -66,7 +90,7 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
     const { state } = useApp();
     const [visible, setVisible] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [preview, setPreview] = useState<FilePreviewResponse | null>(null);
+    const [preview, setPreview] = useState<PreviewResponseData | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [pos, setPos] = useState({ top: 0, left: 0 });
 
@@ -112,7 +136,7 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
                 const body = await res.json().catch(() => ({}));
                 throw new Error(body.error || `HTTP ${res.status}`);
             }
-            const data: FilePreviewResponse = await res.json();
+            const data: PreviewResponseData = await res.json();
             // Evict oldest if at capacity
             if (cache.size >= MAX_CACHE_ENTRIES) {
                 const oldest = cache.keys().next().value;
@@ -172,8 +196,10 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
 
     // Apply hljs highlighting for markdown preview
     useEffect(() => {
-        if (!preview || !contentRef.current) return;
-        if (!isMarkdownFile(preview.fileName, preview.language)) return;
+        if (!preview || preview.type === 'image' || preview.type === 'image-too-large') return;
+        if (!contentRef.current) return;
+        const filePreview = preview as FilePreviewResponse;
+        if (!isMarkdownFile(filePreview.fileName, filePreview.language)) return;
         const hljs = (window as any).hljs;
         if (hljs) {
             contentRef.current.querySelectorAll('pre code').forEach((block: Element) => {
@@ -182,11 +208,58 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
         }
     }, [preview]);
 
+    const [imgError, setImgError] = useState(false);
+
     const renderContent = () => {
         if (!preview) return null;
 
-        if (isMarkdownFile(preview.fileName, preview.language)) {
-            const mdContent = preview.lines.join('\n');
+        // Image preview
+        if (preview.type === 'image') {
+            const img = preview as ImagePreviewResponse;
+            return (
+                <div className="file-preview-image-container">
+                    {imgError ? (
+                        <div className="file-preview-image-error" data-testid="image-error">
+                            ⚠️ Unable to preview image
+                        </div>
+                    ) : (
+                        <img
+                            className="file-preview-image"
+                            src={`data:${img.mimeType};base64,${img.content}`}
+                            alt={img.fileName}
+                            onError={() => setImgError(true)}
+                            data-testid="preview-image"
+                        />
+                    )}
+                    <div className="file-preview-image-footer">
+                        <span>📄 {img.fileName}</span>
+                        <span className="text-[10px] text-[#848484]">{formatFileSize(img.size)}</span>
+                    </div>
+                </div>
+            );
+        }
+
+        // Image too large
+        if (preview.type === 'image-too-large') {
+            const data = preview as ImageTooLargeResponse;
+            return (
+                <div className="file-preview-image-container">
+                    <div className="file-preview-image-error" data-testid="image-too-large">
+                        📄 {data.fileName}
+                        <br />
+                        <span className="text-[10px] text-[#848484]">
+                            Image too large to preview ({formatFileSize(data.size)})
+                        </span>
+                    </div>
+                </div>
+            );
+        }
+
+        // File preview (text/markdown)
+        const filePreview = preview as FilePreviewResponse;
+
+        if (isMarkdownFile(filePreview.fileName, filePreview.language)) {
+            const mdContent = filePreview.lines.join('\n');
             const html = renderMarkdownToHtml(mdContent, { stripFrontmatter: true });
             return (
                 <div
@@ -197,14 +270,14 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
             );
         }
 
-        const hljsLang = getLanguageFromFileName(preview.fileName);
-        const useHighlighting = hljsLang && hljsLang !== 'markdown' && preview.lines.length <= MAX_HIGHLIGHT_LINES;
-        const highlightedLines = useHighlighting ? highlightBlock(preview.lines, hljsLang) : null;
+        const hljsLang = getLanguageFromFileName(filePreview.fileName);
+        const useHighlighting = hljsLang && hljsLang !== 'markdown' && filePreview.lines.length <= MAX_HIGHLIGHT_LINES;
+        const highlightedLines = useHighlighting ? highlightBlock(filePreview.lines, hljsLang) : null;
 
-        const gutterWidth = String(preview.lines.length).length;
+        const gutterWidth = String(filePreview.lines.length).length;
         return (
             <div className="file-preview-lines p-1" role="table">
-                {preview.lines.map((line, i) => (
+                {filePreview.lines.map((line, i) => (
                     <div key={i} className="file-preview-line flex" role="row">
                         <span
                             className="file-preview-line-number select-none text-right pr-3 text-[#848484] text-xs font-mono"
@@ -233,6 +306,9 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
         );
     };
 
+    const isImageResponse = preview?.type === 'image' || preview?.type === 'image-too-large';
+    const filePreview = (!isImageResponse && preview) ? preview as FilePreviewResponse : null;
+
     return (
         <>
             <span
@@ -257,12 +333,13 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
                     {error && !loading && (
                         <div className="p-3 text-xs text-[#848484]">Preview unavailable</div>
                     )}
-                    {preview && !loading && (
+                    {preview && !loading && isImageResponse && renderContent()}
+                    {preview && !loading && !isImageResponse && (
                         <>
                             <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                                <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">{preview.fileName}</span>
+                                <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">{filePreview!.fileName}</span>
                                 <span className="text-[10px] text-[#848484]">
-                                    {preview.lines.length} lines{preview.truncated ? ` (${preview.totalLines} total)` : ''}
+                                    {filePreview!.lines.length} lines{filePreview!.truncated ? ` (${filePreview!.totalLines} total)` : ''}
                                 </span>
                             </div>
                             {renderContent()}

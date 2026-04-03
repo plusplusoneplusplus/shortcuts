@@ -247,7 +247,7 @@ describe('File Preview API', () => {
             expect(body.error).toBe('File not found');
         });
 
-        it('returns 400 for binary file extensions', async () => {
+        it('returns image preview for image file extensions', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
@@ -256,9 +256,10 @@ describe('File Preview API', () => {
             const res = await request(
                 `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(fullPath)}`
             );
-            expect(res.status).toBe(400);
+            expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.error).toContain('Binary files');
+            expect(body.type).toBe('image');
+            expect(body.mimeType).toBe('image/png');
         });
 
         it('returns directory listing for directories', async () => {
@@ -352,17 +353,33 @@ describe('File Preview API', () => {
             expect(body.lines.length).toBeLessThanOrEqual(20);
         });
 
-        it('rejects various binary extensions', async () => {
+        it('rejects various non-image binary extensions', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const binaryExts = ['.jpg', '.pdf', '.zip', '.exe', '.dll', '.woff2'];
+            const binaryExts = ['.pdf', '.zip', '.exe', '.dll', '.woff2'];
             for (const ext of binaryExts) {
                 const fullPath = createFile(`test${ext}`, 'data');
                 const res = await request(
                     `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(fullPath)}`
                 );
                 expect(res.status).toBe(400);
+            }
+        });
+
+        it('returns image preview for image binary extensions', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const imageExts = ['.jpg', '.png', '.gif', '.svg', '.webp'];
+            for (const ext of imageExts) {
+                const fullPath = createFile(`test-img${ext}`, 'data');
+                const res = await request(
+                    `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(fullPath)}`
+                );
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.type).toBe('image');
             }
         });
 

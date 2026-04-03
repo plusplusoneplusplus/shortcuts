@@ -166,6 +166,54 @@
     line-height: 1.5;
 }
 
+/* Image preview */
+.file-preview-image-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+}
+
+.file-preview-image {
+    max-width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+    border-radius: 4px;
+    background: repeating-conic-gradient(#f0f0f0 0% 25%, #ffffff 0% 50%) 50% / 16px 16px;
+}
+
+.dark .file-preview-image {
+    background: repeating-conic-gradient(#2a2a2a 0% 25%, #1e1e1e 0% 50%) 50% / 16px 16px;
+}
+
+.file-preview-image-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: #6e6e6e;
+    border-top: 1px solid #e0e0e0;
+}
+
+.dark .file-preview-image-footer {
+    color: #9a9a9a;
+    border-top-color: #3c3c3c;
+}
+
+.file-preview-image-error {
+    padding: 24px 16px;
+    font-size: 12px;
+    color: #6e6e6e;
+    text-align: center;
+}
+
+.dark .file-preview-image-error {
+    color: #9a9a9a;
+}
+
 .file-preview-dir-entry {
     display: flex;
     align-items: center;

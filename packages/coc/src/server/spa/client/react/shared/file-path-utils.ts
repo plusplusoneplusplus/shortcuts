@@ -10,6 +10,31 @@
 
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
+// ── Image file detection ───────────────────────────────────────────────
+
+const IMAGE_MIME_TYPES: Record<string, string> = {
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.bmp': 'image/bmp',
+    '.ico': 'image/x-icon',
+};
+
+/** Check whether a file path points to a known image type by extension. */
+export function isImageFile(filePath: string): boolean {
+    const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+    return ext in IMAGE_MIME_TYPES;
+}
+
+/** Return the MIME type for a known image extension, or `null`. */
+export function getImageMimeType(filePath: string): string | null {
+    const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+    return IMAGE_MIME_TYPES[ext] ?? null;
+}
+
 /** Shorten common prefixes for display. */
 export function shortenFilePath(p: string): string {
     if (!p) return '';

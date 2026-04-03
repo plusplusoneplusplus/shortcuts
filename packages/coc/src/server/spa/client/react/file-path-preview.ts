@@ -31,7 +31,22 @@ interface DirectoryPreviewResponse {
     truncated: boolean;
 }
 
-type PreviewResponse = FilePreviewResponse | DirectoryPreviewResponse;
+interface ImagePreviewResponse {
+    type: 'image';
+    path: string;
+    fileName: string;
+    mimeType: string;
+    content: string;
+    size: number;
+}
+
+interface ImageTooLargeResponse {
+    type: 'image-too-large';
+    fileName: string;
+    size: number;
+}
+
+type PreviewResponse = FilePreviewResponse | DirectoryPreviewResponse | ImagePreviewResponse | ImageTooLargeResponse;
 
 interface CacheEntry {
     data: PreviewResponse | null;
@@ -404,9 +419,59 @@ function renderDirectoryPreview(data: DirectoryPreviewResponse): void {
     attachBodyScrollGuard();
 }
 
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderImagePreview(data: ImagePreviewResponse): void {
+    const tip = createTooltip();
+    tip.innerHTML =
+        '<div class="file-preview-tooltip-body file-preview-image-container">' +
+        `<img class="file-preview-image" src="data:${escapeHtml(data.mimeType)};base64,${data.content}" alt="${escapeHtml(data.fileName)}" />` +
+        '</div>' +
+        '<div class="file-preview-image-footer">' +
+        `<span>\uD83D\uDCC4 ${escapeHtml(data.fileName)}</span>` +
+        `<span class="file-preview-tooltip-info">${escapeHtml(formatFileSize(data.size))}</span>` +
+        '</div>';
+
+    const img = tip.querySelector('.file-preview-image') as HTMLImageElement;
+    if (img) {
+        img.addEventListener('error', () => {
+            const container = tip.querySelector('.file-preview-image-container');
+            if (container) {
+                container.innerHTML =
+                    '<div class="file-preview-image-error">' +
+                    `\u26A0\uFE0F Unable to preview image` +
+                    '</div>';
+            }
+        });
+    }
+    tip.style.display = 'block';
+    attachBodyScrollGuard();
+}
+
+function renderImageTooLarge(data: ImageTooLargeResponse): void {
+    const tip = createTooltip();
+    tip.innerHTML =
+        '<div class="file-preview-tooltip-body file-preview-image-container">' +
+        '<div class="file-preview-image-error">' +
+        `\uD83D\uDCC4 ${escapeHtml(data.fileName)}` +
+        `<br><span class="file-preview-tooltip-info">Image too large to preview (${escapeHtml(formatFileSize(data.size))})</span>` +
+        '</div>' +
+        '</div>';
+    tip.style.display = 'block';
+    attachBodyScrollGuard();
+}
+
 function renderResponse(data: PreviewResponse): void {
     if (data.type === 'directory') {
         renderDirectoryPreview(data);
+    } else if (data.type === 'image') {
+        renderImagePreview(data as ImagePreviewResponse);
+    } else if (data.type === 'image-too-large') {
+        renderImageTooLarge(data as ImageTooLargeResponse);
     } else {
         renderPreview(data as FilePreviewResponse);
     }

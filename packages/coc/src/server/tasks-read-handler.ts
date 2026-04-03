@@ -100,16 +100,51 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 }
 
                 // ── File preview ───────────────────────────────────
-                // Binary file rejection by extension
+                const ext = path.extname(resolvedPath).toLowerCase();
+
+                // Image file preview — return base64-encoded content
+                const IMAGE_PREVIEW_TYPES: Record<string, string> = {
+                    '.svg': 'image/svg+xml',
+                    '.png': 'image/png',
+                    '.jpg': 'image/jpeg',
+                    '.jpeg': 'image/jpeg',
+                    '.gif': 'image/gif',
+                    '.webp': 'image/webp',
+                    '.bmp': 'image/bmp',
+                    '.ico': 'image/x-icon',
+                };
+                const imageMime = IMAGE_PREVIEW_TYPES[ext];
+                if (imageMime) {
+                    if (!stat.isFile()) {
+                        return sendError(res, 404, 'Not a file');
+                    }
+                    const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
+                    if (stat.size > MAX_IMAGE_SIZE) {
+                        return sendJSON(res, 200, {
+                            type: 'image-too-large' as const,
+                            fileName: path.basename(resolvedPath),
+                            size: stat.size,
+                        });
+                    }
+                    const buffer = await fs.promises.readFile(resolvedPath);
+                    return sendJSON(res, 200, {
+                        type: 'image' as const,
+                        path: resolvedPath,
+                        fileName: path.basename(resolvedPath),
+                        mimeType: imageMime,
+                        content: buffer.toString('base64'),
+                        size: stat.size,
+                    });
+                }
+
+                // Binary file rejection by extension (non-image binaries)
                 const BINARY_EXTS = new Set([
-                    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg',
                     '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.wav', '.flac',
                     '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
                     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
                     '.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.a',
                     '.woff', '.woff2', '.ttf', '.eot', '.otf',
                 ]);
-                const ext = path.extname(resolvedPath).toLowerCase();
                 if (BINARY_EXTS.has(ext)) {
                     return sendError(res, 400, 'Binary files are not supported');
                 }
