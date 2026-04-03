@@ -2,6 +2,7 @@
  * toolGroupUtils — category types, classification helpers, and the
  * groupConsecutiveToolChunks algorithm for compact tool-call display.
  */
+import type { DetectedCommit } from './commitDetection';
 
 export type ToolGroupCategory = 'read' | 'write' | 'shell' | 'agent';
 
@@ -128,6 +129,8 @@ interface ToolGroupChunk {
     parentToolId?: string;
     /** Set when category === 'agent' — the shared agent_id for the group. */
     agentId?: string;
+    /** Git commits detected in shell tool call results. */
+    commits?: DetectedCommit[];
 }
 
 function parseMs(iso: string): number {

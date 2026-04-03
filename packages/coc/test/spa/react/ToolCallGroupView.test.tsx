@@ -92,3 +92,105 @@ describe('ToolCallGroupView — partial failure rendering', () => {
         expect(status.textContent).toBe('(1 failed, 14 succeeded)');
     });
 });
+
+describe('ToolCallGroupView — commit strip', () => {
+    it('renders commit strip when commits are provided', () => {
+        const toolCalls = [makeTc('t1', 'completed', 'powershell')];
+        const commits = [{
+            shortHash: 'abc1234',
+            subject: 'Fix bug',
+            branch: 'main',
+            toolCallId: 't1',
+        }];
+        const { container } = render(
+            <ToolCallGroupView
+                category="shell"
+                toolCalls={toolCalls}
+                compactness={1}
+                renderToolTree={noop}
+                commits={commits}
+            />
+        );
+        const strip = container.querySelector('[data-testid="commit-strip"]');
+        expect(strip).toBeTruthy();
+        expect(strip!.textContent).toContain('abc1234');
+        expect(strip!.textContent).toContain('Fix bug');
+    });
+
+    it('does not render commit strip when commits is empty', () => {
+        const toolCalls = [makeTc('t1', 'completed', 'powershell')];
+        const { container } = render(
+            <ToolCallGroupView
+                category="shell"
+                toolCalls={toolCalls}
+                compactness={1}
+                renderToolTree={noop}
+                commits={[]}
+            />
+        );
+        const strip = container.querySelector('[data-testid="commit-strip"]');
+        expect(strip).toBeNull();
+    });
+
+    it('does not render commit strip when commits is undefined', () => {
+        const toolCalls = [makeTc('t1', 'completed', 'powershell')];
+        const { container } = render(
+            <ToolCallGroupView
+                category="shell"
+                toolCalls={toolCalls}
+                compactness={1}
+                renderToolTree={noop}
+            />
+        );
+        const strip = container.querySelector('[data-testid="commit-strip"]');
+        expect(strip).toBeNull();
+    });
+
+    it('commit strip is visible even when group is collapsed', () => {
+        const toolCalls = [makeTc('t1', 'completed', 'powershell')];
+        const commits = [{
+            shortHash: 'abc1234',
+            subject: 'Fix bug',
+            branch: 'main',
+            toolCallId: 't1',
+        }];
+        const { container } = render(
+            <ToolCallGroupView
+                category="shell"
+                toolCalls={toolCalls}
+                compactness={1}
+                renderToolTree={noop}
+                commits={commits}
+                isStreaming={false}
+            />
+        );
+        // Group should be collapsed (no expanded body)
+        expect(container.querySelector('.tool-call-group-body')).toBeNull();
+        // But strip should be visible
+        const strip = container.querySelector('[data-testid="commit-strip"]');
+        expect(strip).toBeTruthy();
+    });
+
+    it('passes workspaceId to CommitStrip', () => {
+        const toolCalls = [makeTc('t1', 'completed', 'powershell')];
+        const commits = [{
+            shortHash: 'abc1234',
+            subject: 'Fix bug',
+            branch: 'main',
+            toolCallId: 't1',
+        }];
+        const { container } = render(
+            <ToolCallGroupView
+                category="shell"
+                toolCalls={toolCalls}
+                compactness={1}
+                renderToolTree={noop}
+                commits={commits}
+                workspaceId="ws-123"
+            />
+        );
+        const row = container.querySelector('[data-testid="commit-strip-row-abc1234"]')!;
+        // With workspaceId, row should be clickable
+        expect(row.className).toContain('cursor-pointer');
+    });
+});

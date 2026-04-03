@@ -6,6 +6,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '../shared';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
 import { getCategoryLabel, getToolGroupStatus } from './toolGroupUtils';
+import type { DetectedCommit } from './commitDetection';
+import { CommitStrip } from './CommitStrip';
 
 export interface RenderToolCall {
     id: string;
@@ -31,6 +33,10 @@ export interface ToolCallGroupViewProps {
     /** The shared agent_id when category === 'agent'. */
     agentId?: string;
     renderToolTree: (toolId: string, depth: number) => React.ReactNode;
+    /** Git commits detected in this tool group's shell results. */
+    commits?: DetectedCommit[];
+    /** Workspace ID for commit detail navigation. */
+    workspaceId?: string;
 }
 
 export const CATEGORY_ICONS: Record<ToolGroupCategory, string> = {
@@ -88,6 +94,8 @@ export function ToolCallGroupView({
     isStreaming,
     agentId,
     renderToolTree,
+    commits,
+    workspaceId,
 }: ToolCallGroupViewProps) {
     const [expanded, setExpanded] = useState(false);
 
@@ -171,6 +179,11 @@ export function ToolCallGroupView({
                     {expanded ? '▼' : '▶'}
                 </span>
             </div>
+
+            {/* ── Commit strip (visible in both collapsed and expanded states) ── */}
+            {commits && commits.length > 0 && (
+                <CommitStrip commits={commits} workspaceId={workspaceId} />
+            )}
 
             {/* ── Expanded body ──────────────────────────────────────── */}
             {expanded && (

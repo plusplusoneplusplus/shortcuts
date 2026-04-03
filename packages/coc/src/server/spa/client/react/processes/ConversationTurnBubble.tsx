@@ -20,6 +20,7 @@ import { groupConsecutiveToolChunks, filterWhisperChunks } from './toolGroupUtil
 import type { WhisperGroupChunk } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import { WhisperCollapsedGroup } from './WhisperCollapsedGroup';
+import { detectCommitsInToolGroup } from './commitDetection';
 
 const chatMarked = new Marked({
     gfm: true,
@@ -927,6 +928,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                 const toolCalls = chunk.toolIds
                                     .map(id => assistantRender.toolById.get(id))
                                     .filter((tc): tc is NonNullable<typeof tc> => tc != null);
+                                const commits = chunk.category === 'shell'
+                                    ? detectCommitsInToolGroup(toolCalls)
+                                    : undefined;
                                 nodes.push(
                                     <ToolCallGroupView
                                         key={chunk.key}
@@ -938,6 +942,8 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                         compactness={toolCompactness}
                                         agentId={chunk.agentId}
                                         renderToolTree={renderToolTree}
+                                        commits={commits}
+                                        workspaceId={wsId}
                                     />
                                 );
                             } else if (chunk.kind === 'whisper-group') {
