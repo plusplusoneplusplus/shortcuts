@@ -144,6 +144,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [retryKey, setRetryKey] = useState(0);
     const [refreshError, setRefreshError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [fetching, setFetching] = useState(false);
@@ -325,7 +326,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             })
             .catch(err => setError(err.message || 'Failed to load commits'))
             .finally(() => setLoading(false));
-    }, [workspaceId, fetchCommits, fetchBranchRange]);
+    }, [workspaceId, fetchCommits, fetchBranchRange, retryKey]);
 
     // Fetch skills once per workspace
     useEffect(() => {
@@ -480,13 +481,19 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }, 3000);
     }, [workspaceId, stopPullPolling, refreshAll]);
 
+    // Stable refs so mount-recovery effect doesn't re-fire on callback identity changes
+    const startPullPollingRef = useRef(startPullPolling);
+    startPullPollingRef.current = startPullPolling;
+    const stopPullPollingRef = useRef(stopPullPolling);
+    stopPullPollingRef.current = stopPullPolling;
+
     // Recover pull status on mount (page refresh recovery)
     useEffect(() => {
         fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/latest?op=pull`)
             .then((job: any) => {
                 if (!job) return;
                 if (job.status === 'running') {
-                    startPullPolling(job.id);
+                    startPullPollingRef.current(job.id);
                 } else if (job.status === 'failed' && job.finishedAt) {
                     const elapsed = Date.now() - new Date(job.finishedAt).getTime();
                     if (elapsed < 5 * 60 * 1000) { // 5 min TTL
@@ -495,8 +502,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 }
             })
             .catch(() => {});
-        return () => { stopPullPolling(); };
-    }, [workspaceId, startPullPolling, stopPullPolling]);
+        return () => { stopPullPollingRef.current(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [workspaceId]);
 
     // Git action handlers
     const handleFetch = useCallback(async () => {
@@ -1190,7 +1198,14 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     if (error) {
         return (
             <div className="p-4 text-sm text-[#d32f2f] dark:text-[#f48771]" data-testid="git-tab-error">
-                {error}
+                <p>{error}</p>
+                <button
+                    className="mt-2 px-3 py-1 text-xs rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#333] dark:text-[#ccc] hover:opacity-80"
+                    onClick={() => setRetryKey(k => k + 1)}
+                    data-testid="git-tab-retry"
+                >
+                    Retry
+                </button>
             </div>
         );
     }

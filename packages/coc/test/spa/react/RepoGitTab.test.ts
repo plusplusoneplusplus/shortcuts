@@ -142,6 +142,10 @@ describe('RepoGitTab', () => {
         it('tracks pushing state', () => {
             expect(source).toContain('const [pushing, setPushing] = useState(false)');
         });
+
+        it('tracks retryKey state for error retry', () => {
+            expect(source).toContain('const [retryKey, setRetryKey] = useState(0)');
+        });
     });
 
     describe('auto-selection', () => {
@@ -524,6 +528,15 @@ describe('RepoGitTab', () => {
 
         it('has error state rendering', () => {
             expect(source).toContain('data-testid="git-tab-error"');
+        });
+
+        it('error state includes a retry button', () => {
+            expect(source).toContain('data-testid="git-tab-retry"');
+            expect(source).toContain('Retry');
+        });
+
+        it('retry button increments retryKey to re-trigger initial load', () => {
+            expect(source).toContain('setRetryKey(k => k + 1)');
         });
 
         it('has root data-testid', () => {
@@ -1352,6 +1365,37 @@ describe('RepoGitTab', () => {
         it('multi-commit panel lists shortHash and subject for each commit', () => {
             expect(source).toContain('c.shortHash');
             expect(source).toContain('c.subject');
+        });
+    });
+
+    describe('mount-recovery effect stability', () => {
+        it('uses startPullPollingRef to avoid re-firing on callback changes', () => {
+            expect(source).toContain('const startPullPollingRef = useRef(startPullPolling)');
+            expect(source).toContain('startPullPollingRef.current = startPullPolling');
+        });
+
+        it('uses stopPullPollingRef to avoid re-firing on callback changes', () => {
+            expect(source).toContain('const stopPullPollingRef = useRef(stopPullPolling)');
+            expect(source).toContain('stopPullPollingRef.current = stopPullPolling');
+        });
+
+        it('mount-recovery effect depends only on workspaceId', () => {
+            // The effect should use refs and depend only on [workspaceId]
+            const recoveryBlock = source.match(/\/\/ Recover pull status on mount[\s\S]*?}, \[workspaceId\]\);/);
+            expect(recoveryBlock).toBeTruthy();
+            expect(recoveryBlock![0]).toContain('startPullPollingRef.current');
+            expect(recoveryBlock![0]).toContain('stopPullPollingRef.current');
+        });
+
+        it('mount-recovery effect does not list startPullPolling or stopPullPolling in deps', () => {
+            const recoveryBlock = source.match(/\/\/ Recover pull status on mount[\s\S]*?}, \[workspaceId\]\);/);
+            expect(recoveryBlock).toBeTruthy();
+            // Should not have the old deps pattern
+            expect(recoveryBlock![0]).not.toContain('[workspaceId, startPullPolling, stopPullPolling]');
+        });
+
+        it('initial-load effect includes retryKey in deps', () => {
+            expect(source).toContain(', [workspaceId, fetchCommits, fetchBranchRange, retryKey]');
         });
     });
 });
