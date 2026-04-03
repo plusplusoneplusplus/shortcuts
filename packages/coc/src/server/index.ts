@@ -17,6 +17,7 @@ import { registerAllRoutes } from './routes/index';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
+import { generateIconSvg } from './spa/icon-template';
 import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from './types';
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -142,6 +143,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname }),
         store, spaETag: getBundleETag,
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
+        getIconSvg: () => generateIconSvg(hostname),
     });
     const server = http.createServer(handler);
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);

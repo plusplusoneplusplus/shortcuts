@@ -67,6 +67,8 @@ export interface RouterOptions {
     getWikiDir?: (wikiId: string) => string | undefined;
     /** Optional ETag for the SPA HTML response. Enables conditional caching (304 Not Modified). */
     spaETag?: string | (() => string | undefined);
+    /** Optional factory for the /icon.svg favicon (hostname-derived colors). Called on each request. */
+    getIconSvg?: () => string;
 }
 
 // ============================================================================
@@ -94,7 +96,7 @@ function setCorsHeaders(res: http.ServerResponse): void {
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { spaHtml, staticDir, store, getWikiDir, spaETag } = options;
+    const { spaHtml, staticDir, store, getWikiDir, spaETag, getIconSvg } = options;
 
     // Prepend built-in routes (OpenAPI spec, Swagger UI, health)
     const routes: Route[] = [
@@ -163,6 +165,19 @@ export function createRequestHandler(
         const pathname = decodeURIComponent(
             (req.url || '/').split('?')[0]
         );
+
+        // Dynamic favicon: /icon.svg — hostname-derived colors
+        if (pathname === '/icon.svg' && getIconSvg) {
+            const svg = getIconSvg();
+            const body = Buffer.from(svg, 'utf-8');
+            res.writeHead(200, {
+                'Content-Type': 'image/svg+xml',
+                'Content-Length': body.length,
+                'Cache-Control': 'public, max-age=86400',
+            });
+            res.end(body);
+            return;
+        }
 
         // Wiki static files: /wiki/:wikiId/static/*
         const wikiStaticMatch = pathname.match(/^\/wiki\/([^/]+)\/static\/(.+)$/);

@@ -83,6 +83,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(title)}</title>
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
     <!-- highlight.js 11.9.0 — syntax highlighting (review editor + wiki) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
