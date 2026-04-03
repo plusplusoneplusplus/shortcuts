@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { cn, FilePathLink, shortenFilePath } from '../shared';
+import { isImageFile, getImageMimeType } from '../shared/file-path-utils';
 import { computeLineDiff, type DiffLine } from '../../diff-utils';
 import { ToolResultPopover } from './ToolResultPopover';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -301,6 +302,8 @@ function EditToolView({ args }: { args: Record<string, any> }) {
 function CreateToolView({ args }: { args: Record<string, any> }) {
     const filePath = args.path || args.filePath || '';
     const fileText = typeof args.file_text === 'string' ? args.file_text : '';
+    const mime = filePath ? getImageMimeType(filePath) : null;
+    const isImage = filePath ? isImageFile(filePath) : false;
 
     return (
         <div className="space-y-1.5">
@@ -309,11 +312,19 @@ function CreateToolView({ args }: { args: Record<string, any> }) {
                     📁 <FilePathLink path={filePath} noTruncate />
                 </div>
             )}
-            {fileText && (
+            {fileText && isImage && mime ? (
+                <div className="file-preview-image-container rounded border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <img
+                        className="file-preview-image"
+                        src={`data:${mime};base64,${btoa(fileText)}`}
+                        alt={shortenPath(filePath)}
+                    />
+                </div>
+            ) : fileText ? (
                 <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-2 font-mono text-[#1e1e1e] dark:text-[#cccccc]">
                     <code>{fileText}</code>
                 </pre>
-            )}
+            ) : null}
         </div>
     );
 }
