@@ -65,7 +65,8 @@ export function getBundleETag(): string {
 
 export function generateDashboardHtml(options: DashboardOptions = {}): string {
     const {
-        title = 'CoC (Copilot Of Copilot)',
+        hostname,
+        title = hostname ? `CoC @ ${hostname}` : 'CoC (Copilot Of Copilot)',
         theme = 'auto',
         wsPath = '/ws',
         apiBasePath = '/api',
@@ -100,7 +101,8 @@ ${getBundleCss()}
         window.__DASHBOARD_CONFIG__ = {
             apiBasePath: '${escapeHtml(apiBasePath)}',
             wsPath: '${escapeHtml(wsPath)}',
-            version: '${escapeHtml(getBundleETag())}'
+            version: '${escapeHtml(getBundleETag())}'${hostname ? `,
+            hostname: '${escapeHtml(hostname)}'` : ''}
         };
     </script>${reviewFilePath ? `
     <script>

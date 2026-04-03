@@ -13,6 +13,7 @@ import { ToastProvider } from '../context/ToastContext';
 import { ToastContainer, useToast } from '../shared';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
 import { useMdPopOutChannel, type MdPopOutMessage } from '../context/MarkdownPopOutContext';
+import { getHostname } from '../utils/config';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,9 @@ function PopOutMarkdownContent({ params }: { params: PopOutMarkdownParams }) {
 
     useEffect(() => {
         const title = params.displayPath.replace(/\\/g, '/').split('/').pop() || 'Markdown Review';
-        document.title = `${title} — CoC`;
+        const hostname = getHostname();
+        const brand = hostname ? `CoC @ ${hostname}` : 'CoC';
+        document.title = `${title} — ${brand}`;
     }, [params.displayPath]);
 
     return (

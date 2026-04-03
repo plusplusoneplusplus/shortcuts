@@ -18,6 +18,16 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('<title>CoC (Copilot Of Copilot)</title>');
     });
 
+    it('uses hostname in default title when hostname is provided', () => {
+        const html = generateDashboardHtml({ hostname: 'my-machine' });
+        expect(html).toContain('<title>CoC @ my-machine</title>');
+    });
+
+    it('uses custom title even when hostname is provided', () => {
+        const html = generateDashboardHtml({ title: 'My Dashboard', hostname: 'my-machine' });
+        expect(html).toContain('<title>My Dashboard</title>');
+    });
+
     it('uses custom title', () => {
         const html = generateDashboardHtml({ title: 'My Dashboard' });
         expect(html).toContain('<title>My Dashboard</title>');
@@ -116,6 +126,22 @@ describe('generateDashboardHtml', () => {
         // The string __REVIEW_CONFIG__ exists in the bundled JS (review-config.ts),
         // but the separate <script> block that sets window.__REVIEW_CONFIG__ should not exist
         expect(html).not.toContain('window.__REVIEW_CONFIG__ = {');
+    });
+
+    it('includes hostname in __DASHBOARD_CONFIG__ when hostname is provided', () => {
+        const html = generateDashboardHtml({ hostname: 'DESKTOP-ABC123' });
+        expect(html).toContain("hostname: 'DESKTOP-ABC123'");
+    });
+
+    it('does not include hostname in __DASHBOARD_CONFIG__ when hostname is not provided', () => {
+        const html = generateDashboardHtml();
+        expect(html).not.toContain("hostname:");
+    });
+
+    it('escapes hostname in __DASHBOARD_CONFIG__', () => {
+        const html = generateDashboardHtml({ hostname: "host'<script>" });
+        expect(html).not.toContain("host'<script>");
+        expect(html).toContain('&lt;script&gt;');
     });
 });
 

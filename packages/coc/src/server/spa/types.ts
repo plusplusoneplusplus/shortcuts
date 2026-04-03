@@ -1,6 +1,8 @@
 export interface DashboardOptions {
-    /** Page title (default: "CoC (Copilot Of Copilot)") */
+    /** Page title (default: "CoC @ <hostname>") */
     title?: string;
+    /** Host machine name (default: os.hostname()) */
+    hostname?: string;
     /** Default theme: 'light' | 'dark' | 'auto' */
     theme?: 'light' | 'dark' | 'auto';
     /** WebSocket endpoint path (default: "/ws") */

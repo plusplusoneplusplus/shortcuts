@@ -137,8 +137,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         aiInvoker,
     });
 
+    const hostname = os.hostname();
     const handler = createRequestHandler({
-        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true }),
+        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname }),
         store, spaETag: getBundleETag,
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
     });

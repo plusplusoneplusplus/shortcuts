@@ -10,6 +10,7 @@ import { NotificationBell } from '../shared/NotificationBell';
 import { RepoTabStrip } from '../repos/RepoTabStrip';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { getHostname } from '../utils/config';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 
@@ -48,6 +49,9 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const [popoverOpen, setPopoverOpen] = useState(false);
+    const hostname = getHostname();
+    const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
+    const brandTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -95,14 +99,14 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     data-tab-mobile="repos"
                     className={`text-sm font-semibold whitespace-nowrap md:hidden flex-shrink-0 px-2 h-7 transition-colors inline-flex items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:underline'}`}
                     onClick={e => { e.preventDefault(); switchTab('repos'); }}
-                >CoC</a>
+                >{ brandLabel }</a>
                 <a
                     href="#"
                     data-tab="repos"
                     className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 transition-colors items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'}`}
-                    title="Copilot of Copilot"
+                    title={brandTooltip}
                     onClick={e => { e.preventDefault(); switchTab('repos'); }}
-                >CoC</a>
+                >{ brandLabel }</a>
                 {!isMobile && (
                     <RepoTabStrip
                         repos={repos}

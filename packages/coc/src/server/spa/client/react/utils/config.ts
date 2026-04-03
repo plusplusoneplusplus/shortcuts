@@ -6,6 +6,7 @@
 interface DashboardConfig {
     apiBasePath: string;
     wsPath: string;
+    hostname?: string;
 }
 
 function getConfig(): DashboardConfig {
@@ -22,4 +23,8 @@ export function getApiBase(): string {
 
 export function getWsPath(): string {
     return getConfig().wsPath;
+}
+
+export function getHostname(): string | undefined {
+    return getConfig().hostname;
 }

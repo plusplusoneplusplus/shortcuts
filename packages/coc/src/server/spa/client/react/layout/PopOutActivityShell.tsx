@@ -17,6 +17,7 @@ import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 import { ToastContainer, useToast } from '../shared';
 import { ActivityChatDetail } from '../repos/ActivityChatDetail';
 import { usePopOutChannel, type PopOutMessage } from '../hooks/usePopOutChannel';
+import { getHostname } from '../utils/config';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -59,7 +60,9 @@ function PopOutContent({ taskId, workspaceId }: { taskId: string; workspaceId: s
     }, [taskId, postMessage]);
 
     useEffect(() => {
-        document.title = `Chat — CoC`;
+        const hostname = getHostname();
+        const brand = hostname ? `CoC @ ${hostname}` : 'CoC';
+        document.title = `Chat — ${brand}`;
     }, []);
 
     return (
