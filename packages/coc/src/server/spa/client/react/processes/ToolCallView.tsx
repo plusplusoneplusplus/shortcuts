@@ -316,7 +316,7 @@ function CreateToolView({ args }: { args: Record<string, any> }) {
                 <div className="file-preview-image-container rounded border border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <img
                         className="file-preview-image"
-                        src={`data:${mime};base64,${btoa(fileText)}`}
+                        src={`data:${mime};base64,${btoa(unescape(encodeURIComponent(fileText)))}`}
                         alt={shortenPath(filePath)}
                     />
                 </div>
