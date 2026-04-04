@@ -21,6 +21,7 @@ import { useLongPress } from '../hooks/useLongPress';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
+import { WorkItemSection } from './WorkItemSection';
 
 export type ActivityTabMode = 'chats' | 'tasks';
 
@@ -114,6 +115,8 @@ export interface ActivityListPaneProps {
     fetchQueue: () => Promise<void>;
     /** Reason for the current pause (present when auto-paused due to task failure). */
     pauseReason?: { taskId: string; displayName: string; failedAt: string };
+    onSelectWorkItem?: (id: string) => void;
+    selectedWorkItemId?: string | null;
 }
 
 function formatMetadataText(task: any): string {
@@ -146,6 +149,8 @@ export function ActivityListPane({
     onOpenDialog,
     fetchQueue,
     pauseReason,
+    onSelectWorkItem,
+    selectedWorkItemId,
 }: ActivityListPaneProps) {
     const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
@@ -652,6 +657,11 @@ export function ActivityListPane({
                         📋 Tasks
                     </button>
                 </div>
+                {activeTab === 'chats' && (
+                    <Button variant="ghost" size="sm" onClick={onOpenDialog} className="self-start" data-testid="new-chat-btn">
+                        💬 New Chat
+                    </Button>
+                )}
                 {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">
@@ -886,6 +896,14 @@ export function ActivityListPane({
                             </div>
                         )}
                     </div>
+                )}
+
+                {activeTab === 'tasks' && workspaceId && onSelectWorkItem && (
+                    <WorkItemSection
+                        workspaceId={workspaceId}
+                        onSelectWorkItem={onSelectWorkItem}
+                        selectedWorkItemId={selectedWorkItemId}
+                    />
                 )}
 
                 {(filteredPinned.length > 0 || pinnedRunningCount > 0) && (

@@ -6,6 +6,7 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
+import { WorkItemProvider } from './context/WorkItemContext';
 import { ReposProvider } from './context/ReposContext';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
 import { ToastProvider } from './context/ToastContext';
@@ -405,6 +406,7 @@ export function App() {
     return (
         <AppProvider>
             <QueueProvider>
+                <WorkItemProvider>
                 <NotificationProvider>
                     <PopOutProvider>
                         <MarkdownPopOutProvider>
@@ -418,6 +420,7 @@ export function App() {
                         </MarkdownPopOutProvider>
                     </PopOutProvider>
                 </NotificationProvider>
+                </WorkItemProvider>
             </QueueProvider>
         </AppProvider>
     );
