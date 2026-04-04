@@ -4,6 +4,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '../shared';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
 import { getCategoryLabel, getToolGroupStatus } from './toolGroupUtils';
 import type { DetectedCommit } from './commitDetection';
@@ -98,6 +99,7 @@ export function ToolCallGroupView({
     workspaceId,
 }: ToolCallGroupViewProps) {
     const [expanded, setExpanded] = useState(false);
+    const { isMobile } = useBreakpoint();
 
     useEffect(() => {
         setExpanded(!!isStreaming);
@@ -127,7 +129,7 @@ export function ToolCallGroupView({
     return (
         <div
             className={cn(
-                'tool-call-group my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]',
+                'tool-call-group my-0.5 md:my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]',
                 'bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs',
                 isMinimal && !expanded && 'tool-call-group--minimal'
             )}
@@ -139,7 +141,7 @@ export function ToolCallGroupView({
                 tabIndex={0}
                 aria-expanded={expanded}
                 className={cn(
-                    'tool-call-group-header flex items-center gap-2 px-2.5 py-1.5',
+                    'tool-call-group-header flex items-center gap-1.5 px-2 py-1 md:gap-2 md:px-2.5 md:py-1.5',
                     'cursor-pointer select-none',
                     'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]',
                     isMinimal && !expanded &&
@@ -166,16 +168,16 @@ export function ToolCallGroupView({
                     </span>
                 )}
 
-                {startLabel && (
+                {!isMobile && startLabel && (
                     <span className="text-[#848484] ml-auto shrink-0">{startLabel}</span>
                 )}
                 {duration && (
-                    <span className={cn('text-[#848484] shrink-0', !startLabel && 'ml-auto')}>
+                    <span className={cn('text-[#848484] shrink-0', (!startLabel || isMobile) && 'ml-auto')}>
                         {duration}
                     </span>
                 )}
 
-                <span className={cn('text-[#848484] shrink-0', !duration && !startLabel && 'ml-auto')}>
+                <span className={cn('text-[#848484] shrink-0', !duration && (!startLabel || isMobile) && 'ml-auto')}>
                     {expanded ? '▼' : '▶'}
                 </span>
             </div>
@@ -195,7 +197,7 @@ export function ToolCallGroupView({
                                     {renderToolTree(item.toolId, 0)}
                                 </React.Fragment>
                             ) : (
-                                <div key={item.key} className="tool-call-group-content px-3 py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1"
+                                <div key={item.key} className="tool-call-group-content px-2 py-0.5 md:px-3 md:py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1"
                                     dangerouslySetInnerHTML={{ __html: item.html }}
                                 />
                             )
@@ -208,7 +210,7 @@ export function ToolCallGroupView({
                                 </React.Fragment>
                             ))}
                             {contentItems && contentItems.length > 0 && (
-                                <div className="tool-call-group-content px-3 py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
+                                <div className="tool-call-group-content px-2 py-0.5 md:px-3 md:py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
                                     {contentItems.map(item => (
                                         <div key={item.key} dangerouslySetInnerHTML={{ __html: item.html }} />
                                     ))}

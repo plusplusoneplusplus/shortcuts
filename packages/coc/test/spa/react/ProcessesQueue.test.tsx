@@ -674,8 +674,8 @@ describe('ConversationTurnBubble', () => {
             </Wrap>
         );
 
-        const taskCard = screen.getByText('task').closest('.my-1') as HTMLElement;
-        const viewCard = screen.getByText('view').closest('.my-1') as HTMLElement;
+        const taskCard = screen.getByText('task').closest('.tool-call-card') as HTMLElement;
+        const viewCard = screen.getByText('view').closest('.tool-call-card') as HTMLElement;
 
         expect(taskCard.style.marginLeft || '0px').toBe('0px');
         expect(viewCard.style.marginLeft).toBe('12px');

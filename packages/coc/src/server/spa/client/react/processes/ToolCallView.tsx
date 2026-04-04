@@ -516,16 +516,16 @@ export function ToolCallView({
     return (
         <div
             className={cn(
-                'tool-call-card my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs',
+                'tool-call-card my-0.5 md:my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs',
                 depthLevel > 0 && 'border-l-2'
             )}
             data-tool-id={toolCall.id || toolCall.toolName || 'unknown'}
-            style={depthLevel > 0 ? { marginLeft: `${depthLevel * 12}px` } : undefined}
+            style={depthLevel > 0 ? { marginLeft: `${depthLevel * (isMobile ? 8 : 12)}px` } : undefined}
         >
             <div
                 ref={headerRef}
                 className={cn(
-                    'tool-call-header flex items-center gap-2 px-2.5 py-1.5 cursor-pointer select-none',
+                    'tool-call-header flex items-center gap-1.5 px-2 py-1 md:gap-2 md:px-2.5 md:py-1.5 cursor-pointer select-none',
                     hasDetails && 'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'
                 )}
                 onClick={(e) => {
@@ -553,24 +553,24 @@ export function ToolCallView({
                 <span className="tool-call-name font-medium text-[#0078d4] dark:text-[#3794ff]">{name}</span>
                 {summary && (
                     <span
-                        className={cn('text-[#848484] min-w-0 break-all', summaryIsPath && 'file-path-link')}
+                        className={cn('text-[#848484] min-w-0', isMobile ? 'truncate max-w-[40vw]' : 'break-all', summaryIsPath && 'file-path-link')}
                         title={summary}
                         {...(summaryIsPath ? { 'data-full-path': argsObj.path || argsObj.filePath, 'data-no-preview-hover': '' } : {})}
                     >
                         {summary}
                     </span>
                 )}
-                {startTimeLabel && (
+                {!isMobile && startTimeLabel && (
                     <span className="text-[#848484] ml-auto shrink-0">{startTimeLabel}</span>
                 )}
                 {duration && (
-                    <span className={cn('text-[#848484] shrink-0', !startTimeLabel && 'ml-auto')}>{duration}</span>
+                    <span className={cn('text-[#848484] shrink-0', (!startTimeLabel || isMobile) && 'ml-auto')}>{duration}</span>
                 )}
                 {isMobile && hasHoverResult && (
                     <button
                         type="button"
                         className={cn('text-[#848484] hover:text-[#0078d4] dark:hover:text-[#3794ff] shrink-0',
-                            !duration && !startTimeLabel && 'ml-auto')}
+                            !duration && 'ml-auto')}
                         aria-label="Preview result"
                         title="Preview result"
                         data-testid="mobile-preview-btn"
@@ -585,7 +585,7 @@ export function ToolCallView({
             </div>
             {hasDetails && (
                 <div className={cn(
-                    'tool-call-body border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-2.5 py-2 space-y-2 select-text',
+                    'tool-call-body border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-2 py-1.5 space-y-1.5 md:px-2.5 md:py-2 md:space-y-2 select-text',
                     !expanded && 'collapsed',
                     !expanded && 'hidden'
                 )}>

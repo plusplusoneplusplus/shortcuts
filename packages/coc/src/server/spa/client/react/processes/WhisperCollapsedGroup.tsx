@@ -100,7 +100,7 @@ export function WhisperCollapsedGroup({
             <button
                 type="button"
                 className={cn(
-                    'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors',
+                    'w-full flex items-center gap-2 px-2 py-1 md:px-3 md:py-1.5 text-xs text-left transition-colors',
                     'bg-[#f5f5f5] dark:bg-[#2a2a2a] text-[#848484] hover:bg-[#ebebeb] dark:hover:bg-[#333]',
                     'opacity-70 hover:opacity-100',
                 )}
@@ -113,7 +113,7 @@ export function WhisperCollapsedGroup({
                 <span className="text-[10px]">{expanded ? '▼' : '▶'}</span>
             </button>
             {expanded && (
-                <div className="px-3 py-2 space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] opacity-80" data-testid="whisper-expanded-content">
+                <div className="px-2 py-1.5 space-y-1.5 md:px-3 md:py-2 md:space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] opacity-80" data-testid="whisper-expanded-content">
                     {(() => {
                         const nodes: React.ReactNode[] = [];
                         let accHtml = '';
