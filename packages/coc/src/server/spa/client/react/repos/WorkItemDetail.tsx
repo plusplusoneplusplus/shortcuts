@@ -51,6 +51,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
     const [editingPlan, setEditingPlan] = useState(false);
     const [planDraft, setPlanDraft] = useState('');
     const [savingPlan, setSavingPlan] = useState(false);
+    const [refineMode, setRefineMode] = useState(false);
+    const [refineInstructions, setRefineInstructions] = useState('');
+    const [refining, setRefining] = useState(false);
+    const [refinedContent, setRefinedContent] = useState<string | null>(null);
 
     const basePath = `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}`;
 
@@ -110,6 +114,34 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
         } finally {
             setSavingPlan(false);
         }
+    };
+
+    const handleRefine = async () => {
+        setRefining(true);
+        try {
+            const data = await fetchApi(basePath + '/plan/refine', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instructions: refineInstructions.trim() || undefined }),
+            });
+            setRefinedContent(data.content ?? data.plan?.content ?? '');
+            setRefineMode(false);
+        } catch (err: any) {
+            setError(err.message || 'Failed to refine plan');
+        } finally {
+            setRefining(false);
+        }
+    };
+
+    const handleAcceptRefine = async () => {
+        setRefinedContent(null);
+        setRefineInstructions('');
+        await fetchItem();
+    };
+
+    const handleRejectRefine = () => {
+        setRefinedContent(null);
+        setRefineInstructions('');
     };
 
     const loadPlanVersions = async () => {
@@ -206,13 +238,46 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                                     📜 History
                                 </Button>
                             )}
-                            {canEditPlan && !editingPlan && (
+                            {canEditPlan && !editingPlan && !refinedContent && (
                                 <Button variant="ghost" size="sm" onClick={() => { setPlanDraft(item.plan?.content || ''); setEditingPlan(true); }} data-testid="work-item-plan-edit-btn">
                                     ✏️ {item.plan ? 'Edit' : 'Add Plan'}
                                 </Button>
                             )}
+                            {canEditPlan && !editingPlan && !refinedContent && (
+                                <Button variant="ghost" size="sm" onClick={() => setRefineMode(!refineMode)} disabled={refining} loading={refining} data-testid="work-item-plan-refine-btn">
+                                    🤖 Refine
+                                </Button>
+                            )}
                         </div>
                     </div>
+                    {refineMode && !refinedContent && (
+                        <div className="space-y-2 mb-2" data-testid="work-item-refine-input">
+                            <input
+                                type="text"
+                                className="w-full text-xs p-2 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e]"
+                                placeholder="Optional instructions (e.g., &quot;make it more detailed&quot;)…"
+                                value={refineInstructions}
+                                onChange={e => setRefineInstructions(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleRefine(); } }}
+                            />
+                            <div className="flex gap-1">
+                                <Button variant="primary" size="sm" onClick={handleRefine} disabled={refining} loading={refining}>Refine</Button>
+                                <Button variant="ghost" size="sm" onClick={() => { setRefineMode(false); setRefineInstructions(''); }}>Cancel</Button>
+                            </div>
+                        </div>
+                    )}
+                    {refinedContent !== null && (
+                        <div className="space-y-2 mb-2" data-testid="work-item-refine-result">
+                            <div className="text-[10px] font-medium text-[#848484] uppercase">Refined Plan (preview)</div>
+                            <div className="text-xs whitespace-pre-wrap font-mono bg-green-50 dark:bg-green-900/20 rounded p-2 border border-green-300 dark:border-green-700 max-h-64 overflow-y-auto">
+                                {refinedContent}
+                            </div>
+                            <div className="flex gap-1">
+                                <Button variant="primary" size="sm" onClick={handleAcceptRefine} data-testid="work-item-refine-accept">✅ Accept</Button>
+                                <Button variant="ghost" size="sm" onClick={handleRejectRefine} data-testid="work-item-refine-reject">✕ Reject</Button>
+                            </div>
+                        </div>
+                    )}
                     {editingPlan ? (
                         <div className="space-y-2">
                             <textarea
