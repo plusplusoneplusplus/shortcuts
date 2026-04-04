@@ -15,6 +15,7 @@ import { useRepos } from '../context/ReposContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ActivityListPane } from './ActivityListPane';
+import type { ActivityTabMode } from './ActivityListPane';
 import { ActivityDetailPane } from './ActivityDetailPane';
 import { useUnseenActivity } from '../hooks/useUnseenActivity';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../context/ChatPreferencesContext';
@@ -42,6 +43,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<ActivityTabMode>('chats');
     const [isAutopilotPaused, setIsAutopilotPaused] = useState(false);
     const [isAutopilotPauseLoading, setIsAutopilotPauseLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -396,7 +398,9 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             isMobile={isMobile}
             now={now}
             workspaceId={workspaceId}
-            unseenProcessIds={unseenProcessIds}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            unseenTaskIds={unseenTaskIds}
             onMarkAllRead={markTasksSeen}
             onMarkRead={markSeen}
             onMarkUnread={markUnseen}
