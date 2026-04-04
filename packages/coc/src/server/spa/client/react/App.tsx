@@ -27,6 +27,7 @@ import { EnqueueDialog } from './queue/EnqueueDialog';
 import { RunScriptDialog } from './queue/RunScriptDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
 import { buildNotificationEntry } from './utils/build-notification-entry';
+import { WelcomeModal } from './welcome/WelcomeModal';
 
 interface MarkdownReviewDialogState {
     open: boolean;
@@ -416,6 +417,7 @@ function AppInner() {
                     initialScrollTop={reviewDialog.scrollTop}
                 />
                 <MinimizedDialogsTray />
+                <WelcomeModal />
             </ReposProvider>
         </ToastProvider>
     );

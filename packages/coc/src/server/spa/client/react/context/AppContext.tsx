@@ -26,6 +26,7 @@ export interface OnboardingProgress {
     hasRunWorkflow: boolean;
     hasOpenedWiki: boolean;
     hasUsedChat: boolean;
+    dismissed: boolean;
 }
 
 export interface AppContextState {
@@ -123,7 +124,7 @@ const initialState: AppContextState = {
     repoSubTabNavState: {},
     settingsSection: 'info',
     hasSeenWelcome: false,
-    onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+    onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, dismissed: false },
     dismissedTips: [],
     preferencesLoaded: false,
 };
