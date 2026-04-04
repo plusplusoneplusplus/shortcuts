@@ -46,7 +46,7 @@ describe('CommitDetail', () => {
             expect(source).toContain('workspaceId: string');
         });
 
-        it('accepts hash prop (optional in range mode)', () => {
+        it('accepts optional hash prop', () => {
             expect(source).toContain('hash?: string');
         });
 
@@ -94,7 +94,7 @@ describe('CommitDetail', () => {
     });
 
     describe('commit diff URL', () => {
-        it('builds diffUrl conditionally (null in range mode)', () => {
+        it('builds diffUrl from hash', () => {
             expect(source).toContain('const diffUrl = ');
         });
 
@@ -199,29 +199,33 @@ describe('CommitDetail', () => {
         });
     });
 
-    describe('branch-range Ask AI / Queue Task passthrough', () => {
-        it('accepts optional onAskAI prop', () => {
-            expect(source).toContain('onAskAI?: () => void');
+    describe('range-mode code removed', () => {
+        it('does not import BranchCommitStrip', () => {
+            expect(source).not.toContain('BranchCommitStrip');
         });
 
-        it('accepts optional onQueueTask prop', () => {
-            expect(source).toContain('onQueueTask?: () => void');
+        it('does not import BranchAllFilesDiff', () => {
+            expect(source).not.toContain('BranchAllFilesDiff');
         });
 
-        it('destructures onAskAI from props', () => {
-            expect(source).toContain('onAskAI');
+        it('does not contain range?: BranchRangeInfo', () => {
+            expect(source).not.toContain('range?: BranchRangeInfo');
         });
 
-        it('destructures onQueueTask from props', () => {
-            expect(source).toContain('onQueueTask');
+        it('does not contain isRangeMode', () => {
+            expect(source).not.toContain('isRangeMode');
         });
 
-        it('passes onAskAI to BranchCommitStrip', () => {
-            expect(source).toContain('onAskAI={onAskAI}');
+        it('does not contain RANGE_STORAGE_KEY', () => {
+            expect(source).not.toContain('RANGE_STORAGE_KEY');
         });
 
-        it('passes onQueueTask to BranchCommitStrip', () => {
-            expect(source).toContain('onQueueTask={onQueueTask}');
+        it('does not contain range-mode props', () => {
+            expect(source).not.toContain('onFileSelect');
+            expect(source).not.toContain('onAllCommentsClick');
+            expect(source).not.toContain('onAskAI?: () => void');
+            expect(source).not.toContain('onQueueTask?: () => void');
+            expect(source).not.toContain('unpushedCount');
         });
     });
 });

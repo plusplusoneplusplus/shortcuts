@@ -7,7 +7,6 @@
  *   - Chat panel and CommentSidebar co-existence
  *   - Correct props passed to CommitChatPanel
  *   - localStorage persistence of chat state
- *   - Not rendered in range mode
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -188,20 +187,5 @@ describe('CommitDetail — chat panel integration', () => {
         localStorage.setItem('coc.commitChat.open', 'true');
         await renderDetail();
         expect(screen.getByTestId('commit-chat-panel')).toBeTruthy();
-    });
-
-    // 10. Toggle button not rendered in range mode
-    it('does not render 🤖 button in range mode', async () => {
-        await act(async () => {
-            render(
-                <CommitDetail
-                    workspaceId="ws1"
-                    range={{ baseRef: 'main', headRef: 'feature', commitCount: 1, additions: 0, deletions: 0, mergeBase: 'aaa', fileCount: 0 } as any}
-                    commits={[]}
-                    files={[]}
-                />,
-            );
-        });
-        expect(screen.queryByTestId('toggle-chat-btn')).toBeNull();
     });
 });

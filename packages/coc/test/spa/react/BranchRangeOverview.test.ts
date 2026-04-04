@@ -1,9 +1,9 @@
 /**
- * Tests for branch-range mode in CommitDetail (formerly BranchRangeOverview).
+ * Tests for BranchRangeOverview standalone component.
  *
- * Validates that CommitDetail contains the range-mode props, resize behavior,
- * rendering patterns, data-testid attributes, and RepoGitTab integration
- * after the BranchRangeOverview → CommitDetail merge.
+ * Validates that BranchRangeOverview.tsx contains the range-mode props,
+ * resize behavior, rendering patterns, data-testid attributes, and
+ * RepoGitTab integration.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -11,27 +11,23 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'CommitDetail.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'BranchRangeOverview.tsx'
 );
 
 const REPO_GIT_TAB_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'
 );
 
-const OLD_COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'BranchRangeOverview.tsx'
-);
-
-describe('CommitDetail — range mode (merged from BranchRangeOverview)', () => {
+describe('BranchRangeOverview', () => {
     let source: string;
 
     beforeAll(() => {
         source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
     });
 
-    describe('BranchRangeOverview is deleted', () => {
-        it('BranchRangeOverview.tsx no longer exists', () => {
-            expect(fs.existsSync(OLD_COMPONENT_PATH)).toBe(false);
+    describe('BranchRangeOverview.tsx exists', () => {
+        it('BranchRangeOverview.tsx exists as a standalone file', () => {
+            expect(fs.existsSync(COMPONENT_PATH)).toBe(true);
         });
     });
 
@@ -58,8 +54,10 @@ describe('CommitDetail — range mode (merged from BranchRangeOverview)', () => 
     });
 
     describe('component signature — range props', () => {
-        it('accepts optional range prop', () => {
-            expect(source).toContain('range?: BranchRangeInfo');
+        it('accepts required range prop', () => {
+            expect(source).toContain('range: BranchRangeInfo');
+            // Ensure it is NOT optional
+            expect(source).not.toContain('range?: BranchRangeInfo');
         });
 
         it('accepts optional commits prop', () => {
@@ -128,31 +126,40 @@ describe('CommitDetail — range mode (merged from BranchRangeOverview)', () => 
     });
 });
 
-describe('RepoGitTab — CommitDetail range-mode integration', () => {
+describe('RepoGitTab — BranchRangeOverview integration', () => {
     let source: string;
 
     beforeAll(() => {
         source = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
     });
 
-    it('does NOT import BranchRangeOverview (deleted)', () => {
-        expect(source).not.toContain("import { BranchRangeOverview }");
+    it('imports BranchRangeOverview', () => {
+        expect(source).toContain("import { BranchRangeOverview }");
     });
 
-    it('renders CommitDetail for branch-range view type', () => {
+    it('renders BranchRangeOverview for branch-range view type', () => {
         expect(source).toContain("rightPanelView?.type === 'branch-range'");
-        expect(source).toContain('<CommitDetail');
+        expect(source).toContain('<BranchRangeOverview');
     });
 
-    it('passes range prop (not branchRangeData) to CommitDetail', () => {
+    it('does NOT render CommitDetail for branch-range view type', () => {
+        // CommitDetail is still used for commit view, but not branch-range
+        const branchRangeSection = source.slice(
+            source.indexOf("rightPanelView?.type === 'branch-range'"),
+            source.indexOf("rightPanelView?.type === 'branch-file'")
+        );
+        expect(branchRangeSection).not.toContain('<CommitDetail');
+    });
+
+    it('passes range prop to BranchRangeOverview', () => {
         expect(source).toContain('range={branchRangeData!}');
     });
 
-    it('passes unpushedCount to CommitDetail', () => {
+    it('passes unpushedCount to BranchRangeOverview', () => {
         expect(source).toContain('unpushedCount={unpushedCount}');
     });
 
-    it('passes onFileSelect to CommitDetail that navigates to branch-file', () => {
+    it('passes onFileSelect to BranchRangeOverview that navigates to branch-file', () => {
         expect(source).toContain("type: 'branch-file', filePath");
     });
 
@@ -173,11 +180,11 @@ describe('RepoGitTab — CommitDetail range-mode integration', () => {
         expect(source).toMatch(/branch-range.*working-tree-file|working-tree-file.*branch-range/);
     });
 
-    it('passes onAskAI to CommitDetail in branch-range view', () => {
+    it('passes onAskAI to BranchRangeOverview in branch-range view', () => {
         expect(source).toContain('onAskAI=');
     });
 
-    it('passes onQueueTask to CommitDetail in branch-range view', () => {
+    it('passes onQueueTask to BranchRangeOverview in branch-range view', () => {
         expect(source).toContain('onQueueTask=');
     });
 });

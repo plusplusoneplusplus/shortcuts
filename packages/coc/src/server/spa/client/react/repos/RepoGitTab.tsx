@@ -19,6 +19,7 @@ import { getApiBase } from '../utils/config';
 import { Spinner } from '../shared';
 import { CommitList } from './CommitList';
 import { CommitDetail } from './CommitDetail';
+import { BranchRangeOverview } from './BranchRangeOverview';
 
 import { BranchChanges } from './BranchChanges';
 import { FileDiffPanel } from './FileDiffPanel';
@@ -1281,7 +1282,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             initialHunkTarget={hunkTarget}
         />
     ) : rightPanelView?.type === 'branch-range' ? (
-        <CommitDetail
+        <BranchRangeOverview
             workspaceId={workspaceId}
             range={branchRangeData!}
             commits={commits}

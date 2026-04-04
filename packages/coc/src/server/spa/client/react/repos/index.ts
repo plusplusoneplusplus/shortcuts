@@ -2,6 +2,7 @@ export { ReposView } from './ReposView';
 export { RepoGitTab } from './RepoGitTab';
 export { CommitList } from './CommitList';
 export { CommitDetail } from './CommitDetail';
+export { BranchRangeOverview } from './BranchRangeOverview';
 export { CommitFileContent } from './CommitFileContent';
 export { CommitTooltip } from './CommitTooltip';
 export type { CommitTooltipProps } from './CommitTooltip';
