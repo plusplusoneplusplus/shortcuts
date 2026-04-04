@@ -22,6 +22,8 @@ import { useChatPrefs } from '../context/ChatPreferencesContext';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
 
+export type ActivityTabMode = 'chats' | 'tasks';
+
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
     'chat': 'Chat',
@@ -89,6 +91,8 @@ export interface ActivityListPaneProps {
     isMobile: boolean;
     now: number;
     workspaceId?: string;
+    activeTab: ActivityTabMode;
+    onTabChange: (tab: ActivityTabMode) => void;
     /** Set of task IDs with unseen activity (bold + dot indicator). */
     unseenTaskIds?: Set<string>;
     /** Mark all completed tasks as read (receives the currently-filtered task list). */
@@ -136,6 +140,8 @@ export function ActivityListPane({
     isAutopilotPaused,
     isAutopilotPauseLoading,
     onPauseResumeAutopilot,
+    activeTab,
+    onTabChange,
     onRefresh,
     onOpenDialog,
     fetchQueue,
@@ -222,19 +228,36 @@ export function ActivityListPane({
     );
     const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [history, excludedTypes, searchQuery]);
 
+    // Tab-aware filtering: chats = type === 'chat', tasks = everything else
+    const isChat = (task: any) => task.type === 'chat';
+    const tabFilteredRunning = useMemo(() =>
+        activeTab === 'chats' ? filteredRunning.filter(isChat) : filteredRunning.filter(t => !isChat(t)),
+        [filteredRunning, activeTab]
+    );
+    const tabFilteredQueued = useMemo(
+        () => activeTab === 'chats'
+            ? filteredQueued.filter(t => t.kind === 'pause-marker' || isChat(t))
+            : filteredQueued.filter(t => t.kind === 'pause-marker' || !isChat(t)),
+        [filteredQueued, activeTab]
+    );
+    const tabFilteredHistory = useMemo(
+        () => activeTab === 'chats' ? filteredHistory.filter(isChat) : filteredHistory.filter(t => !isChat(t)),
+        [filteredHistory, activeTab]
+    );
+
     // Separate archived from non-archived history
     const { activeHistory, filteredArchived } = useMemo(() => {
         if (!archivedChatIds || archivedChatIds.size === 0) {
-            return { activeHistory: filteredHistory, filteredArchived: [] };
+            return { activeHistory: tabFilteredHistory, filteredArchived: [] };
         }
         const active: any[] = [];
         const archived: any[] = [];
-        for (const task of filteredHistory) {
+        for (const task of tabFilteredHistory) {
             if (archivedChatIds.has(task.id)) archived.push(task);
             else active.push(task);
         }
         return { activeHistory: active, filteredArchived: archived };
-    }, [filteredHistory, archivedChatIds]);
+    }, [tabFilteredHistory, archivedChatIds]);
 
     // Split active history into pinned and non-pinned, preserving pin order
     const { filteredPinned, filteredUnpinned } = useMemo(() => {
@@ -258,8 +281,8 @@ export function ActivityListPane({
     // Count pinned tasks that are still running (not yet in history)
     const pinnedRunningCount = useMemo(() => {
         if (!pinnedChatIds) return 0;
-        return filteredRunning.filter(t => pinnedChatIds.has(t.id)).length;
-    }, [filteredRunning, pinnedChatIds]);
+        return tabFilteredRunning.filter(t => pinnedChatIds.has(t.id)).length;
+    }, [tabFilteredRunning, pinnedChatIds]);
 
     const [showRunning, setShowRunning] = useState(true);
     const [showQueued, setShowQueued] = useState(true);
@@ -602,6 +625,33 @@ export function ActivityListPane({
     return (
         <>
             <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+                {/* Tab switcher */}
+                <div className="flex items-center gap-0 rounded-lg border border-[#e0e0e0] dark:border-[#474749] p-0.5 bg-[#f5f5f5] dark:bg-[#252526]" data-testid="activity-tab-switcher">
+                    <button
+                        className={cn(
+                            'flex-1 px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                            activeTab === 'chats'
+                                ? 'bg-white dark:bg-[#1e1e1e] text-[#0078d4] shadow-sm'
+                                : 'text-[#606060] dark:text-[#9d9d9d] hover:text-[#333] dark:hover:text-[#ccc]'
+                        )}
+                        onClick={() => onTabChange('chats')}
+                        data-testid="activity-tab-chats"
+                    >
+                        💬 Chats
+                    </button>
+                    <button
+                        className={cn(
+                            'flex-1 px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                            activeTab === 'tasks'
+                                ? 'bg-white dark:bg-[#1e1e1e] text-[#0078d4] shadow-sm'
+                                : 'text-[#606060] dark:text-[#9d9d9d] hover:text-[#333] dark:hover:text-[#ccc]'
+                        )}
+                        onClick={() => onTabChange('tasks')}
+                        data-testid="activity-tab-tasks"
+                    >
+                        📋 Tasks
+                    </button>
+                </div>
                 {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">
@@ -729,18 +779,18 @@ export function ActivityListPane({
                     </div>
                 )}
 
-                {filteredRunning.length > 0 && (
+                {tabFilteredRunning.length > 0 && (
                     <div>
                         <button
                             className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
                             onClick={() => setShowRunning(!showRunning)}
                             data-testid="running-tasks-section-toggle"
                         >
-                            {showRunning ? '▼' : '▶'} Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
+                            {showRunning ? '▼' : '▶'} Running Tasks <span className="text-[10px]">({tabFilteredRunning.length})</span>
                         </button>
                         {showRunning && (
                             <div className="flex flex-col gap-1">
-                                {filteredRunning.map(task => (
+                                {tabFilteredRunning.map(task => (
                                     <QueueTaskItem
                                         key={task.id}
                                         task={task}
@@ -759,14 +809,14 @@ export function ActivityListPane({
                     </div>
                 )}
 
-                {filteredQueued.length > 0 && (
+                {tabFilteredQueued.length > 0 && (
                     <div>
                         <button
                             className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
                             onClick={() => setShowQueued(!showQueued)}
                             data-testid="queued-tasks-section-toggle"
                         >
-                            {showQueued ? '▼' : '▶'} Queued Tasks <span className="text-[10px]">({filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
+                            {showQueued ? '▼' : '▶'} Queued Tasks <span className="text-[10px]">({tabFilteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
                         </button>
                         {showQueued && (
                             <div className="flex flex-col gap-1">
@@ -779,7 +829,7 @@ export function ActivityListPane({
                                         onClick={() => handleInsertPauseMarker(-1)}
                                     />
                                 )}
-                                {filteredQueued.map((item: any, index: number) => {
+                                {tabFilteredQueued.map((item: any, index: number) => {
                                     const globalIndex = queued.findIndex((q: any) => q.id === item.id);
                                     if (item.kind === 'pause-marker') {
                                         return (
