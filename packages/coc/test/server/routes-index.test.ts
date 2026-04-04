@@ -138,8 +138,8 @@ describe('registerAllRoutes', () => {
         expect(patterns.some(p => p.includes('tasks'))).toBe(true);
         // Wikis
         expect(patterns.some(p => p.includes('/api/wikis'))).toBe(true);
-        // Workflows (nested under /api/workspaces/:id/workflows)
-        expect(patterns.some(p => p.includes('workflows'))).toBe(true);
+        // Workflows (nested under /api/workspaces/:id/workflows or /summary)
+        expect(patterns.some(p => p.includes('summary'))).toBe(true);
         // Admin
         expect(patterns.some(p => p.includes('/api/admin'))).toBe(true);
         // Models

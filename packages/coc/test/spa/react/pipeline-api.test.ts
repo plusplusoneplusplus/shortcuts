@@ -71,7 +71,7 @@ describe('fetchWorkflows', () => {
         mockFetch.mockReturnValue(okJson({ workflows: [{ name: 'p1', path: '/p1' }] }));
         const result = await fetchWorkflows('ws/special');
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws%2Fspecial/workflows'
+            'http://localhost:4000/api/workspaces/ws%2Fspecial/summary'
         );
         expect(result).toEqual([{ name: 'p1', path: '/p1' }]);
     });
@@ -485,9 +485,8 @@ describe('ReposContext WebSocket integration', () => {
         expect(reposContextSource).toContain("import { useWebSocket }");
     });
 
-    it('imports fetchWorkflows from workflow-api', () => {
-        expect(reposContextSource).toContain("import { fetchWorkflows } from");
-        expect(reposContextSource).toContain("workflow-api");
+    it('uses fetchApi for summary endpoint instead of fetchWorkflows', () => {
+        expect(reposContextSource).toContain('/summary');
     });
 
     it('handles workflows-changed message type', () => {

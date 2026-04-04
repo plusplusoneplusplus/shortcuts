@@ -335,7 +335,7 @@ describe('Workflow dropdown selector (target field)', () => {
         fireEvent.click(screen.getByText('+ New'));
         // Override fetch to return pipelines for the pipeline API call
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/workflows')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return {
                     ok: true,
                     json: () => Promise.resolve({
@@ -435,7 +435,7 @@ describe('Workflow dropdown selector (target field)', () => {
 
         // Return empty pipelines
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/workflows')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return { ok: true, json: () => Promise.resolve({ workflows: [] }) };
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
@@ -454,7 +454,7 @@ describe('Workflow dropdown selector (target field)', () => {
         fireEvent.click(screen.getByText('+ New'));
 
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/workflows')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return { ok: false, status: 500, statusText: 'Internal Server Error' };
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
@@ -474,7 +474,7 @@ describe('Workflow dropdown selector (target field)', () => {
 
         // Make fetch hang indefinitely
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/workflows')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return new Promise(() => {}); // never resolves
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
@@ -507,7 +507,7 @@ describe('Workflow dropdown selector (target field)', () => {
 
         // Re-select: should be back to dropdown (not stuck in manual)
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/workflows')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return {
                     ok: true,
                     json: () => Promise.resolve({
@@ -547,7 +547,7 @@ describe('Workflow dropdown selector (target field)', () => {
         fireEvent.click(screen.getByText('+ New'));
 
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/workflows')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return {
                     ok: true,
                     json: () => Promise.resolve({

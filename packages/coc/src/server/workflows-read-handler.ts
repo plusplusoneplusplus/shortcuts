@@ -65,26 +65,4 @@ export function registerWorkflowRoutes(
         },
     });
 
-    // ------------------------------------------------------------------
-    // GET /api/workspaces/:id/workflows — List all workflows (enriched)
-    // ------------------------------------------------------------------
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/workflows$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
-
-            const parsed = url.parse(req.url || '/', true);
-            const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
-                ? parsed.query.folder
-                : DEFAULT_WORKFLOWS_FOLDER;
-            const pipelinesDir = path.resolve(ws.rootPath, folder);
-            const pipelines = discoverAndEnrichWorkflows(pipelinesDir);
-            sendJSON(res, 200, { workflows: pipelines });
-        },
-    });
 }

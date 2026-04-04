@@ -357,7 +357,7 @@ describe('Tasks Multi-Folder HTTP API', () => {
     // GET /tasks with multi-folder
     // ------------------------------------------------------------------
 
-    it('GET /tasks returns virtual root when multiple folders configured', async () => {
+    it('GET /summary returns virtual root tasks when multiple folders configured', async () => {
         const srv = await startServer();
         await registerWorkspace(srv, workspaceDir);
 
@@ -376,22 +376,22 @@ describe('Tasks Multi-Folder HTTP API', () => {
         // Configure multi-folder
         await writeTasksSettings(dataDir, wsId, { folderPaths: [extraDir] });
 
-        const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks`);
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/summary`);
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
 
         // Should be a virtual root with 2 children
-        expect(body.name).toBe('Tasks');
-        expect(body.children).toHaveLength(2);
+        expect(body.tasks.name).toBe('Tasks');
+        expect(body.tasks.children).toHaveLength(2);
 
         // Each child should have task documents
-        const primaryChild = body.children[0];
-        const extraChild = body.children[1];
+        const primaryChild = body.tasks.children[0];
+        const extraChild = body.tasks.children[1];
         expect(primaryChild.singleDocuments.length + primaryChild.documentGroups.length).toBeGreaterThanOrEqual(1);
         expect(extraChild.singleDocuments.length + extraChild.documentGroups.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('GET /tasks returns single folder when only primary exists (no virtual root)', async () => {
+    it('GET /summary returns single folder tasks when only primary exists (no virtual root)', async () => {
         const srv = await startServer();
         await registerWorkspace(srv, workspaceDir);
 
@@ -401,16 +401,16 @@ describe('Tasks Multi-Folder HTTP API', () => {
         });
 
         // No folderPaths configured — single folder behavior
-        const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks`);
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/summary`);
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
 
         // Should NOT be a virtual root
-        expect(body.name).not.toBe('Tasks');
-        expect(body.singleDocuments.length).toBeGreaterThanOrEqual(1);
+        expect(body.tasks.name).not.toBe('Tasks');
+        expect(body.tasks.singleDocuments.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('GET /tasks skips invalid additional folders gracefully', async () => {
+    it('GET /summary skips invalid additional folders gracefully', async () => {
         const srv = await startServer();
         await registerWorkspace(srv, workspaceDir);
 
@@ -423,32 +423,12 @@ describe('Tasks Multi-Folder HTTP API', () => {
         const nonExistent = path.join(workspaceDir, 'does-not-exist');
         await writeTasksSettings(dataDir, wsId, { folderPaths: [nonExistent] });
 
-        const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks`);
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/summary`);
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
 
         // Only primary survived — single folder, no virtual root
-        expect(body.name).not.toBe('Tasks');
+        expect(body.tasks.name).not.toBe('Tasks');
     });
 
-    it('GET /tasks with folder query param bypasses multi-folder', async () => {
-        const srv = await startServer();
-        await registerWorkspace(srv, workspaceDir);
-
-        // Create tasks in a workspace-relative folder
-        const customDir = path.join(workspaceDir, 'custom-tasks');
-        createTaskFilesInDir(customDir, {
-            'custom.md': '# Custom',
-        });
-
-        // Even with folderPaths configured, ?folder= should override
-        await writeTasksSettings(dataDir, wsId, { folderPaths: [customDir] });
-
-        const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks?folder=${encodeURIComponent(customDir)}`);
-        expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-
-        // Should be direct folder scan, not virtual root
-        expect(body.name).not.toBe('Tasks');
-    });
 });

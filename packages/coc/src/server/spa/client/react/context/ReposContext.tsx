@@ -19,7 +19,6 @@ import { useQueue } from './QueueContext';
 import { fetchApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { countTasks } from '../repos/repoGrouping';
-import { fetchWorkflows } from '../repos/workflow-api';
 import { computeUnseenCount } from '../hooks/useUnseenActivity';
 import type { RepoData } from '../repos/repoGrouping';
 
@@ -113,13 +112,10 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             // Update global workspace list
             dispatch({ type: 'WORKSPACES_LOADED', workspaces });
 
-            // Phase 1: Fetch workflows/tasks/processes (fast) in parallel — skip git-info
+            // Phase 1: Fetch summary + processes (fast) in parallel — skip git-info
             const enriched: RepoData[] = await Promise.all(
                 visibleWorkspaces.map(async (ws: any) => {
-                    const [pipelinesRes, tasksRes] = await Promise.all([
-                        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/workflows`).catch(() => null),
-                        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks`).catch(() => null),
-                    ]);
+                    const summaryRes = await fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/summary`).catch(() => null);
 
                     const processRes = await fetchApi(`/processes/summaries?workspace=${encodeURIComponent(ws.id)}&limit=200`).catch(() => null);
                     const processes = processRes?.summaries || [];
@@ -133,9 +129,9 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                     return {
                         workspace: ws,
                         gitInfoLoading: true,
-                        workflows: pipelinesRes?.workflows || [],
+                        workflows: summaryRes?.workflows || [],
                         stats,
-                        taskCount: countTasks(tasksRes),
+                        taskCount: countTasks(summaryRes?.tasks ?? null),
                     };
                 })
             );
@@ -184,7 +180,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     // Targeted workflow refresh for a single workspace
     const refreshPipelinesForWorkspace = useCallback(async (wsId: string) => {
         try {
-            const updated = await fetchWorkflows(wsId);
+            const summaryRes = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/summary`);
+            const updated = summaryRes?.workflows ?? [];
             setRepos(prev => prev.map(r =>
                 r.workspace.id === wsId ? { ...r, workflows: updated } : r
             ));

@@ -35,6 +35,7 @@ import { registerModelRoutes } from '../models/model-routes';
 import { RepoTreeService } from '../repos/tree-service';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from '../process-resume-handler';
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from '../workflows-handler';
+import { registerWorkspaceSummaryRoutes } from '../workspace-summary-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../templates-handler';
 import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
@@ -84,6 +85,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     registerTaskWriteRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);
+    registerWorkspaceSummaryRoutes(routes, store, dataDir);
     registerWorkflowWriteRoutes(routes, store, (workspaceId) => {
         getWsServer().broadcastProcessEvent({
             type: 'workflows-changed',

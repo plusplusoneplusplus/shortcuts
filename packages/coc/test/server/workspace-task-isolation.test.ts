@@ -116,31 +116,31 @@ describe('Workspace Task Isolation', () => {
     // Section 1 tests
     // ========================================================================
 
-    it('GET /api/workspaces/A/tasks returns tasks for A', async () => {
+    it('GET /api/workspaces/A/summary returns tasks for A', async () => {
         const srv = await startServer();
         await registerWorkspace(srv, wsIdA, wsDirA);
         await registerWorkspace(srv, wsIdB, wsDirB);
 
         seedTaskFile(wsIdA, wsDirA, 'task-a.md', '# Task A');
 
-        const res = await request(`${srv.url}/api/workspaces/${wsIdA}/tasks`);
+        const res = await request(`${srv.url}/api/workspaces/${wsIdA}/summary`);
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        const docs = [...(body.singleDocuments ?? []), ...(body.documentGroups ?? [])];
+        const docs = [...(body.tasks.singleDocuments ?? []), ...(body.tasks.documentGroups ?? [])];
         expect(docs.some((d: any) => d.baseName === 'task-a' || d.fileName === 'task-a.md')).toBe(true);
     });
 
-    it('GET /api/workspaces/B/tasks returns empty list — not A\'s tasks', async () => {
+    it('GET /api/workspaces/B/summary returns empty task list — not A\'s tasks', async () => {
         const srv = await startServer();
         await registerWorkspace(srv, wsIdA, wsDirA);
         await registerWorkspace(srv, wsIdB, wsDirB);
 
         seedTaskFile(wsIdA, wsDirA, 'task-a-only.md', '# Task A Only');
 
-        const res = await request(`${srv.url}/api/workspaces/${wsIdB}/tasks`);
+        const res = await request(`${srv.url}/api/workspaces/${wsIdB}/summary`);
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        const docs = [...(body.singleDocuments ?? []), ...(body.documentGroups ?? [])];
+        const docs = [...(body.tasks.singleDocuments ?? []), ...(body.tasks.documentGroups ?? [])];
         expect(docs.some((d: any) => d.baseName === 'task-a-only')).toBe(false);
     });
 
@@ -156,9 +156,9 @@ describe('Workspace Task Isolation', () => {
         expect(createRes.status).toBe(201);
 
         // Task should not appear in B
-        const resB = await request(`${srv.url}/api/workspaces/${wsIdB}/tasks`);
+        const resB = await request(`${srv.url}/api/workspaces/${wsIdB}/summary`);
         const bodyB = JSON.parse(resB.body);
-        const docsB = [...(bodyB.singleDocuments ?? []), ...(bodyB.documentGroups ?? [])];
+        const docsB = [...(bodyB.tasks.singleDocuments ?? []), ...(bodyB.tasks.documentGroups ?? [])];
         expect(docsB.some((d: any) => d.baseName === 'new-task-a')).toBe(false);
     });
 
@@ -200,10 +200,10 @@ describe('Workspace Task Isolation', () => {
         expect(deleteRes.status).toBe(204);
 
         // Workspace B tasks should still be accessible
-        const resB = await request(`${srv.url}/api/workspaces/${wsIdB}/tasks`);
+        const resB = await request(`${srv.url}/api/workspaces/${wsIdB}/summary`);
         expect(resB.status).toBe(200);
         const bodyB = JSON.parse(resB.body);
-        const docsB = [...(bodyB.singleDocuments ?? []), ...(bodyB.documentGroups ?? [])];
+        const docsB = [...(bodyB.tasks.singleDocuments ?? []), ...(bodyB.tasks.documentGroups ?? [])];
         expect(docsB.some((d: any) => d.baseName === 'task-in-b')).toBe(true);
     });
 

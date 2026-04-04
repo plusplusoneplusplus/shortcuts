@@ -23,7 +23,7 @@ function workflowRefineUrl(workspaceId: string): string {
 }
 
 export async function fetchWorkflows(workspaceId: string): Promise<PipelineInfo[]> {
-    const res = await fetch(workflowsUrl(workspaceId));
+    const res = await fetch(`${getApiBase()}/workspaces/${encodeURIComponent(workspaceId)}/summary`);
     if (!res.ok) {
         throw new Error(`API error: ${res.status} ${res.statusText}`);
     }

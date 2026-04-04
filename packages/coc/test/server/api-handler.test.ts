@@ -747,7 +747,7 @@ describe('API Handler', () => {
                 id: 'ws-pipe', name: 'pipe-test', rootPath: wsRoot,
             });
 
-            const res = await request(`${srv.url}/api/workspaces/ws-pipe/workflows`);
+            const res = await request(`${srv.url}/api/workspaces/ws-pipe/summary`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.workflows).toHaveLength(1);
@@ -763,7 +763,7 @@ describe('API Handler', () => {
                 id: 'ws-nopipe', name: 'no-pipe', rootPath: wsRoot,
             });
 
-            const res = await request(`${srv.url}/api/workspaces/ws-nopipe/workflows`);
+            const res = await request(`${srv.url}/api/workspaces/ws-nopipe/summary`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.workflows).toEqual([]);

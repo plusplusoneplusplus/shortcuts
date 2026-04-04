@@ -11,27 +11,13 @@
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
-import type { ProcessStore, TaskFolder, TaskDocument } from '@plusplusoneplusplus/forge';
-import { getFullTaskHierarchy, isWithinDirectory } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskFolder } from '@plusplusoneplusplus/forge';
+import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from './api-handler';
 import { resolveWorkspaceOrFail } from './shared/handler-utils';
 import type { Route } from './types';
-import { resolveTaskRoot, resolveAllTaskRoots } from './task-root-resolver';
-import { isWithinTrustedReadOnlyDir, DEFAULT_SETTINGS, buildArchiveFolderNode, mergeTaskFoldersAsVirtualRoot, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
-
-/**
- * Recursively set `taskRootPath` on every folder and document in a TaskFolder tree.
- */
-function annotateTaskRootPath(folder: TaskFolder, rootPath: string): void {
-    folder.taskRootPath = rootPath;
-    for (const doc of folder.singleDocuments) doc.taskRootPath = rootPath;
-    for (const group of folder.documentGroups) {
-        for (const doc of group.documents) doc.taskRootPath = rootPath;
-    }
-    const contextDocs: TaskDocument[] = (folder as any).contextDocuments ?? [];
-    for (const doc of contextDocs) doc.taskRootPath = rootPath;
-    for (const child of folder.children) annotateTaskRootPath(child, rootPath);
-}
+import { resolveTaskRoot } from './task-root-resolver';
+import { isWithinTrustedReadOnlyDir, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
 
 // ============================================================================
 // Route Registration
@@ -376,80 +362,4 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
         },
     });
 
-    // ------------------------------------------------------------------
-    // GET /api/workspaces/:id/tasks — Full task folder hierarchy
-    // ------------------------------------------------------------------
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/tasks$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
-            if (!ws) return;
-
-            const parsed = url.parse(req.url || '/', true);
-            const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
-                ? parsed.query.folder
-                : undefined;
-            const taskRootOpts = { dataDir, rootPath: ws.rootPath, workspaceId: ws.id };
-            const resolvedFolder = folder
-                ? path.resolve(ws.rootPath, folder)
-                : resolveTaskRoot(taskRootOpts).absolutePath;
-            const includeArchiveFolder= parsed.query.showArchived === 'true';
-
-            try {
-                // Read additional folder paths from settings
-                const tasksSettings = await readTasksSettings(dataDir, ws.id);
-                const additionalPaths = folder ? [] : tasksSettings.folderPaths;
-
-                // Helper: scan a single folder and optionally append archive node
-                const scanFolder = async (folderPath: string) => {
-                    const hierarchy = await getFullTaskHierarchy(folderPath);
-                    annotateTaskRootPath(hierarchy, folderPath);
-                    if (includeArchiveFolder) {
-                        const archiveDir = path.join(folderPath, 'archive');
-                        try {
-                            const stat = await fs.promises.stat(archiveDir);
-                            if (stat.isDirectory()) {
-                                const archiveNode = buildArchiveFolderNode(archiveDir);
-                                annotateTaskRootPath(archiveNode, folderPath);
-                                hierarchy.children = hierarchy.children || [];
-                                hierarchy.children.push(archiveNode);
-                            }
-                        } catch { /* archive folder doesn't exist — skip */ }
-                    }
-                    return hierarchy;
-                };
-
-                if (additionalPaths.length > 0) {
-                    // Multi-folder: resolve all roots and merge
-                    const allRoots = resolveAllTaskRoots(taskRootOpts, additionalPaths);
-                    const scanned = await Promise.all(
-                        allRoots.map(async (root) => {
-                            try {
-                                // Skip folders that don't exist on disk
-                                const stat = await fs.promises.stat(root.absolutePath);
-                                if (!stat.isDirectory()) return null;
-                                const folder = await scanFolder(root.absolutePath);
-                                return { folder, label: root.label };
-                            } catch {
-                                return null;
-                            }
-                        }),
-                    );
-                    const validFolders = scanned.filter((s): s is NonNullable<typeof s> => s !== null);
-                    if (validFolders.length === 1) {
-                        sendJSON(res, 200, validFolders[0].folder);
-                    } else {
-                        sendJSON(res, 200, mergeTaskFoldersAsVirtualRoot(validFolders));
-                    }
-                } else {
-                    // Single folder (default behaviour)
-                    const hierarchy = await scanFolder(resolvedFolder);
-                    sendJSON(res, 200, hierarchy);
-                }
-            } catch (err: any) {
-                return sendError(res, 500, 'Failed to scan tasks: ' + (err.message || 'Unknown error'));
-            }
-        },
-    });
 }
