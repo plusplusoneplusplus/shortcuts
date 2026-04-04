@@ -39,6 +39,8 @@ import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../template
 import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
+import { registerWorkItemRoutes } from './work-item-routes';
+import { FileWorkItemStore } from '../work-items/work-item-store';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 
 export interface RegisterRoutesOptions {
@@ -66,6 +68,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     } = opts;
 
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer);
+
+    // Work item routes
+    const workItemStore = new FileWorkItemStore({ dataDir });
+    registerWorkItemRoutes({ routes, workItemStore });
+
     const repoTreeService = new RepoTreeService(dataDir);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService);

@@ -29,6 +29,7 @@ import { registerApiGitRoutes } from './routes/api-git-routes';
 import { registerApiProcessRoutes } from './routes/api-process-routes';
 import { registerApiFsRoutes } from './routes/api-fs-routes';
 import { registerCommitChatRoutes } from './routes/api-commit-chat-routes';
+import { registerWorkItemRoutes } from './routes/work-item-routes';
 import type { ApiRouteContext } from './routes/api-shared';
 
 /**
