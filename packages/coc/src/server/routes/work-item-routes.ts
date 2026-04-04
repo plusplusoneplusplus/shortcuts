@@ -20,6 +20,7 @@ import { handleAPIError, missingFields, notFound, badRequest, conflict } from '.
 import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority } from '../work-items/types';
 import { WORK_ITEM_STATUSES, isValidTransition } from '../work-items/types';
 import type { WorkItem } from '../work-items/types';
+import type { ProcessWebSocketServer } from '../websocket';
 
 const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
@@ -27,10 +28,11 @@ const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 export interface WorkItemRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
+    getWsServer?: () => ProcessWebSocketServer;
 }
 
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
-    const { routes, workItemStore } = ctx;
+    const { routes, workItemStore, getWsServer } = ctx;
 
     // GET /api/workspaces/:id/work-items — List with optional filters
     routes.push({
@@ -118,6 +120,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 throw err;
             }
 
+            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-added', workspaceId: repoId, item });
             sendJSON(res, 201, item);
         },
     });
@@ -182,6 +185,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (!updated) {
                 return handleAPIError(res, notFound('Work item'));
             }
+            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             sendJSON(res, 200, updated);
         },
     });
@@ -191,12 +195,14 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)$/,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            const repoId = decodeURIComponent(match![1]);
             const workItemId = decodeURIComponent(match![2]);
 
             const removed = await workItemStore.removeWorkItem(workItemId);
             if (!removed) {
                 return handleAPIError(res, notFound('Work item'));
             }
+            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-removed', workspaceId: repoId, itemId: workItemId });
             sendJSON(res, 204, null);
         },
     });

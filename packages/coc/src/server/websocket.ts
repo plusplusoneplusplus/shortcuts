@@ -124,7 +124,10 @@ export type ServerMessage =
     | { type: 'schedule-triggered'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
     | { type: 'schedule-run-complete'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
     | { type: 'git-changed'; workspaceId: string; trigger: string; timestamp: number }
-    | { type: 'diff-comment-updated'; workspaceId: string; action: 'added' | 'updated' | 'deleted'; storageKey: string; comment?: any; commentId?: string };
+    | { type: 'diff-comment-updated'; workspaceId: string; action: 'added' | 'updated' | 'deleted'; storageKey: string; comment?: any; commentId?: string }
+    | { type: 'work-item-added'; workspaceId: string; item: any }
+    | { type: 'work-item-updated'; workspaceId: string; item: any }
+    | { type: 'work-item-removed'; workspaceId: string; itemId: string };
 
 /** Client → Server message types */
 export type ClientMessage =
