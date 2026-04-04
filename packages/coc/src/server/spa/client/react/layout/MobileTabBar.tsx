@@ -66,7 +66,7 @@ export function MobileTabBar({
                             aria-current={active ? 'page' : undefined}
                             className={cn(
                                 'flex-1 flex flex-col items-center justify-center gap-0.5',
-                                active ? 'text-[#0078d4]' : 'text-[#616161] dark:text-[#999999]'
+                                active ? 'text-[#0078d4] bg-[#0078d4]/10 dark:bg-[#0078d4]/15 rounded-lg' : 'text-[#616161] dark:text-[#999999]'
                             )}
                             onClick={() => handleTabChange(t.key)}
                         >
@@ -90,7 +90,7 @@ export function MobileTabBar({
                         aria-expanded={moreOpen}
                         className={cn(
                             'flex-1 flex flex-col items-center justify-center gap-0.5',
-                            isMoreActive ? 'text-[#0078d4]' : 'text-[#616161] dark:text-[#999999]'
+                            isMoreActive ? 'text-[#0078d4] bg-[#0078d4]/10 dark:bg-[#0078d4]/15 rounded-lg' : 'text-[#616161] dark:text-[#999999]'
                         )}
                         onClick={() => setMoreOpen(true)}
                         data-testid="mobile-tab-more-btn"

@@ -124,6 +124,23 @@ describe('BottomNav', () => {
         expect(nav.className).toContain('z-[8000]');
     });
 
+    it('active tab has background tint', () => {
+        viewportCleanup = mockViewport(375);
+        mockActiveTab = 'processes';
+        render(<BottomNav />);
+        const processesBtn = screen.getByText('Processes').closest('button')!;
+        expect(processesBtn.className).toContain('bg-[#0078d4]/10');
+        expect(processesBtn.className).toContain('rounded-lg');
+    });
+
+    it('inactive tab has no background tint', () => {
+        viewportCleanup = mockViewport(375);
+        mockActiveTab = 'processes';
+        render(<BottomNav />);
+        const memoryBtn = screen.getByText('Memory').closest('button')!;
+        expect(memoryBtn.className).not.toContain('bg-[#0078d4]/10');
+    });
+
     it('each button has data-tab attribute', () => {
         viewportCleanup = mockViewport(375);
         render(<BottomNav />);

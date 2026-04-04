@@ -179,7 +179,7 @@ export function BottomNav() {
                 return (
                     <button
                         key={tab}
-                        className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 ${active ? 'text-[#0078d4]' : 'text-[#616161] dark:text-[#999999]'}`}
+                        className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 ${active ? 'text-[#0078d4] bg-[#0078d4]/10 dark:bg-[#0078d4]/15 rounded-lg' : 'text-[#616161] dark:text-[#999999]'}`}
                         data-tab={tab}
                         aria-current={active ? 'page' : undefined}
                         onClick={() => switchTab(tab)}

@@ -131,6 +131,32 @@ describe('MobileTabBar: active tab highlighting', () => {
         const moreBtn = screen.getByTestId('mobile-tab-more-btn');
         expect(moreBtn.className).not.toContain('text-[#0078d4]');
     });
+
+    it('active pinned tab has background tint', () => {
+        renderBar({ activeTab: 'tasks' });
+        const tasksBtn = screen.getByTestId('mobile-tab-bar').querySelector('[data-tab="tasks"]') as HTMLElement;
+        expect(tasksBtn.className).toContain('bg-[#0078d4]/10');
+        expect(tasksBtn.className).toContain('rounded-lg');
+    });
+
+    it('inactive pinned tab has no background tint', () => {
+        renderBar({ activeTab: 'tasks' });
+        const activityBtn = screen.getByTestId('mobile-tab-bar').querySelector('[data-tab="activity"]') as HTMLElement;
+        expect(activityBtn.className).not.toContain('bg-[#0078d4]/10');
+    });
+
+    it('More button has background tint when a "more" tab is active', () => {
+        renderBar({ activeTab: 'info' });
+        const moreBtn = screen.getByTestId('mobile-tab-more-btn');
+        expect(moreBtn.className).toContain('bg-[#0078d4]/10');
+        expect(moreBtn.className).toContain('rounded-lg');
+    });
+
+    it('More button has no background tint when a pinned tab is active', () => {
+        renderBar({ activeTab: 'tasks' });
+        const moreBtn = screen.getByTestId('mobile-tab-more-btn');
+        expect(moreBtn.className).not.toContain('bg-[#0078d4]/10');
+    });
 });
 
 describe('MobileTabBar: tab switching', () => {
