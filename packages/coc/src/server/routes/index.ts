@@ -41,15 +41,8 @@ import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRou
 import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
-import { registerDbBrowserRoutes } from '../db-browser-handler';
-import { registerHeapRoutes } from '../heap-monitor';
-import { registerSeenStateRoutes } from '../seen-state-handler';
-import { registerPinArchiveRoutes } from '../pin-archive-handler';
-import { registerProcessHistoryRoutes } from '../process-history-handler';
-import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
-import { registerTerminalRoutes } from '../terminal/terminal-routes';
-import { registerMyWorkRoutes } from '../my-work-handler';
-import { registerMyLifeRoutes } from '../my-life-handler';
+import { registerWorkItemRoutes } from './work-item-routes';
+import { FileWorkItemStore } from '../work-items/work-item-store';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { TerminalSessionManager } from '../terminal/index';
@@ -81,6 +74,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     } = opts;
 
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer);
+
+    // Work item routes
+    const workItemStore = new FileWorkItemStore({ dataDir });
+    registerWorkItemRoutes({ routes, workItemStore });
+
     const repoTreeService = new RepoTreeService(dataDir);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService);
