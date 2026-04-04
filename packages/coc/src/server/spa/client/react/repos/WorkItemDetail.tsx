@@ -32,6 +32,7 @@ interface WorkItemFull {
     taskId?: string; processId?: string;
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string }>;
     tags?: string[];
+    autoExecute?: boolean;
 }
 
 interface PlanVersion {
@@ -340,6 +341,26 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                             }
                         }} data-testid="work-item-delete-btn">🗑 Delete</Button>
                     </div>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer mt-2" data-testid="work-item-auto-execute-toggle">
+                        <input
+                            type="checkbox"
+                            checked={item.autoExecute ?? false}
+                            onChange={async (e) => {
+                                try {
+                                    await fetchApi(basePath, {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ autoExecute: e.target.checked }),
+                                    });
+                                    await fetchItem();
+                                } catch (err: any) {
+                                    setError(err.message || 'Failed to update auto-execute');
+                                }
+                            }}
+                            className="rounded"
+                        />
+                        Auto-execute when ready
+                    </label>
                 </section>
 
                 {/* Execution history */}
