@@ -30,6 +30,8 @@ import {
 import { StreamingSession, StreamingResult } from './streaming-session';
 import { SessionManager } from './session-manager';
 import { isStreamDestroyedError } from './stream-error-guard';
+import { isWithinDirectory } from '../utils/path-security';
+import { resolveWorkspaceExecutionContext, translatePathForExecution } from '../utils/workspace-execution';
 
 // ============================================================================
 // RequestRunner
@@ -67,6 +69,7 @@ export class RequestRunner {
 
         try {
             client = await this.createClient(options.workingDirectory);
+            const preparedAttachments = this.prepareAttachments(options.attachments, options.workingDirectory);
 
             // Build session options — start with the required permission handler
             // so we can incrementally add optional fields.
@@ -186,13 +189,13 @@ export class RequestRunner {
 
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && typeof session.on === 'function' && typeof session.send === 'function') {
                 const idleTimeoutMs = options.idleTimeoutMs ?? this.defaultIdleTimeoutMs;
-                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, options.attachments, options.deliveryMode, options.sessionId, options.onBackgroundTasksChanged);
+                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, preparedAttachments, options.deliveryMode, options.sessionId, options.onBackgroundTasksChanged);
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
                 turnCount = streamingResult.turnCount;
                 capturedToolCalls = streamingResult.toolCalls;
             } else {
-                const sendResult = await this.sendWithTimeout(session, options.prompt, timeoutMs, options.attachments);
+                const sendResult = await this.sendWithTimeout(session, options.prompt, timeoutMs, preparedAttachments);
                 response = sendResult?.data?.content || '';
             }
 
@@ -248,6 +251,28 @@ export class RequestRunner {
                 try { await client.stop(); } catch { /* ignore */ }
             }
         }
+    }
+
+    private prepareAttachments(attachments: Attachment[] | undefined, workingDirectory?: string): Attachment[] | undefined {
+        if (!attachments || attachments.length === 0) {
+            return attachments;
+        }
+
+        const executionContext = resolveWorkspaceExecutionContext(workingDirectory);
+        if (executionContext.kind !== 'wsl') {
+            return attachments;
+        }
+
+        return attachments.map(attachment => {
+            const translatedPath = translatePathForExecution(attachment.path, executionContext);
+            if (!isWithinDirectory(translatedPath, executionContext.linuxWorkingDirectory)) {
+                throw new Error(`WSL mode currently only supports attachments inside the working directory: ${attachment.path}`);
+            }
+            return {
+                ...attachment,
+                path: translatedPath,
+            };
+        });
     }
 
     /**

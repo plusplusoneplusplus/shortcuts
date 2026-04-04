@@ -52,4 +52,16 @@ describe('isWithinDirectory', () => {
         const parent = path.resolve('/a');
         expect(isWithinDirectory(parent, base)).toBe(false);
     });
+
+    it('supports WSL UNC paths in the same distro', () => {
+        const base = String.raw`\\wsl$\Ubuntu\home\user\repo`;
+        const child = String.raw`\\wsl$\Ubuntu\home\user\repo\src\index.ts`;
+        expect(isWithinDirectory(child, base)).toBe(true);
+    });
+
+    it('rejects WSL paths from a different distro', () => {
+        const base = String.raw`\\wsl$\Ubuntu\home\user\repo`;
+        const other = String.raw`\\wsl$\Debian\home\user\repo\src\index.ts`;
+        expect(isWithinDirectory(other, base)).toBe(false);
+    });
 });

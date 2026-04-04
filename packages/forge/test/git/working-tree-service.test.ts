@@ -120,16 +120,16 @@ describe('parsePorcelain', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock('../../src/utils/exec-utils', () => ({
-    execAsync: vi.fn(),
+    execFileAsync: vi.fn(),
 }));
 
-import { execAsync } from '../../src/utils/exec-utils';
+import { execFileAsync } from '../../src/utils/exec-utils';
 
-const mockExecAsync = vi.mocked(execAsync);
+const mockExecFileAsync = vi.mocked(execFileAsync);
 
 describe('WorkingTreeService.getFileDiff', () => {
     afterEach(() => {
-        mockExecAsync.mockReset();
+        mockExecFileAsync.mockReset();
     });
 
     const service = new WorkingTreeService();
@@ -137,31 +137,32 @@ describe('WorkingTreeService.getFileDiff', () => {
     const filePath = path.join(ROOT, 'src', 'foo.ts');
 
     it('calls git diff --staged for staged=true', async () => {
-        mockExecAsync.mockResolvedValue({ stdout: 'diff output', stderr: '' } as any);
+        mockExecFileAsync.mockResolvedValue({ stdout: 'diff output', stderr: '' } as any);
         const result = await service.getFileDiff(repoRoot, filePath, true);
         expect(result).toBe('diff output');
-        expect(mockExecAsync).toHaveBeenCalledWith(
-            expect.stringContaining('--staged'),
+        expect(mockExecFileAsync).toHaveBeenCalledWith(
+            'git',
+            expect.arrayContaining(['diff', '-U99999', '--staged', '--', filePath]),
             expect.objectContaining({ cwd: repoRoot }),
         );
     });
 
     it('calls git diff without --staged for staged=false', async () => {
-        mockExecAsync.mockResolvedValue({ stdout: 'unstaged diff', stderr: '' } as any);
+        mockExecFileAsync.mockResolvedValue({ stdout: 'unstaged diff', stderr: '' } as any);
         const result = await service.getFileDiff(repoRoot, filePath, false);
         expect(result).toBe('unstaged diff');
-        const call = mockExecAsync.mock.calls[0][0] as string;
-        expect(call).not.toContain('--staged');
+        const args = mockExecFileAsync.mock.calls[0][1] as string[];
+        expect(args).not.toContain('--staged');
     });
 
     it('returns empty string on error', async () => {
-        mockExecAsync.mockRejectedValue(new Error('git failed'));
+        mockExecFileAsync.mockRejectedValue(new Error('git failed'));
         const result = await service.getFileDiff(repoRoot, filePath, false);
         expect(result).toBe('');
     });
 
     it('returns empty string when diff is empty', async () => {
-        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
         const result = await service.getFileDiff(repoRoot, filePath, true);
         expect(result).toBe('');
     });
@@ -173,33 +174,44 @@ describe('WorkingTreeService.getFileDiff', () => {
 
 describe('WorkingTreeService.stageFile', () => {
     afterEach(() => {
-        mockExecAsync.mockReset();
+        mockExecFileAsync.mockReset();
     });
 
     const service = new WorkingTreeService();
     const repoRoot = ROOT;
 
     it('stages a regular file successfully', async () => {
-        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
         const result = await service.stageFile(repoRoot, path.join(ROOT, 'src', 'foo.ts'));
         expect(result).toEqual({ success: true });
     });
 
     it('returns error on git failure', async () => {
-        mockExecAsync.mockRejectedValue(new Error('fatal: pathspec did not match'));
+        mockExecFileAsync.mockRejectedValue(new Error('fatal: pathspec did not match'));
         const result = await service.stageFile(repoRoot, path.join(ROOT, 'missing.ts'));
         expect(result.success).toBe(false);
         expect(result.error).toContain('pathspec did not match');
     });
 
-    it('strips trailing path separator so Windows directory paths are quoted correctly', async () => {
-        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+    it('routes WSL repos through wsl.exe', async () => {
+        mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        const repo = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
+        const file = String.raw`\\wsl$\Ubuntu\home\tester\repo\src\foo.ts`;
+        await service.stageFile(repo, file);
+        expect(mockExecFileAsync).toHaveBeenCalledWith(
+            expect.stringContaining('wsl.exe'),
+            ['-d', 'Ubuntu', '--cd', '/home/tester/repo', '--', 'git', '-C', '/home/tester/repo', 'add', '--', '/home/tester/repo/src/foo.ts'],
+            expect.any(Object),
+        );
+    });
+
+    it('supports directory paths with trailing separators', async () => {
+        mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
         const dirPath = process.platform === 'win32'
             ? 'D:\\projects\\shortcuts\\.github\\coc\\'
             : '/repo/some/dir/';
         await service.stageFile(repoRoot, dirPath);
-        const cmd = mockExecAsync.mock.calls[0][0] as string;
-        expect(cmd).not.toMatch(/[/\\]"/);
+        expect(mockExecFileAsync).toHaveBeenCalled();
     });
 });
 
@@ -209,7 +221,7 @@ describe('WorkingTreeService.stageFile', () => {
 
 describe('WorkingTreeService.stageFiles', () => {
     afterEach(() => {
-        mockExecAsync.mockReset();
+        mockExecFileAsync.mockReset();
     });
 
     const service = new WorkingTreeService();
@@ -218,22 +230,22 @@ describe('WorkingTreeService.stageFiles', () => {
     it('returns success with staged=0 for empty array', async () => {
         const result = await service.stageFiles(repoRoot, []);
         expect(result).toEqual({ success: true, staged: 0, errors: [] });
-        expect(mockExecAsync).not.toHaveBeenCalled();
+        expect(mockExecFileAsync).not.toHaveBeenCalled();
     });
 
     it('stages all files in a single git add command', async () => {
-        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
         const files = ['src/a.ts', 'src/b.ts'];
         const result = await service.stageFiles(repoRoot, files);
         expect(result).toEqual({ success: true, staged: 2, errors: [] });
-        expect(mockExecAsync).toHaveBeenCalledTimes(1);
-        expect(mockExecAsync.mock.calls[0][0]).toContain('git -C');
-        expect(mockExecAsync.mock.calls[0][0]).toContain('add --');
+        expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
+        expect(mockExecFileAsync.mock.calls[0][0]).toBe('git');
+        expect(mockExecFileAsync.mock.calls[0][1]).toEqual(expect.arrayContaining(['add', '--']));
     });
 
     it('falls back to individual staging on batch error', async () => {
         // First call (batch) fails, subsequent individual calls succeed
-        mockExecAsync
+        mockExecFileAsync
             .mockRejectedValueOnce(new Error('batch failed'))
             .mockResolvedValueOnce({ stdout: '', stderr: '' } as any)
             .mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
@@ -243,11 +255,11 @@ describe('WorkingTreeService.stageFiles', () => {
         expect(result.staged).toBe(2);
         expect(result.errors).toHaveLength(0);
         // 1 batch call + 2 individual calls
-        expect(mockExecAsync).toHaveBeenCalledTimes(3);
+        expect(mockExecFileAsync).toHaveBeenCalledTimes(3);
     });
 
     it('collects errors from individual fallback failures', async () => {
-        mockExecAsync
+        mockExecFileAsync
             .mockRejectedValueOnce(new Error('batch failed'))
             .mockResolvedValueOnce({ stdout: '', stderr: '' } as any)
             .mockRejectedValueOnce(new Error('permission denied'));
@@ -259,16 +271,14 @@ describe('WorkingTreeService.stageFiles', () => {
         expect(result.errors[0]).toContain('permission denied');
     });
 
-    it('strips trailing path separator from directory path (Windows regression)', async () => {
-        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+    it('supports trailing separators in batch staging', async () => {
+        mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
         const dirWithTrailingSep = process.platform === 'win32'
             ? 'D:\\projects\\shortcuts\\.github\\coc\\'
             : '/repo/some/dir/';
         const result = await service.stageFiles(repoRoot, [dirWithTrailingSep]);
         expect(result.success).toBe(true);
-        const cmd = mockExecAsync.mock.calls[0][0] as string;
-        // The trailing separator must NOT appear immediately before the closing quote
-        expect(cmd).not.toMatch(/[/\\]"/);
+        expect(mockExecFileAsync).toHaveBeenCalled();
     });
 });
 
@@ -278,7 +288,7 @@ describe('WorkingTreeService.stageFiles', () => {
 
 describe('WorkingTreeService.unstageFiles', () => {
     afterEach(() => {
-        mockExecAsync.mockReset();
+        mockExecFileAsync.mockReset();
     });
 
     const service = new WorkingTreeService();
@@ -287,20 +297,20 @@ describe('WorkingTreeService.unstageFiles', () => {
     it('returns success with unstaged=0 for empty array', async () => {
         const result = await service.unstageFiles(repoRoot, []);
         expect(result).toEqual({ success: true, unstaged: 0, errors: [] });
-        expect(mockExecAsync).not.toHaveBeenCalled();
+        expect(mockExecFileAsync).not.toHaveBeenCalled();
     });
 
     it('unstages all files in a single git reset command', async () => {
-        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
         const files = ['src/a.ts', 'src/b.ts'];
         const result = await service.unstageFiles(repoRoot, files);
         expect(result).toEqual({ success: true, unstaged: 2, errors: [] });
-        expect(mockExecAsync).toHaveBeenCalledTimes(1);
-        expect(mockExecAsync.mock.calls[0][0]).toContain('reset HEAD --');
+        expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
+        expect(mockExecFileAsync.mock.calls[0][1]).toEqual(expect.arrayContaining(['reset', 'HEAD', '--']));
     });
 
     it('falls back to individual unstaging on batch error', async () => {
-        mockExecAsync
+        mockExecFileAsync
             .mockRejectedValueOnce(new Error('batch failed'))
             .mockResolvedValueOnce({ stdout: '', stderr: '' } as any)
             .mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
@@ -313,7 +323,7 @@ describe('WorkingTreeService.unstageFiles', () => {
 
     it('falls back to git rm --cached when reset HEAD fails', async () => {
         // batch fails, first individual reset fails, then rm --cached succeeds
-        mockExecAsync
+        mockExecFileAsync
             .mockRejectedValueOnce(new Error('batch failed'))
             .mockRejectedValueOnce(new Error('reset failed'))
             .mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
@@ -322,11 +332,11 @@ describe('WorkingTreeService.unstageFiles', () => {
         expect(result.success).toBe(true);
         expect(result.unstaged).toBe(1);
         // 1 batch + 1 reset + 1 rm --cached
-        expect(mockExecAsync).toHaveBeenCalledTimes(3);
+        expect(mockExecFileAsync).toHaveBeenCalledTimes(3);
     });
 
     it('collects errors when all fallbacks fail', async () => {
-        mockExecAsync
+        mockExecFileAsync
             .mockRejectedValueOnce(new Error('batch failed'))
             .mockRejectedValueOnce(new Error('reset failed'))
             .mockRejectedValueOnce(new Error('rm failed'));

@@ -6,10 +6,31 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
 import type { CopilotClient, CopilotClientOptions } from '@github/copilot-sdk';
-import { ensureFolderTrusted } from './trusted-folder';
+import { ensureFolderTrusted, getCopilotConfigDir } from './trusted-folder';
 import { getAIServiceLogger } from '../ai-logger';
 import { getCachedCopilotSdk } from './sdk-esm-loader';
+import {
+    buildWslCommandArgs,
+    getWslExecutablePath,
+    resolveWorkspaceExecutionContext,
+} from '../utils/workspace-execution';
+import { windowsPathToWslPath } from '../utils/path-utils';
+
+function wslConfigEnvironment(existingEnv: Record<string, string | undefined> | undefined): Record<string, string | undefined> {
+    const configDir = getCopilotConfigDir();
+    const translatedConfigDir = windowsPathToWslPath(path.resolve(configDir));
+    if (!translatedConfigDir) {
+        return existingEnv ?? {};
+    }
+
+    return {
+        ...existingEnv,
+        COPILOT_HOME: translatedConfigDir,
+        XDG_CONFIG_HOME: translatedConfigDir,
+    };
+}
 
 /**
  * Spawn a new `CopilotClient`.
@@ -27,22 +48,35 @@ import { getCachedCopilotSdk } from './sdk-esm-loader';
 export function createSdkClient(options: CopilotClientOptions = {}): CopilotClient {
     const { cwd } = options;
     const aiLog = getAIServiceLogger();
-    const clientOptions: CopilotClientOptions = {};
+    const clientOptions: CopilotClientOptions = { ...options };
 
     if (cwd) {
-        if (!fs.existsSync(cwd)) {
-            aiLog.warn(
-                { cwd },
-                'Working directory does not exist. ' +
-                'The SDK will fail with ERR_STREAM_DESTROYED because child_process.spawn ' +
-                'requires an existing cwd. Ensure the caller passes a valid directory.',
-            );
-        }
-        clientOptions.cwd = cwd;
-        try {
-            ensureFolderTrusted(cwd);
-        } catch {
-            // Non-fatal: trust dialog will appear if this fails
+        const executionContext = resolveWorkspaceExecutionContext(cwd);
+        if (executionContext.kind === 'wsl') {
+            clientOptions.cliPath = getWslExecutablePath();
+            clientOptions.cliArgs = buildWslCommandArgs(executionContext, [process.env['COPILOT_WSL_CLI_COMMAND'] || 'copilot']);
+            clientOptions.cwd = undefined;
+            clientOptions.env = wslConfigEnvironment(options.env);
+            try {
+                ensureFolderTrusted(executionContext.linuxWorkingDirectory);
+            } catch {
+                // Non-fatal: trust dialog will appear if this fails
+            }
+        } else {
+            if (!fs.existsSync(cwd)) {
+                aiLog.warn(
+                    { cwd },
+                    'Working directory does not exist. ' +
+                    'The SDK will fail with ERR_STREAM_DESTROYED because child_process.spawn ' +
+                    'requires an existing cwd. Ensure the caller passes a valid directory.',
+                );
+            }
+            clientOptions.cwd = cwd;
+            try {
+                ensureFolderTrusted(cwd);
+            } catch {
+                // Non-fatal: trust dialog will appear if this fails
+            }
         }
     }
 

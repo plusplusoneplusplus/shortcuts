@@ -9,9 +9,14 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import type { TaskPayload } from './task-types';
-import { toForwardSlashes } from '@plusplusoneplusplus/forge';
+import {
+    getWslExecutablePath,
+    normalizeExecutionPath,
+    normalizeWslExecutionPath,
+    resolveWorkspaceExecutionContext,
+} from '@plusplusoneplusplus/forge';
 
 /**
  * Extract repository identifier from a task payload.
@@ -64,6 +69,10 @@ export function extractRepoId(payload: TaskPayload): string | null {
 
         const gitRoot = findGitRoot(candidate);
         if (gitRoot) {
+            const executionContext = resolveWorkspaceExecutionContext(candidate);
+            if (executionContext.kind === 'wsl' && gitRoot.startsWith('/')) {
+                return normalizeWslExecutionPath(gitRoot, executionContext.distro);
+            }
             return normalizeRepoPath(gitRoot);
         }
     }
@@ -82,8 +91,31 @@ export function extractRepoId(payload: TaskPayload): string | null {
  */
 export function findGitRoot(pathLike: string): string | null {
     try {
-        const absolutePath = path.resolve(pathLike);
+        const executionContext = resolveWorkspaceExecutionContext(pathLike);
 
+        if (executionContext.kind === 'wsl') {
+            const args: string[] = [];
+            if (executionContext.distro) {
+                args.push('-d', executionContext.distro);
+            }
+            args.push(
+                '--',
+                'sh',
+                '-lc',
+                'target="$1"; if [ -d "$target" ]; then candidate="$target"; else candidate="$(dirname "$target")"; fi; [ -d "$candidate" ] || exit 1; git -C "$candidate" rev-parse --show-toplevel',
+                'sh',
+                executionContext.linuxWorkingDirectory,
+            );
+            const result = execFileSync(
+                getWslExecutablePath(),
+                args,
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+            );
+            const gitRoot = result.trim();
+            return gitRoot.length > 0 ? gitRoot : null;
+        }
+
+        const absolutePath = path.resolve(pathLike);
         let stats: fs.Stats;
         try {
             stats = fs.statSync(absolutePath);
@@ -91,10 +123,9 @@ export function findGitRoot(pathLike: string): string | null {
             return null;
         }
 
-        // If path is a file, use its parent directory
         const cwd = stats.isDirectory() ? absolutePath : path.dirname(absolutePath);
 
-        const result = execSync('git rev-parse --show-toplevel', {
+        const result = execFileSync('git', ['rev-parse', '--show-toplevel'], {
             cwd,
             encoding: 'utf8',
             stdio: ['ignore', 'pipe', 'ignore'],
@@ -125,10 +156,13 @@ export function findGitRoot(pathLike: string): string | null {
  * @returns Normalized absolute path string
  */
 export function normalizeRepoPath(repoPath: string): string {
+    const executionContext = resolveWorkspaceExecutionContext(repoPath);
+    if (executionContext.kind === 'wsl') {
+        return normalizeExecutionPath(repoPath);
+    }
+
     let normalized = path.resolve(repoPath);
 
-    // Resolve symlinks (Unix) and 8.3 short names (Windows) for consistency.
-    // On Windows, realpathSync.native expands 8.3 short paths (e.g. RUNNER~1 → RunnerAdmin).
     try {
         normalized = process.platform === 'win32'
             ? fs.realpathSync.native(normalized)
@@ -137,20 +171,7 @@ export function normalizeRepoPath(repoPath: string): string {
         // If realpath fails, continue with resolved path
     }
 
-    // Normalize separators (forward slashes)
-    normalized = toForwardSlashes(normalized);
-
-    // On Windows, convert to lowercase (case-insensitive file systems)
-    if (process.platform === 'win32') {
-        normalized = normalized.toLowerCase();
-    }
-
-    // Remove trailing slash (except for root paths like '/' or 'C:/')
-    if (normalized.length > 1 && normalized.endsWith('/')) {
-        normalized = normalized.slice(0, -1);
-    }
-
-    return normalized;
+    return normalizeExecutionPath(normalized);
 }
 
 /**

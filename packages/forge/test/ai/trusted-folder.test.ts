@@ -66,7 +66,7 @@ describe('Trusted Folder Management', () => {
         it('should create config directory and file if they do not exist', () => {
             expect(fs.existsSync(configDir)).toBe(false);
 
-            ensureFolderTrusted('/some/project');
+            ensureFolderTrusted(p('/some/project'));
 
             expect(fs.existsSync(configPath)).toBe(true);
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -77,7 +77,7 @@ describe('Trusted Folder Management', () => {
             fs.mkdirSync(configDir, { recursive: true });
             fs.writeFileSync(configPath, JSON.stringify({ model: 'gpt-5' }), 'utf-8');
 
-            ensureFolderTrusted('/my/project');
+            ensureFolderTrusted(p('/my/project'));
 
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
             expect(config.trusted_folders).toEqual([p('/my/project')]);
@@ -91,7 +91,7 @@ describe('Trusted Folder Management', () => {
                 trusted_folders: [p('/existing/path')]
             }), 'utf-8');
 
-            ensureFolderTrusted('/new/path');
+            ensureFolderTrusted(p('/new/path'));
 
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
             expect(config.trusted_folders).toEqual([p('/existing/path'), p('/new/path')]);
@@ -103,7 +103,7 @@ describe('Trusted Folder Management', () => {
                 trusted_folders: [p('/already/trusted')]
             }), 'utf-8');
 
-            ensureFolderTrusted('/already/trusted');
+            ensureFolderTrusted(p('/already/trusted'));
 
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
             expect(config.trusted_folders).toEqual([p('/already/trusted')]);
@@ -116,19 +116,26 @@ describe('Trusted Folder Management', () => {
             }), 'utf-8');
 
             // Adding with trailing slash should detect as duplicate
-            ensureFolderTrusted('/my/project/');
+            ensureFolderTrusted(p('/my/project/'));
 
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
             expect(config.trusted_folders).toEqual([p('/my/project')]);
         });
 
         it('should handle multiple folders added sequentially', () => {
-            ensureFolderTrusted('/project/a');
-            ensureFolderTrusted('/project/b');
-            ensureFolderTrusted('/project/c');
+            ensureFolderTrusted(p('/project/a'));
+            ensureFolderTrusted(p('/project/b'));
+            ensureFolderTrusted(p('/project/c'));
 
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
             expect(config.trusted_folders).toEqual([p('/project/a'), p('/project/b'), p('/project/c')]);
+        });
+
+        it('should preserve Linux-style WSL paths without resolving them as Windows paths', () => {
+            ensureFolderTrusted('/home/tester/repo');
+
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+            expect(config.trusted_folders).toContain('/home/tester/repo');
         });
 
         it('should handle corrupt config file gracefully', () => {
@@ -136,7 +143,7 @@ describe('Trusted Folder Management', () => {
             fs.writeFileSync(configPath, 'not valid json!!!', 'utf-8');
 
             // Should not throw
-            ensureFolderTrusted('/recovery/path');
+            ensureFolderTrusted(p('/recovery/path'));
 
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
             expect(config.trusted_folders).toEqual([p('/recovery/path')]);
@@ -148,7 +155,7 @@ describe('Trusted Folder Management', () => {
                 trusted_folders: 'not-an-array'
             }), 'utf-8');
 
-            ensureFolderTrusted('/new/path');
+            ensureFolderTrusted(p('/new/path'));
 
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
             expect(config.trusted_folders).toEqual([p('/new/path')]);
@@ -166,7 +173,7 @@ describe('Trusted Folder Management', () => {
             };
             fs.writeFileSync(configPath, JSON.stringify(original), 'utf-8');
 
-            ensureFolderTrusted('/new/folder');
+            ensureFolderTrusted(p('/new/folder'));
 
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
             expect(config.last_logged_in_user).toEqual(original.last_logged_in_user);
@@ -184,7 +191,7 @@ describe('Trusted Folder Management', () => {
 
     describe('isFolderTrusted', () => {
         it('should return false when config file does not exist', () => {
-            expect(isFolderTrusted('/nonexistent/path')).toBe(false);
+            expect(isFolderTrusted(p('/nonexistent/path'))).toBe(false);
         });
 
         it('should return false when folder is not in trusted_folders', () => {
@@ -193,7 +200,7 @@ describe('Trusted Folder Management', () => {
                 trusted_folders: [p('/other/path')]
             }), 'utf-8');
 
-            expect(isFolderTrusted('/not/trusted')).toBe(false);
+            expect(isFolderTrusted(p('/not/trusted'))).toBe(false);
         });
 
         it('should return true when folder is in trusted_folders', () => {
@@ -202,7 +209,7 @@ describe('Trusted Folder Management', () => {
                 trusted_folders: [p('/my/project')]
             }), 'utf-8');
 
-            expect(isFolderTrusted('/my/project')).toBe(true);
+            expect(isFolderTrusted(p('/my/project'))).toBe(true);
         });
 
         it('should match regardless of trailing slash', () => {
@@ -211,15 +218,24 @@ describe('Trusted Folder Management', () => {
                 trusted_folders: [p('/my/project')]
             }), 'utf-8');
 
-            expect(isFolderTrusted('/my/project/')).toBe(true);
+            expect(isFolderTrusted(p('/my/project/'))).toBe(true);
+        });
+
+        it('should match trusted WSL Linux paths exactly', () => {
+            fs.mkdirSync(configDir, { recursive: true });
+            fs.writeFileSync(configPath, JSON.stringify({
+                trusted_folders: ['/home/tester/repo']
+            }), 'utf-8');
+
+            expect(isFolderTrusted('/home/tester/repo')).toBe(true);
         });
 
         it('should return true after ensureFolderTrusted is called', () => {
-            expect(isFolderTrusted('/dynamic/path')).toBe(false);
+            expect(isFolderTrusted(p('/dynamic/path'))).toBe(false);
 
-            ensureFolderTrusted('/dynamic/path');
+            ensureFolderTrusted(p('/dynamic/path'));
 
-            expect(isFolderTrusted('/dynamic/path')).toBe(true);
+            expect(isFolderTrusted(p('/dynamic/path'))).toBe(true);
         });
 
         it('should return false when trusted_folders is not an array', () => {
@@ -228,7 +244,7 @@ describe('Trusted Folder Management', () => {
                 trusted_folders: 'broken'
             }), 'utf-8');
 
-            expect(isFolderTrusted('/any/path')).toBe(false);
+            expect(isFolderTrusted(p('/any/path'))).toBe(false);
         });
     });
 });
