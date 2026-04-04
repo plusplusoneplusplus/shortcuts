@@ -8,7 +8,7 @@
 import * as url from 'url';
 import * as path from 'path';
 import { BranchService } from '@plusplusoneplusplus/forge';
-import { sendJSON, execGitSync, readGitFileAtCommit } from '../api-handler';
+import { sendJSON, execGitSync, execGitArgsSync, readGitFileAtCommit } from '../api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import { gitCache } from '../git-cache';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
@@ -56,7 +56,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 let raw: string;
                 if (isHashLookup) {
                     try {
-                        raw = execGitSync(`log --format="${format}" -z ${search}^!`, ws.rootPath);
+                        raw = execGitArgsSync(['log', `--format=${format}`, '-z', `${search}^!`], ws.rootPath);
                     } catch {
                         raw = '';
                     }

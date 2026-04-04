@@ -249,44 +249,42 @@ describe('Git API endpoints', () => {
             expect(capturedCmd).not.toContain('--grep');
         });
 
-        it('looks up by full commit hash (40-char hex) instead of --grep', async () => {
+        it('looks up by full commit hash (40-char hex) using execFileSync (shell-safe)', async () => {
             const hash = 'f4965316a6f17d4eea9d817102b90d68b17b9d21';
             const logOutput = `${hash}\nf496531\nFix something\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n`;
-            let capturedCmd = '';
-            mockExecSync.mockImplementation((cmd: string) => {
-                capturedCmd = cmd;
-                return logOutput;
-            });
+            mockExecFileSync.mockReturnValue(logOutput);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${hash}`);
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.commits).toHaveLength(1);
             expect(data.commits[0].hash).toBe(hash);
-            expect(capturedCmd).toContain(`${hash}^!`);
-            expect(capturedCmd).not.toContain('--grep');
+            // Verify execFileSync was called with args array (bypasses shell)
+            expect(mockExecFileSync).toHaveBeenCalledWith(
+                'git',
+                expect.arrayContaining([`${hash}^!`]),
+                expect.objectContaining({ encoding: 'utf-8' }),
+            );
         });
 
-        it('looks up by short commit hash (7-char hex) instead of --grep', async () => {
+        it('looks up by short commit hash (7-char hex) using execFileSync (shell-safe)', async () => {
             const shortHash = 'f496531';
             const logOutput = `f4965316a6f17d4eea9d817102b90d68b17b9d21\n${shortHash}\nFix something\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n`;
-            let capturedCmd = '';
-            mockExecSync.mockImplementation((cmd: string) => {
-                capturedCmd = cmd;
-                return logOutput;
-            });
+            mockExecFileSync.mockReturnValue(logOutput);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${shortHash}`);
             expect(res.status).toBe(200);
-            expect(capturedCmd).toContain(`${shortHash}^!`);
-            expect(capturedCmd).not.toContain('--grep');
+            expect(mockExecFileSync).toHaveBeenCalledWith(
+                'git',
+                expect.arrayContaining([`${shortHash}^!`]),
+                expect.objectContaining({ encoding: 'utf-8' }),
+            );
         });
 
         it('returns empty commits when hash does not exist in repo', async () => {
             const hash = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('^!')) throw new Error('fatal: bad object ' + hash);
-                return '';
+            mockExecFileSync.mockImplementation(() => {
+                throw new Error('fatal: bad object ' + hash);
             });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${hash}`);

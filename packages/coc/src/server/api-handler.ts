@@ -248,7 +248,15 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
 /** Run a git command synchronously in the given directory. */
 export function execGitSync(args: string, cwd: string): string {
-    return childProcess.execSync(`git ${args}`, { cwd, encoding: 'utf-8', timeout: 5000 }).trim();
+    const cmd = process.platform === 'win32'
+        ? `git ${args.replace(/\^/g, '^^')}`
+        : `git ${args}`;
+    return childProcess.execSync(cmd, { cwd, encoding: 'utf-8', timeout: 5000 }).trim();
+}
+
+/** Run a git command synchronously using an args array (shell-safe, no escaping needed). */
+export function execGitArgsSync(args: string[], cwd: string): string {
+    return childProcess.execFileSync('git', args, { cwd, encoding: 'utf-8', timeout: 5000 }).trim();
 }
 
 /** Read a file's content from a specific commit, falling back to the first parent for deleted files. */

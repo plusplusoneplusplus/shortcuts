@@ -30,7 +30,8 @@ const DEFAULT_TIMEOUT = 30_000;               // 30 s
  * @returns        Trimmed stdout output.
  */
 export function execGit(args: string[], repoRoot: string, options?: ExecGitOptions): string {
-    const cmd = ['git', '-C', repoRoot, ...args].join(' ');
+    const joined = ['git', '-C', repoRoot, ...args].join(' ');
+    const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
     try {
         const output = execSync(cmd, {
             maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,

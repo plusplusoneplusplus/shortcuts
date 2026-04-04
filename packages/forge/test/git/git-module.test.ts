@@ -289,6 +289,36 @@ describe('execGit', () => {
         );
     });
 
+    it('should double caret (^) on Windows to prevent cmd.exe stripping', () => {
+        const origPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        try {
+            mockExecSync.mockReturnValue('');
+            execGit(['log', 'abc123^!'], '/repo');
+            expect(mockExecSync).toHaveBeenCalledWith(
+                'git -C /repo log abc123^^!',
+                expect.objectContaining({ encoding: 'utf-8' }),
+            );
+        } finally {
+            Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
+        }
+    });
+
+    it('should not double caret on non-Windows platforms', () => {
+        const origPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+        try {
+            mockExecSync.mockReturnValue('');
+            execGit(['log', 'abc123^!'], '/repo');
+            expect(mockExecSync).toHaveBeenCalledWith(
+                'git -C /repo log abc123^!',
+                expect.objectContaining({ encoding: 'utf-8' }),
+            );
+        } finally {
+            Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
+        }
+    });
+
     it('should handle errors without stderr gracefully', () => {
         mockExecSync.mockImplementation(() => { throw new Error('fail'); });
         expect(() => execGit(['status'], '/repo')).toThrow('git status failed:');
