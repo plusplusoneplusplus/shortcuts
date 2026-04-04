@@ -1840,15 +1840,18 @@ describe('ActivityChatDetail semantic hooks', () => {
 });
 
 describe('QueueView', () => {
-    beforeEach(() => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ queued: [], running: [], stats: {}, history: [] }),
-        });
-    });
-
     it('renders without crashing', () => {
         const { container } = render(<Wrap><QueueView /></Wrap>);
         expect(container).toBeDefined();
+    });
+
+    it('does not fetch queue endpoints on mount (queue is hydrated by App bootstrap)', () => {
+        const spy = vi.spyOn(global, 'fetch');
+        render(<Wrap><QueueView /></Wrap>);
+        const queueCalls = spy.mock.calls.filter(
+            ([url]) => typeof url === 'string' && url.includes('/queue')
+        );
+        expect(queueCalls).toHaveLength(0);
+        spy.mockRestore();
     });
 });
