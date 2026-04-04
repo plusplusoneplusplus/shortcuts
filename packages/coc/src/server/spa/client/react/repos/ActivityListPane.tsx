@@ -26,8 +26,7 @@ import { useQueue } from '../context/QueueContext';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
-import { groupHistoryByPlanFile, type HistoryGroup } from './history-grouping';
-import { HistoryGroupHeader } from './HistoryGroupHeader';
+import { WorkItemSection } from './WorkItemSection';
 
 export type ActivityTabMode = 'chats' | 'tasks';
 
@@ -122,26 +121,8 @@ export interface ActivityListPaneProps {
     fetchQueue: () => Promise<void>;
     /** Reason for the current pause (present when auto-paused due to task failure). */
     pauseReason?: { taskId: string; displayName: string; failedAt: string };
-    /** True when there are more completed tasks to load from the server. */
-    hasMore?: boolean;
-    /** True while a "Load more" request is in-flight. */
-    loadingMore?: boolean;
-    /** Callback to load the next page of completed tasks. */
-    onLoadMore?: () => void;
-    /** Server-side FTS5 search results (null = not searching, [] = no results). */
-    searchResults?: any[] | null;
-    /** True while server search is in-flight. */
-    searchLoading?: boolean;
-    /** Total number of server-side search matches. */
-    searchTotal?: number;
-    /** Whether there are more search results to load. */
-    searchHasMore?: boolean;
-    /** True while loading more search results. */
-    searchLoadingMore?: boolean;
-    /** Callback when user types in search — drives server-side search from parent. */
-    onSearchQueryChange?: (query: string) => void;
-    /** Callback to load more server-side search results. */
-    onLoadMoreSearchResults?: () => void;
+    onSelectWorkItem?: (id: string) => void;
+    selectedWorkItemId?: string | null;
 }
 
 function formatMetadataText(task: any): string {
@@ -174,16 +155,8 @@ export function ActivityListPane({
     onOpenDialog,
     fetchQueue,
     pauseReason,
-    hasMore,
-    loadingMore,
-    onLoadMore,
-    searchResults,
-    searchLoading,
-    searchTotal,
-    searchHasMore,
-    searchLoadingMore,
-    onSearchQueryChange,
-    onLoadMoreSearchResults,
+    onSelectWorkItem,
+    selectedWorkItemId,
 }: ActivityListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
@@ -811,6 +784,11 @@ export function ActivityListPane({
                         📋 Tasks
                     </button>
                 </div>
+                {activeTab === 'chats' && (
+                    <Button variant="ghost" size="sm" onClick={onOpenDialog} className="self-start" data-testid="new-chat-btn">
+                        💬 New Chat
+                    </Button>
+                )}
                 {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">
@@ -1057,75 +1035,14 @@ export function ActivityListPane({
                     </div>
                 )}
 
-                {isServerSearchActive ? (
-                    /* ── Server-side search results ── */
-                    <div>
-                        <div className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">
-                            🔍 Search Results
-                            <span className="text-[10px]">({searchResults!.length}{searchTotal != null && searchTotal > searchResults!.length ? ` of ${searchTotal}` : ''})</span>
-                        </div>
-                        {searchQuery.length === 1 && (
-                            <div className="text-[10px] text-[#848484] dark:text-[#bbb] italic" data-testid="search-min-chars-hint">
-                                Type 2+ characters to search all conversations
-                            </div>
-                        )}
-                        {searchResults!.length === 0 && !searchLoading && (
-                            <div className="text-[10px] text-[#848484] dark:text-[#bbb]" data-testid="search-no-results">
-                                No matching conversations found
-                            </div>
-                        )}
-                        <div className={cn("flex flex-col mt-1", isDense ? "gap-0.5" : "gap-1")}>
-                            {searchResults!.map(task => (
-                                <Card
-                                    key={task.id}
-                                    className={cn(
-                                        isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
-                                        isSelected(task.id) && "ring-2 ring-[#0078d4]"
-                                    )}
-                                    onClick={() => onSelectTask(task.id, task)}
-                                    data-task-id={task.id}
-                                    data-testid="search-result-item"
-                                >
-                                    <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                                        <span className="flex items-center gap-1 min-w-0 truncate">
-                                            <span className="shrink-0">
-                                                {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
-                                            </span>
-                                            <span className="truncate" title={task.displayName || task.title || task.type || 'Task'}>
-                                                {task.displayName || task.title || task.type || 'Task'}
-                                            </span>
-                                        </span>
-                                        <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
-                                            {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
-                                        </span>
-                                    </div>
-                                    {!isDense && task._searchSnippet && (
-                                        <div
-                                            className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb] [&_mark]:bg-yellow-200 [&_mark]:dark:bg-yellow-700/50 [&_mark]:text-inherit [&_mark]:rounded-sm [&_mark]:px-px"
-                                            data-testid="search-snippet"
-                                            dangerouslySetInnerHTML={{ __html: task._searchSnippet }}
-                                        />
-                                    )}
-                                    {!isDense && !task._searchSnippet && (() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb]" title={p}>{p}</div> : null; })()}
-                                </Card>
-                            ))}
-                        </div>
-                        {searchHasMore && onLoadMoreSearchResults && (
-                            <div className="px-4 py-2">
-                                <button
-                                    onClick={onLoadMoreSearchResults}
-                                    disabled={searchLoadingMore}
-                                    className="w-full text-xs text-[#848484] dark:text-[#858585] hover:text-[#3c3c3c] dark:hover:text-[#cccccc] disabled:opacity-50 disabled:cursor-not-allowed py-1"
-                                    data-testid="search-load-more-btn"
-                                >
-                                    {searchLoadingMore ? 'Loading…' : 'Load more results'}
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    /* ── Normal history view (pinned + unpinned + archived + load more) ── */
-                    <>
+                {activeTab === 'tasks' && workspaceId && onSelectWorkItem && (
+                    <WorkItemSection
+                        workspaceId={workspaceId}
+                        onSelectWorkItem={onSelectWorkItem}
+                        selectedWorkItemId={selectedWorkItemId}
+                    />
+                )}
+
                 {(filteredPinned.length > 0 || pinnedRunningCount > 0) && (
                     <div>
                         <div className="flex flex-wrap items-center gap-1.5">

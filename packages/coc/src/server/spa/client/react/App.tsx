@@ -6,6 +6,7 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
+import { WorkItemProvider } from './context/WorkItemContext';
 import { ReposProvider } from './context/ReposContext';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
 import { ToastProvider } from './context/ToastContext';
@@ -427,26 +428,24 @@ function AppInner() {
 
 export function App() {
     return (
-        <ErrorBoundary>
-            <AppProvider>
-                <QueueProvider>
-                    <NotificationProvider>
-                        <PopOutProvider>
-                            <MarkdownPopOutProvider>
-                                <GitReviewPopOutProvider>
-                                    <FloatingChatsProvider>
-                                    <MinimizedDialogsProvider>
-                                        <ThemeProvider>
-                                            <AppInner />
-                                        </ThemeProvider>
-                                    </MinimizedDialogsProvider>
-                                </FloatingChatsProvider>
-                                </GitReviewPopOutProvider>
-                            </MarkdownPopOutProvider>
-                        </PopOutProvider>
-                    </NotificationProvider>
-                </QueueProvider>
-            </AppProvider>
-        </ErrorBoundary>
+        <AppProvider>
+            <QueueProvider>
+                <WorkItemProvider>
+                <NotificationProvider>
+                    <PopOutProvider>
+                        <MarkdownPopOutProvider>
+                            <FloatingChatsProvider>
+                            <MinimizedDialogsProvider>
+                                <ThemeProvider>
+                                    <AppInner />
+                                </ThemeProvider>
+                            </MinimizedDialogsProvider>
+                        </FloatingChatsProvider>
+                        </MarkdownPopOutProvider>
+                    </PopOutProvider>
+                </NotificationProvider>
+                </WorkItemProvider>
+            </QueueProvider>
+        </AppProvider>
     );
 }
