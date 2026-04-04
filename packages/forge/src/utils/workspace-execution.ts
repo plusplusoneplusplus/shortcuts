@@ -37,7 +37,8 @@ function normalizeLinuxPath(input: string): string {
 }
 
 export function getWslExecutablePath(): string {
-    return path.join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'wsl.exe');
+    const systemRoot = process.env['SystemRoot'] ?? path.win32.join('C:', 'Windows');
+    return path.win32.join(systemRoot, 'System32', 'wsl.exe');
 }
 
 export function clearWorkspaceExecutionCaches(): void {
