@@ -21,3 +21,10 @@ export {
 } from './types';
 
 export { FileWorkItemStore, type FileWorkItemStoreOptions } from './work-item-store';
+export {
+    executeWorkItem,
+    handleWorkItemTaskComplete,
+    buildExecutionPrompt,
+    type EnqueueFunction,
+    type ExecuteWorkItemOptions,
+} from './work-item-executor';

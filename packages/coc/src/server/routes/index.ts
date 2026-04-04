@@ -43,6 +43,7 @@ import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
 import { registerWorkItemRoutes } from './work-item-routes';
 import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
+import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
@@ -80,6 +81,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const workItemStore = new FileWorkItemStore({ dataDir });
     registerWorkItemRoutes({ routes, workItemStore });
     registerWorkItemPlanRoutes({ routes, workItemStore });
+    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store });
 
     const repoTreeService = new RepoTreeService(dataDir);
     registerRepoRoutes(routes, dataDir, repoTreeService);
