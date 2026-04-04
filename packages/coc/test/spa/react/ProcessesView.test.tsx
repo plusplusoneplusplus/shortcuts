@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import React from 'react';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/useBreakpoint';
 
@@ -95,6 +96,7 @@ function setBreakpoint(bp: 'mobile' | 'tablet' | 'desktop') {
 
 describe('ProcessesView', () => {
     beforeEach(() => {
+        vi.useFakeTimers();
         vi.clearAllMocks();
         setBreakpoint('desktop');
         mockQueueState = {
@@ -108,11 +110,19 @@ describe('ProcessesView', () => {
         location.hash = '';
     });
 
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    /** Render, flush async fetches, then flush the skeleton minimum-display timer. */
+    async function renderView(el: React.ReactElement = <ProcessesView />) {
+        await act(async () => { render(el); });
+        await act(async () => { vi.advanceTimersByTime(350); });
+    }
+
     // Test 1: Desktop — two-pane layout with ActivityListPane + ActivityDetailPane
     it('Desktop: renders two-pane layout with ActivityListPane and ActivityDetailPane', async () => {
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         const panel = screen.getByTestId('activity-split-panel');
         expect(panel).toBeDefined();
@@ -123,9 +133,7 @@ describe('ProcessesView', () => {
 
     // Test 2: Desktop — ActivityListPane has no workspaceId (global queue)
     it('Desktop: ActivityListPane has no workspaceId for global queue', async () => {
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         const listPane = screen.getByTestId('activity-list-pane');
         expect(listPane.getAttribute('data-workspace-id')).toBe('');
@@ -133,9 +141,7 @@ describe('ProcessesView', () => {
 
     // Test 3: Desktop — height calculation excludes bottom nav
     it('Desktop: container height excludes bottom nav', async () => {
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         const container = document.getElementById('view-processes')!;
         expect(container.className).toContain('h-[calc(100vh-48px)]');
@@ -145,9 +151,7 @@ describe('ProcessesView', () => {
     // Test 4: Mobile — no selection shows list only
     it('Mobile: no selection renders list pane only', async () => {
         setBreakpoint('mobile');
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         expect(screen.getByTestId('activity-mobile-list')).toBeDefined();
         expect(screen.getByTestId('activity-list-pane')).toBeDefined();
@@ -157,9 +161,7 @@ describe('ProcessesView', () => {
     // Test 5: Mobile — height includes bottom nav offset
     it('Mobile: container height accounts for bottom nav', async () => {
         setBreakpoint('mobile');
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         const container = document.getElementById('view-processes')!;
         expect(container.className).toContain('h-[calc(100vh-48px-48px)]');
@@ -168,9 +170,7 @@ describe('ProcessesView', () => {
     // Test 6: Tablet — uses narrower left panel
     it('Tablet: renders two-pane layout with ActivityListPane', async () => {
         setBreakpoint('tablet');
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         expect(screen.getByTestId('activity-list-pane')).toBeDefined();
         expect(screen.getByTestId('activity-detail-pane')).toBeDefined();
@@ -179,9 +179,7 @@ describe('ProcessesView', () => {
     // Test 7: Desktop — detail pane shows selected task ID
     it('Desktop: detail pane receives selectedTaskId', async () => {
         mockQueueState.selectedTaskId = 'task-789';
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         const detailPane = screen.getByTestId('activity-detail-pane');
         expect(detailPane.getAttribute('data-selected-task-id')).toBe('task-789');
@@ -205,9 +203,7 @@ describe('ProcessesView', () => {
                 { id: 'h2', type: 'chat' },                              // global task
             ] });
 
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         const listPane = screen.getByTestId('activity-list-pane');
         expect(listPane.getAttribute('data-running-count')).toBe('1');
@@ -222,9 +218,7 @@ describe('ProcessesView', () => {
         setBreakpoint('mobile');
         mockQueueState.selectedTaskId = 'task-A';
 
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         // useEffect syncs mobileShowDetail=true → detail pane is shown
         expect(screen.getByTestId('activity-detail-pane')).toBeDefined();
@@ -278,9 +272,7 @@ describe('ProcessesView', () => {
             queueInitialized: true,
         };
 
-        await act(async () => {
-            render(<ProcessesView />);
-        });
+        await renderView();
 
         const listPane = screen.getByTestId('activity-list-pane');
         expect(listPane.getAttribute('data-running-count')).toBe('1');

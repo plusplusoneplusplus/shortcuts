@@ -15,6 +15,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { ActivityListPane } from '../repos/ActivityListPane';
 import { ActivityDetailPane } from '../repos/ActivityDetailPane';
 import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
+import { ProcessesViewSkeleton } from './QueueTaskSkeleton';
 
 export function ProcessesView() {
     const [running, setRunning] = useState<any[]>([]);
@@ -25,6 +26,19 @@ export function ProcessesView() {
     const [isPaused, setIsPaused] = useState(false);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // Minimum skeleton display time so the loading state is always perceptible.
+    const SKELETON_MIN_MS = 300;
+    const loadingStartRef = useRef(Date.now());
+    const endLoading = useCallback(() => {
+        const elapsed = Date.now() - loadingStartRef.current;
+        const remaining = SKELETON_MIN_MS - elapsed;
+        if (remaining > 0) {
+            setTimeout(() => setLoading(false), remaining);
+        } else {
+            setLoading(false);
+        }
+    }, []);
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
@@ -59,11 +73,12 @@ export function ProcessesView() {
             setQueued([]);
             setHistory([]);
         }
-        setLoading(false);
-    }, [queueDispatch]);
+        endLoading();
+    }, [queueDispatch, endLoading]);
 
     useEffect(() => {
         setLoading(true);
+        loadingStartRef.current = Date.now();
         fetchQueue();
     }, [fetchQueue]);
 
@@ -76,8 +91,8 @@ export function ProcessesView() {
         if (queueState.stats?.isPaused !== undefined) {
             setIsPaused(queueState.stats.isPaused);
         }
-        setLoading(false);
-    }, [queueState.running, queueState.queued, queueState.history, queueState.stats, queueState.queueInitialized]);
+        endLoading();
+    }, [queueState.running, queueState.queued, queueState.history, queueState.stats, queueState.queueInitialized, endLoading]);
 
     // Clear selection if the selected task is no longer reachable
     useEffect(() => {
@@ -189,7 +204,7 @@ export function ProcessesView() {
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
-                <div id="view-processes" className={`${heightClass} p-4 text-sm text-[#848484]`}>Loading queue...</div>
+                <ProcessesViewSkeleton heightClass={heightClass} />
             </ChatPreferencesProvider>
         );
     }

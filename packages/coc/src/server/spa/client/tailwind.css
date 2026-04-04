@@ -1893,3 +1893,22 @@
         #1a2e3d !important;
     background-size: 200% 100%, 100% 100%;
 }
+
+/* ── Skeleton loading shimmer ──────────────────────────────────────── */
+
+@keyframes skeleton-shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+    background: linear-gradient(90deg, #e0e0e0 30%, #f0f0f0 50%, #e0e0e0 70%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s linear infinite;
+    border-radius: 3px;
+}
+
+.dark .skeleton-shimmer {
+    background: linear-gradient(90deg, #3c3c3c 30%, #4a4a4a 50%, #3c3c3c 70%);
+    background-size: 200% 100%;
+}
