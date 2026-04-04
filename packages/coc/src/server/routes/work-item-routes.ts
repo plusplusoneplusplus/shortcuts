@@ -20,6 +20,7 @@ import { handleAPIError, missingFields, notFound, badRequest, conflict } from '.
 import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority } from '../work-items/types';
 import { WORK_ITEM_STATUSES, isValidTransition } from '../work-items/types';
 import type { WorkItem } from '../work-items/types';
+import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../websocket';
 
 const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
@@ -28,11 +29,12 @@ const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 export interface WorkItemRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
+    enqueue?: EnqueueFunction;
     getWsServer?: () => ProcessWebSocketServer;
 }
 
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
-    const { routes, workItemStore, getWsServer } = ctx;
+    const { routes, workItemStore, enqueue, getWsServer } = ctx;
 
     // GET /api/workspaces/:id/work-items — List with optional filters
     routes.push({
@@ -185,6 +187,21 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (!updated) {
                 return handleAPIError(res, notFound('Work item'));
             }
+
+            // Auto-execute if status transitioned to 'ready' and autoExecute is enabled
+            if (updated.status === 'ready' && updated.autoExecute && enqueue) {
+                try {
+                    await executeWorkItem(workItemId, workItemStore, enqueue);
+                    const afterExec = await workItemStore.getWorkItem(workItemId);
+                    if (afterExec) {
+                        getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: afterExec });
+                        return sendJSON(res, 200, afterExec);
+                    }
+                } catch {
+                    // Auto-execute failed; still return the updated work item
+                }
+            }
+
             getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             sendJSON(res, 200, updated);
         },
