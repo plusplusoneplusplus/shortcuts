@@ -414,6 +414,44 @@ describe('CLITaskExecutor executor dispatch', () => {
             // (BaseExecutor.cancelledTasks is an instance-level Set)
             expect((executor2 as any).cancelledTasks.has('task-isolated')).toBe(false);
         });
+
+        it('clears cancelledTasks entry after execute() completes so requeued tasks are not blocked', async () => {
+            mockChatExecute.mockResolvedValue({
+                response: 'AI response',
+                sessionId: 'sess-1',
+                toolCalls: [],
+                timeline: [],
+                pendingSuggestions: undefined,
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('ask', 'requeue-task-1');
+
+            // Cancel → execute (cancellation path)
+            executor.cancel(task.id);
+            const cancelResult = await executor.execute(task);
+            expect(cancelResult.success).toBe(false);
+            expect(cancelResult.error?.message).toContain('cancelled');
+
+            // cancelledTasks entry must be cleared after execute()
+            expect((executor as any).cancelledTasks.has(task.id)).toBe(false);
+
+            // Re-execute the same task (simulates requeue) — should succeed
+            const retryResult = await executor.execute(task);
+            expect(retryResult.success).toBe(true);
+            expect(mockChatExecute).toHaveBeenCalledOnce();
+        });
+
+        it('clears cancelledTasks entry even when execute() throws', async () => {
+            mockChatExecute.mockRejectedValue(new Error('unexpected'));
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeChatTask('ask', 'throw-task-1');
+
+            await executor.execute(task);
+
+            expect((executor as any).cancelledTasks.has(task.id)).toBe(false);
+        });
     });
 
     // ========================================================================

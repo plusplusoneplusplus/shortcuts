@@ -155,20 +155,21 @@ export function useChatSSE({
             setIsStreaming(false);
         };
 
-        const finish = () => {
+        const finish = (finalStatus: 'completed' | 'failed' | 'cancelled' = 'completed') => {
             closeSSE();
             setBackgroundTasks(null);
-            setTask(prev => prev && prev.status === 'running' ? { ...prev, status: 'completed' as const } : prev);
+            setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
             void refreshConversation(processId);
             setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
             onSendComplete();
         };
 
-        es.addEventListener('done', finish);
+        es.addEventListener('done', () => finish('completed'));
         es.addEventListener('status', (e: Event) => {
             try {
                 const status = JSON.parse((e as MessageEvent).data)?.status;
-                if (status && !['running', 'queued'].includes(status)) finish();
+                if (status && !['running', 'queued'].includes(status))
+                    finish(status as 'completed' | 'failed' | 'cancelled');
             } catch { /* ignore */ }
         });
 

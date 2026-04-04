@@ -209,4 +209,47 @@ describe('useChatSSE', () => {
         await act(async () => { MockEventSource.last._emit('done', {}); });
         expect(setBackgroundTasks).toHaveBeenCalledWith(null);
     });
+
+    it('sets task status to failed when status SSE event reports failed', async () => {
+        const setTask = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        await act(async () => {
+            MockEventSource.last._emit('status', { status: 'failed' });
+        });
+        // setTask receives an updater function; invoke it to verify the status
+        const updater = setTask.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater).toBeDefined();
+        const result = updater!({ status: 'running' });
+        expect(result.status).toBe('failed');
+    });
+
+    it('sets task status to cancelled when status SSE event reports cancelled', async () => {
+        const setTask = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        await act(async () => {
+            MockEventSource.last._emit('status', { status: 'cancelled' });
+        });
+        const updater = setTask.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater).toBeDefined();
+        const result = updater!({ status: 'running' });
+        expect(result.status).toBe('cancelled');
+    });
+
+    it('sets task status to completed on done event', async () => {
+        const setTask = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        await act(async () => {
+            MockEventSource.last._emit('done', {});
+        });
+        const updater = setTask.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater).toBeDefined();
+        const result = updater!({ status: 'running' });
+        expect(result.status).toBe('completed');
+    });
 });

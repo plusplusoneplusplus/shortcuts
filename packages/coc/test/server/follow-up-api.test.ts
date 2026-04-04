@@ -1239,6 +1239,78 @@ describe('POST /api/processes/:id/message', () => {
     });
 
     // ========================================================================
+    // Enqueue failure rollback
+    // ========================================================================
+
+    describe('enqueue failure rollback', () => {
+        it('should return 500 and rollback status when requeueForFollowUp throws', async () => {
+            const proc: AIProcess = {
+                id: 'proc-enq-fail',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-enq-fail',
+                conversationTurns: [
+                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                ],
+            };
+            await store.addProcess(proc);
+
+            // Make requeueForFollowUp throw (simulates task evicted from history)
+            (mockBridge.requeueForFollowUp as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+                new Error('Task not found in history'),
+            );
+            // findTaskByProcessId returns a completed parent so the requeue path is taken
+            (mockBridge as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-1', type: 'chat', status: 'completed' });
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-enq-fail/message`, {
+                content: 'Follow-up after cancel',
+            });
+
+            expect(res.status).toBe(500);
+            const body = JSON.parse(res.body);
+            expect(body.code).toBe('ENQUEUE_FAILED');
+
+            // Status must be rolled back to original 'completed' (not stuck at 'running')
+            const updated = await store.getProcess('proc-enq-fail');
+            expect(updated?.status).toBe('completed');
+        });
+
+        it('should return 500 and rollback status when enqueue throws', async () => {
+            const proc: AIProcess = {
+                id: 'proc-enq-fail2',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'failed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-enq-fail2',
+            };
+            await store.addProcess(proc);
+
+            // Make enqueue throw
+            (mockBridge.enqueue as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+                new Error('Queue full'),
+            );
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-enq-fail2/message`, {
+                content: 'Retry message',
+            });
+
+            expect(res.status).toBe(500);
+            const body = JSON.parse(res.body);
+            expect(body.code).toBe('ENQUEUE_FAILED');
+
+            // Status must be rolled back to 'failed' (the prior status)
+            const updated = await store.getProcess('proc-enq-fail2');
+            expect(updated?.status).toBe('failed');
+        });
+    });
+
+    // ========================================================================
     // Invalid process ID patterns
     // ========================================================================
 

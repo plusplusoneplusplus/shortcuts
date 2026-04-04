@@ -71,10 +71,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
-        if (isMemoryAggregatePayload(task.payload)) {
-            return this.executors.memoryAggregateExecutor.execute(task);
+        try {
+            if (isMemoryAggregatePayload(task.payload)) {
+                return await this.executors.memoryAggregateExecutor.execute(task);
+            }
+            return await this.executors.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm, imgs) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs), executeByTypeFn: (t, p) => this.executors.dispatch(t, p), getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t) });
+        } finally {
+            this.cancelledTasks.delete(task.id);
         }
-        return this.executors.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm, imgs) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs), executeByTypeFn: (t, p) => this.executors.dispatch(t, p), getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t) });
     }
 
     cancel(taskId: string): void { this.cancelledTasks.add(taskId); }

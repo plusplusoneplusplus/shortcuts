@@ -422,6 +422,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // This ensures the SSE snapshot always includes the user message,
             // preventing a race where the snapshot replaces optimistic UI state
             // before the executor has written the turn.
+            const priorStatus = proc.status;
             const appendResult = await store.appendConversationTurn(
                 id,
                 (turnIndex) => ({
@@ -436,36 +437,41 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             );
             const turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
 
-            if (bridge.enqueue) {
-                const displayName = truncateDisplayName(messageContent.trim());
-                const parentTask = bridge.findTaskByProcessId?.(id);
-                if (parentTask && parentTask.status === 'completed' && bridge.requeueForFollowUp) {
-                    await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages);
+            try {
+                if (bridge.enqueue) {
+                    const displayName = truncateDisplayName(messageContent.trim());
+                    const parentTask = bridge.findTaskByProcessId?.(id);
+                    if (parentTask && parentTask.status === 'completed' && bridge.requeueForFollowUp) {
+                        await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages);
+                    } else {
+                        await bridge.enqueue({
+                            type: 'chat',
+                            priority: 'normal',
+                            payload: {
+                                kind: 'chat',
+                                prompt: messageContent,
+                                processId: id,
+                                attachments,
+                                imageTempDir,
+                                images: validatedImages,
+                                workingDirectory: proc.workingDirectory,
+                                readonly: (proc as any).payload?.readonly,
+                                ...(modeOverride ? { mode: modeOverride } : {}),
+                                deliveryMode,
+                            },
+                            config: {},
+                            displayName,
+                        });
+                    }
                 } else {
-                    await bridge.enqueue({
-                        type: 'chat',
-                        priority: 'normal',
-                        payload: {
-                            kind: 'chat',
-                            prompt: messageContent,
-                            processId: id,
-                            attachments,
-                            imageTempDir,
-                            images: validatedImages,
-                            workingDirectory: proc.workingDirectory,
-                            readonly: (proc as any).payload?.readonly,
-                            ...(modeOverride ? { mode: modeOverride } : {}),
-                            deliveryMode,
-                        },
-                        config: {},
-                        displayName,
+                    bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode, validatedImages).catch(() => {
+                    }).finally(() => {
+                        if (imageTempDir) { cleanupTempDir(imageTempDir); }
                     });
                 }
-            } else {
-                bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode, validatedImages).catch(() => {
-                }).finally(() => {
-                    if (imageTempDir) { cleanupTempDir(imageTempDir); }
-                });
+            } catch (err) {
+                await store.updateProcess(id, { status: priorStatus as AIProcessStatus }).catch(() => {});
+                return handleAPIError(res, new APIError(500, 'Failed to enqueue follow-up', 'ENQUEUE_FAILED'));
             }
 
             emitMessageQueued(store, id, {
