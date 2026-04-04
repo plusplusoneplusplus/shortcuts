@@ -100,7 +100,7 @@ describe('CommitStrip', () => {
             const row = container.querySelector('[data-testid="commit-strip-row-abc1234"]')!;
             fireEvent.click(row);
 
-            expect(location.hash).toBe('#repos/ws-test/commits/abc1234');
+            expect(location.hash).toBe('#repos/ws-test/git/abc1234');
             location.hash = originalHash;
         });
 
@@ -116,7 +116,7 @@ describe('CommitStrip', () => {
             const row = container.querySelector('[data-testid="commit-strip-row-abc1234"]')!;
             fireEvent.click(row);
 
-            expect(location.hash).toBe('#repos/ws-test/commits/abc1234567890abcdef1234567890abcdef123456');
+            expect(location.hash).toBe('#repos/ws-test/git/abc1234567890abcdef1234567890abcdef123456');
             location.hash = originalHash;
         });
 
@@ -139,6 +139,34 @@ describe('CommitStrip', () => {
 
             const row = container.querySelector('[data-testid="commit-strip-row-a1b2c3d"]')!;
             expect(row.className).toContain('cursor-pointer');
+        });
+
+        it('calls stopPropagation on click event', () => {
+            const commit = makeCommit({ shortHash: 'abc1234' });
+            const { container } = render(
+                <CommitStrip commits={[commit]} workspaceId="ws-test" />
+            );
+
+            const row = container.querySelector('[data-testid="commit-strip-row-abc1234"]')!;
+            const event = new MouseEvent('click', { bubbles: true });
+            const stopSpy = vi.spyOn(event, 'stopPropagation');
+            row.dispatchEvent(event);
+
+            expect(stopSpy).toHaveBeenCalled();
+            location.hash = originalHash;
+        });
+
+        it('URI-encodes workspaceId in navigation hash', () => {
+            const commit = makeCommit({ shortHash: 'abc1234' });
+            const { container } = render(
+                <CommitStrip commits={[commit]} workspaceId="ws/special id" />
+            );
+
+            const row = container.querySelector('[data-testid="commit-strip-row-abc1234"]')!;
+            fireEvent.click(row);
+
+            expect(location.hash).toBe('#repos/ws%2Fspecial%20id/git/abc1234');
+            location.hash = originalHash;
         });
 
         it('does not have cursor-pointer class when workspaceId is missing', () => {

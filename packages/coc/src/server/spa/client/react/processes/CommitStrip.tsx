@@ -15,10 +15,11 @@ export interface CommitStripProps {
 export function CommitStrip({ commits, workspaceId }: CommitStripProps) {
     if (commits.length === 0) return null;
 
-    const handleClick = (commit: DetectedCommit) => {
+    const handleClick = (e: React.MouseEvent, commit: DetectedCommit) => {
+        e.stopPropagation();
         const hash = commit.fullHash || commit.shortHash;
         if (workspaceId) {
-            location.hash = `#repos/${workspaceId}/commits/${hash}`;
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash;
         }
     };
 
@@ -38,7 +39,7 @@ export function CommitStrip({ commits, workspaceId }: CommitStripProps) {
                             : '')
                     }
                     data-testid={`commit-strip-row-${commit.shortHash}`}
-                    onClick={workspaceId ? () => handleClick(commit) : undefined}
+                    onClick={workspaceId ? (e) => handleClick(e, commit) : undefined}
                     role={workspaceId ? 'link' : undefined}
                 >
                     <span className="shrink-0">🔀</span>
