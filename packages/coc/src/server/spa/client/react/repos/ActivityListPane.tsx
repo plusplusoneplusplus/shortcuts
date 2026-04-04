@@ -27,6 +27,7 @@ import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
 import { WorkItemSection } from './WorkItemSection';
+import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 
 export type ActivityTabMode = 'chats' | 'tasks';
 
@@ -186,7 +187,7 @@ export function ActivityListPane({
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
     const [summarizeDialogOpen, setSummarizeDialogOpen] = useState(false);
     const [summarizeDialogIds, setSummarizeDialogIds] = useState<string[]>([]);
-    const [renameTarget, setRenameTarget] = useState<{ taskId: string; title: string } | null>(null);
+    const [showCreateWorkItem, setShowCreateWorkItem] = useState(false);
 
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
     const { taskCardDensity, historyGrouping } = useDisplaySettings();
@@ -1036,11 +1037,19 @@ export function ActivityListPane({
                 )}
 
                 {activeTab === 'tasks' && workspaceId && onSelectWorkItem && (
-                    <WorkItemSection
-                        workspaceId={workspaceId}
-                        onSelectWorkItem={onSelectWorkItem}
-                        selectedWorkItemId={selectedWorkItemId}
-                    />
+                    <>
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium">Work Items</span>
+                            <Button variant="ghost" size="sm" onClick={() => setShowCreateWorkItem(true)} data-testid="create-work-item-btn">
+                                + Work Item
+                            </Button>
+                        </div>
+                        <WorkItemSection
+                            workspaceId={workspaceId}
+                            onSelectWorkItem={onSelectWorkItem}
+                            selectedWorkItemId={selectedWorkItemId}
+                        />
+                    </>
                 )}
 
                 {(filteredPinned.length > 0 || pinnedRunningCount > 0) && (
@@ -1288,6 +1297,11 @@ export function ActivityListPane({
                 onClose={closeContextMenu}
             />
         )}
+        <CreateWorkItemDialog
+            open={showCreateWorkItem}
+            onClose={() => setShowCreateWorkItem(false)}
+            workspaceId={workspaceId || ''}
+        />
         <SummarizeChatDialog
             open={summarizeDialogOpen}
             chatCount={summarizeDialogIds.length}
