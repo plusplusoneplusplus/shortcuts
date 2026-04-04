@@ -162,6 +162,8 @@ src/
 │               ├── views/
 │               │   ├── memory/          # Memory management (MemoryView, entries/files/config panels, ExploreCachePanel)
 │               │   └── skills/          # Skills management (SkillsView, installed/bundled/config panels)
+│               ├── welcome/             # Onboarding system (WelcomeModal, FirstStepsCard, FeatureTip, tips registry)
+│               ├── featureFlags.ts      # Compile-time feature flags (SHOW_WELCOME_TUTORIAL)
 │               └── wiki/                # Wiki UI (WikiView, WikiAsk, WikiGraph, WikiComponentTree, etc.)
 ├── ai-invoker.ts         # AI invoker factory - Creates CopilotSDKService instances with session pooling
 ├── logger.ts             # Console logger - Colored output, spinners, and progress bars
@@ -219,6 +221,11 @@ serve:
 ```
 
 **Configuration Precedence:** CLI flags > config file > defaults
+
+**Welcome/Onboarding preferences (in `GlobalPreferences`):**
+- `hasSeenWelcome?: boolean` — tracks whether the welcome modal has been dismissed
+- `onboardingProgress?: { repoAdded, firstChatSent, workflowsVisited, settingsVisited, dismissed }` — first-steps checklist progress
+- `dismissedTips?: string[]` — IDs of contextual feature tips the user has dismissed
 
 ## Testing
 
