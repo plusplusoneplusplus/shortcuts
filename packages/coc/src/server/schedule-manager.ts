@@ -116,6 +116,9 @@ export class ScheduleManager extends EventEmitter {
     private readonly overrideStore: RepoScheduleOverrideStore | null;
     private disposed = false;
 
+    /** Optional callback invoked when a schedule with targetType='work-item' fires. */
+    onCreateWorkItem?: (schedule: ScheduleEntry, repoId: string) => Promise<void>;
+
     constructor(
         persistence: ScheduleYamlPersistence,
         queueManager: TaskQueueManager | null = null,
@@ -640,8 +643,14 @@ export class ScheduleManager extends EventEmitter {
                         repoId,
                     });
                     run.taskId = taskId;
-                    run.processId = toQueueProcessId(taskId);
+                    run.processId = `queue_${taskId}`;
+                } else if (schedule.targetType === 'work-item') {
+                    if (this.onCreateWorkItem) {
+                        await this.onCreateWorkItem(schedule, repoId);
+                    }
                 }
+            } else if (schedule.targetType === 'work-item' && this.onCreateWorkItem) {
+                await this.onCreateWorkItem(schedule, repoId);
             }
 
             finaliseRun(run, 'completed');

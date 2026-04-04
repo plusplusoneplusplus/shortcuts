@@ -6,6 +6,7 @@
  */
 
 import type { Route } from '../types';
+import * as crypto from 'crypto';
 import type { ProcessStore, TaskQueueManager, CopilotSDKService, AIInvoker } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../websocket';
@@ -45,9 +46,8 @@ import { registerWorkItemRoutes } from './work-item-routes';
 import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
-import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
-import type { ResolvedCLIConfig } from '../../config';
-import type { TerminalSessionManager } from '../terminal/index';
+import type { WorkItem } from '../work-items/types';
+import { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile } from '../../config';
 
 export interface RegisterRoutesOptions {
     store: ProcessStore;
@@ -79,9 +79,28 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
-    registerWorkItemRoutes({ routes, workItemStore, getWsServer });
+    const enqueueForWorkItems = bridge.enqueue.bind(bridge) as import('../work-items/work-item-executor').EnqueueFunction;
+    registerWorkItemRoutes({ routes, workItemStore, enqueue: enqueueForWorkItems, getWsServer });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
-    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, getWsServer });
+    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
+
+    // Wire scheduler → work item integration
+    scheduleManager.onCreateWorkItem = async (schedule, repoId) => {
+        const now = new Date().toISOString();
+        const item: WorkItem = {
+            id: crypto.randomUUID(),
+            repoId,
+            title: schedule.name,
+            description: schedule.target,
+            status: 'created',
+            createdAt: now,
+            updatedAt: now,
+            source: 'schedule',
+            sourceId: schedule.id,
+        };
+        await workItemStore.addWorkItem(item);
+        getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-added', workspaceId: repoId, item });
+    };
 
     const repoTreeService = new RepoTreeService(dataDir);
     registerRepoRoutes(routes, dataDir, repoTreeService);
