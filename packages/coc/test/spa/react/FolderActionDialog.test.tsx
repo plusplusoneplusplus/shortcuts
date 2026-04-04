@@ -68,11 +68,11 @@ function setupFetch(tree = mockTree) {
         if (opts?.method === 'POST' && url.includes('/tasks') && !url.includes('/archive')) {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
     });
 }
 
-// ── FolderActionDialog unit tests ─────────────────────────────────────
+// ── FolderActionDialog unit tests─────────────────────────────────────
 
 describe('FolderActionDialog', () => {
     afterEach(() => {
@@ -599,7 +599,7 @@ describe('TasksPanel folder dialog actions', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);

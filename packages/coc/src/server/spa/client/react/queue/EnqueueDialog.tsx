@@ -102,8 +102,9 @@ export function EnqueueDialog() {
     useEffect(() => {
         setFolders([]);
         if (!workspaceId) return;
-        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/tasks')
-            .then((data: any) => {
+        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/summary')
+            .then((resp: any) => {
+                const data = resp?.tasks;
                 if (data && typeof data === 'object') {
                     setFolders(flattenFolders(filterGitMetadataFolders(data)));
                 }

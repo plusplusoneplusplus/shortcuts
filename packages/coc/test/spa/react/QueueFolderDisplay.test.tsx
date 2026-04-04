@@ -345,7 +345,7 @@ describe('TaskTree folderMap wiring', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(treeWithFolder) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: treeWithFolder }) });
         });
 
         // Seed workspace with rootPath so useQueueActivity can match

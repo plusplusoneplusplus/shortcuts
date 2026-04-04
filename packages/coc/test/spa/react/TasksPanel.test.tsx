@@ -248,7 +248,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve(mockCommentCounts) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -267,7 +267,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         const navState: TasksPanelNavState = { openFilePath: 'feature1/design.md', selectedFilePaths: [] };
         render(<Wrap><TasksPanel wsId="ws1" initialNavState={navState} /></Wrap>);
@@ -287,7 +287,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         const onNavStateChange = vi.fn();
         render(<Wrap><TasksPanel wsId="ws1" onNavStateChange={onNavStateChange} /></Wrap>);
@@ -331,7 +331,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(treeWithGit) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: treeWithGit }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -353,7 +353,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -366,7 +366,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve(mockCommentCounts) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -383,7 +383,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -406,7 +406,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -440,7 +440,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -475,7 +475,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve(mockCommentCounts) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -524,7 +524,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: nestedTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -543,7 +543,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -563,7 +563,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -580,7 +580,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -604,7 +604,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -623,7 +623,7 @@ describe('TasksPanel', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -727,7 +727,7 @@ describe('TasksPanel — folder click clears preview', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(twoFolderTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: twoFolderTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -765,7 +765,7 @@ describe('TasksPanel — folder click clears preview', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(twoFolderTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: twoFolderTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -797,7 +797,7 @@ describe('TasksPanel — folder click clears preview', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(twoFolderTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: twoFolderTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -824,7 +824,7 @@ describe('TasksPanel — folder click clears preview', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedSiblingTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: nestedSiblingTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -866,7 +866,7 @@ describe('TasksPanel — folder click clears preview', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedSiblingTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: nestedSiblingTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -909,7 +909,7 @@ describe('TasksPanel — folder click clears preview', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedSiblingTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: nestedSiblingTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -950,7 +950,7 @@ describe('TasksPanel — folder click clears preview', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedSiblingTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: nestedSiblingTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -1203,7 +1203,7 @@ describe('TasksPanel — preserves navigation on refresh', () => {
             }
             fetchCount++;
             const data = fetchCount <= 1 ? deepTree : deepTreeAfterArchive;
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: data }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -1246,7 +1246,7 @@ describe('TasksPanel — preserves navigation on refresh', () => {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             fetchCount++;
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(deepTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: deepTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -1280,7 +1280,7 @@ describe('TasksPanel — preserves navigation on refresh', () => {
             }
             fetchCount++;
             const data = fetchCount <= 1 ? deepTree : treeWithoutMisc;
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: data }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -1353,7 +1353,7 @@ describe('TasksPanel — GenerateTaskDialog (now in RepoDetail)', () => {
             if (url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
     }
 
@@ -1464,7 +1464,7 @@ describe('TaskTreeItem — hover tooltip', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -1488,7 +1488,7 @@ describe('TaskTreeItem — hover tooltip', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'spec.md': 7 }) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -1512,7 +1512,7 @@ describe('TaskTreeItem — hover tooltip', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'coc/task.md': 2 }) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -1527,7 +1527,7 @@ describe('TaskTreeItem — hover tooltip', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -1558,7 +1558,7 @@ describe('TaskTreeItem — hover tooltip', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -1583,7 +1583,7 @@ describe('TaskTreeItem — hover tooltip', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
         });
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -1609,7 +1609,7 @@ describe('TasksPanel — search input', () => {
             if (url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
     }
 
@@ -1701,7 +1701,7 @@ describe('TasksPanel — search debounce', () => {
             if (url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
     }
 
@@ -1741,7 +1741,7 @@ describe('TasksPanel — mobile toolbar queue folder button', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
     }
 
@@ -1859,7 +1859,7 @@ describe('TasksPanel — search results', () => {
             if (url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
     }
 
@@ -1980,7 +1980,7 @@ describe('TasksPanel — keyboard shortcuts', () => {
             if (url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
     }
 

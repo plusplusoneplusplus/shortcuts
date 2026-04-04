@@ -139,16 +139,16 @@ describe('EnqueueDialog', () => {
             if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks',
                         relativePath: '',
                         children: [
                             { name: 'feature1', relativePath: 'feature1', children: [] },
                         ],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -191,10 +191,10 @@ describe('EnqueueDialog', () => {
             if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks',
                         relativePath: '',
                         children: [
@@ -205,7 +205,7 @@ describe('EnqueueDialog', () => {
                         ],
                         documentGroups: [],
                         singleDocuments: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -248,16 +248,16 @@ describe('EnqueueDialog', () => {
             if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks',
                         relativePath: '',
                         children: [
                             { name: 'feature1', relativePath: 'feature1', children: [] },
                         ],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -357,12 +357,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -416,12 +416,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -481,12 +481,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -539,12 +539,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -579,12 +579,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -706,12 +706,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -760,12 +760,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -892,12 +892,12 @@ describe('EnqueueDialog', () => {
             if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -944,12 +944,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             if (typeof url === 'string' && url.includes('/preferences') && opts?.method === 'PATCH') {
@@ -1031,12 +1031,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1077,12 +1077,12 @@ describe('EnqueueDialog', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1243,12 +1243,12 @@ describe('EnqueueDialog default tab', () => {
                     json: () => Promise.resolve({ skillTemplates }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1685,12 +1685,12 @@ describe('EnqueueDialog slash commands', () => {
                     json: () => Promise.resolve({ skills }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
+                    json: () => Promise.resolve({ workflows: [], tasks: {
                         name: 'tasks', relativePath: '', children: [],
-                    }),
+                    } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1991,10 +1991,10 @@ describe('EnqueueDialog mode-switch state isolation', () => {
                     json: () => Promise.resolve({ skills: availableSkills }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/tasks') && !url.includes('/queue')) {
+            if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ name: 'tasks', relativePath: '', children: [] }),
+                    json: () => Promise.resolve({ workflows: [], tasks: { name: 'tasks', relativePath: '', children: [] } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });

@@ -164,9 +164,10 @@ export function GenerateTaskDialog({
     // --- fetch task folders on mount ---
     useEffect(() => {
         let cancelled = false;
-        fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks`)
+        fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/summary`)
             .then(r => (r.ok ? r.json() : null))
-            .then(data => {
+            .then(resp => {
+                const data = resp?.tasks;
                 if (!cancelled && data) {
                     const filtered = filterGitMetadataFolders(data as TaskFolder);
                     const paths = flattenFolders(filtered);

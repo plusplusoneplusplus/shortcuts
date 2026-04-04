@@ -89,7 +89,7 @@ function setupFetch(tree?: TaskFolder) {
         if (opts?.method === 'POST' && url.includes('/tasks') && !url.includes('/archive')) {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(t) });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: t }) });
     });
 }
 
@@ -439,7 +439,7 @@ describe('TasksPanel Move Folder action', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeTree()) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: makeTree() }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);

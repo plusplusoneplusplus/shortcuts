@@ -30,7 +30,7 @@ function makeTree(name = 'root') {
 
 function mockApiSuccess(tree: any = makeTree(), counts: any = {}) {
     mockFetch
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(tree) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(counts) });
 }
 
@@ -52,12 +52,12 @@ describe('useTaskTree', () => {
         expect(result.current.tree).toMatchObject({ name: 'my-tasks' });
     });
 
-    it('fetches /workspaces/:id/tasks with showArchived=true', async () => {
+    it('fetches /workspaces/:id/summary with showArchived=true', async () => {
         mockApiSuccess();
         renderHook(() => useTaskTree('ws-abc'));
         await waitFor(() => {
             expect(mockFetch).toHaveBeenCalledWith(
-                expect.stringContaining('/workspaces/ws-abc/tasks'),
+                expect.stringContaining('/workspaces/ws-abc/summary'),
                 expect.anything()
             );
         });

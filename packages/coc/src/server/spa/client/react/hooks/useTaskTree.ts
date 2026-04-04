@@ -280,7 +280,7 @@ export function useTaskTree(wsId: string): UseTaskTreeResult {
         setError(null);
 
         Promise.all([
-            fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks?showArchived=true`),
+            fetchApi(`/workspaces/${encodeURIComponent(wsId)}/summary?showArchived=true`).then((res: any) => res?.tasks ?? null),
             fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/comment-counts`).catch(() => null),
         ]).then(([tasksData, countsData]) => {
             const filteredTree = tasksData && typeof tasksData === 'object'

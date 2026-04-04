@@ -351,7 +351,7 @@ function setupFetch(tree = panelTree) {
         if (opts?.method === 'PATCH' || opts?.method === 'DELETE') {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
     });
 }
 
@@ -450,7 +450,7 @@ describe('TasksPanel Move File action', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(panelTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: panelTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);

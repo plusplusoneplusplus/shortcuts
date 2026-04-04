@@ -46,7 +46,7 @@ describe('useTaskTree hook', () => {
         const tree = makeTree();
         mockFetchApi.mockImplementation((path: string) => {
             if (path.includes('comment-counts')) return Promise.resolve(countsData);
-            return Promise.resolve(tree);
+            return Promise.resolve({ workflows: [], tasks: tree });
         });
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
@@ -61,7 +61,7 @@ describe('useTaskTree hook', () => {
     });
 
     it('sets loading=true initially then false after load', async () => {
-        mockFetchApi.mockResolvedValue(makeTree());
+        mockFetchApi.mockResolvedValue({ workflows: [], tasks: makeTree() });
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -99,7 +99,7 @@ describe('useTaskTree hook', () => {
         });
         mockFetchApi.mockImplementation((path: string) => {
             if (path.includes('comment-counts')) return Promise.resolve({});
-            return Promise.resolve(treeWithGit);
+            return Promise.resolve({ workflows: [], tasks: treeWithGit });
         });
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
@@ -118,7 +118,7 @@ describe('useTaskTree hook', () => {
         const tree = makeTree();
         mockFetchApi.mockImplementation((path: string) => {
             if (path.includes('comment-counts')) return Promise.reject(new Error('counts failed'));
-            return Promise.resolve(tree);
+            return Promise.resolve({ workflows: [], tasks: tree });
         });
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
@@ -136,7 +136,7 @@ describe('useTaskTree hook', () => {
 
     it('refresh() re-fetches data', async () => {
         const tree = makeTree();
-        mockFetchApi.mockResolvedValue(tree);
+        mockFetchApi.mockResolvedValue({ workflows: [], tasks: tree });
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -157,7 +157,7 @@ describe('useTaskTree hook', () => {
 
     it('does not set loading=true on subsequent refresh', async () => {
         const tree = makeTree();
-        mockFetchApi.mockResolvedValue(tree);
+        mockFetchApi.mockResolvedValue({ workflows: [], tasks: tree });
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -182,7 +182,7 @@ describe('useTaskTree hook', () => {
 
     it('responds to tasks-changed CustomEvent for matching wsId', async () => {
         const tree = makeTree();
-        mockFetchApi.mockResolvedValue(tree);
+        mockFetchApi.mockResolvedValue({ workflows: [], tasks: tree });
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 
@@ -203,7 +203,7 @@ describe('useTaskTree hook', () => {
 
     it('ignores tasks-changed event for different wsId', async () => {
         const tree = makeTree();
-        mockFetchApi.mockResolvedValue(tree);
+        mockFetchApi.mockResolvedValue({ workflows: [], tasks: tree });
 
         const { result } = renderHook(() => useTaskTree('ws-1'));
 

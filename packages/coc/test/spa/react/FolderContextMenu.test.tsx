@@ -95,11 +95,11 @@ function setupFetch(tree = mockTree) {
         if (url.includes('/archive')) {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
     });
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────
+// ── Tests──────────────────────────────────────────────────────────────
 
 describe('Folder context menu', () => {
     let fetchSpy: ReturnType<typeof vi.fn>;
@@ -358,7 +358,7 @@ describe('Folder context menu', () => {
         // Should also trigger a refresh (additional tasks fetch)
         await waitFor(() => {
             const taskFetches = fetchSpy.mock.calls.filter((call: any[]) =>
-                call[0].includes('/tasks') && !call[0].includes('comment-counts') && !call[0].includes('/archive')
+                call[0].includes('/summary')
             );
             // At least 2 fetches: initial + refresh after archive
             expect(taskFetches.length).toBeGreaterThanOrEqual(2);
@@ -459,7 +459,7 @@ describe('Folder context menu', () => {
             if (url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
 
         const mockOpenGenerate = vi.fn();
@@ -518,7 +518,7 @@ describe('Folder context menu', () => {
             if (url.includes('/skills')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
 
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
@@ -551,7 +551,7 @@ describe('Folder context menu', () => {
             if (url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
         global.fetch = fetchTracker;
 

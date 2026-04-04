@@ -93,8 +93,8 @@ function setupFetch(tree = mockTree) {
         if (url.includes('/archive')) {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         }
-        if (url.includes('tasks') && !url.includes('comment') && !url.includes('content') && !url.includes('move')) {
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+        if (url.includes('/summary')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: tree }) });
         }
         return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });

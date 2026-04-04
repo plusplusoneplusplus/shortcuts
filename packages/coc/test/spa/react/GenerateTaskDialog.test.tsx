@@ -92,17 +92,17 @@ beforeEach(() => {
                 json: () => Promise.resolve([]),
             });
         }
-        if (url.includes('/tasks')) {
+        if (url.includes('/summary')) {
             return Promise.resolve({
                 ok: true,
                 json: () =>
-                    Promise.resolve({
+                    Promise.resolve({ workflows: [], tasks: {
                         name: 'root',
                         relativePath: '',
                         children: [],
                         documentGroups: [],
                         singleDocuments: [],
-                    }),
+                    } }),
             });
         }
         return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -324,17 +324,17 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
-            if (url.includes('/tasks')) {
+            if (url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -359,11 +359,11 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([]),
                 });
             }
-            if (url.includes('/workspaces/ws-1/tasks')) {
+            if (url.includes('/workspaces/ws-1/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [
@@ -384,7 +384,7 @@ describe('GenerateTaskDialog', () => {
                             ],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -408,11 +408,11 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([]),
                 });
             }
-            if (url.includes('/workspaces/ws-1/tasks')) {
+            if (url.includes('/workspaces/ws-1/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [
@@ -441,7 +441,7 @@ describe('GenerateTaskDialog', () => {
                             ],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -479,17 +479,17 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
-            if (url.includes('/tasks')) {
+            if (url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -512,17 +512,17 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
-            if (url.includes('/tasks')) {
+            if (url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -562,17 +562,17 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
-            if (url.includes('/tasks')) {
+            if (url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -614,17 +614,17 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
-            if (url.includes('/tasks')) {
+            if (url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -670,17 +670,17 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
-            if (url.includes('/tasks')) {
+            if (url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -967,17 +967,17 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([{ id: 'claude-haiku-4.5', name: 'claude-haiku-4.5', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet-4', name: 'claude-sonnet-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-opus-4', name: 'claude-opus-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
-            if (url.includes('/tasks')) {
+            if (url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1040,17 +1040,17 @@ describe('GenerateTaskDialog', () => {
                     json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
-            if (url.includes('/tasks')) {
+            if (url.includes('/summary')) {
                 return Promise.resolve({
                     ok: true,
                     json: () =>
-                        Promise.resolve({
+                        Promise.resolve({ workflows: [], tasks: {
                             name: 'root',
                             relativePath: '',
                             children: [],
                             documentGroups: [],
                             singleDocuments: [],
-                        }),
+                        } }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
