@@ -115,6 +115,31 @@ describe('BranchAllFilesDiff', () => {
         });
     });
 
+    describe('inline diff rendering', () => {
+        it('imports and uses UnifiedDiffViewer for inline diffs', () => {
+            expect(source).toContain("from './UnifiedDiffViewer'");
+            expect(source).toContain('UnifiedDiffViewer');
+        });
+
+        it('passes enableComments={false} and showLineNumbers={false}', () => {
+            expect(source).toContain('enableComments={false}');
+            expect(source).toContain('showLineNumbers={false}');
+        });
+
+        it('does not render raw <pre> for diff content', () => {
+            expect(source).not.toMatch(/<pre[\s\S]*?displayLines\.join/);
+        });
+
+        it('wraps viewer in a max-height container', () => {
+            expect(source).toContain('max-h-[400px]');
+            expect(source).toContain('overflow-y-auto');
+        });
+
+        it('passes fileName for syntax highlighting', () => {
+            expect(source).toContain('fileName={file.path}');
+        });
+    });
+
     describe('rendering', () => {
         it('renders outer container with data-testid', () => {
             expect(source).toContain('data-testid="branch-all-files-diff"');

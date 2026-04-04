@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, TruncatedPath } from '../shared';
+import { UnifiedDiffViewer } from './UnifiedDiffViewer';
 
 export interface BranchRangeFile {
     path: string;
@@ -176,12 +177,17 @@ export function BranchAllFilesDiff({ workspaceId, files, onFileSelect }: BranchA
                                     <div className="text-xs text-[#848484] italic py-1">(empty diff)</div>
                                 ) : (
                                     <>
-                                        <pre
-                                            className="p-3 text-xs font-mono bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded overflow-x-auto max-h-[400px] overflow-y-auto whitespace-pre"
+                                        <div
+                                            className="max-h-[400px] overflow-y-auto rounded"
                                             data-testid={`branch-all-file-diff-content-${file.path}`}
                                         >
-                                            {displayLines.join('\n')}
-                                        </pre>
+                                            <UnifiedDiffViewer
+                                                diff={displayLines.join('\n')}
+                                                fileName={file.path}
+                                                enableComments={false}
+                                                showLineNumbers={false}
+                                            />
+                                        </div>
                                         {isTruncated && (
                                             <button
                                                 className="mt-1 text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline"
