@@ -993,4 +993,125 @@ describe('filterWhisperChunks', () => {
         expect(wg.precedingChunks[0].kind).toBe('content');
         expect(wg.precedingChunks[1].kind).toBe('tool');
     });
+
+    it('commitCount is set when shell tool results contain git commit output', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'view', status: 'completed' }],
+            ['t2', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: stuff"' },
+                result: '[main abc1234] feat: stuff\n 1 file changed, 5 insertions(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBe(1);
+    });
+
+    it('commitCount is omitted when no commits are detected', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'view', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBeUndefined();
+    });
+
+    it('commitCount deduplicates by short hash', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: a"' },
+                result: '[main abc1234] feat: a\n 1 file changed, 1 insertion(+)',
+            }],
+            ['t2', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit --amend' },
+                result: '[main abc1234] feat: a\n 1 file changed, 1 insertion(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBe(1);
+    });
+
+    it('commitCount counts multiple distinct commits', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: first"' },
+                result: '[main abc1234] feat: first\n 1 file changed, 5 insertions(+)',
+            }],
+            ['t2', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: second"' },
+                result: '[main def5678] feat: second\n 2 files changed, 10 insertions(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBe(2);
+    });
+
+    it('commitCount includes commits from tools inside tool-group chunks', () => {
+        const chunks = [
+            {
+                kind: 'tool-group', key: 'group-1', category: 'shell',
+                toolIds: ['t1', 't2'],
+                contentItems: [], orderedItems: [],
+                startTime: 1000, endTime: 3000, allSucceeded: true,
+            },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                startTime: '2024-01-01T00:00:01Z',
+                endTime: '2024-01-01T00:00:02Z',
+                args: { command: 'git commit -m "feat: a"' },
+                result: '[main aaa1111] feat: a\n 1 file changed, 1 insertion(+)',
+            }],
+            ['t2', {
+                toolName: 'powershell',
+                status: 'completed',
+                startTime: '2024-01-01T00:00:02Z',
+                endTime: '2024-01-01T00:00:03Z',
+                args: { command: 'git commit -m "fix: b"' },
+                result: '[main bbb2222] fix: b\n 1 file changed, 2 insertions(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBe(2);
+    });
 });

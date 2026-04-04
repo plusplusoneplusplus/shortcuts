@@ -71,6 +71,9 @@ export function WhisperCollapsedGroup({
     if (summary.messageCount > 0) {
         headerParts.push(`${summary.messageCount} message${summary.messageCount !== 1 ? 's' : ''}`);
     }
+    if (summary.commitCount && summary.commitCount > 0) {
+        headerParts.push(`${summary.commitCount} commit${summary.commitCount !== 1 ? 's' : ''}`);
+    }
     const duration = formatDuration(summary.startTime, summary.endTime);
     const headerText = headerParts.join(' · ') + (duration ? ` (${duration})` : '');
 

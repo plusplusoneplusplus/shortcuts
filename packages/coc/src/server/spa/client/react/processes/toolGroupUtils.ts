@@ -3,6 +3,7 @@
  * groupConsecutiveToolChunks algorithm for compact tool-call display.
  */
 import type { DetectedCommit } from './commitDetection';
+import { detectCommitsInToolGroup } from './commitDetection';
 
 export type ToolGroupCategory = 'read' | 'write' | 'shell' | 'agent';
 
@@ -307,6 +308,8 @@ export function groupConsecutiveToolChunks(
 export interface WhisperSummary {
     toolCallCount: number;
     messageCount: number;
+    /** Number of unique commits detected across all collapsed tool calls. */
+    commitCount?: number;
     /** Epoch ms — earliest startTime among all tool calls. */
     startTime?: number;
     /** Epoch ms — latest endTime among all tool calls (undefined if any still running). */
@@ -397,9 +400,42 @@ export function filterWhisperChunks(
         }
     }
 
+    // Count unique commits across all preceding tool calls
+    const allToolCalls: Array<{ id: string; toolName: string; args?: any; result?: string; status?: string }> = [];
+    for (const c of preceding) {
+        if (c.kind === 'tool' && c.toolId) {
+            const tool = toolById.get(c.toolId);
+            if (tool) {
+                allToolCalls.push({
+                    id: c.toolId,
+                    toolName: tool.toolName,
+                    args: tool.args,
+                    result: tool.result,
+                    status: tool.status,
+                });
+            }
+        } else if (c.kind === 'tool-group' && (c as any).toolIds) {
+            for (const id of (c as any).toolIds as string[]) {
+                const tool = toolById.get(id);
+                if (tool) {
+                    allToolCalls.push({
+                        id,
+                        toolName: tool.toolName,
+                        args: tool.args,
+                        result: tool.result,
+                        status: tool.status,
+                    });
+                }
+            }
+        }
+    }
+    const detectedCommits = detectCommitsInToolGroup(allToolCalls);
+    const commitCount = detectedCommits.length;
+
     const summary: WhisperSummary = {
         toolCallCount,
         messageCount,
+        ...(commitCount > 0 ? { commitCount } : {}),
         startTime: startTimes.length ? Math.min(...startTimes) : undefined,
         endTime: allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
     };
