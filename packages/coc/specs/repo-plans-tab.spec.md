@@ -250,7 +250,7 @@ The **Repository Plans Tab** (labeled "Plans" in the UI, backed by the tasks sub
 | Status pills | All / pending / in-progress / done / future; multi-toggle; banner shows active filters with "Clear filter" |
 | Undo archive | Button visible when undo is available |
 | Context files toggle | Checkbox to show/hide context files (README, context.md) in the tree |
-| Multi-select actions | "N selected", Queue all, Clear |
+| Multi-select actions | "N selected", Clear |
 
 ### 4.2 Miller Columns
 

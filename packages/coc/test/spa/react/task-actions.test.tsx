@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TaskProvider, useTaskContext } from '../../../src/server/spa/client/react/context/TaskContext';
 import { TaskActions } from '../../../src/server/spa/client/react/tasks/TaskActions';
@@ -35,12 +35,6 @@ function Wrap({ children }: { children: ReactNode }) {
 function ShowContextFilesReader() {
     const { state } = useTaskContext();
     return <div data-testid="show-context-files">{state.showContextFiles ? 'true' : 'false'}</div>;
-}
-
-/** Helper to read QueueContext showDialog state. */
-function ShowDialogReader() {
-    const { state } = useQueue();
-    return <div data-testid="show-dialog">{state.showDialog ? 'true' : 'false'}</div>;
 }
 
 describe('TaskActions — conditional buttons', () => {
@@ -130,57 +124,6 @@ describe('TaskActions — conditional buttons', () => {
         fireEvent.click(screen.getByText('Copy path'));
 
         expect(writeText).toHaveBeenCalledWith('/test/repos/abc/tasks/feature1/task.md');
-    });
-
-    it('"Queue all" button appears when non-context files are selected', () => {
-        render(
-            <Wrap>
-                <TaskActions
-                    wsId="ws1"
-                    openFilePath={null}
-                    selectedFilePaths={['feature1/task.md']}
-                    tasksFolderPath="/test/repos/abc/tasks"
-                    onClearSelection={vi.fn()}
-                />
-            </Wrap>
-        );
-        expect(screen.getByTestId('queue-all-btn')).toBeTruthy();
-        expect(screen.getByText('Queue all')).toBeTruthy();
-    });
-
-    it('"Queue all" button is hidden when no files are selected', () => {
-        render(
-            <Wrap>
-                <TaskActions
-                    wsId="ws1"
-                    openFilePath={null}
-                    selectedFilePaths={[]}
-                    tasksFolderPath="/test/repos/abc/tasks"
-                    onClearSelection={vi.fn()}
-                />
-            </Wrap>
-        );
-        expect(screen.queryByTestId('queue-all-btn')).toBeNull();
-    });
-
-    it('"Queue all" click dispatches OPEN_DIALOG to QueueContext', () => {
-        render(
-            <Wrap>
-                <TaskActions
-                    wsId="ws1"
-                    openFilePath={null}
-                    selectedFilePaths={['feature1/task.md']}
-                    tasksFolderPath="/test/repos/abc/tasks"
-                    onClearSelection={vi.fn()}
-                />
-                <ShowDialogReader />
-            </Wrap>
-        );
-        expect(screen.getByTestId('show-dialog').textContent).toBe('false');
-
-        fireEvent.click(screen.getByTestId('queue-all-btn'));
-
-        expect(screen.getByTestId('show-dialog').textContent).toBe('true');
     });
 
     it('"Context files" checkbox toggles showContextFiles in TaskContext', () => {

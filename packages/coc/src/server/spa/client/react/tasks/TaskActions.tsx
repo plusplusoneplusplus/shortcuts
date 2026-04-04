@@ -4,7 +4,7 @@
 
 import { Button } from '../shared';
 import { useTaskPanel } from '../context/TaskContext';
-import { useQueue } from '../context/QueueContext';
+
 import { isContextFile } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 
@@ -27,8 +27,6 @@ function copyToClipboard(text: string): void {
 
 export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolderPath, selectedFolderPath, onClearSelection, noBorder }: TaskActionsProps) {
     const { showContextFiles, toggleShowContextFiles } = useTaskPanel();
-    const { dispatch: queueDispatch } = useQueue();
-
     const nonContextSelected = selectedFilePaths.filter(p => {
         const parts = p.split('/');
         const fileName = parts[parts.length - 1];
@@ -93,10 +91,6 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
                         <span className="text-[#616161] dark:text-[#999]">
                             {nonContextSelected.length} selected
                         </span>
-                        <Button variant="primary" size="sm" data-testid="queue-all-btn"
-                            onClick={() => queueDispatch({ type: 'OPEN_DIALOG', folderPath: selectedFolderPath ?? null })}>
-                            Queue all
-                        </Button>
                         <Button variant="ghost" size="sm" onClick={onClearSelection}>
                             Clear
                         </Button>
