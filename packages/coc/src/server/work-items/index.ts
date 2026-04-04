@@ -19,3 +19,5 @@ export {
     isValidTransition,
     toIndexEntry,
 } from './types';
+
+export { FileWorkItemStore, type FileWorkItemStoreOptions } from './work-item-store';
