@@ -14,16 +14,18 @@ import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItem } from '../work-items/types';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
+import type { ProcessWebSocketServer } from '../websocket';
 
 export interface WorkItemExecutionRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
     processStore: ProcessStore;
     enqueue?: EnqueueFunction;
+    getWsServer?: () => ProcessWebSocketServer;
 }
 
 export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteContext): void {
-    const { routes, workItemStore, processStore, enqueue } = ctx;
+    const { routes, workItemStore, processStore, enqueue, getWsServer } = ctx;
 
     // POST /api/workspaces/:id/work-items/:wid/execute — Execute work item
     routes.push({
@@ -54,6 +56,10 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     model: body.model,
                     mode: body.mode,
                 });
+                const updatedItem = await workItemStore.getWorkItem(workItemId);
+                if (updatedItem) {
+                    getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
+                }
                 sendJSON(res, 200, result);
             } catch (err: any) {
                 return handleAPIError(res, badRequest(err.message));
@@ -127,6 +133,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 });
             }
 
+            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-added', workspaceId: repoId, item });
             sendJSON(res, 201, item);
         },
     });

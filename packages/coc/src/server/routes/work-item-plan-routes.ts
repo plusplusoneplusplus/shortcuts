@@ -16,16 +16,18 @@ import type { Route } from '../types';
 import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItemPlanVersion } from '../work-items/types';
+import type { ProcessWebSocketServer } from '../websocket';
 
 export interface WorkItemPlanRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
+    getWsServer?: () => ProcessWebSocketServer;
     /** Optional AI invoker for plan refinement. If not provided, refinement is unavailable. */
     refineWithAI?: (currentPlan: string, description: string, title: string) => Promise<string>;
 }
 
 export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void {
-    const { routes, workItemStore, refineWithAI } = ctx;
+    const { routes, workItemStore, getWsServer, refineWithAI } = ctx;
 
     // Regex for plan routes: /api/workspaces/:repoId/work-items/:workItemId/plan
     const planBase = /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/plan$/;
@@ -95,7 +97,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
             };
 
             await workItemStore.savePlanVersion(workItemId, planVersion);
-            await workItemStore.updateWorkItem(workItemId, {
+            const updated = await workItemStore.updateWorkItem(workItemId, {
                 plan: {
                     version: newVersion,
                     content: body.content,
@@ -103,6 +105,9 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                     resolvedBy: body.resolvedBy || 'user',
                 },
             });
+            if (updated) {
+                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+            }
 
             sendJSON(res, 200, { plan: planVersion, version: newVersion });
         },
@@ -195,7 +200,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
             };
 
             await workItemStore.savePlanVersion(workItemId, planVersion);
-            await workItemStore.updateWorkItem(workItemId, {
+            const updated = await workItemStore.updateWorkItem(workItemId, {
                 plan: {
                     version: newVersion,
                     content: refinedContent,
@@ -203,6 +208,9 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                     resolvedBy: 'ai',
                 },
             });
+            if (updated) {
+                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+            }
 
             sendJSON(res, 200, {
                 plan: planVersion,

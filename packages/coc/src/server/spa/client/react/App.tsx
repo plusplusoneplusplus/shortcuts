@@ -6,7 +6,7 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
-import { WorkItemProvider } from './context/WorkItemContext';
+import { WorkItemProvider, useWorkItems } from './context/WorkItemContext';
 import { ReposProvider } from './context/ReposContext';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
 import { ToastProvider } from './context/ToastContext';
@@ -93,6 +93,7 @@ function toTaskRelativePath(fullPath: string, workspaceRoot: string): string | n
 function AppInner() {
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
+    const { dispatch: workItemDispatch } = useWorkItems();
     const { addNotification } = useNotifications();
     const { toasts, addToast, removeToast } = useToast();
     const prevWsStatusRef = useRef(appState.wsStatus);
@@ -211,8 +212,17 @@ function AppInner() {
                     detail: msg.error || '',
                 });
                 break;
+            case 'work-item-added':
+                if (msg.item) workItemDispatch({ type: 'WORK_ITEM_ADDED', repoId: msg.workspaceId, item: msg.item });
+                break;
+            case 'work-item-updated':
+                if (msg.item) workItemDispatch({ type: 'WORK_ITEM_UPDATED', repoId: msg.workspaceId, item: msg.item });
+                break;
+            case 'work-item-removed':
+                if (msg.itemId) workItemDispatch({ type: 'WORK_ITEM_REMOVED', repoId: msg.workspaceId, id: msg.itemId });
+                break;
         }
-    }, [appDispatch, queueDispatch, appState.workspaces, addNotification]);
+    }, [appDispatch, queueDispatch, workItemDispatch, appState.workspaces, addNotification]);
 
     const { connect, status: wsStatus } = useWebSocket({ onMessage, onConnect: handleConnect });
 

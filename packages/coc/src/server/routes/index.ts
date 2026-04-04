@@ -73,9 +73,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
-    registerWorkItemRoutes({ routes, workItemStore });
-    registerWorkItemPlanRoutes({ routes, workItemStore });
-    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store });
+    registerWorkItemRoutes({ routes, workItemStore, getWsServer });
+    registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
+    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, getWsServer });
 
     const repoTreeService = new RepoTreeService(dataDir);
     registerRepoRoutes(routes, dataDir, repoTreeService);
