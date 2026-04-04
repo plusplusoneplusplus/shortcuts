@@ -5,7 +5,7 @@ import { cn } from '../shared/cn';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
-import { MODE_BORDER_COLORS, cycleMode } from './modeConfig';
+import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 
@@ -123,20 +123,31 @@ export function FollowUpInputArea({
                 />
             )}
             <ImagePreviews images={images} onRemove={onImageRemove} />
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
                 {!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">
+                    {/* Mobile: icon-only button that cycles modes on tap */}
+                    <button
+                        type="button"
+                        onClick={() => setSelectedMode(cycleMode(selectedMode))}
+                        className="sm:hidden h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50"
+                        data-testid="mode-cycle-btn"
+                        aria-label={`Mode: ${selectedMode}. Tap to switch.`}
+                    >
+                        {MODE_ICONS[selectedMode]}
+                    </button>
+                    {/* Desktop: full select dropdown */}
                     <select
                         value={selectedMode}
                         onChange={e => setSelectedMode(e.target.value as 'ask' | 'plan' | 'autopilot')}
-                        className="px-2.5 py-1.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
+                        className="hidden sm:block px-2.5 py-1.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
                         data-testid="mode-dropdown"
                     >
-                        {([['ask', '💡 Ask'], ['plan', '📋 Plan'], ['autopilot', '🤖 Autopilot']] as const).map(([mode, label]) => (
+                        {(Object.entries(MODE_LABELS) as [string, string][]).map(([mode, label]) => (
                             <option key={mode} value={mode}>{label}</option>
                         ))}
                     </select>
                 </div>}
-                <div className="relative flex-1 w-full sm:w-auto">
+                <div className="relative flex-1 min-w-0">
                     <RichTextInput
                         ref={richTextRef}
                         disabled={inputDisabled}
@@ -195,7 +206,7 @@ export function FollowUpInputArea({
                 <button
                     type="button"
                     disabled={inputDisabled}
-                    className="w-full sm:w-auto h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => { void onSend(); }}
                     data-testid="activity-chat-send-btn"
                 >

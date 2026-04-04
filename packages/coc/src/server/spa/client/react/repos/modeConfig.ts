@@ -6,6 +6,18 @@ export const MODE_BORDER_COLORS: Record<ChatMode, { border: string; ring: string
     plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus:ring-blue-500/50' },
 };
 
+export const MODE_ICONS: Record<ChatMode, string> = {
+    ask: '💡',
+    plan: '📋',
+    autopilot: '🤖',
+};
+
+export const MODE_LABELS: Record<ChatMode, string> = {
+    ask: '💡 Ask',
+    plan: '📋 Plan',
+    autopilot: '🤖 Autopilot',
+};
+
 const NEXT_MODE: Record<ChatMode, ChatMode> = {
     autopilot: 'ask',
     ask: 'autopilot',

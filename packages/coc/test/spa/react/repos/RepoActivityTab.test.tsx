@@ -274,10 +274,10 @@ describe('ActivityChatDetail: inline chat detail', () => {
         expect(CHAT_HEADER_SOURCE).toContain('data-testid="activity-chat-back-btn"');
     });
 
-    it('vertically centers mode selector, input, and send button on desktop, stacks on mobile', () => {
+    it('always renders mode selector, input, and send button in a single horizontal row', () => {
         // Mode selector row lives in the extracted FollowUpInputArea component
-        // On mobile (flex-col) items stack; on sm+ (flex-row) they align center
-        expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('flex flex-col sm:flex-row sm:items-center gap-2');
+        // Always flex-row with items-center for compact mobile layout
+        expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('flex flex-row items-center gap-2');
     });
 
     it('has a chat input with data-testid', () => {

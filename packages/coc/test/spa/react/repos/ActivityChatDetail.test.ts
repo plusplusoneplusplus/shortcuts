@@ -117,17 +117,17 @@ describe('ActivityChatDetail', () => {
             expect(source).toContain("useState<'ask' | 'plan' | 'autopilot'>('autopilot')");
         });
 
-        it('renders mode selector as a dropdown', () => {
+        it('renders mode selector with cycle button and dropdown', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-selector"');
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-dropdown"');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-cycle-btn"');
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<select');
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<option key={mode} value={mode}>{label}</option>');
         });
 
-        it('renders all three mode labels', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("'ask', '💡 Ask'");
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("'plan', '📋 Plan'");
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("'autopilot', '🤖 Autopilot'");
+        it('uses MODE_LABELS for mode options', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_LABELS');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_ICONS');
         });
 
         it('sends selectedMode in follow-up message body', () => {
@@ -1089,12 +1089,13 @@ describe('ActivityChatDetail', () => {
             expect(CONVERSATION_AREA_SOURCE).toContain('w-11 h-11 sm:w-8 sm:h-8');
         });
 
-        it('FollowUpInputArea stacks vertically on mobile', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('flex flex-col sm:flex-row');
+        it('FollowUpInputArea always renders as a single horizontal row', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('flex flex-row items-center');
         });
 
-        it('send button is full-width on mobile', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('w-full sm:w-auto');
+        it('send button is always inline with shrink-0', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('shrink-0');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).not.toContain('w-full sm:w-auto');
         });
     });
 });
