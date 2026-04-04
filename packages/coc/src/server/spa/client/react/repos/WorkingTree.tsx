@@ -250,12 +250,12 @@ function Section({ title, count, children, defaultExpanded = true, onStageAll, o
     return (
         <div data-testid={testId}>
             <button
-                className="w-full flex items-center gap-1.5 px-4 py-1.5 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-left cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
+                className="w-full flex items-center gap-1.5 pl-7 pr-4 py-1.5 bg-transparent border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-left cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
                 onClick={() => setExpanded(prev => !prev)}
                 data-testid={`${testId}-header`}
             >
                 <span className="text-[10px] text-[#848484] flex-shrink-0">{expanded ? '▼' : '▶'}</span>
-                <span className="text-xs font-semibold uppercase tracking-wide text-[#616161] dark:text-[#999] flex-1">
+                <span className="text-xs font-medium tracking-wide text-[#616161] dark:text-[#999] flex-1">
                     {title}
                 </span>
                 <span className="text-xs text-[#848484] flex-shrink-0 mr-1">{count}</span>
@@ -283,12 +283,12 @@ function Section({ title, count, children, defaultExpanded = true, onStageAll, o
                 )}
             </button>
             {expanded && count === 0 && (
-                <div className="px-8 py-1.5 text-xs text-[#848484] italic border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <div className="pl-10 pr-4 py-1.5 text-xs text-[#848484] italic border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     No changes
                 </div>
             )}
             {expanded && count > 0 && (
-                <div className="px-2 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <div className="pl-5 pr-2 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     {children}
                 </div>
             )}
