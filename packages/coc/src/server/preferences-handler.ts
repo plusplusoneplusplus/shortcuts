@@ -82,6 +82,21 @@ export interface GlobalPreferences {
     reposSidebarCollapsed?: boolean;
     /** User-defined display order of repository groups. Each entry is a normalizedUrl (for grouped repos) or 'workspace:{id}' (for ungrouped repos). */
     gitGroupOrder?: string[];
+
+    /** Whether the user has dismissed the welcome modal. */
+    hasSeenWelcome?: boolean;
+
+    /** Tracks progress through the onboarding checklist steps. */
+    onboardingProgress?: {
+        repoAdded?: boolean;
+        firstChatSent?: boolean;
+        workflowsVisited?: boolean;
+        settingsVisited?: boolean;
+        dismissed?: boolean;
+    };
+
+    /** IDs of contextual tips the user has permanently dismissed. */
+    dismissedTips?: string[];
 }
 
 /** Per-repository UI preferences. */
@@ -153,6 +168,32 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
         );
         if (order.length > 0) {
             result.gitGroupOrder = order;
+        }
+    }
+
+    if (typeof obj.hasSeenWelcome === 'boolean') {
+        result.hasSeenWelcome = obj.hasSeenWelcome;
+    }
+
+    if (typeof obj.onboardingProgress === 'object' && obj.onboardingProgress !== null && !Array.isArray(obj.onboardingProgress)) {
+        const raw = obj.onboardingProgress as Record<string, unknown>;
+        const validated: NonNullable<GlobalPreferences['onboardingProgress']> = {};
+        for (const key of ['repoAdded', 'firstChatSent', 'workflowsVisited', 'settingsVisited', 'dismissed'] as const) {
+            if (typeof raw[key] === 'boolean') {
+                validated[key] = raw[key] as boolean;
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.onboardingProgress = validated;
+        }
+    }
+
+    if (Array.isArray(obj.dismissedTips)) {
+        const tips = (obj.dismissedTips as unknown[]).filter(
+            (t): t is string => typeof t === 'string' && t.length > 0
+        );
+        if (tips.length > 0) {
+            result.dismissedTips = tips;
         }
     }
 

@@ -135,6 +135,25 @@ describe('readPreferences / writePreferences', () => {
         expect(repoResult.lastDepth).toBe('deep');
     });
 
+    it('round-trips hasSeenWelcome', () => {
+        writePreferences(tmpDir, { global: { hasSeenWelcome: true } });
+        const result = readPreferences(tmpDir);
+        expect(result.global?.hasSeenWelcome).toBe(true);
+    });
+
+    it('round-trips onboardingProgress', () => {
+        const progress = { repoAdded: true, firstChatSent: false, workflowsVisited: true, settingsVisited: false, dismissed: false };
+        writePreferences(tmpDir, { global: { onboardingProgress: progress } });
+        const result = readPreferences(tmpDir);
+        expect(result.global?.onboardingProgress).toEqual(progress);
+    });
+
+    it('round-trips dismissedTips', () => {
+        writePreferences(tmpDir, { global: { dismissedTips: ['tip-a', 'tip-b'] } });
+        const result = readPreferences(tmpDir);
+        expect(result.global?.dismissedTips).toEqual(['tip-a', 'tip-b']);
+    });
+
     it('creates data directory if needed', () => {
         const nested = path.join(tmpDir, 'a', 'b');
         writePreferences(nested, { global: { theme: 'auto' } });
@@ -952,6 +971,79 @@ describe('validateGlobalPreferences', () => {
         const result = validateGlobalPreferences({ theme: 'dark', gitGroupOrder: ['github.com/a'] });
         expect(result).toEqual({ theme: 'dark', gitGroupOrder: ['github.com/a'] });
     });
+
+    // -- hasSeenWelcome field --
+
+    it('accepts hasSeenWelcome boolean true', () => {
+        expect(validateGlobalPreferences({ hasSeenWelcome: true })).toEqual({ hasSeenWelcome: true });
+    });
+
+    it('accepts hasSeenWelcome boolean false', () => {
+        expect(validateGlobalPreferences({ hasSeenWelcome: false })).toEqual({ hasSeenWelcome: false });
+    });
+
+    it('rejects non-boolean hasSeenWelcome', () => {
+        expect(validateGlobalPreferences({ hasSeenWelcome: 'true' })).toEqual({});
+        expect(validateGlobalPreferences({ hasSeenWelcome: 1 })).toEqual({});
+        expect(validateGlobalPreferences({ hasSeenWelcome: null })).toEqual({});
+    });
+
+    // -- onboardingProgress field --
+
+    it('accepts valid onboardingProgress sub-fields', () => {
+        const result = validateGlobalPreferences({ onboardingProgress: { repoAdded: true, firstChatSent: false } });
+        expect(result).toEqual({ onboardingProgress: { repoAdded: true, firstChatSent: false } });
+    });
+
+    it('strips unknown onboardingProgress sub-fields', () => {
+        const result = validateGlobalPreferences({ onboardingProgress: { repoAdded: true, hackerField: true } });
+        expect(result).toEqual({ onboardingProgress: { repoAdded: true } });
+    });
+
+    it('rejects non-object onboardingProgress', () => {
+        expect(validateGlobalPreferences({ onboardingProgress: 'string' })).toEqual({});
+        expect(validateGlobalPreferences({ onboardingProgress: [1, 2] })).toEqual({});
+        expect(validateGlobalPreferences({ onboardingProgress: 42 })).toEqual({});
+        expect(validateGlobalPreferences({ onboardingProgress: null })).toEqual({});
+    });
+
+    it('rejects non-boolean onboardingProgress sub-field values', () => {
+        const result = validateGlobalPreferences({ onboardingProgress: { repoAdded: 'yes' } });
+        expect(result.onboardingProgress).toBeUndefined();
+    });
+
+    it('omits onboardingProgress when all sub-fields are unknown', () => {
+        const result = validateGlobalPreferences({ onboardingProgress: { unknown: true } });
+        expect(result.onboardingProgress).toBeUndefined();
+    });
+
+    // -- dismissedTips field --
+
+    it('accepts valid dismissedTips string array', () => {
+        const result = validateGlobalPreferences({ dismissedTips: ['tip-a', 'tip-b'] });
+        expect(result).toEqual({ dismissedTips: ['tip-a', 'tip-b'] });
+    });
+
+    it('filters non-string items from dismissedTips', () => {
+        const result = validateGlobalPreferences({ dismissedTips: ['tip-a', 42, null, 'tip-b'] });
+        expect(result.dismissedTips).toEqual(['tip-a', 'tip-b']);
+    });
+
+    it('filters empty strings from dismissedTips', () => {
+        const result = validateGlobalPreferences({ dismissedTips: ['', 'tip-a'] });
+        expect(result.dismissedTips).toEqual(['tip-a']);
+    });
+
+    it('rejects non-array dismissedTips', () => {
+        expect(validateGlobalPreferences({ dismissedTips: 'not-array' })).toEqual({});
+        expect(validateGlobalPreferences({ dismissedTips: {} })).toEqual({});
+        expect(validateGlobalPreferences({ dismissedTips: 42 })).toEqual({});
+    });
+
+    it('omits dismissedTips when all items are invalid', () => {
+        const result = validateGlobalPreferences({ dismissedTips: [42, null] });
+        expect(result.dismissedTips).toBeUndefined();
+    });
 });
 
 // ============================================================================
@@ -1223,6 +1315,36 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).gitGroupOrder).toEqual(order);
+    });
+
+    // -- hasSeenWelcome persistence via API --
+
+    it('PATCH with hasSeenWelcome merges into existing prefs', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { hasSeenWelcome: true });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.theme).toBe('dark');
+        expect(body.hasSeenWelcome).toBe(true);
+    });
+
+    // -- onboardingProgress persistence via API --
+
+    it('PATCH with onboardingProgress replaces wholesale', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { onboardingProgress: { repoAdded: true } });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { onboardingProgress: { firstChatSent: true } });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.onboardingProgress).toEqual({ firstChatSent: true });
+        expect(body.onboardingProgress.repoAdded).toBeUndefined();
+    });
+
+    it('PUT strips unknown onboardingProgress sub-fields', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { onboardingProgress: { repoAdded: true, evil: true } });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.onboardingProgress).toEqual({ repoAdded: true });
+        expect(body.onboardingProgress.evil).toBeUndefined();
     });
 });
 
