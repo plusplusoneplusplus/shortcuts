@@ -364,7 +364,7 @@ export function parseCreatedFilePath(
 
     const patterns = [
         // Absolute paths mentioned after create/write verbs
-        /(?:created|wrote|saved|generated)[^`\n]*?([/\\][^\s`"']+\.md)/gi,
+        /(?:created|wrote|saved|generated)[^`\n]*?((?:[A-Za-z]:)?[/\\][^\s`"']+\.md)/gi,
         // Paths in backticks
         /`([^`]+\.md)`/g,
         // Any .md path that includes the target folder
