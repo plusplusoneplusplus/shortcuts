@@ -68,6 +68,13 @@ export interface DiffSource {
      * E.g. "commit:<hash>" or "branch-range".
      */
     readonly cacheKey: string;
+
+    /**
+     * Lazy-fetch the ordered file list for this source.
+     * Used by FileDiffPanel when `files` is empty (e.g. commit sources
+     * where the file list isn't known at construction time).
+     */
+    fetchFileList?(): Promise<string[]>;
 }
 
 export function createCommitDiffSource(
@@ -112,6 +119,13 @@ export function createCommitDiffSource(
         supportsTruncation: false,
 
         cacheKey: `commit:${hash}`,
+
+        async fetchFileList(): Promise<string[]> {
+            const data: { path: string }[] | { files?: { path: string }[] } =
+                await fetchApi(`/workspaces/${enc(workspaceId)}/git/commits/${hash}/files`);
+            const arr = Array.isArray(data) ? data : (data.files ?? []);
+            return arr.map(f => f.path).sort();
+        },
     };
 }
 

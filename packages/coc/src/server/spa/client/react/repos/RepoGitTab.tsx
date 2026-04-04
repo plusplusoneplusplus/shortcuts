@@ -21,7 +21,8 @@ import { CommitList } from './CommitList';
 import { CommitDetail } from './CommitDetail';
 
 import { BranchChanges } from './BranchChanges';
-import { BranchFileDiff } from './BranchFileDiff';
+import { FileDiffPanel } from './FileDiffPanel';
+import { createCommitDiffSource, createBranchRangeDiffSource } from './diffSource';
 import { GitPanelHeader } from './GitPanelHeader';
 import { WorkingTree } from './WorkingTree';
 import { WorkingTreeFileDiff } from './WorkingTreeFileDiff';
@@ -1269,12 +1270,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             commit={rightPanelView.commit}
         />
     ) : rightPanelView?.type === 'commit-file' ? (
-        <CommitDetail
+        <FileDiffPanel
             key={`${rightPanelView.hash}-${rightPanelView.filePath}`}
+            source={createCommitDiffSource(workspaceId, rightPanelView.hash, {
+                commit: commits.find(c => c.hash === rightPanelView.hash),
+            })}
             workspaceId={workspaceId}
-            hash={rightPanelView.hash}
             filePath={rightPanelView.filePath}
-            commit={commits.find(c => c.hash === rightPanelView.hash)}
             onNavigateToFile={(fp, target) => handleNavigateToCommitFile(rightPanelView.hash, fp, target)}
             initialHunkTarget={hunkTarget}
         />
@@ -1291,11 +1293,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             onQueueTask={() => { void handleBranchAskAI('task'); }}
         />
     ) : rightPanelView?.type === 'branch-file' ? (
-        <BranchFileDiff
+        <FileDiffPanel
             key={rightPanelView.filePath}
+            source={createBranchRangeDiffSource(workspaceId, {
+                files: (branchRangeFiles ?? []).map((f: { path: string }) => f.path).sort(),
+            })}
             workspaceId={workspaceId}
             filePath={rightPanelView.filePath}
-            branchFiles={(branchRangeFiles ?? []).map((f: { path: string }) => f.path).sort()}
             onNavigateToFile={handleNavigateToBranchFile}
             initialHunkTarget={hunkTarget}
         />

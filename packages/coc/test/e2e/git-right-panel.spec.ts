@@ -2,9 +2,8 @@
  * Git Right-Panel E2E Tests
  *
  * Tests the right-panel diff views rendered by RepoGitTab:
- *   CommitDetail     — per-file diff when clicking a file in CommitList
+ *   FileDiffPanel    — per-file diff (commit-file and branch-file modes)
  *   WorkingTreeFileDiff — diff when clicking a working-tree file
- *   BranchFileDiff   — diff when clicking a branch-change file
  *   CommitDetail     — commit info header (full-commit view)
  *   GitPanelHeader   — refresh button triggers reload
  *   Deep link        — per-file diff restored on page load from URL hash
@@ -48,11 +47,11 @@ test.describe('Git right-panel — CommitDetail per-file', () => {
             // Click the first file entry
             await page.locator('[data-testid^="commit-file-"]').first().click();
 
-            // Right panel should show per-file diff
-            await expect(page.getByTestId('diff-file-path')).toBeVisible({ timeout: 10_000 });
-            await expect(page.getByTestId('diff-section')).toBeVisible();
+            // Right panel should show per-file diff (via FileDiffPanel)
+            await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 10_000 });
+            await expect(page.getByTestId('file-diff-section')).toBeVisible();
             // Diff content or empty diff should appear (diff-loading should resolve)
-            await expect(page.getByTestId('diff-loading')).toBeHidden({ timeout: 10_000 });
+            await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -96,11 +95,11 @@ test.describe('Git right-panel — WorkingTreeFileDiff', () => {
 });
 
 // ================================================================
-// BranchFileDiff
+// FileDiffPanel (branch-range source)
 // ================================================================
 
-test.describe('Git right-panel — BranchFileDiff', () => {
-    test('clicking a branch-change file opens BranchFileDiff', async ({ page, serverUrl }) => {
+test.describe('Git right-panel — FileDiffPanel (branch file)', () => {
+    test('clicking a branch-change file opens FileDiffPanel', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-bfd-'));
         try {
             const repoDir = createFeatureBranchRepo(tmpDir);
@@ -116,10 +115,10 @@ test.describe('Git right-panel — BranchFileDiff', () => {
             // Click a file row
             await page.getByTestId('branch-file-row-src/feature.ts').click();
 
-            // Right panel should show BranchFileDiff
-            await expect(page.getByTestId('branch-file-diff')).toBeVisible({ timeout: 10_000 });
-            await expect(page.getByTestId('branch-file-diff-header')).toBeVisible();
-            await expect(page.getByTestId('branch-file-diff-loading')).toBeHidden({ timeout: 10_000 });
+            // Right panel should show FileDiffPanel
+            await expect(page.getByTestId('file-diff-panel')).toBeVisible({ timeout: 10_000 });
+            await expect(page.getByTestId('file-diff-header')).toBeVisible();
+            await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -251,10 +250,10 @@ test.describe('Git right-panel — Deep link', () => {
                 `${serverUrl}/#repos/${wsId}/git/${hash}/${encodeURIComponent(filePath)}`,
             );
 
-            // Per-file diff view should load directly
-            await expect(page.getByTestId('diff-file-path')).toBeVisible({ timeout: 15_000 });
-            await expect(page.getByTestId('diff-section')).toBeVisible();
-            await expect(page.getByTestId('diff-loading')).toBeHidden({ timeout: 10_000 });
+            // Per-file diff view should load directly (via FileDiffPanel)
+            await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 15_000 });
+            await expect(page.getByTestId('file-diff-section')).toBeVisible();
+            await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
         } finally {
             safeRmSync(tmpDir);
         }

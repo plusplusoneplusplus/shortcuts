@@ -123,13 +123,7 @@ describe('CommitDetail — chat panel integration', () => {
         });
     }
 
-    // 1. Toggle button present in file-level toolbar
-    it('renders 🤖 toggle button in file-level toolbar', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        expect(screen.getByTestId('toggle-chat-btn')).toBeTruthy();
-    });
-
-    // 2. Toggle button present in commit-level toolbar
+    // 1. Toggle button present in commit-level toolbar
     it('renders 🤖 toggle button in commit-level toolbar', async () => {
         await renderDetail();
         expect(screen.getByTestId('toggle-chat-btn')).toBeTruthy();

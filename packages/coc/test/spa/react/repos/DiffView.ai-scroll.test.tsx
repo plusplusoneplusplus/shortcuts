@@ -1,7 +1,7 @@
 /**
  * Tests for AI wiring and sidebar click-to-scroll in diff views.
  *
- * Covers CommitDetail, BranchFileDiff, and WorkingTreeFileDiff.
+ * Covers CommitDetail, FileDiffPanel, and WorkingTreeFileDiff.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -50,7 +50,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
     HunkNavButtons: () => null,
 }));
 
-// Mock TruncatedPath (used in BranchFileDiff)
+// Mock TruncatedPath (used in FileDiffPanel)
 vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
@@ -65,8 +65,7 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 
-import { CommitDetail } from '../../../../src/server/spa/client/react/repos/CommitDetail';
-import { BranchFileDiff } from '../../../../src/server/spa/client/react/repos/BranchFileDiff';
+import { FileDiffPanel } from '../../../../src/server/spa/client/react/repos/FileDiffPanel';
 import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/repos/WorkingTreeFileDiff';
 
 function makeHook(overrides: Record<string, unknown> = {}) {
@@ -96,93 +95,29 @@ function makeHook(overrides: Record<string, unknown> = {}) {
 }
 
 // ============================================================================
-// CommitDetail — AI + Scroll
+// FileDiffPanel — AI + Scroll (branch-range source)
 // ============================================================================
 
-describe('CommitDetail — AI wiring and scroll', () => {
+describe('FileDiffPanel — AI wiring and scroll', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockUseDiffComments.mockReturnValue(makeHook());
     });
 
-    async function renderComponent() {
-        await act(async () => {
-            render(<CommitDetail workspaceId="ws1" hash="abc123" filePath="src/foo.ts" />);
-        });
-    }
-
-    it('passes aiLoadingIds and aiErrors to CommentSidebar', async () => {
-        const loadingIds = new Set(['c1']);
-        const errors = new Map([['c1', 'AI failed']]);
-        mockUseDiffComments.mockReturnValue(makeHook({ aiLoadingIds: loadingIds, aiErrors: errors }));
-        await renderComponent();
-        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
-        const sidebar = screen.getByTestId('comment-sidebar');
-        expect(sidebar).toBeTruthy();
-        // CommentCard shows an AI error banner when aiError is set
-        expect(screen.getByTestId('ai-error-banner')).toBeTruthy();
-    });
-
-    it('passes aiLoading and aiError to CommentPopover', async () => {
-        const loadingIds = new Set(['c1']);
-        const errors = new Map([['c1', 'AI failed']]);
-        mockUseDiffComments.mockReturnValue(makeHook({ aiLoadingIds: loadingIds, aiErrors: errors }));
-        await renderComponent();
-        const trigger = await screen.findByTestId('trigger-comment-click');
-        await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByTestId('comment-popover')).toBeTruthy();
-    });
-
-    it('sidebar onCommentClick scrolls to the diff line element', async () => {
-        await renderComponent();
-        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
-        const card = screen.getByTestId('comment-card-c1');
-        expect(card).toBeTruthy();
-
-        // Mock scrollIntoView on the target diff line element
-        const lineEl = screen.getByTestId('diff-line-5');
-        lineEl.scrollIntoView = vi.fn();
-
-        await act(async () => { fireEvent.click(card); });
-
-        expect(lineEl.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
-    });
-
-    it('sidebar onCommentClick adds and removes highlight ring', async () => {
-        vi.useFakeTimers();
-        await renderComponent();
-        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
-
-        const card = screen.getByTestId('comment-card-c1');
-        const lineEl = screen.getByTestId('diff-line-5');
-        lineEl.scrollIntoView = vi.fn();
-
-        await act(async () => { fireEvent.click(card); });
-
-        expect(lineEl.classList.contains('ring-2')).toBe(true);
-        expect(lineEl.classList.contains('ring-yellow-400')).toBe(true);
-
-        await act(async () => { vi.advanceTimersByTime(1500); });
-
-        expect(lineEl.classList.contains('ring-2')).toBe(false);
-        expect(lineEl.classList.contains('ring-yellow-400')).toBe(false);
-        vi.useRealTimers();
-    });
-});
-
-// ============================================================================
-// BranchFileDiff — AI + Scroll
-// ============================================================================
-
-describe('BranchFileDiff — AI wiring and scroll', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        mockUseDiffComments.mockReturnValue(makeHook());
-    });
+    const branchSource = {
+        label: 'Branch diff',
+        fileDiffUrl: (fp: string) => `/workspaces/ws1/git/branch-range/files/${encodeURIComponent(fp)}/diff`,
+        fullDiffUrl: () => null,
+        commentContext: (fp: string) => ({ repositoryId: 'ws1', filePath: fp, oldRef: 'branch-base', newRef: 'branch-head' }),
+        files: [],
+        chat: null,
+        supportsTruncation: true,
+        cacheKey: 'branch-range',
+    };
 
     async function renderComponent() {
         await act(async () => {
-            render(<BranchFileDiff workspaceId="ws1" filePath="src/foo.ts" />);
+            render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={branchSource} />);
         });
     }
 

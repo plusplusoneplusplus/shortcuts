@@ -137,9 +137,9 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
             `${serverUrl}/#repos/${wsId}/git/${COMMIT_HASH}/${encodeURIComponent(FILE_PATH)}`,
         );
 
-        // Per-file header (file path bar) and diff content must appear
-        await expect(page.getByTestId('diff-file-path')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByTestId('diff-content')).toBeVisible({ timeout: 5_000 });
+        // Per-file header and diff content must appear (via FileDiffPanel)
+        await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('file-diff-content')).toBeVisible({ timeout: 5_000 });
 
         // Both nav buttons must be rendered
         await expect(page.getByTestId('next-hunk-btn')).toBeVisible();
@@ -149,8 +149,8 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
         await page.setViewportSize({ width: 1280, height: 400 });
 
         // Verify the diff is actually taller than the viewport (i.e. scrolling is required)
-        // diff-section is the actual scrollable container (overflow-auto); commit-detail is overflow-hidden
-        const scrollContainer = page.getByTestId('diff-section');
+        // file-diff-section is the actual scrollable container (overflow-auto)
+        const scrollContainer = page.getByTestId('file-diff-section');
         const metrics = await scrollContainer.evaluate((el: HTMLElement) => ({
             scrollHeight: el.scrollHeight,
             clientHeight: el.clientHeight,
@@ -182,13 +182,13 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
             `${serverUrl}/#repos/${wsId}/git/${COMMIT_HASH}/${encodeURIComponent(FILE_PATH)}`,
         );
 
-        await expect(page.getByTestId('diff-file-path')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByTestId('diff-content')).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByTestId('file-diff-header')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('file-diff-content')).toBeVisible({ timeout: 5_000 });
 
         await page.setViewportSize({ width: 1280, height: 400 });
 
-        // diff-section is the actual scrollable container (overflow-auto); commit-detail is overflow-hidden
-        const scrollContainer = page.getByTestId('diff-section');
+        // file-diff-section is the actual scrollable container (overflow-auto)
+        const scrollContainer = page.getByTestId('file-diff-section');
 
         // Navigate to the second (last) hunk using the next-hunk button twice
         // This sets the internal hunk index so prev-hunk knows where to go back to

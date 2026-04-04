@@ -484,13 +484,13 @@ describe('RepoGitTab', () => {
             expect(source).toContain('<CommitDetail');
         });
 
-        it('renders CommitDetail for commit-file view with filePath', () => {
-            // commit-file now routes through CommitDetail with filePath for comment support
-            expect(source).toContain('filePath={rightPanelView.filePath}');
+        it('renders FileDiffPanel for commit-file view', () => {
+            expect(source).toContain('<FileDiffPanel');
         });
 
-        it('renders BranchFileDiff component', () => {
-            expect(source).toContain('<BranchFileDiff');
+        it('renders FileDiffPanel for branch-file view', () => {
+            // branch-file case also uses FileDiffPanel now
+            expect(source).toContain('createBranchRangeDiffSource');
         });
 
         it('imports CommitList', () => {
@@ -505,8 +505,9 @@ describe('RepoGitTab', () => {
             expect(source).not.toContain("import { CommitFileContent }");
         });
 
-        it('imports BranchFileDiff', () => {
-            expect(source).toContain("import { BranchFileDiff } from './BranchFileDiff'");
+        it('imports FileDiffPanel and DiffSource factories', () => {
+            expect(source).toContain("import { FileDiffPanel } from './FileDiffPanel'");
+            expect(source).toContain("import { createCommitDiffSource, createBranchRangeDiffSource } from './diffSource'");
         });
 
         it('imports GitPanelHeader', () => {
@@ -585,11 +586,11 @@ describe('RepoGitTab', () => {
             expect(source).not.toContain('body={rightPanelView.commit.body}');
         });
 
-        it('passes filePath to CommitDetail for per-file diff', () => {
+        it('passes filePath to FileDiffPanel for per-file diff', () => {
             expect(source).toContain('filePath={rightPanelView.filePath}');
         });
 
-        it('uses compound key for commit-file detail panel', () => {
+        it('uses compound key for commit-file FileDiffPanel', () => {
             expect(source).toContain('key={`${rightPanelView.hash}-${rightPanelView.filePath}`}');
         });
 

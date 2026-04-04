@@ -124,20 +124,20 @@ describe('CommitDetail — comment integration', () => {
 
     // 1. No sidebar by default
     it('renders without sidebar by default', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
+        await renderDetail({});
         expect(screen.queryByTestId('comment-sidebar')).toBeNull();
     });
 
-    // 2. Sidebar toggle shows sidebar
+    // 2. Sidebar toggle shows sidebar (commit-level)
     it('clicking toggle button shows comment sidebar', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
+        await renderDetail({});
         fireEvent.click(screen.getByTestId('toggle-comments-btn'));
         expect(screen.getByTestId('comment-sidebar')).toBeTruthy();
     });
 
     // 2b. Sidebar toggle hides sidebar on second click
     it('clicking toggle button again hides comment sidebar', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
+        await renderDetail({});
         const btn = screen.getByTestId('toggle-comments-btn');
         fireEvent.click(btn);
         expect(screen.getByTestId('comment-sidebar')).toBeTruthy();
@@ -145,107 +145,13 @@ describe('CommitDetail — comment integration', () => {
         expect(screen.queryByTestId('comment-sidebar')).toBeNull();
     });
 
-    // Toggle button is present even when filePath is absent (commit-level comments)
-    it('toggle button is present when filePath is absent', async () => {
+    // Toggle button is always present
+    it('toggle button is present', async () => {
         await renderDetail({});
         expect(screen.queryByTestId('toggle-comments-btn')).toBeTruthy();
     });
 
-    // 3. Popup appears when onAddComment fires
-    it('popup appears when UnifiedDiffViewer fires onAddComment', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const trigger = await screen.findByTestId('trigger-add-comment');
-        await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByTestId('inline-comment-popup')).toBeTruthy();
-    });
-
-    // 4. Popup submit calls addComment and closes popup
-    it('popup submit calls addComment with correct args and closes popup', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const trigger = await screen.findByTestId('trigger-add-comment');
-        await act(async () => { fireEvent.click(trigger); });
-
-        const textarea = screen.getByTestId('comment-textarea');
-        fireEvent.change(textarea, { target: { value: 'my comment' } });
-        await act(async () => {
-            fireEvent.click(screen.getByText(/Submit/));
-        });
-
-        expect(mockAddComment).toHaveBeenCalledWith(
-            expect.objectContaining({ diffLineStart: 0 }),
-            'selected text',
-            'my comment',
-            'general',
-        );
-        await waitFor(() => expect(screen.queryByTestId('inline-comment-popup')).toBeNull());
-    });
-
-    // 5. Popup cancel closes without saving
-    it('popup cancel closes popup without calling addComment', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const trigger = await screen.findByTestId('trigger-add-comment');
-        await act(async () => { fireEvent.click(trigger); });
-
-        expect(screen.getByTestId('inline-comment-popup')).toBeTruthy();
-        await act(async () => { fireEvent.click(screen.getByText('Cancel')); });
-        expect(screen.queryByTestId('inline-comment-popup')).toBeNull();
-        expect(mockAddComment).not.toHaveBeenCalled();
-    });
-
-    // 6. onCommentClick opens popover (not sidebar)
-    it('onCommentClick opens popover at badge position', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        expect(screen.queryByTestId('comment-popover')).toBeNull();
-        const trigger = await screen.findByTestId('trigger-comment-click');
-        await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByTestId('comment-popover')).toBeTruthy();
-    });
-
-    // 6b. Popover close clears popover
-    it('popover closes when onClose fires', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const trigger = await screen.findByTestId('trigger-comment-click');
-        await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByTestId('comment-popover')).toBeTruthy();
-        const closeBtn = screen.getByTestId('popover-close');
-        await act(async () => { fireEvent.click(closeBtn); });
-        expect(screen.queryByTestId('comment-popover')).toBeNull();
-    });
-
-    // 6c. Popover shows comment body text
-    it('popover shows comment body text', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const trigger = await screen.findByTestId('trigger-comment-click');
-        await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByTestId('popover-comment-body').textContent).toBe('test');
-    });
-
-    // Regression: onCopyPrompt wired to file-level CommentSidebar
-    it('passes copyAllCommentsAsPrompt as onCopyPrompt to the file-level sidebar', async () => {
-        const mockCopy = vi.fn();
-        const openComment = { id: 'c1', context: {}, selection: { diffLineStart: 0, diffLineEnd: 0 }, comment: 'test', status: 'open', createdAt: '', updatedAt: '', selectedText: '' };
-        mockUseDiffComments.mockReturnValue(makeHook({ comments: [openComment], copyAllCommentsAsPrompt: mockCopy }));
-        await renderDetail({ filePath: 'src/foo.ts' });
-        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
-        const copyBtn = await screen.findByTitle('Copy all comments as prompt');
-        await act(async () => { fireEvent.click(copyBtn); });
-        expect(mockCopy).toHaveBeenCalledTimes(1);
-    });
-
-    // 7. Comments are passed to UnifiedDiffViewer
-    it('passes comments from useDiffComments to UnifiedDiffViewer', async () => {
-        const twoComments = [
-            { id: 'c1', context: {}, selection: { diffLineStart: 0, diffLineEnd: 0 }, comment: 'a', status: 'open', createdAt: '', updatedAt: '', selectedText: '' },
-            { id: 'c2', context: {}, selection: { diffLineStart: 1, diffLineEnd: 1 }, comment: 'b', status: 'open', createdAt: '', updatedAt: '', selectedText: '' },
-        ];
-        mockUseDiffComments.mockReturnValue(makeHook({ comments: twoComments }));
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const viewer = await screen.findByTestId('diff-content');
-        expect(viewer.getAttribute('data-comment-count')).toBe('2');
-    });
-
     // Regression: commit-level comment fetch must not produce double /api prefix.
-    // useAllCommitComments is mocked, so we verify it receives the correct workspace/hash args.
     it('commit-level comment fetch passes correct args to useAllCommitComments', async () => {
         await renderDetail({});
         expect(mockUseAllCommitComments).toHaveBeenCalledWith('ws1', 'abc123');
@@ -258,7 +164,7 @@ describe('CommitDetail — comment integration', () => {
         mockUseAllCommitComments.mockReturnValue(
             makeAllCommitHook({ comments: [openComment], copyAllCommentsAsPrompt: mockCopy })
         );
-        await renderDetail({ filePath: undefined });
+        await renderDetail({});
         fireEvent.click(screen.getByTestId('toggle-comments-btn'));
         const copyBtn = await screen.findByTitle('Copy all comments as prompt');
         await act(async () => { fireEvent.click(copyBtn); });

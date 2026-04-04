@@ -175,8 +175,8 @@ test.describe('Git advanced — Branch inline diff', () => {
         // (not inline diff). This tests the file row click → right panel flow.
         await page.getByTestId('branch-file-row-src/app.ts').click();
 
-        // Should show branch-file-diff in right panel
-        await expect(page.getByTestId('branch-file-diff')).toBeVisible({ timeout: 10_000 });
+        // Should show FileDiffPanel in right panel
+        await expect(page.getByTestId('file-diff-panel')).toBeVisible({ timeout: 10_000 });
     });
 });
 
@@ -383,17 +383,17 @@ test.describe('Git advanced — Branch large diff Show All', () => {
         // BranchChanges should be visible
         await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
 
-        // In the full RepoGitTab, clicking a file opens the right panel (BranchFileDiff),
+        // In the full RepoGitTab, clicking a file opens the right panel (FileDiffPanel),
         // not the inline diff. The inline diff (with Show All) is only available when
-        // BranchChanges has no onFileSelect. Since BranchFileDiff shows in right panel,
-        // we test the Show All via the right-panel BranchFileDiff — but BranchFileDiff
+        // BranchChanges has no onFileSelect. Since FileDiffPanel shows in right panel,
+        // we test the Show All via the right-panel FileDiffPanel — but FileDiffPanel
         // uses UnifiedDiffViewer (no truncation there). The truncation only happens in
         // BranchChanges inline mode. So we must mock the scenario without onFileSelect.
         //
         // We test this by directly navigating and checking the inline path. Since we
         // can't easily remove onFileSelect in the full app, we use a mock approach
-        // where we verify the branch-file-diff right-panel loads correctly with a large diff.
-        // The right-panel BranchFileDiff renders the full diff via UnifiedDiffViewer.
+        // where we verify the file-diff-panel right-panel loads correctly with a large diff.
+        // The right-panel FileDiffPanel renders the full diff via UnifiedDiffViewer.
 
         // Expand branch changes
         await page.getByTestId('branch-changes-header').click();
@@ -402,11 +402,11 @@ test.describe('Git advanced — Branch large diff Show All', () => {
         // Click the file — opens in right panel
         await page.getByTestId('branch-file-row-src/big.ts').click();
 
-        // BranchFileDiff should load in right panel
-        await expect(page.getByTestId('branch-file-diff')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByTestId('branch-file-diff-loading')).toBeHidden({ timeout: 10_000 });
+        // FileDiffPanel should load in right panel
+        await expect(page.getByTestId('file-diff-panel')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
 
-        // BranchFileDiff uses UnifiedDiffViewer, so the diff content should be present
-        await expect(page.getByTestId('branch-file-diff-content')).toBeVisible({ timeout: 5_000 });
+        // FileDiffPanel uses UnifiedDiffViewer, so the diff content should be present
+        await expect(page.getByTestId('file-diff-content')).toBeVisible({ timeout: 5_000 });
     });
 });

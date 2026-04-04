@@ -97,14 +97,9 @@ describe('CommitDetail — commit info header', () => {
         expect(screen.queryByTestId('commit-info-header')).toBeNull();
     });
 
-    it('renders header when commit prop is provided (full-commit view)', async () => {
+    it('renders header when commit prop is provided', async () => {
         await renderDetail({ commit: makeCommit() });
         expect(screen.getByTestId('commit-info-header')).toBeTruthy();
-    });
-
-    it('does not render header when filePath is provided (per-file view)', async () => {
-        await renderDetail({ commit: makeCommit(), filePath: 'src/index.ts' });
-        expect(screen.queryByTestId('commit-info-header')).toBeNull();
     });
 
     it('displays commit subject', async () => {

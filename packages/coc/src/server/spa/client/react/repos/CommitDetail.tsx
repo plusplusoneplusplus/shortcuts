@@ -1,44 +1,33 @@
 /**
  * CommitDetail — right-panel view for a selected commit.
  *
- * Shows only the unified diff for the full commit or a single file.
+ * Shows the unified diff for the full commit (commit-overview mode)
+ * or a branch-range overview with commit strip and all-files diff.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { copyToClipboard } from '../utils/format';
 import { useCachedDiff } from './useCommitDiffCache';
 import { Spinner, Button } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
-import { useCrossFileNav } from './useCrossFileNav';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { DiffViewToggle } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
-import { useDiffComments } from '../hooks/useDiffComments';
 import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
-import { CommentPopover } from '../tasks/comments/CommentPopover';
-import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
-import { useQueue } from '../context/QueueContext';
 import { BranchCommitStrip } from './BranchCommitStrip';
 import { BranchAllFilesDiff } from './BranchAllFilesDiff';
 import { CommitChatPanel } from './CommitChatPanel';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ResolveContextDialog, shouldSkipResolveDialog } from '../shared/ResolveContextDialog';
-import { buildDiffContext } from '../../diff-context-utils';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
-import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
+import type { DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
-import type { TaskCommentCategory } from '../../task-comments-types';
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
-type PopupState = {
-    position: { top: number; left: number };
-    selection: DiffCommentSelection;
-    selectedText: string;
-} | null;
 
 const RANGE_STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';
 const DEFAULT_UPPER_HEIGHT = 160;
@@ -59,7 +48,6 @@ export interface CommitDetailProps {
     workspaceId: string;
     // Single-commit mode
     hash?: string;
-    filePath?: string;
     commit?: GitCommitItem;
     // Range mode (mutually exclusive with hash)
     range?: BranchRangeInfo;
@@ -70,18 +58,10 @@ export interface CommitDetailProps {
     onAllCommentsClick?: () => void;
     onAskAI?: () => void;
     onQueueTask?: () => void;
-    // Cross-file navigation
-    /** Ordered file paths for the current commit (enables cross-file hunk nav). */
-    commitFiles?: string[];
-    /** Called when cross-file navigation requests switching to a different file. */
-    onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
-    /** When set, auto-scrolls to the first or last hunk after the diff loads. */
-    initialHunkTarget?: 'first' | 'last';
 }
 
-export function CommitDetail({ workspaceId, hash, filePath, commit, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask, commitFiles: commitFilesProp, onNavigateToFile, initialHunkTarget }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, hash, commit, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask }: CommitDetailProps) {
     const isRangeMode = !!range;
-    const { dispatch: queueDispatch } = useQueue();
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [chatOpen, setChatOpen] = useState(() => {
         try {
@@ -103,9 +83,6 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         storageKey: 'coc.commitChatPanel.width',
         direction: 'right',
     });
-    const [popupState, setPopupState] = useState<PopupState>(null);
-    const [activePopoverComment, setActivePopoverComment] = useState<AnyComment | null>(null);
-    const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
@@ -113,37 +90,6 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
     const [viewMode, setViewMode] = useDiffViewMode();
     const [headerCollapsed, setHeaderCollapsed] = useState(false);
     const [manualOverride, setManualOverride] = useState(false);
-
-    // Cross-file navigation: fetch commit file list if not provided via props
-    const [fetchedFiles, setFetchedFiles] = useState<string[]>([]);
-    const [filesLoading, setFilesLoading] = useState(false);
-
-    useEffect(() => {
-        if (commitFilesProp || !hash || !filePath || isRangeMode) return;
-        setFilesLoading(true);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files`)
-            .then((data: { path: string }[] | { files?: { path: string }[] }) => {
-                const arr = Array.isArray(data) ? data : (data.files ?? []);
-                setFetchedFiles(arr.map(f => f.path).sort());
-            })
-            .catch(() => setFetchedFiles([]))
-            .finally(() => setFilesLoading(false));
-    }, [workspaceId, hash, filePath, isRangeMode, commitFilesProp]);
-
-    const commitFiles = useMemo(
-        () => commitFilesProp ?? fetchedFiles,
-        [commitFilesProp, fetchedFiles],
-    );
-
-    const { handleNext, handlePrev } = useCrossFileNav({
-        filePath,
-        files: commitFiles,
-        viewerRef,
-        onNavigateToFile,
-    });
-
-    // Auto-scroll to target hunk after diff loads — placed after useCachedDiff (see below)
-    const hasScrolledRef = useRef(false);
 
     // Range-mode state (draggable split panel + branch comment count)
     const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
@@ -154,47 +100,12 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
     const startHeightRef = useRef(0);
 
     const diffUrl = (!isRangeMode && hash)
-        ? (filePath
-            ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`
-            : `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`)
+        ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`
         : null;
 
     const { diff, loading: diffLoading, error: diffError, retry: handleRetryDiff } = useCachedDiff(diffUrl, workspaceId, hash);
 
-    // Auto-scroll to target hunk after diff loads (for cross-file navigation)
-    useEffect(() => {
-        if (!initialHunkTarget || !diff || diffLoading || hasScrolledRef.current) return;
-        hasScrolledRef.current = true;
-        const timer = setTimeout(() => {
-            const viewer = viewerRef.current;
-            if (!viewer) return;
-            const count = viewer.getHunkCount();
-            if (count === 0) return;
-            if (initialHunkTarget === 'first') {
-                viewer.scrollToHunk(0);
-            } else {
-                viewer.scrollToHunk(count - 1);
-            }
-        }, 50);
-        return () => clearTimeout(timer);
-    }, [initialHunkTarget, diff, diffLoading]);
-
-    const diffContext = (!isRangeMode && filePath && hash)
-        ? { repositoryId: workspaceId, filePath, oldRef: `${hash}^`, newRef: hash }
-        : null;
-
-    const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
-            resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
-            clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
-            resolveWithAI, fixWithAI } = useDiffComments(workspaceId, diffContext);
-
-    const [resolveDialogState, setResolveDialogState] = useState<{
-        open: boolean;
-        mode: 'batch' | 'fix' | 'commit-batch' | 'commit-fix';
-        commentId?: string;
-    }>({ open: false, mode: 'batch' });
-
-    // Commit-level comments (only active when !filePath and !rangeMode)
+    // Commit-level comments (only active when !rangeMode)
     const {
         comments: allCommitComments,
         loading: allCommentsLoading,
@@ -208,52 +119,13 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         aiLoadingIds: commitAiLoadingIds,
         aiErrors: commitAiErrors,
         clearAiError: clearCommitAiError,
-    } = useAllCommitComments((!isRangeMode && !filePath) ? workspaceId : '', (!isRangeMode && !filePath && hash) ? hash : '');
+    } = useAllCommitComments(!isRangeMode ? workspaceId : '', (!isRangeMode && hash) ? hash : '');
 
-    const handleAddComment = useCallback(
-        (selection: DiffCommentSelection, selectedText: string, position: { top: number; left: number }) => {
-            setPopupState({ position, selection, selectedText });
-        },
-        [],
-    );
-
-    const handleCommentClick = useCallback((comment: DiffComment, event: React.MouseEvent) => {
-        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-        setPopoverPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
-        setActivePopoverComment(comment);
-    }, []);
-
-    const handlePopupSubmit = useCallback(
-        async (text: string, category: TaskCommentCategory) => {
-            if (!popupState) return;
-            await addComment(popupState.selection, popupState.selectedText, text, category);
-            setPopupState(null);
-        },
-        [popupState, addComment],
-    );
-
-    const handleAskAI = useCallback(
-        (id: string, commandId: string, customQuestion?: string) => {
-            void askAI(id, { commandId, customQuestion });
-        },
-        [askAI],
-    );
-
-    const handleResolveAllWithAI = useCallback(() => {
-        if (shouldSkipResolveDialog()) {
-            void resolveWithAI();
-            return;
-        }
-        setResolveDialogState({ open: true, mode: 'batch' });
-    }, [resolveWithAI]);
-
-    const handleFixWithAI = useCallback((id: string) => {
-        if (shouldSkipResolveDialog()) {
-            void fixWithAI(id);
-            return;
-        }
-        setResolveDialogState({ open: true, mode: 'fix', commentId: id });
-    }, [fixWithAI]);
+    const [resolveDialogState, setResolveDialogState] = useState<{
+        open: boolean;
+        mode: 'commit-batch' | 'commit-fix';
+        commentId?: string;
+    }>({ open: false, mode: 'commit-batch' });
 
     const handleResolveAllCommitWithAI = useCallback(() => {
         if (shouldSkipResolveDialog()) {
@@ -276,32 +148,12 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         setResolveDialogState(s => ({ ...s, open: false }));
         const ctx = userContext || undefined;
         const sk = skills.length > 0 ? skills : undefined;
-        if (mode === 'batch') {
-            void resolveWithAI(ctx, sk);
-        } else if (mode === 'fix' && commentId) {
-            void fixWithAI(commentId, ctx, sk);
-        } else if (mode === 'commit-batch') {
+        if (mode === 'commit-batch') {
             void commitResolveWithAI(ctx, sk);
         } else if (mode === 'commit-fix' && commentId) {
             void commitFixWithAI(commentId, ctx, sk);
         }
-    }, [resolveDialogState, resolveWithAI, fixWithAI, commitResolveWithAI, commitFixWithAI]);
-
-    const handleAskAIDiff = useCallback(
-        (selection: DiffCommentSelection, selectedText: string) => {
-            const contextStr = buildDiffContext({ selectedText, selection, commitHash: hash, filePath });
-            queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt: contextStr });
-        },
-        [hash, filePath, workspaceId, queueDispatch],
-    );
-
-    const handleCopyAsContext = useCallback(
-        (selection: DiffCommentSelection, selectedText: string) => {
-            const contextStr = buildDiffContext({ selectedText, selection, commitHash: hash, filePath });
-            void copyToClipboard(contextStr);
-        },
-        [hash, filePath],
-    );
+    }, [resolveDialogState, commitResolveWithAI, commitFixWithAI]);
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
         const dc = comment as DiffComment;
@@ -320,9 +172,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         setManualOverride(false);
     }, [hash]);
 
-    // Auto-collapse on scroll (only in full-commit view)
+    // Auto-collapse on scroll
     useEffect(() => {
-        if (filePath) return;
         const el = scrollContainerRef.current;
         if (!el) return;
         const handleScroll = () => {
@@ -335,7 +186,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         };
         el.addEventListener('scroll', handleScroll);
         return () => el.removeEventListener('scroll', handleScroll);
-    }, [filePath, manualOverride]);
+    }, [manualOverride]);
 
     const handleToggleHeader = useCallback(() => {
         setManualOverride(true);
@@ -479,8 +330,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
 
     return (
         <div className="commit-detail flex flex-col h-full overflow-hidden" data-testid="commit-detail">
-            {/* Commit info header — only for full-commit view, not per-file view */}
-            {commit && !filePath && (
+            {/* Commit info header */}
+            {commit && (
                 <>
                     {/* Summary bar — visible when collapsed */}
                     {headerCollapsed && (
@@ -544,63 +395,27 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                     </div>
                 </>
             )}
-            {/* Diff label with comment toggle */}
-            {filePath && (
-                <div className="sticky top-0 z-10 px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-between" data-testid="diff-file-path">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs font-mono text-[#616161] dark:text-[#999] truncate">{filePath}</span>
-                        {commitFiles.length > 1 && (
-                            <span className="text-[10px] text-[#848484] flex-shrink-0" data-testid="file-position-indicator">
-                                {commitFiles.indexOf(filePath) + 1}/{commitFiles.length}
-                            </span>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
-                        <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                        <button
-                            onClick={() => setSidebarOpen(o => !o)}
-                            title="Toggle comments"
-                            className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                            data-testid="toggle-comments-btn"
-                        >
-                            💬 {comments.length > 0 ? comments.length : ''}
-                        </button>
-                        <button
-                            onClick={toggleChat}
-                            title="Toggle AI chat"
-                            className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                            data-testid="toggle-chat-btn"
-                        >
-                            🤖
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* No-filePath companion toolbar for hunk nav + toggle */}
-            {!filePath && (
-                <div className="sticky top-0 z-10 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-end">
-                    <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
-                    <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                    <button
-                        onClick={() => setSidebarOpen(o => !o)}
-                        title="Toggle comments"
-                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                        data-testid="toggle-comments-btn"
-                    >
-                        💬 {allCommitComments.length > 0 ? allCommitComments.length : ''}
-                    </button>
-                    <button
-                        onClick={toggleChat}
-                        title="Toggle AI chat"
-                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                        data-testid="toggle-chat-btn"
-                    >
-                        🤖
-                    </button>
-                </div>
-            )}
+            {/* Toolbar for hunk nav + toggle */}
+            <div className="sticky top-0 z-10 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-end">
+                <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                <button
+                    onClick={() => setSidebarOpen(o => !o)}
+                    title="Toggle comments"
+                    className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                    data-testid="toggle-comments-btn"
+                >
+                    💬 {allCommitComments.length > 0 ? allCommitComments.length : ''}
+                </button>
+                <button
+                    onClick={toggleChat}
+                    title="Toggle AI chat"
+                    className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                    data-testid="toggle-chat-btn"
+                >
+                    🤖
+                </button>
+            </div>
 
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
@@ -619,30 +434,14 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                             <SideBySideDiffViewer
                                 ref={viewerRef}
                                 diff={diff}
-                                fileName={filePath}
-                                enableComments={!!filePath}
-                                showLineNumbers={!!filePath}
-                                comments={comments}
-                                onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
-                                onAddComment={filePath ? handleAddComment : undefined}
-                                onAskAI={filePath ? handleAskAIDiff : undefined}
-                                onCopyAsContext={filePath ? handleCopyAsContext : undefined}
-                                onCommentClick={filePath ? handleCommentClick : undefined}
+                                onLinesReady={setDiffLines}
                                 data-testid="diff-content"
                             />
                         ) : (
                             <UnifiedDiffViewer
                                 ref={viewerRef}
                                 diff={diff}
-                                fileName={filePath}
-                                enableComments={!!filePath}
-                                showLineNumbers={!!filePath}
-                                comments={comments}
-                                onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
-                                onAddComment={filePath ? handleAddComment : undefined}
-                                onAskAI={filePath ? handleAskAIDiff : undefined}
-                                onCopyAsContext={filePath ? handleCopyAsContext : undefined}
-                                onCommentClick={filePath ? handleCommentClick : undefined}
+                                onLinesReady={setDiffLines}
                                 data-testid="diff-content"
                             />
                         )
@@ -654,31 +453,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                     <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
                 )}
 
-                {sidebarOpen && filePath && (
-                    <CommentSidebar
-                        taskId={workspaceId}
-                        filePath={filePath}
-                        comments={comments}
-                        loading={commentsLoading}
-                        onResolve={(id) => { void resolveComment(id); }}
-                        onUnresolve={(id) => { void unresolveComment(id); }}
-                        onDelete={(id) => { void deleteComment(id); }}
-                        onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
-                        onAskAI={handleAskAI}
-                        onResolveAllWithAI={handleResolveAllWithAI}
-                        onFixWithAI={handleFixWithAI}
-                        onCommentClick={handleSidebarCommentClick}
-                        aiLoadingIds={aiLoadingIds}
-                        aiErrors={aiErrors}
-                        onClearAiError={clearAiError}
-                        resolvingIds={resolvingIds}
-                        deletingIds={deletingIds}
-                        onCopyPrompt={copyAllCommentsAsPrompt}
-                        onClose={() => setSidebarOpen(false)}
-                        data-testid="diff-comment-sidebar"
-                    />
-                )}
-                {sidebarOpen && !filePath && (
+                {sidebarOpen && (
                     <CommentSidebar
                         comments={allCommitComments}
                         loading={allCommentsLoading}
@@ -733,43 +508,16 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                 )}
             </div>
 
-            {popupState && (
-                <InlineCommentPopup
-                    position={popupState.position}
-                    onSubmit={handlePopupSubmit}
-                    onCancel={() => setPopupState(null)}
-                />
-            )}
-
-            {activePopoverComment && popoverPos && (
-                <CommentPopover
-                    comment={activePopoverComment}
-                    position={popoverPos}
-                    onClose={() => setActivePopoverComment(null)}
-                    onResolve={(id) => { void resolveComment(id); }}
-                    onUnresolve={(id) => { void unresolveComment(id); }}
-                    onDelete={(id) => { void deleteComment(id); setActivePopoverComment(null); }}
-                    onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
-                    onAskAI={handleAskAI}
-                    aiLoading={aiLoadingIds.has(activePopoverComment.id)}
-                    aiError={aiErrors.get(activePopoverComment.id) ?? null}
-                    onClearAiError={clearAiError}
-                    isResolving={resolvingIds.has(activePopoverComment.id)}
-                    isDeleting={deletingIds.has(activePopoverComment.id)}
-                />
-            )}
             <ResolveContextDialog
                 open={resolveDialogState.open}
                 onClose={() => setResolveDialogState(s => ({ ...s, open: false }))}
                 onSubmit={handleResolveDialogSubmit}
                 commentCount={
-                    resolveDialogState.mode === 'fix' || resolveDialogState.mode === 'commit-fix'
+                    resolveDialogState.mode === 'commit-fix'
                         ? 1
-                        : resolveDialogState.mode === 'commit-batch'
-                            ? allCommitComments.filter(c => c.status === 'open').length
-                            : comments.filter(c => c.status === 'open').length
+                        : allCommitComments.filter(c => c.status === 'open').length
                 }
-                title={resolveDialogState.mode === 'fix' || resolveDialogState.mode === 'commit-fix' ? 'Fix with AI' : 'Resolve with AI'}
+                title={resolveDialogState.mode === 'commit-fix' ? 'Fix with AI' : 'Resolve with AI'}
                 wsId={workspaceId}
             />
         </div>

@@ -171,11 +171,4 @@ describe('CommitDetail — collapsible header', () => {
         expect(screen.queryByTestId('commit-info-summary')).toBeNull();
         expect(screen.getByTestId('commit-info-header')).toBeTruthy();
     });
-
-    it('per-file view does not render collapse controls', async () => {
-        await renderDetail({ commit: makeCommit(), filePath: 'src/index.ts' });
-        expect(screen.queryByTestId('commit-info-header')).toBeNull();
-        expect(screen.queryByTestId('commit-info-summary')).toBeNull();
-        expect(screen.queryByTestId('commit-info-collapse-btn')).toBeNull();
-    });
 });

@@ -3,7 +3,7 @@
  *
  * Shown in the lower panel of BranchRangeOverview. Each file row is collapsible;
  * expanding it lazy-fetches the file diff. All files start collapsed.
- * Clicking a file row's "Open →" link navigates to the full BranchFileDiff view.
+ * Clicking a file row's "Open →" link navigates to the full FileDiffPanel view.
  * Diff is truncated at 200 lines with a "Show full diff →" link.
  */
 

@@ -50,10 +50,6 @@ describe('CommitDetail', () => {
             expect(source).toContain('hash?: string');
         });
 
-        it('accepts optional filePath prop', () => {
-            expect(source).toContain('filePath?: string');
-        });
-
         it('accepts optional commit prop', () => {
             expect(source).toContain('commit?: GitCommitItem');
         });
@@ -97,26 +93,21 @@ describe('CommitDetail', () => {
         });
     });
 
-    describe('per-file diff support', () => {
+    describe('commit diff URL', () => {
         it('builds diffUrl conditionally (null in range mode)', () => {
             expect(source).toContain('const diffUrl = ');
         });
 
-        it('constructs per-file diff URL with /files/:filePath/diff', () => {
-            expect(source).toContain('/files/');
-            expect(source).toContain('/diff');
-        });
-
-        it('falls back to full commit diff URL when no filePath', () => {
+        it('constructs full commit diff URL', () => {
             expect(source).toContain('/git/commits/${hash}/diff');
         });
 
-        it('shows file path label when filePath is provided', () => {
-            expect(source).toContain('data-testid="diff-file-path"');
+        it('no longer constructs per-file diff URLs', () => {
+            expect(source).not.toContain('/files/${encodeURIComponent(filePath)}/diff');
         });
 
-        it('only renders file path label when filePath exists', () => {
-            expect(source).toContain('filePath &&');
+        it('no longer renders file path label', () => {
+            expect(source).not.toContain('data-testid="diff-file-path"');
         });
     });
 
@@ -172,8 +163,8 @@ describe('CommitDetail', () => {
             expect(source).toContain("import type { GitCommitItem } from './CommitList'");
         });
 
-        it('conditionally renders header only for full-commit view (not per-file)', () => {
-            expect(source).toContain('commit && !filePath');
+        it('conditionally renders header only for commit mode', () => {
+            expect(source).toContain('commit && (');
         });
     });
 

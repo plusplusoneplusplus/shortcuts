@@ -77,7 +77,7 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
 
 import { CommitDetail } from '../../../../src/server/spa/client/react/repos/CommitDetail';
 import { CommitFileContent } from '../../../../src/server/spa/client/react/repos/CommitFileContent';
-import { BranchFileDiff } from '../../../../src/server/spa/client/react/repos/BranchFileDiff';
+import { FileDiffPanel } from '../../../../src/server/spa/client/react/repos/FileDiffPanel';
 import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/repos/WorkingTreeFileDiff';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/repos/CommitList';
 
@@ -102,32 +102,14 @@ const makeCommit = (overrides: Partial<GitCommitItem> = {}): GitCommitItem => ({
 // ─── CommitDetail ────────────────────────────────────────────────────────────
 
 describe('CommitDetail — diff view toggle wiring', () => {
-    it('shows DiffViewToggle in per-file toolbar (filePath present)', async () => {
-        await act(async () => {
-            render(<CommitDetail workspaceId="ws1" hash="abc123" filePath="src/index.ts" />);
-        });
-        expect(screen.getByTestId('diff-view-toggle')).toBeTruthy();
-    });
-
-    it('clicking Split renders SideBySideDiffViewer (filePath present)', async () => {
-        await act(async () => {
-            render(<CommitDetail workspaceId="ws1" hash="abc123" filePath="src/index.ts" />);
-        });
-        await waitFor(() => expect(screen.getByTestId('diff-content')).toBeTruthy());
-        expect(screen.getByTestId('diff-content').getAttribute('data-viewer')).toBe('unified');
-
-        fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
-        expect(screen.getByTestId('diff-content').getAttribute('data-viewer')).toBe('split');
-    });
-
-    it('shows DiffViewToggle in full-commit toolbar (no filePath)', async () => {
+    it('shows DiffViewToggle in commit toolbar', async () => {
         await act(async () => {
             render(<CommitDetail workspaceId="ws1" hash="abc123" />);
         });
         expect(screen.getByTestId('diff-view-toggle')).toBeTruthy();
     });
 
-    it('clicking Split in full-commit view renders SideBySideDiffViewer', async () => {
+    it('clicking Split renders SideBySideDiffViewer', async () => {
         await act(async () => {
             render(<CommitDetail workspaceId="ws1" hash="abc123" />);
         });
@@ -139,7 +121,7 @@ describe('CommitDetail — diff view toggle wiring', () => {
 
     it('switching back to Unified re-renders UnifiedDiffViewer', async () => {
         await act(async () => {
-            render(<CommitDetail workspaceId="ws1" hash="abc123" filePath="src/index.ts" />);
+            render(<CommitDetail workspaceId="ws1" hash="abc123" />);
         });
         await waitFor(() => expect(screen.getByTestId('diff-content')).toBeTruthy());
 
@@ -175,34 +157,45 @@ describe('CommitFileContent — diff view toggle wiring', () => {
     });
 });
 
-// ─── BranchFileDiff ──────────────────────────────────────────────────────────
+// ─── FileDiffPanel (branch-range source) ─────────────────────────────────────
 
-describe('BranchFileDiff — diff view toggle wiring', () => {
+describe('FileDiffPanel — diff view toggle wiring', () => {
+    const branchSource = {
+        label: 'Branch diff',
+        fileDiffUrl: (fp: string) => `/workspaces/ws1/git/branch-range/files/${encodeURIComponent(fp)}/diff`,
+        fullDiffUrl: () => null,
+        commentContext: (fp: string) => ({ repositoryId: 'ws1', filePath: fp, oldRef: 'branch-base', newRef: 'branch-head' }),
+        files: [],
+        chat: null,
+        supportsTruncation: true,
+        cacheKey: 'branch-range',
+    };
+
     it('shows DiffViewToggle in toolbar', async () => {
-        render(<BranchFileDiff workspaceId="ws1" filePath="src/app.ts" />);
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/app.ts" source={branchSource} />);
         await waitFor(() => expect(screen.getByTestId('diff-view-toggle')).toBeTruthy());
     });
 
     it('clicking Split renders SideBySideDiffViewer', async () => {
-        render(<BranchFileDiff workspaceId="ws1" filePath="src/app.ts" />);
-        await waitFor(() => expect(screen.getByTestId('branch-file-diff-content')).toBeTruthy());
-        expect(screen.getByTestId('branch-file-diff-content').getAttribute('data-viewer')).toBe('unified');
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/app.ts" source={branchSource} />);
+        await waitFor(() => expect(screen.getByTestId('file-diff-content')).toBeTruthy());
+        expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('unified');
 
         fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
-        expect(screen.getByTestId('branch-file-diff-content').getAttribute('data-viewer')).toBe('split');
+        expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('split');
     });
 
     it('switching back to Unified re-renders UnifiedDiffViewer', async () => {
-        render(<BranchFileDiff workspaceId="ws1" filePath="src/app.ts" />);
-        await waitFor(() => expect(screen.getByTestId('branch-file-diff-content')).toBeTruthy());
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/app.ts" source={branchSource} />);
+        await waitFor(() => expect(screen.getByTestId('file-diff-content')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
         fireEvent.click(screen.getByTestId('diff-view-toggle-unified'));
-        expect(screen.getByTestId('branch-file-diff-content').getAttribute('data-viewer')).toBe('unified');
+        expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('unified');
     });
 
     it('comments button is still present at end of toolbar', async () => {
-        render(<BranchFileDiff workspaceId="ws1" filePath="src/app.ts" />);
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/app.ts" source={branchSource} />);
         await waitFor(() => expect(screen.getByTestId('toggle-comments-btn')).toBeTruthy());
     });
 });

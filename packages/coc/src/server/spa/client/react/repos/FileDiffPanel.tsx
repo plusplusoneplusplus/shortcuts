@@ -90,7 +90,22 @@ export function FileDiffPanel({
     }>({ open: false, mode: 'batch' });
 
     // ── Cross-file navigation ──
-    const allFiles = useMemo(() => source.files, [source.files]);
+    const [fetchedFiles, setFetchedFiles] = useState<string[]>([]);
+    const sourceFiles = source.files;
+
+    useEffect(() => {
+        if (sourceFiles.length > 0 || !source.fetchFileList) return;
+        let cancelled = false;
+        source.fetchFileList()
+            .then(files => { if (!cancelled) setFetchedFiles(files); })
+            .catch(() => { if (!cancelled) setFetchedFiles([]); });
+        return () => { cancelled = true; };
+    }, [sourceFiles, source]);
+
+    const allFiles = useMemo(
+        () => sourceFiles.length > 0 ? sourceFiles : fetchedFiles,
+        [sourceFiles, fetchedFiles],
+    );
     const { handleNext, handlePrev } = useCrossFileNav({
         filePath,
         files: allFiles,

@@ -116,37 +116,31 @@ async function renderDetail(props: Record<string, unknown> = {}) {
 // Source-level structural assertions
 // ============================================================================
 
-describe('CommitDetail — source structure', () => {
+describe('CommitDetail — source structure (commit-level comments)', () => {
     let source: string;
 
     beforeEach(() => {
         source = fs.readFileSync(COMMIT_DETAIL_PATH, 'utf-8');
     });
 
-    it('imports useDiffComments hook', () => {
-        expect(source).toContain("useDiffComments");
+    it('imports useAllCommitComments hook', () => {
+        expect(source).toContain("useAllCommitComments");
     });
 
-    it('imports UnifiedDiffViewer with comment props', () => {
+    it('no longer imports useDiffComments (per-file comments moved to FileDiffPanel)', () => {
+        expect(source).not.toContain("import { useDiffComments }");
+    });
+
+    it('imports UnifiedDiffViewer', () => {
         expect(source).toContain('UnifiedDiffViewer');
-        expect(source).toContain('enableComments');
     });
 
     it('imports CommentSidebar', () => {
         expect(source).toContain('CommentSidebar');
     });
 
-    it('imports InlineCommentPopup', () => {
-        expect(source).toContain('InlineCommentPopup');
-    });
-
-    it('passes comments prop to UnifiedDiffViewer', () => {
-        expect(source).toContain('comments={comments}');
-    });
-
-    it('passes onLinesReady for relocation', () => {
-        expect(source).toContain('onLinesReady');
-        expect(source).toContain('runRelocation');
+    it('no longer imports InlineCommentPopup (per-file commenting moved to FileDiffPanel)', () => {
+        expect(source).not.toContain("import { InlineCommentPopup }");
     });
 
     it('has toggle-comments-btn testid', () => {
@@ -156,94 +150,15 @@ describe('CommitDetail — source structure', () => {
     it('has data-testid="commit-detail"', () => {
         expect(source).toContain('data-testid="commit-detail"');
     });
-});
 
-// ============================================================================
-// Integration: select → add comment flow
-// ============================================================================
-
-describe('CommitDetail — select → add comment flow', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        mockAddComment.mockResolvedValue({ id: 'new-c' });
-        mockUseDiffComments.mockReturnValue(makeHook());
-    });
-
-    it('shows InlineCommentPopup after clicking "Add Comment" trigger', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const trigger = await screen.findByTestId('trigger-add-comment');
-        await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByTestId('inline-comment-popup')).toBeTruthy();
-    });
-
-    it('submitting popup calls addComment and closes popup', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const trigger = await screen.findByTestId('trigger-add-comment');
-        await act(async () => { fireEvent.click(trigger); });
-
-        const textarea = screen.getByTestId('comment-textarea');
-        fireEvent.change(textarea, { target: { value: 'my comment text' } });
-        await act(async () => {
-            fireEvent.click(screen.getByText(/Submit/));
-        });
-
-        expect(mockAddComment).toHaveBeenCalledWith(
-            expect.objectContaining({ diffLineStart: 1 }),
-            'selected text',
-            'my comment text',
-            expect.any(String),
-        );
-        await waitFor(() => expect(screen.queryByTestId('inline-comment-popup')).toBeNull());
-    });
-
-    it('cancelling popup does not call addComment', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const trigger = await screen.findByTestId('trigger-add-comment');
-        await act(async () => { fireEvent.click(trigger); });
-        await act(async () => { fireEvent.click(screen.getByText('Cancel')); });
-        expect(screen.queryByTestId('inline-comment-popup')).toBeNull();
-        expect(mockAddComment).not.toHaveBeenCalled();
+    it('no longer accepts filePath prop', () => {
+        expect(source).not.toContain('filePath?: string');
     });
 });
 
 // ============================================================================
-// Integration: sidebar flow
+// Note: The per-file comment interaction tests (select → add comment flow,
+// sidebar flow) have been removed because CommitDetail no longer supports
+// the filePath prop. Per-file commenting is now handled by FileDiffPanel.
+// See FileDiffPanel tests for equivalent coverage.
 // ============================================================================
-
-describe('CommitDetail — sidebar flow', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        mockAddComment.mockResolvedValue({ id: 'new-c' });
-        mockUseDiffComments.mockReturnValue(makeHook());
-    });
-
-    it('sidebar hidden by default', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        expect(screen.queryByTestId('comment-sidebar')).toBeNull();
-    });
-
-    it('sidebar shows after toggle button click', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
-        expect(screen.getByTestId('comment-sidebar')).toBeTruthy();
-    });
-
-    it('clicking a comment via onCommentClick opens popover', async () => {
-        await renderDetail({ filePath: 'src/foo.ts' });
-        expect(screen.queryByTestId('comment-popover')).toBeNull();
-        const trigger = await screen.findByTestId('trigger-comment-click');
-        await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByTestId('comment-popover')).toBeTruthy();
-    });
-
-    it('comment count passed to UnifiedDiffViewer', async () => {
-        const twoComments = [
-            { id: 'c1', context: {}, selection: { diffLineStart: 1, diffLineEnd: 1 }, comment: 'a', status: 'open', createdAt: '', updatedAt: '', selectedText: '' },
-            { id: 'c2', context: {}, selection: { diffLineStart: 2, diffLineEnd: 2 }, comment: 'b', status: 'open', createdAt: '', updatedAt: '', selectedText: '' },
-        ];
-        mockUseDiffComments.mockReturnValue(makeHook({ comments: twoComments }));
-        await renderDetail({ filePath: 'src/foo.ts' });
-        const viewer = await screen.findByTestId('diff-content');
-        expect(viewer.getAttribute('data-comment-count')).toBe('2');
-    });
-});

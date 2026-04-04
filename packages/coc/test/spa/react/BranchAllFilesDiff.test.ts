@@ -125,7 +125,7 @@ describe('BranchAllFilesDiff', () => {
             expect(source).toContain('No file changes in range');
         });
 
-        it('renders Open → button to navigate to full BranchFileDiff', () => {
+        it('renders Open → button to navigate to file diff', () => {
             expect(source).toContain('Open →');
             expect(source).toContain('onFileSelect(file.path)');
         });
