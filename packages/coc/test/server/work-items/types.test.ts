@@ -1,0 +1,176 @@
+import { describe, it, expect } from 'vitest';
+import {
+    WORK_ITEM_STATUSES,
+    TERMINAL_WORK_ITEM_STATUSES,
+    VALID_TRANSITIONS,
+    isTerminalStatus,
+    isValidTransition,
+    toIndexEntry,
+} from '../../../src/server/work-items/types';
+import type {
+    WorkItem,
+    WorkItemStatus,
+    WorkItemIndexEntry,
+} from '../../../src/server/work-items/types';
+
+function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
+    return {
+        id: 'wi-001',
+        repoId: 'repo-1',
+        title: 'Test work item',
+        description: 'A test work item',
+        status: 'created',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        source: 'manual',
+        ...overrides,
+    };
+}
+
+describe('Work Item Types', () => {
+    describe('WORK_ITEM_STATUSES', () => {
+        it('contains all expected statuses', () => {
+            expect(WORK_ITEM_STATUSES).toEqual([
+                'created', 'planning', 'ready', 'executing', 'done', 'failed',
+            ]);
+        });
+
+        it('is frozen (readonly)', () => {
+            expect(() => {
+                (WORK_ITEM_STATUSES as string[]).push('invalid');
+            }).toThrow();
+        });
+    });
+
+    describe('TERMINAL_WORK_ITEM_STATUSES', () => {
+        it('contains done and failed', () => {
+            expect(TERMINAL_WORK_ITEM_STATUSES.has('done')).toBe(true);
+            expect(TERMINAL_WORK_ITEM_STATUSES.has('failed')).toBe(true);
+        });
+
+        it('does not contain non-terminal statuses', () => {
+            expect(TERMINAL_WORK_ITEM_STATUSES.has('created')).toBe(false);
+            expect(TERMINAL_WORK_ITEM_STATUSES.has('planning')).toBe(false);
+            expect(TERMINAL_WORK_ITEM_STATUSES.has('ready')).toBe(false);
+            expect(TERMINAL_WORK_ITEM_STATUSES.has('executing')).toBe(false);
+        });
+    });
+
+    describe('isTerminalStatus', () => {
+        it('returns true for terminal statuses', () => {
+            expect(isTerminalStatus('done')).toBe(true);
+            expect(isTerminalStatus('failed')).toBe(true);
+        });
+
+        it('returns false for non-terminal statuses', () => {
+            expect(isTerminalStatus('created')).toBe(false);
+            expect(isTerminalStatus('planning')).toBe(false);
+            expect(isTerminalStatus('ready')).toBe(false);
+            expect(isTerminalStatus('executing')).toBe(false);
+        });
+    });
+
+    describe('isValidTransition', () => {
+        it('allows created → planning', () => {
+            expect(isValidTransition('created', 'planning')).toBe(true);
+        });
+
+        it('allows created → ready (skip planning)', () => {
+            expect(isValidTransition('created', 'ready')).toBe(true);
+        });
+
+        it('allows planning → ready', () => {
+            expect(isValidTransition('planning', 'ready')).toBe(true);
+        });
+
+        it('allows ready → executing', () => {
+            expect(isValidTransition('ready', 'executing')).toBe(true);
+        });
+
+        it('allows executing → done', () => {
+            expect(isValidTransition('executing', 'done')).toBe(true);
+        });
+
+        it('allows executing → failed', () => {
+            expect(isValidTransition('executing', 'failed')).toBe(true);
+        });
+
+        it('allows ready → planning (go back to refine)', () => {
+            expect(isValidTransition('ready', 'planning')).toBe(true);
+        });
+
+        it('allows done → created (re-open)', () => {
+            expect(isValidTransition('done', 'created')).toBe(true);
+        });
+
+        it('allows failed → created (re-open)', () => {
+            expect(isValidTransition('failed', 'created')).toBe(true);
+        });
+
+        it('allows executing → ready (retry after failure)', () => {
+            expect(isValidTransition('executing', 'ready')).toBe(true);
+        });
+
+        it('rejects invalid transitions', () => {
+            expect(isValidTransition('created', 'done')).toBe(false);
+            expect(isValidTransition('created', 'executing')).toBe(false);
+            expect(isValidTransition('planning', 'executing')).toBe(false);
+            expect(isValidTransition('planning', 'done')).toBe(false);
+            expect(isValidTransition('done', 'executing')).toBe(false);
+            expect(isValidTransition('failed', 'executing')).toBe(false);
+        });
+
+        it('every status has at least one valid transition', () => {
+            for (const status of WORK_ITEM_STATUSES) {
+                expect(VALID_TRANSITIONS[status].length).toBeGreaterThan(0);
+            }
+        });
+    });
+
+    describe('toIndexEntry', () => {
+        it('extracts index fields from a full work item', () => {
+            const item = makeWorkItem({
+                plan: { version: 3, content: 'some plan', updatedAt: '2026-01-02T00:00:00.000Z' },
+                priority: 'high',
+                tags: ['backend', 'auth'],
+            });
+
+            const entry = toIndexEntry(item);
+
+            expect(entry).toEqual<WorkItemIndexEntry>({
+                id: 'wi-001',
+                repoId: 'repo-1',
+                title: 'Test work item',
+                status: 'created',
+                source: 'manual',
+                priority: 'high',
+                planVersion: 3,
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                completedAt: undefined,
+                tags: ['backend', 'auth'],
+            });
+        });
+
+        it('handles work item without optional fields', () => {
+            const item = makeWorkItem();
+            const entry = toIndexEntry(item);
+
+            expect(entry.planVersion).toBeUndefined();
+            expect(entry.priority).toBeUndefined();
+            expect(entry.tags).toBeUndefined();
+            expect(entry.completedAt).toBeUndefined();
+        });
+
+        it('does not include full description or execution history', () => {
+            const item = makeWorkItem({
+                description: 'A very long description...',
+                executionHistory: [{ taskId: 't-1', startedAt: '2026-01-01T00:00:00.000Z', status: 'completed' }],
+            });
+
+            const entry = toIndexEntry(item);
+            expect(entry).not.toHaveProperty('description');
+            expect(entry).not.toHaveProperty('executionHistory');
+        });
+    });
+});
