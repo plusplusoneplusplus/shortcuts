@@ -119,6 +119,7 @@ Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/f
 **Module layout (post pipeline/ deletion):**
 - Pipeline YAML config types → `workflow/pipeline-compat.ts` (used by compiler)
 - Pipeline phase/event types → `pipeline-types.ts` (used by process-store, coc SPA)
+- Workspace execution / WSL routing → `utils/workspace-execution.ts` (shared execution-context detection, WSL command args, repo path normalization)
 - CSV reader → `utils/csv-reader.ts`
 - Prompt resolver → `utils/prompt-resolver.ts`
 - Skill resolver → `skills/skill-resolver.ts`
@@ -137,6 +138,8 @@ Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/f
 HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `coc-server` package, now merged into `coc`.
 
 **Execution layer:** Process CRUD API, queue management, admin (time-limited crypto tokens for destructive ops), WebSocket (workspace-scoped events, file subscriptions), SSE per-process streaming, export/import.
+
+**WSL repos:** Repo-root discovery accepts WSL UNC and Linux-style paths. Keep Windows-hosted trust/config/session storage, but route repo execution through the shared forge workspace-execution helpers rather than adding ad hoc `wsl.exe` spawning in server code.
 
 **Module decomposition:** Large handler files are split into focused sub-modules with thin re-export aggregators for backward compatibility:
 - `schedule-manager.ts` → cron utilities in `cron-utils.ts` (parseCron, nextCronTime, describeCron, slugifyName)
