@@ -10,7 +10,7 @@ const wikiDetailSource = readFileSync(wikiDetailPath, 'utf-8');
 
 describe('WikiDetail layout constraints', () => {
     it('uses conditional height: h-full when embedded, calc height otherwise', () => {
-        expect(wikiDetailSource).toContain("embedded ? 'h-full' : 'h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)]'");
+        expect(wikiDetailSource).toContain("embedded ? 'h-full' : 'h-[calc(100vh-48px-48px)] md:h-[calc(100vh-48px)]'");
     });
 
     it('keeps the right content pane min-h-0 so child views can scroll', () => {

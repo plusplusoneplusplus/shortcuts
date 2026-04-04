@@ -51,7 +51,7 @@ export function MobileTabBar({
     return (
         <>
             <nav
-                className="fixed bottom-0 left-0 right-0 z-[8000] h-14 flex items-stretch border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                className="fixed bottom-0 left-0 right-0 z-[8000] h-12 flex items-stretch border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
                 style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
                 aria-label="Repo tab navigation"
                 data-testid="mobile-tab-bar"
@@ -109,7 +109,7 @@ export function MobileTabBar({
                                 key={t.key}
                                 data-tab={t.key}
                                 className={cn(
-                                    'w-full text-left px-4 py-3 text-sm',
+                                    'w-full text-left px-4 py-2 text-sm',
                                     active
                                         ? 'text-[#0078d4] font-medium'
                                         : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10'

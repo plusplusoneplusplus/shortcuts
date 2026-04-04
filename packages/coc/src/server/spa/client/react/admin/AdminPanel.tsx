@@ -412,7 +412,7 @@ export function AdminPanel() {
 
     return (
         <div id="view-admin">
-            <div id="admin-page-content" className="responsive-container space-y-3">
+            <div id="admin-page-content" className="responsive-container space-y-2 md:space-y-3">
                 {/* Header with inline stats bar */}
                 <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <h1 className="text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Admin</h1>
@@ -475,7 +475,7 @@ export function AdminPanel() {
 
                 {/* ── Settings tab ── */}
                 {activeTab === 'settings' && (
-                    <Card className="p-3">
+                    <Card className="p-2 md:p-3">
                         {configLoading ? (
                             <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
                         ) : configError ? (
@@ -674,7 +674,7 @@ export function AdminPanel() {
 
                 {/* ── Providers tab ── */}
                 {activeTab === 'providers' && (
-                    <Card className="p-3" data-testid="provider-tokens-section">
+                    <Card className="p-2 md:p-3" data-testid="provider-tokens-section">
                         <ProviderTokensSection
                             onError={msg => addToast(msg, 'error')}
                             onSuccess={msg => addToast(msg, 'success')}
@@ -684,7 +684,7 @@ export function AdminPanel() {
 
                 {/* ── Data tab ── */}
                 {activeTab === 'data' && (
-                    <Card className="p-3">
+                    <Card className="p-2 md:p-3">
                         {/* Export */}
                         <div>
                             <div className={sectionHeadClass}>Export</div>
@@ -758,7 +758,7 @@ export function AdminPanel() {
 
                 {/* ── Server tab ── */}
                 {activeTab === 'server' && (
-                    <Card className="p-3">
+                    <Card className="p-2 md:p-3">
                         {/* Server info */}
                         <div className="space-y-1 text-xs text-[#616161] dark:text-[#999]">
                             {config?.configFilePath && (
@@ -789,7 +789,7 @@ export function AdminPanel() {
 
                 {/* ── Prompts tab ── */}
                 {activeTab === 'prompts' && (
-                    <Card className="p-3">
+                    <Card className="p-2 md:p-3">
                         <PromptsPanel onError={msg => addToast(msg, 'error')} />
                     </Card>
                 )}

@@ -187,7 +187,7 @@ describe('WikiAsk mobile', () => {
         const inputArea = screen.getByTestId('wiki-ask-input-area');
         expect(inputArea).toBeTruthy();
         // On mobile, the class includes the bottom padding calc
-        expect(inputArea.className).toContain('pb-[calc(0.75rem+56px)]');
+        expect(inputArea.className).toContain('pb-[calc(0.75rem+48px)]');
     });
 
     it('input area does NOT have bottom padding on desktop', () => {
@@ -196,7 +196,7 @@ describe('WikiAsk mobile', () => {
             <WikiAsk wikiId="w1" wikiName="Test Wiki" currentComponentId={null} />
         );
         const inputArea = screen.getByTestId('wiki-ask-input-area');
-        expect(inputArea.className).not.toContain('pb-[calc(0.75rem+56px)]');
+        expect(inputArea.className).not.toContain('pb-[calc(0.75rem+48px)]');
     });
 });
 

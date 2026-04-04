@@ -284,7 +284,7 @@ export function WikiAsk({ wikiId, wikiName, currentComponentId }: WikiAskProps) 
             {/* Input */}
             <div className={cn(
                 'flex items-end gap-2 p-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]',
-                isMobile && 'pb-[calc(0.75rem+56px)]'
+                isMobile && 'pb-[calc(0.75rem+48px)]'
             )} data-testid="wiki-ask-input-area">
                 <textarea
                     className="flex-1 resize-none px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] max-h-[120px]"

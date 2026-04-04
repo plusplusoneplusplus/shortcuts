@@ -239,7 +239,7 @@ describe('ReposView — responsive layout', () => {
             await screen.findByTestId('repo-detail-empty');
             const container = document.getElementById('view-repos')!;
             expect(container.className).toContain('h-[calc(100vh-48px)]');
-            expect(container.className).not.toContain('56px');
+            expect(container.className).not.toContain('40px');
         });
     });
 
@@ -264,7 +264,7 @@ describe('ReposView — responsive layout', () => {
 
             // Height class is applied even during loading
             const container = document.getElementById('view-repos')!;
-            expect(container.className).toContain('h-[calc(100vh-40px-56px)]');
+            expect(container.className).toContain('h-[calc(100vh-40px-48px)]');
         });
 
         it('selected repo shows full-screen detail without MobileRepoHeader bar', async () => {
@@ -333,7 +333,7 @@ describe('ReposView — responsive layout', () => {
             await screen.findByTestId('repo-detail-empty');
             const container = document.getElementById('view-repos')!;
             expect(container.className).toContain('h-[calc(100vh-48px)]');
-            expect(container.className).not.toContain('56px');
+            expect(container.className).not.toContain('40px');
         });
     });
 });

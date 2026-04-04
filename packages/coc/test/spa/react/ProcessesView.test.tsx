@@ -139,7 +139,7 @@ describe('ProcessesView', () => {
 
         const container = document.getElementById('view-processes')!;
         expect(container.className).toContain('h-[calc(100vh-48px)]');
-        expect(container.className).not.toContain('h-[calc(100vh-48px-56px)]');
+        expect(container.className).not.toContain('h-[calc(100vh-48px-48px)]');
     });
 
     // Test 4: Mobile — no selection shows list only
@@ -162,7 +162,7 @@ describe('ProcessesView', () => {
         });
 
         const container = document.getElementById('view-processes')!;
-        expect(container.className).toContain('h-[calc(100vh-48px-56px)]');
+        expect(container.className).toContain('h-[calc(100vh-48px-48px)]');
     });
 
     // Test 6: Tablet — uses narrower left panel

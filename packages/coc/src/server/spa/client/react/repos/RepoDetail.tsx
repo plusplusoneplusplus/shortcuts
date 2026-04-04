@@ -268,21 +268,21 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     <BottomSheet isOpen onClose={() => setMoreMenuOpen(false)} title="Actions">
                                         <div className="flex flex-col" data-testid="repo-more-menu-items">
                                             <button
-                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-queue-task"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }); }}
                                             >
                                                 🤖 Queue Task
                                             </button>
                                             <button
-                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-run-script"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
                                             >
                                                 ⚡ Run Script
                                             </button>
                                             <button
-                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-generate"
                                                 onClick={() => { setMoreMenuOpen(false); handleOpenGenerateDialog(); }}
                                             >
@@ -450,7 +450,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}
 
             {/* Sub-tab content */}
-            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'tasks' && "pb-14")}>
+            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'tasks' && "pb-12")}>
                 {activeSubTab === 'tasks' ? (
                     <TasksPanel
                         key={ws.id}

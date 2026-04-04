@@ -183,7 +183,7 @@ export function ProcessesView() {
     }, [isRefreshing, fetchQueue]);
 
     const heightClass = isMobile
-        ? 'h-[calc(100vh-48px-56px)]'
+        ? 'h-[calc(100vh-48px-48px)]'
         : 'h-[calc(100vh-48px)]';
 
     if (loading) {

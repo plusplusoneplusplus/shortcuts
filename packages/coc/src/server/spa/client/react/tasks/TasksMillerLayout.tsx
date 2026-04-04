@@ -110,7 +110,7 @@ export function TasksMillerLayout({
                 {openFilePath && (
                     <div className={`h-full min-h-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] ${isMobile ? 'flex-1 min-w-0' : 'flex-1 min-w-[48rem]'}`}>
                         {isMobile && (
-                            <div className="flex items-center h-9 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
+                            <div className="flex items-center h-8 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                                 <button
                                     onClick={() => {
                                         if (openFilePath) {
