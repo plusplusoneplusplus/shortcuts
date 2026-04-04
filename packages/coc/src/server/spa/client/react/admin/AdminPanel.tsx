@@ -12,6 +12,7 @@ import { ProviderTokensSection } from './ProviderTokensSection';
 import { PromptsPanel } from './PromptsPanel';
 import { useApp } from '../context/AppContext';
 import { FeatureTip } from '../welcome/FeatureTip';
+import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import type { AdminSubTab } from '../types/dashboard';
 
 function formatBytes(bytes: number): string {
@@ -85,6 +86,9 @@ export function AdminPanel() {
     // Restart
     const [restarting, setRestarting] = useState(false);
     const [restartStatus, setRestartStatus] = useState<string>('');
+
+    // Relaunch welcome
+    const [relaunchingWelcome, setRelaunchingWelcome] = useState(false);
 
     const loadStats = useCallback(async () => {
         setStatsLoading(true);
@@ -408,6 +412,31 @@ export function AdminPanel() {
         }
     }, [addToast]);
 
+    const handleRelaunchWelcome = useCallback(async () => {
+        setRelaunchingWelcome(true);
+        try {
+            const res = await fetch(getApiBase() + '/preferences', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    hasSeenWelcome: false,
+                    onboardingProgress: {},
+                    dismissedTips: [],
+                }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error((body as any).error || 'Reset failed');
+            }
+            dispatch({ type: 'SET_WELCOME_PREFERENCES', payload: { hasSeenWelcome: false, onboardingProgress: {}, dismissedTips: [] } });
+            addToast('Welcome tour will appear on next page load', 'success');
+        } catch (err: any) {
+            addToast(err.message || 'Failed to reset welcome tour', 'error');
+        } finally {
+            setRelaunchingWelcome(false);
+        }
+    }, [dispatch, addToast]);
+
     const sources: Record<string, string> = config?.sources ?? {};
     const resolved = config?.resolved ?? {};
 
@@ -672,6 +701,27 @@ export function AdminPanel() {
                                     onError={msg => addToast(msg, 'error')}
                                     onSuccess={msg => addToast(msg, 'success')}
                                 />
+
+                                {SHOW_WELCOME_TUTORIAL && (
+                                    <>
+                                        <hr className={dividerClass} />
+                                        <div className="space-y-1">
+                                            <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Welcome Tour</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">
+                                                Re-show the welcome modal and reset onboarding progress.
+                                            </div>
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                loading={relaunchingWelcome}
+                                                onClick={handleRelaunchWelcome}
+                                                data-testid="relaunch-welcome-btn"
+                                            >
+                                                Relaunch Welcome Tour
+                                            </Button>
+                                        </div>
+                                    </>
+                                )}
 
                                 <div className="flex justify-end mt-3">
                                     <Button id="admin-config-save" size="sm" onClick={handleSaveSettings} loading={configSaving}>Save</Button>

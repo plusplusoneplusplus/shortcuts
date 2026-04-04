@@ -486,4 +486,117 @@ describe('AdminPanel', () => {
             expect(screen.getByText('file')).toBeDefined();
         });
     });
+
+    describe('Relaunch Welcome Tour', () => {
+        it('renders the relaunch welcome button in Settings tab', async () => {
+            mockFetch.mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve({}),
+                headers: new Headers(),
+            });
+            await act(async () => {
+                renderWithProviders();
+            });
+            expect(screen.getByTestId('relaunch-welcome-btn')).toBeDefined();
+            expect(screen.getByText('Welcome Tour')).toBeDefined();
+            expect(screen.getByText('Re-show the welcome modal and reset onboarding progress.')).toBeDefined();
+        });
+
+        it('calls PATCH /preferences with reset payload on click', async () => {
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/preferences') && options?.method === 'PATCH') {
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+            await act(async () => {
+                renderWithProviders();
+            });
+            // Clear calls from mount-time PATCH (e.g., settingsVisited)
+            mockFetch.mockClear();
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/preferences') && options?.method === 'PATCH') {
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('relaunch-welcome-btn'));
+            });
+            await waitFor(() => {
+                const patchCalls = mockFetch.mock.calls.filter(
+                    ([url, opts]: [string, any]) => typeof url === 'string' && url.includes('/preferences') && opts?.method === 'PATCH'
+                );
+                expect(patchCalls.length).toBe(1);
+                const body = JSON.parse(patchCalls[0][1].body);
+                expect(body).toEqual({
+                    hasSeenWelcome: false,
+                    onboardingProgress: {},
+                    dismissedTips: [],
+                });
+            });
+        });
+
+        it('shows success toast after successful relaunch', async () => {
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/preferences') && options?.method === 'PATCH') {
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+            await act(async () => {
+                renderWithProviders();
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('relaunch-welcome-btn'));
+            });
+            await waitFor(() => {
+                expect(screen.getByText('Welcome tour will appear on next page load')).toBeDefined();
+            });
+        });
+
+        it('shows error toast on PATCH failure', async () => {
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/preferences') && options?.method === 'PATCH') {
+                    return Promise.resolve({
+                        ok: false,
+                        json: () => Promise.resolve({ error: 'Server error' }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+            await act(async () => {
+                renderWithProviders();
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('relaunch-welcome-btn'));
+            });
+            await waitFor(() => {
+                expect(screen.getByText('Server error')).toBeDefined();
+            });
+        });
+
+        it('shows loading state during PATCH request', async () => {
+            let resolvePatch!: (value: any) => void;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/preferences') && options?.method === 'PATCH') {
+                    return new Promise(resolve => { resolvePatch = resolve; });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+            await act(async () => {
+                renderWithProviders();
+            });
+            const btn = screen.getByTestId('relaunch-welcome-btn');
+            await act(async () => {
+                fireEvent.click(btn);
+            });
+            // Button should be in loading state (disabled)
+            expect(btn.closest('button')?.disabled || btn.getAttribute('aria-disabled') === 'true' || btn.className.includes('loading') || btn.querySelector('[class*="spinner"], [class*="animate"]') !== null).toBeTruthy();
+            // Resolve the request
+            await act(async () => {
+                resolvePatch({ ok: true, json: () => Promise.resolve({}) });
+            });
+        });
+    });
 });

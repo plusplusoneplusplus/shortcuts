@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
 import { useApp } from '../context/AppContext';
+import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 
 export interface WelcomeModalProps {
     /** Called after the modal is dismissed via "Get Started". Parent may use this to scroll to FirstStepsCard. */
@@ -18,7 +19,7 @@ const FEATURES = [
 export function WelcomeModal({ onGetStarted }: WelcomeModalProps) {
     const { state, dispatch } = useApp();
 
-    const open = state.preferencesLoaded && !state.hasSeenWelcome;
+    const open = SHOW_WELCOME_TUTORIAL && state.preferencesLoaded && !state.hasSeenWelcome;
 
     const handleGetStarted = useCallback(() => {
         dispatch({ type: 'DISMISS_WELCOME' });

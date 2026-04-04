@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { cn } from '../shared/cn';
 import { TIPS } from './tips';
+import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 
 interface FeatureTipProps {
     tipId: string;
@@ -9,6 +10,7 @@ interface FeatureTipProps {
 }
 
 export function FeatureTip({ tipId, className }: FeatureTipProps) {
+    if (!SHOW_WELCOME_TUTORIAL) return null;
     const { state, dispatch } = useApp();
     const [visible, setVisible] = useState(false);
 

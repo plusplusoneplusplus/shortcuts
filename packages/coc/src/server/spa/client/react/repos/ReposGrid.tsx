@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { fetchApi } from '../hooks/useApi';
 import { FirstStepsCard } from '../welcome/FirstStepsCard';
+import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { Button, cn } from '../shared';
 import { RepoCard } from './RepoCard';
 import { AddRepoDialog } from './AddRepoDialog';
@@ -332,7 +333,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
             {/* Repo list */}
             <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
                 {repos.length === 0 ? (
-                    !state.onboardingProgress?.dismissed ? (
+                    SHOW_WELCOME_TUTORIAL && !state.onboardingProgress?.dismissed ? (
                         <FirstStepsCard onAddRepo={() => setAddOpen(true)} />
                     ) : (
                         <div id="repos-empty" data-testid="repos-empty" className="text-center text-xs text-[#848484] py-8">
