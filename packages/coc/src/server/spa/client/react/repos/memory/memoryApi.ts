@@ -25,9 +25,8 @@ export interface MemoryStats {
     consolidationProcessId?: string;
 }
 
-export interface FeedResponse {
+export interface MemoryOverviewResponse extends MemoryStats {
     items: FeedItem[];
-    consolidatedAt: string | null;
     totalCount: number;
 }
 
@@ -39,16 +38,12 @@ export interface DiffLine {
 // ── API helpers ─────────────────────────────────────────────────────────────
 
 export const memoryApi = {
-    getStats(repoId: string): Promise<MemoryStats> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/stats`);
+    getOverview(repoId: string): Promise<MemoryOverviewResponse> {
+        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/overview`);
     },
 
     getConsolidated(repoId: string): Promise<{ content: string }> {
         return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/consolidated`);
-    },
-
-    getFeed(repoId: string): Promise<FeedResponse> {
-        return fetchApi(`/repos/${encodeURIComponent(repoId)}/memory/feed`);
     },
 
     addNote(repoId: string, content: string, tags: string[]): Promise<FeedItem> {

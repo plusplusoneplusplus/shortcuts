@@ -128,10 +128,9 @@ export function computeDiff(prev: string, next: string): DiffLine[] {
  * Mutates the `routes` array in-place.
  *
  * Routes registered:
- *   GET  /api/repos/:repoId/memory/feed              — merged observation + note feed
+ *   GET  /api/repos/:repoId/memory/overview          — merged feed + stats in one response
  *   POST /api/repos/:repoId/memory/notes             — create user note
  *   DELETE /api/repos/:repoId/memory/feed/:id        — delete observation or note
- *   GET  /api/repos/:repoId/memory/stats             — counts + consolidatedAt
  *   GET  /api/repos/:repoId/memory/consolidated      — read consolidated.md content
  *   POST /api/repos/:repoId/memory/aggregate/accept  — accept aggregation (clean backup)
  *   POST /api/repos/:repoId/memory/aggregate/revert  — revert to pre-aggregation state
@@ -144,12 +143,12 @@ export function registerRepoMemoryRoutes(
 ): void {
     const { store, queueFacade } = options;
 
-    // -- GET /api/repos/:repoId/memory/feed ----------------------------------
+    // -- GET /api/repos/:repoId/memory/overview ------------------------------
 
     routes.push({
         method: 'GET',
-        pattern: /^\/api\/repos\/([^/]+)\/memory\/feed$/,
-        handler: async (req, res, match) => {
+        pattern: /^\/api\/repos\/([^/]+)\/memory\/overview$/,
+        handler: async (_req, res, match) => {
             try {
                 const workspaceId = decodeURIComponent(match![1]);
                 const repoPath = await getRepoRootPath(store, workspaceId);
@@ -161,7 +160,7 @@ export function registerRepoMemoryRoutes(
                 const pipelineStore = getPipelineStore(dataDir, workspaceId);
                 const noteStore = getNoteStore(dataDir, workspaceId);
 
-                const [obsFilenames, noteResult, stats] = await Promise.all([
+                const [obsFilenames, noteResult, pipelineStats] = await Promise.all([
                     pipelineStore.listRaw('repo', undefined),
                     Promise.resolve(noteStore.list({ pageSize: 10000 })),
                     pipelineStore.getStats('repo'),
@@ -199,9 +198,32 @@ export function registerRepoMemoryRoutes(
                     ...noteItems,
                 ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+                // Consolidation status from queue
+                let consolidationStatus: 'idle' | 'queued' | 'running' = 'idle';
+                let consolidationTaskId: string | undefined;
+                let consolidationProcessId: string | undefined;
+                if (queueFacade) {
+                    const queued = queueFacade.getQueued();
+                    const running = queueFacade.getRunning();
+                    const all = [...queued, ...running];
+                    const active = all.find(
+                        t => t.type === 'memory-aggregate' && (t.payload as any).repoId === workspaceId,
+                    );
+                    if (active) {
+                        consolidationStatus = active.status === 'running' ? 'running' : 'queued';
+                        consolidationTaskId = active.id;
+                        consolidationProcessId = active.processId ?? `queue_${active.id}`;
+                    }
+                }
+
                 sendJson(res, {
+                    observationCount: pipelineStats.rawCount,
+                    noteCount: noteResult.total,
+                    consolidatedAt: pipelineStats.lastAggregation,
+                    consolidationStatus,
+                    consolidationTaskId,
+                    consolidationProcessId,
                     items,
-                    consolidatedAt: stats.lastAggregation,
                     totalCount: items.length,
                 });
             } catch (err) {
@@ -287,60 +309,6 @@ export function registerRepoMemoryRoutes(
                 }
 
                 sendJson(res, { success: true });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // -- GET /api/repos/:repoId/memory/stats ---------------------------------
-
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/repos\/([^/]+)\/memory\/stats$/,
-        handler: async (_req, res, match) => {
-            try {
-                const workspaceId = decodeURIComponent(match![1]);
-                const repoPath = await getRepoRootPath(store, workspaceId);
-
-                let observationCount = 0;
-                let consolidatedAt: string | null = null;
-                if (repoPath) {
-                    const pipelineStore = getPipelineStore(dataDir, workspaceId);
-                    const stats = await pipelineStore.getStats('repo');
-                    observationCount = stats.rawCount;
-                    consolidatedAt = stats.lastAggregation;
-                }
-
-                const noteStore = getNoteStore(dataDir, workspaceId);
-                const { total: noteCount } = noteStore.list({ pageSize: 1 });
-
-                // Query queue for active memory-aggregate task
-                let consolidationStatus: 'idle' | 'queued' | 'running' = 'idle';
-                let consolidationTaskId: string | undefined;
-                let consolidationProcessId: string | undefined;
-                if (queueFacade) {
-                    const queued = queueFacade.getQueued();
-                    const running = queueFacade.getRunning();
-                    const all = [...queued, ...running];
-                    const active = all.find(
-                        t => t.type === 'memory-aggregate' && (t.payload as any).repoId === workspaceId,
-                    );
-                    if (active) {
-                        consolidationStatus = active.status === 'running' ? 'running' : 'queued';
-                        consolidationTaskId = active.id;
-                        consolidationProcessId = active.processId ?? `queue_${active.id}`;
-                    }
-                }
-
-                sendJson(res, {
-                    observationCount,
-                    noteCount,
-                    consolidatedAt,
-                    consolidationStatus,
-                    consolidationTaskId,
-                    consolidationProcessId,
-                });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }

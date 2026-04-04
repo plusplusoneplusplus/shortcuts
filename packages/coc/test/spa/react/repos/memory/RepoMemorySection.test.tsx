@@ -34,11 +34,8 @@ const okFeed: FeedItemType[] = [
 
 function mockFetchWith(stats: any, feed: any[]) {
     (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
-        if (url.includes('/memory/stats')) {
-            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(stats) });
-        }
-        if (url.includes('/memory/feed') && !url.includes('/feed/')) {
-            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: feed, consolidatedAt: stats.consolidatedAt ?? null, totalCount: feed.length }) });
+        if (url.includes('/memory/overview')) {
+            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ...stats, items: feed, totalCount: feed.length }) });
         }
         return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
     });
@@ -252,14 +249,11 @@ describe('RepoMemorySection', () => {
 
     it('switches to Consolidated tab and shows consolidated content', async () => {
         (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
-            if (url.includes('/memory/stats')) {
-                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(okStats) });
+            if (url.includes('/memory/overview')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ...okStats, items: okFeed, totalCount: okFeed.length }) });
             }
             if (url.includes('/memory/consolidated')) {
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: '# Memory\n- fact 1' }) });
-            }
-            if (url.includes('/memory/feed') && !url.includes('/feed/')) {
-                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: okFeed, consolidatedAt: okStats.consolidatedAt, totalCount: okFeed.length }) });
             }
             return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
         });
@@ -273,14 +267,11 @@ describe('RepoMemorySection', () => {
 
     it('hides feed content when Consolidated tab is active', async () => {
         (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
-            if (url.includes('/memory/stats')) {
-                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(okStats) });
+            if (url.includes('/memory/overview')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ...okStats, items: okFeed, totalCount: okFeed.length }) });
             }
             if (url.includes('/memory/consolidated')) {
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: '# Memory' }) });
-            }
-            if (url.includes('/memory/feed') && !url.includes('/feed/')) {
-                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: okFeed, consolidatedAt: okStats.consolidatedAt, totalCount: okFeed.length }) });
             }
             return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
         });
@@ -294,14 +285,11 @@ describe('RepoMemorySection', () => {
 
     it('switches back to Feed tab from Consolidated tab', async () => {
         (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
-            if (url.includes('/memory/stats')) {
-                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(okStats) });
+            if (url.includes('/memory/overview')) {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ...okStats, items: okFeed, totalCount: okFeed.length }) });
             }
             if (url.includes('/memory/consolidated')) {
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: '# Memory' }) });
-            }
-            if (url.includes('/memory/feed') && !url.includes('/feed/')) {
-                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: okFeed, consolidatedAt: okStats.consolidatedAt, totalCount: okFeed.length }) });
             }
             return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) });
         });

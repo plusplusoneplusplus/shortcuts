@@ -136,7 +136,7 @@ export function AggregatePanel({
         if (phase !== 'queued') return;
         const poll = setInterval(async () => {
             try {
-                const stats = await memoryApi.getStats(repoId);
+                const stats = await memoryApi.getOverview(repoId);
                 if (stats.consolidationStatus === 'running') {
                     setPhase('streaming');
                 } else if (!stats.consolidationStatus || stats.consolidationStatus === 'idle') {

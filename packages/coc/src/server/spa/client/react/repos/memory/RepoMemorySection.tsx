@@ -38,12 +38,10 @@ export function RepoMemorySection({ repoId }: RepoMemorySectionProps) {
         setLoading(true);
         setError(null);
         try {
-            const [statsData, feedData] = await Promise.all([
-                memoryApi.getStats(repoId),
-                memoryApi.getFeed(repoId),
-            ]);
+            const data = await memoryApi.getOverview(repoId);
+            const { items, totalCount: _, ...statsData } = data;
             setStats(statsData);
-            setFeed(feedData.items);
+            setFeed(items);
         } catch (e: any) {
             setError(e?.message ?? 'Failed to load memory');
         } finally {

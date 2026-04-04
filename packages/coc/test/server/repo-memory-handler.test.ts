@@ -2,10 +2,9 @@
  * Tests for repo-memory-handler — HTTP handler unit tests.
  *
  * Covers all repo-scoped memory endpoints:
- *   GET  /api/repos/:repoId/memory/feed
+ *   GET  /api/repos/:repoId/memory/overview
  *   POST /api/repos/:repoId/memory/notes
  *   DELETE /api/repos/:repoId/memory/feed/:id
- *   GET  /api/repos/:repoId/memory/stats
  *   POST /api/repos/:repoId/memory/aggregate (enqueue)
  *   POST /api/repos/:repoId/memory/aggregate/accept
  *   POST /api/repos/:repoId/memory/aggregate/revert
@@ -158,17 +157,9 @@ describe('computeDiff', () => {
     });
 });
 
-// ── GET /api/repos/:repoId/memory/feed ────────────────────────────────────────
+// ── GET /api/repos/:repoId/memory/overview ────────────────────────────────────
 
-describe('GET /api/repos/:repoId/memory/feed', () => {
-    it('returns empty feed when repo has no memory', async () => {
-        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed`);
-        expect(status).toBe(200);
-        expect(body.items).toEqual([]);
-        expect(body.totalCount).toBe(0);
-        expect(body.consolidatedAt).toBeNull();
-    });
-
+describe('GET /api/repos/:repoId/memory/overview', () => {
     it('returns 404 when workspace not found', async () => {
         const s = makeServer(tmpDir, {
             store: {
@@ -176,17 +167,27 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
             } as unknown as ProcessStore,
         });
         const url = await startServer(s);
-        const { status } = await apiGet(`${url}/api/repos/unknown/memory/feed`);
+        const { status } = await apiGet(`${url}/api/repos/unknown/memory/overview`);
         await stopServer(s);
         expect(status).toBe(404);
     });
 
-    it('includes user notes in feed', async () => {
-        // Create a note in the repo-scoped store
+    it('returns empty overview when repo has no memory', async () => {
+        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/overview`);
+        expect(status).toBe(200);
+        expect(body.items).toEqual([]);
+        expect(body.totalCount).toBe(0);
+        expect(body.observationCount).toBe(0);
+        expect(body.noteCount).toBe(0);
+        expect(body.consolidatedAt).toBeNull();
+        expect(body.consolidationStatus).toBe('idle');
+    });
+
+    it('includes user notes in feed items', async () => {
         const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'notes')));
         noteStore.create({ content: 'test note', tags: ['api'], source: 'manual' });
 
-        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed`);
+        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/overview`);
         expect(status).toBe(200);
         expect(body.items).toHaveLength(1);
         const item: FeedItem = body.items[0];
@@ -195,10 +196,11 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
         expect(item.tags).toEqual(['api']);
         expect(item.source).toBe('manual');
         expect(body.totalCount).toBe(1);
+        expect(body.noteCount).toBe(1);
+        expect(body.observationCount).toBe(0);
     });
 
-    it('includes pipeline observations in feed', async () => {
-        // Write an observation directly to the pipeline memory store
+    it('includes pipeline observations in feed items', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
         const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
@@ -208,7 +210,7 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
             timestamp: '2026-01-01T00:00:00.000Z',
         }, 'use snake_case');
 
-        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed`);
+        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/overview`);
         expect(status).toBe(200);
         expect(body.items).toHaveLength(1);
         const item: FeedItem = body.items[0];
@@ -216,9 +218,10 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
         expect(item.source).toBe('code-review');
         expect(item.content).toContain('use snake_case');
         expect(item.tags).toEqual([]);
+        expect(body.observationCount).toBe(1);
     });
 
-    it('merges and sorts by createdAt descending', async () => {
+    it('merges and sorts items by createdAt descending', async () => {
         const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
         writeMemoryConfig(tmpDir, config);
         const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
@@ -234,11 +237,70 @@ describe('GET /api/repos/:repoId/memory/feed', () => {
         const noteStore = new FileMemoryStore(getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'notes')));
         noteStore.create({ content: 'new note', tags: [], source: 'manual' });
 
-        const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed`);
+        const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/overview`);
         expect(body.items).toHaveLength(2);
         // newer note should be first
         expect(body.items[0].type).toBe('note');
         expect(body.items[1].type).toBe('observation');
+    });
+
+    it('returns consolidationStatus idle when no active tasks', async () => {
+        const queueFacade = {
+            getQueued: vi.fn().mockReturnValue([]),
+            getRunning: vi.fn().mockReturnValue([]),
+        } as any;
+        const s = makeServer(tmpDir, { queueFacade });
+        const url = await startServer(s);
+        const { body } = await apiGet(`${url}/api/repos/${WORKSPACE_ID}/memory/overview`);
+        await stopServer(s);
+        expect(body.consolidationStatus).toBe('idle');
+    });
+
+    it('returns consolidationStatus running when task is active', async () => {
+        const runningTask = {
+            id: 'task-1',
+            type: 'memory-aggregate',
+            status: 'running',
+            payload: { kind: 'memory-aggregate', repoId: WORKSPACE_ID },
+            processId: 'queue_task-1',
+        };
+        const queueFacade = {
+            getQueued: vi.fn().mockReturnValue([]),
+            getRunning: vi.fn().mockReturnValue([runningTask]),
+        } as any;
+        const s = makeServer(tmpDir, { queueFacade });
+        const url = await startServer(s);
+        const { body } = await apiGet(`${url}/api/repos/${WORKSPACE_ID}/memory/overview`);
+        await stopServer(s);
+        expect(body.consolidationStatus).toBe('running');
+        expect(body.consolidationTaskId).toBe('task-1');
+        expect(body.consolidationProcessId).toBe('queue_task-1');
+    });
+
+    it('returns consolidatedAt from pipeline memory index', async () => {
+        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
+        writeMemoryConfig(tmpDir, config);
+        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
+        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+        const ts = '2026-03-01T10:00:00.000Z';
+        await pipelineStore.updateIndex('repo', undefined, { lastAggregation: ts });
+
+        const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/overview`);
+        expect(body.consolidatedAt).toBe(ts);
+    });
+});
+
+// ── Old routes return 404 ─────────────────────────────────────────────────────
+
+describe('old routes return 404', () => {
+    it('GET /api/repos/:repoId/memory/stats returns 404', async () => {
+        const { status } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/stats`);
+        expect(status).toBe(404);
+    });
+
+    it('GET /api/repos/:repoId/memory/feed returns 404', async () => {
+        const { status } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed`);
+        expect(status).toBe(404);
     });
 });
 
@@ -284,9 +346,9 @@ describe('POST /api/repos/:repoId/memory/notes', () => {
         expect(status).toBe(400);
     });
 
-    it('persists note so it appears in feed', async () => {
+    it('persists note so it appears in overview', async () => {
         await apiPost(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/notes`, { content: 'persisted' });
-        const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed`);
+        const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/overview`);
         expect(body.items).toHaveLength(1);
         expect(body.items[0].content).toBe('persisted');
     });
@@ -307,9 +369,9 @@ describe('DELETE /api/repos/:repoId/memory/feed/:id', () => {
         expect(status).toBe(200);
         expect(body.success).toBe(true);
 
-        // Verify removed from feed
-        const { body: feed } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed`);
-        expect(feed.items).toHaveLength(0);
+        // Verify removed from overview
+        const { body: overview } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/overview`);
+        expect(overview.items).toHaveLength(0);
     });
 
     it('returns 404 for non-existent note', async () => {
@@ -358,97 +420,6 @@ describe('DELETE /api/repos/:repoId/memory/feed/:id', () => {
             `${baseUrl}/api/repos/${WORKSPACE_ID}/memory/feed/no-such.md?type=observation`,
         );
         expect(status).toBe(404);
-    });
-});
-
-// ── GET /api/repos/:repoId/memory/stats ──────────────────────────────────────
-
-describe('GET /api/repos/:repoId/memory/stats', () => {
-    it('returns zero counts for empty repo', async () => {
-        const { status, body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/stats`);
-        expect(status).toBe(200);
-        expect(body.observationCount).toBe(0);
-        expect(body.noteCount).toBe(0);
-        expect(body.consolidatedAt).toBeNull();
-    });
-
-    it('counts notes correctly', async () => {
-        await apiPost(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/notes`, { content: 'note 1' });
-        await apiPost(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/notes`, { content: 'note 2' });
-
-        const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/stats`);
-        expect(body.noteCount).toBe(2);
-        expect(body.observationCount).toBe(0);
-    });
-
-    it('counts observations correctly', async () => {
-        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
-        writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
-        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'p1',timestamp: new Date().toISOString() }, 'obs 1');
-        await pipelineStore.writeRaw('repo', undefined, { pipeline: 'p2', timestamp: new Date().toISOString() }, 'obs 2');
-
-        const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/stats`);
-        expect(body.observationCount).toBe(2);
-    });
-
-    it('returns consolidatedAt from pipeline memory index', async () => {
-        const config = { ...DEFAULT_MEMORY_CONFIG, storageDir: path.join(tmpDir, 'memory') };
-        writeMemoryConfig(tmpDir, config);
-        const repoDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
-        const pipelineStore = new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
-        const ts = '2026-03-01T10:00:00.000Z';
-        await pipelineStore.updateIndex('repo', undefined, { lastAggregation: ts });
-
-        const { body } = await apiGet(`${baseUrl}/api/repos/${WORKSPACE_ID}/memory/stats`);
-        expect(body.consolidatedAt).toBe(ts);
-    });
-
-    it('returns stats even when workspace path is unknown', async () => {
-        const s = makeServer(tmpDir, {
-            store: {
-                getWorkspaces: vi.fn().mockResolvedValue([]),
-            } as unknown as ProcessStore,
-        });
-        const url = await startServer(s);
-        const { status, body } = await apiGet(`${url}/api/repos/${WORKSPACE_ID}/memory/stats`);
-        await stopServer(s);
-        expect(status).toBe(200);
-        expect(body.observationCount).toBe(0);
-    });
-
-    it('returns consolidationStatus idle when no active tasks', async () => {
-        const queueFacade = {
-            getQueued: vi.fn().mockReturnValue([]),
-            getRunning: vi.fn().mockReturnValue([]),
-        } as any;
-        const s = makeServer(tmpDir, { queueFacade });
-        const url = await startServer(s);
-        const { body } = await apiGet(`${url}/api/repos/${WORKSPACE_ID}/memory/stats`);
-        await stopServer(s);
-        expect(body.consolidationStatus).toBe('idle');
-    });
-
-    it('returns consolidationStatus running when task is active', async () => {
-        const runningTask = {
-            id: 'task-1',
-            type: 'memory-aggregate',
-            status: 'running',
-            payload: { kind: 'memory-aggregate', repoId: WORKSPACE_ID },
-            processId: 'queue_task-1',
-        };
-        const queueFacade = {
-            getQueued: vi.fn().mockReturnValue([]),
-            getRunning: vi.fn().mockReturnValue([runningTask]),
-        } as any;
-        const s = makeServer(tmpDir, { queueFacade });
-        const url = await startServer(s);
-        const { body } = await apiGet(`${url}/api/repos/${WORKSPACE_ID}/memory/stats`);
-        await stopServer(s);
-        expect(body.consolidationStatus).toBe('running');
-        expect(body.consolidationTaskId).toBe('task-1');
-        expect(body.consolidationProcessId).toBe('queue_task-1');
     });
 });
 
