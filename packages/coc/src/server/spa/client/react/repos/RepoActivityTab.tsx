@@ -160,6 +160,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         }
         if (selectedTaskId === id) {
             queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+            if (isMobile) setMobileShowDetail(true);
             return;
         }
         markSeen(id);

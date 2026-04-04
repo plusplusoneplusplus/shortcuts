@@ -160,6 +160,14 @@ describe('RepoActivityTab: selectTask keeps chat inline', () => {
     it('sets mobileShowDetail on mobile', () => {
         expect(selectTaskBlock).toContain('if (isMobile) setMobileShowDetail(true)');
     });
+
+    it('re-click guard also shows detail on mobile (regression: back then re-click same task)', () => {
+        // Extract the same-task guard block
+        const guardStart = selectTaskBlock.indexOf('if (selectedTaskId === id)');
+        const guardEnd = selectTaskBlock.indexOf('return;', guardStart);
+        const guardBlock = selectTaskBlock.substring(guardStart, guardEnd);
+        expect(guardBlock).toContain('setMobileShowDetail(true)');
+    });
 });
 
 // ── ActivityDetailPane: routing logic ──────────────────────────────────

@@ -133,6 +133,7 @@ export function ProcessesView() {
         }
         if (selectedTaskId === id) {
             queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+            if (isMobile) setMobileShowDetail(true);
             return;
         }
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id });

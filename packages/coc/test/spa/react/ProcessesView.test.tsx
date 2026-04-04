@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/useBreakpoint';
 
 // ── Mutable mock state ─────────────────────────────────────────────────
@@ -61,6 +61,7 @@ vi.mock('../../../src/server/spa/client/react/repos/ActivityListPane', () => ({
             data-queued-count={String(props.queued?.length ?? 0)}
             data-history-count={String(props.history?.length ?? 0)}
         >
+            <button data-testid="select-task-a" onClick={() => props.onSelectTask?.('task-A')}>select</button>
             ActivityListPane
         </div>
     ),
@@ -69,6 +70,7 @@ vi.mock('../../../src/server/spa/client/react/repos/ActivityListPane', () => ({
 vi.mock('../../../src/server/spa/client/react/repos/ActivityDetailPane', () => ({
     ActivityDetailPane: (props: any) => (
         <div data-testid="activity-detail-pane" data-selected-task-id={props.selectedTaskId ?? ''}>
+            {props.onBack && <button data-testid="detail-back-btn" onClick={props.onBack}>back</button>}
             ActivityDetailPane
         </div>
     ),
@@ -213,7 +215,37 @@ describe('ProcessesView', () => {
         expect(listPane.getAttribute('data-history-count')).toBe('1');
     });
 
-    // Test 9: WS context updates pass through directly (no client-side filtering needed)
+    // Test 9: Mobile — re-clicking the already-selected task re-opens the detail panel
+    // Regression: back button only clears mobileShowDetail but not selectedTaskId,
+    // so re-clicking the same task must still re-show the detail panel.
+    it('Mobile: re-clicking the already-selected task re-opens the detail panel', async () => {
+        setBreakpoint('mobile');
+        mockQueueState.selectedTaskId = 'task-A';
+
+        await act(async () => {
+            render(<ProcessesView />);
+        });
+
+        // useEffect syncs mobileShowDetail=true → detail pane is shown
+        expect(screen.getByTestId('activity-detail-pane')).toBeDefined();
+        expect(screen.queryByTestId('activity-mobile-list')).toBeNull();
+
+        // Click back → mobileShowDetail=false → list is shown
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('detail-back-btn'));
+        });
+        expect(screen.getByTestId('activity-mobile-list')).toBeDefined();
+        expect(screen.queryByTestId('activity-detail-pane')).toBeNull();
+
+        // Re-click the same task-A → should re-open detail
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('select-task-a'));
+        });
+        expect(screen.getByTestId('activity-detail-pane')).toBeDefined();
+        expect(screen.queryByTestId('activity-mobile-list')).toBeNull();
+    });
+
+    // Test 10: WS context updates pass through directly (no client-side filtering needed)
     it('WS context update: all tasks pass through (server-scoped)', async () => {
         const { fetchApi } = await import('../../../src/server/spa/client/react/hooks/useApi');
         // fetchQueue also runs on mount
