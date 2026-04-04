@@ -76,7 +76,7 @@ target: .github/workflows/cleanup.yaml
         expect(s.cron).toBe('0 0 * * *');
         expect(s.target).toBe('.github/workflows/cleanup.yaml');
         expect(s.source).toBe('repo');
-        expect(s.status).toBe('active');
+        expect(s.status).toBe('paused');
         expect(s.targetType).toBe('prompt');
         expect(s.onFailure).toBe('notify');
         expect(s.mode).toBe('autopilot');
@@ -96,8 +96,8 @@ cron: "*/5 * * * *"
 name: Daily
 cron: "0 9 * * *"
 `);
-        const result = loadRepoSchedules(tmpDir, { 'repo:daily': { status: 'paused' } });
-        expect(result[0].status).toBe('paused');
+        const result = loadRepoSchedules(tmpDir, { 'repo:daily': { status: 'active' } });
+        expect(result[0].status).toBe('active');
     });
 
     it('YAML status is overridden by runtime override', () => {
@@ -111,7 +111,7 @@ status: paused
         expect(result[0].status).toBe('active');
     });
 
-    it('uses YAML status when no override provided', () => {
+    it('defaults to paused even when YAML has status: paused', () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', `
 name: Daily
 cron: "0 9 * * *"

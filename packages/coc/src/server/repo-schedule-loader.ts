@@ -70,8 +70,8 @@ export function loadRepoSchedules(
 
             const id = idFromScheduleFilename(file);
             const override = overrides[id];
-            // override > yaml default > 'active'
-            const baseStatus = (parsed['status'] as ScheduleStatus | undefined) ?? 'active';
+            // Repo schedules always default to paused; only a local override can activate.
+            const baseStatus: ScheduleStatus = 'paused';
             const status: ScheduleStatus = override?.status ?? baseStatus;
 
             const entry: ScheduleEntry = {

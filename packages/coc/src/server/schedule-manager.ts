@@ -406,7 +406,6 @@ export class ScheduleManager extends EventEmitter {
             target: entry.target,
             params: entry.params,
             onFailure: entry.onFailure,
-            status: entry.status,
         };
         if (entry.targetType && entry.targetType !== 'prompt') yamlObj.targetType = entry.targetType;
         if (entry.outputFolder) yamlObj.outputFolder = entry.outputFolder;

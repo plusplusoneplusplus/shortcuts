@@ -108,9 +108,9 @@ describe('ScheduleManager — repo schedules', () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
         manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
-        const updated = manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'paused' });
+        const updated = manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'active' });
         expect(updated).toBeDefined();
-        expect(updated!.status).toBe('paused');
+        expect(updated!.status).toBe('active');
     });
 
     it('updateSchedule persists status override for repo schedules', () => {
@@ -118,10 +118,10 @@ describe('ScheduleManager — repo schedules', () => {
         const overrideStore = new RepoScheduleOverrideStore(dataDir);
         manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
-        manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'paused' });
+        manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'active' });
 
         const overrides = overrideStore.load(REPO_ID);
-        expect(overrides['repo:daily'].status).toBe('paused');
+        expect(overrides['repo:daily'].status).toBe('active');
     });
 
     it('updateSchedule ignores non-status fields for repo schedules', () => {
@@ -182,6 +182,36 @@ describe('ScheduleManager — repo schedules', () => {
 
     it('dispose cleans up without error even if no workspace registered', () => {
         expect(() => manager.dispose()).not.toThrow();
+    });
+
+    it('repo schedule defaults to paused when YAML has no status field', () => {
+        writeScheduleFile(scheduleDir, 'nightly.yaml', 'name: Nightly\ncron: "0 2 * * *"');
+        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+
+        const schedule = manager.getSchedule(REPO_ID, 'repo:nightly');
+        expect(schedule).toBeDefined();
+        expect(schedule!.status).toBe('paused');
+    });
+
+    it('repo schedule defaults to paused even when YAML has status: active', () => {
+        writeScheduleFile(scheduleDir, 'active.yaml', 'name: Active\ncron: "0 3 * * *"\nstatus: active');
+        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+
+        const schedule = manager.getSchedule(REPO_ID, 'repo:active');
+        expect(schedule).toBeDefined();
+        expect(schedule!.status).toBe('paused');
+    });
+
+    it('override in repo-schedule-overrides.json activates a paused repo schedule', () => {
+        writeScheduleFile(scheduleDir, 'deploy.yaml', 'name: Deploy\ncron: "0 4 * * *"');
+        const overrideStore = new RepoScheduleOverrideStore(dataDir);
+        overrideStore.save(REPO_ID, { 'repo:deploy': { status: 'active' } });
+
+        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+
+        const schedule = manager.getSchedule(REPO_ID, 'repo:deploy');
+        expect(schedule).toBeDefined();
+        expect(schedule!.status).toBe('active');
     });
 
     it('repo schedule override status is applied on reload', () => {

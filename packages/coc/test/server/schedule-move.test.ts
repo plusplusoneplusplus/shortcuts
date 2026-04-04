@@ -215,6 +215,26 @@ describe('ScheduleManager.moveSchedule', () => {
             .rejects.toThrow('already a repo schedule');
     });
 
+    it('moveUserToRepo YAML output does not contain a status field', async () => {
+        const repoId = 'repo1';
+        manager.registerWorkspacePath(repoId, workspaceRoot);
+
+        const sched = manager.addSchedule(repoId, {
+            name: 'No Status',
+            target: 'test.yaml',
+            cron: '0 9 * * *',
+            params: {},
+            onFailure: 'notify',
+            status: 'active',
+        });
+
+        await manager.moveSchedule(repoId, sched.id, 'repo');
+
+        const yamlPath = path.join(workspaceRoot, '.github', 'schedules', 'no-status.yaml');
+        const content = fs.readFileSync(yamlPath, 'utf-8');
+        expect(content).not.toMatch(/^status:/m);
+    });
+
     it('getWorkspacePath returns registered path', () => {
         manager.registerWorkspacePath('r1', '/some/path');
         expect(manager.getWorkspacePath('r1')).toBe('/some/path');
