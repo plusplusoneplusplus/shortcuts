@@ -238,7 +238,7 @@ export function GenerateTaskDialog({
         if (!minimized || !onRestore) return null;
         return {
             id: 'generate-task',
-            icon: '✨',
+            icon: '📋',
             label: 'Generate Plan',
             preview: pillPreview || undefined,
             onRestore,
@@ -509,7 +509,7 @@ export function GenerateTaskDialog({
                 onClose={isSubmitting ? undefined : onClose}
                 onMinimize={isSubmitting ? undefined : onMinimize}
                 disableClose={isSubmitting}
-                title="Generate Plan"
+                title="📋 Generate Plan"
                 className="max-w-[600px]"
                 footer={footer}
                 resizable
@@ -526,7 +526,7 @@ export function GenerateTaskDialog({
             onClose={isSubmitting ? undefined : onClose}
             onMinimize={isSubmitting ? undefined : onMinimize}
             disableClose={isSubmitting}
-            title="Generate Plan"
+            title="📋 Generate Plan"
             className="max-w-[600px]"
             footer={footer}
         >

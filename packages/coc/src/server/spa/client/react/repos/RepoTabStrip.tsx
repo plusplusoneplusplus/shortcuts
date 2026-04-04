@@ -567,7 +567,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 setContextMenu(null);
                             }}
                         >
-                            + Queue Task
+                            🤖 Queue Task
                         </button>
                         <button
                             data-testid="repo-tab-context-ask"
@@ -578,7 +578,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 setContextMenu(null);
                             }}
                         >
-                            💬 Ask
+                            💡 Ask
                         </button>
                         <button
                             data-testid="repo-tab-context-run-script"
@@ -589,7 +589,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 setContextMenu(null);
                             }}
                         >
-                            ⚙ Run Script
+                            ⚡ Run Script
                         </button>
                         <button
                             data-testid="repo-tab-context-generate-plan"
@@ -600,7 +600,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 setContextMenu(null);
                             }}
                         >
-                            ✨ Generate Plan
+                            📋 Generate Plan
                         </button>
                         <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
                         <button

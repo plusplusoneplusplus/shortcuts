@@ -140,7 +140,7 @@ function switchToAdvanced() {
 describe('GenerateTaskDialog', () => {
     it('renders idle state', async () => {
         await act(async () => { renderDialog(); });
-        expect(screen.getByText('Generate Plan')).toBeDefined();
+        expect(screen.getByText('📋 Generate Plan')).toBeDefined();
         const prompt = document.getElementById('gen-task-prompt') as HTMLElement;
         expect(prompt).toBeDefined();
         expect(prompt.textContent).toBe('');
@@ -1524,7 +1524,7 @@ describe('GenerateTaskDialog', () => {
         expect(document.getElementById('generate-task-overlay')).toBeNull();
         const pill = document.querySelector('[data-testid="minimized-pill-generate-task"]');
         expect(pill).not.toBeNull();
-        expect(pill!.textContent).toContain('✨');
+        expect(pill!.textContent).toContain('📋');
         expect(pill!.textContent).toContain('Generate Plan');
         expect(pill!.textContent).toContain('Restore');
     });

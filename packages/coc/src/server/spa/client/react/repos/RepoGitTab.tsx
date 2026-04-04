@@ -1099,7 +1099,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             items.push({ label: '', separator: true, onClick: () => {} });
             items.push({
                 label: 'Ask AI',
-                icon: '🤖',
+                icon: '💡',
                 onClick: () => {
                     const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
@@ -1107,7 +1107,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             });
             items.push({
                 label: 'Queue Task',
-                icon: '📋',
+                icon: '🤖',
                 onClick: () => {
                     const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
@@ -1135,12 +1135,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 });
             }
             items.push({
-                label: 'Ask AI', icon: '🤖', onClick: () => {
+                label: 'Ask AI', icon: '💡', onClick: () => {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
                 },
             });
             items.push({
-                label: 'Queue Task', icon: '📋', onClick: () => {
+                label: 'Queue Task', icon: '🤖', onClick: () => {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
                 },
             });
@@ -1149,12 +1149,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (contextMenu.type === 'branch-range') {
             items.push({
                 label: 'Ask AI',
-                icon: '🤖',
+                icon: '💡',
                 onClick: () => { void handleBranchAskAI('ask'); },
             });
             items.push({
                 label: 'Queue Task',
-                icon: '📋',
+                icon: '🤖',
                 onClick: () => { void handleBranchAskAI('task'); },
             });
         }

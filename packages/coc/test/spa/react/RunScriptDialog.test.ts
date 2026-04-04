@@ -63,7 +63,7 @@ describe('RunScriptDialog minimize-to-tray', () => {
     });
 
     it('uses script icon and Run Script label for the pill', () => {
-        expect(RUN_SCRIPT_SOURCE).toContain("icon: '⚙'");
+        expect(RUN_SCRIPT_SOURCE).toContain("icon: '⚡'");
         expect(RUN_SCRIPT_SOURCE).toContain("label: 'Run Script'");
     });
 

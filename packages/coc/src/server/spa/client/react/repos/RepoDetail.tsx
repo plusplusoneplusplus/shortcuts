@@ -252,7 +252,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 title="Ask AI a question (read-only)"
                                 data-testid="repo-ask-btn"
                             >
-                                💬 Ask
+                                💡 Ask
                             </Button>
                             <div className="relative" ref={moreMenuRef} data-testid="repo-more-menu-container">
                                 <Button
@@ -272,21 +272,21 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                                 data-testid="repo-more-queue-task"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }); }}
                                             >
-                                                + Queue Task
+                                                🤖 Queue Task
                                             </button>
                                             <button
                                                 className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-run-script"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
                                             >
-                                                ⚙ Run Script
+                                                ⚡ Run Script
                                             </button>
                                             <button
                                                 className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-generate"
                                                 onClick={() => { setMoreMenuOpen(false); handleOpenGenerateDialog(); }}
                                             >
-                                                ✨ Generate Plan
+                                                📋 Generate Plan
                                             </button>
 
                                         </div>
@@ -406,7 +406,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 title="Queue a new task"
                                 data-testid="repo-queue-task-btn"
                             >
-                                + Queue Task
+                                🤖 Queue Task
                             </Button>
                             <Button
                                 variant="primary"
@@ -415,7 +415,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 title="Run a script in this repo"
                                 data-testid="repo-run-script-btn"
                             >
-                                ⚙ Run Script
+                                ⚡ Run Script
                             </Button>
                             <Button
                                 variant="primary"
@@ -424,10 +424,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 title="Ask AI a question (read-only)"
                                 data-testid="repo-ask-btn"
                             >
-                                💬 Ask
+                                💡 Ask
                             </Button>
-                            <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
-                                ✨ Generate Plan
+                            <Button variant="primary" size="sm" id="repo-generate-btn"data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
+                                📋 Generate Plan
                                 {generateDialog.open && generateDialog.minimized && (
                                     <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
                                 )}

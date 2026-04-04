@@ -591,7 +591,7 @@ export function ActivityListPane({
                             onClick={onOpenDialog}
                             data-testid="repo-queue-task-btn-empty"
                         >
-                            + Queue Task
+                            🤖 Queue Task
                         </Button>
                     </>
                 )}
