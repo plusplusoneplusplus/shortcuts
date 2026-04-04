@@ -8,6 +8,7 @@ import { useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import { cn } from '../../shared/cn';
 import type { MemorySubTab } from '../../types/dashboard';
+import { FeatureTip } from '../../welcome/FeatureTip';
 import { MemoryEntriesPanel } from './MemoryEntriesPanel';
 import { MemoryConfigPanel } from './MemoryConfigPanel';
 import { MemoryFilesPanel } from './MemoryFilesPanel';
@@ -29,6 +30,7 @@ export function MemoryView() {
 
     return (
         <div id="view-memory" className="flex flex-col h-full overflow-hidden">
+            <FeatureTip tipId="memory-intro" className="mx-3 mt-2" />
             {/* Sub-tab bar */}
             <div className="flex items-center gap-1 px-3 pt-2 pb-0 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                 {SUB_TABS.map(({ id, label }) => (

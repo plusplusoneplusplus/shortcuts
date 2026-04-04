@@ -16,7 +16,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
 
 const mockDispatch = vi.fn();
 const makeAppState = (activeSkillsSubTab = 'installed') => ({
-    state: { activeSkillsSubTab },
+    state: { activeSkillsSubTab, dismissedTips: [] },
     dispatch: mockDispatch,
 });
 

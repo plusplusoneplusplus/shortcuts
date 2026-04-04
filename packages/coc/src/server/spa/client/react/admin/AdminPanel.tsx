@@ -11,6 +11,7 @@ import { PreferencesSection } from './PreferencesSection';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { PromptsPanel } from './PromptsPanel';
 import { useApp } from '../context/AppContext';
+import { FeatureTip } from '../welcome/FeatureTip';
 import type { AdminSubTab } from '../types/dashboard';
 
 function formatBytes(bytes: number): string {
@@ -39,6 +40,12 @@ export function AdminPanel() {
         window.location.hash = `admin/${tab}`;
     };
     const [showAdvanced, setShowAdvanced] = useState(false);
+
+    useEffect(() => {
+        if (!state.onboardingProgress?.settingsVisited) {
+            dispatch({ type: 'UPDATE_ONBOARDING', payload: { settingsVisited: true } });
+        }
+    }, []);
 
     // Storage stats
     const [stats, setStats] = useState<Stats | null>(null);
@@ -443,6 +450,8 @@ export function AdminPanel() {
                         >↻</button>
                     </div>
                 </header>
+
+                <FeatureTip tipId="admin-intro" />
 
                 {/* Tab bar — desktop: underline tabs; mobile: select */}
                 <div className="hidden md:flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
