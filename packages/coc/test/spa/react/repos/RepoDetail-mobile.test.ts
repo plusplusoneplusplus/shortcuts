@@ -244,8 +244,8 @@ describe('RepoDetail mobile: MobileTabBar integration', () => {
         expect(REPO_DETAIL_SOURCE).toContain('onTabChange={switchSubTab}');
     });
 
-    it('passes SUB_TABS list to MobileTabBar', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('tabs={SUB_TABS}');
+    it('passes VISIBLE_SUB_TABS list to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('tabs={VISIBLE_SUB_TABS}');
     });
 
     it('passes badge counts to MobileTabBar', () => {

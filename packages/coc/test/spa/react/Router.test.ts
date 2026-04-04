@@ -1201,9 +1201,9 @@ describe('Bare W key no longer navigates to wiki', () => {
         expect(dispatches).toHaveLength(0);
     });
 
-    it('Alt+I dispatches wiki navigation', () => {
+    it('Alt+I does NOT dispatch wiki navigation (wiki tab hidden)', () => {
         const dispatches = simulateKeyHandler({ key: 'i', code: 'KeyI', altKey: true }, repoState);
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+        expect(dispatches).toHaveLength(0);
     });
 });
 
@@ -1240,8 +1240,9 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
 
     const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
 
-    it('REPO_TAB_SHORTCUTS maps 9 letters to sub-tabs', () => {
-        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(9);
+    it('REPO_TAB_SHORTCUTS maps 8 letters to sub-tabs (wiki hidden)', () => {
+        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(8);
+        expect(REPO_TAB_SHORTCUTS['i']).toBeUndefined();
     });
 
     it.each([
@@ -1253,7 +1254,6 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
         ['w', 'KeyW', 'workflows'],
         ['s', 'KeyS', 'schedules'],
         ['c', 'KeyC', 'settings'],
-        ['i', 'KeyI', 'wiki'],
     ] as [string, string, string][])('Alt+%s dispatches SET_REPO_SUB_TAB %s', (letter, code, tab) => {
         const dispatches = simulateAltKeyHandler({ key: letter, code, altKey: true }, repoState);
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab });
@@ -1671,8 +1671,9 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).not.toContain("e.key === 'w' || e.key === 'W'");
     });
 
-    it('wiki is accessible via Alt+I (i: wiki in REPO_TAB_SHORTCUTS)', () => {
+    it('wiki shortcut (Alt+I) is defined in ALL_REPO_TAB_SHORTCUTS but hidden from exported REPO_TAB_SHORTCUTS', () => {
         expect(ROUTER_SOURCE).toContain("i: 'wiki'");
+        expect(REPO_TAB_SHORTCUTS['i']).toBeUndefined();
     });
 
     it('bare A is no longer a shortcut (replaced by Alt+A)', () => {

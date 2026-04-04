@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SUB_TABS } from '../../../src/server/spa/client/react/repos/RepoDetail';
+import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/repos/RepoDetail';
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
@@ -61,6 +61,29 @@ describe('RepoDetail SUB_TABS', () => {
         const tasksTab = SUB_TABS.find(t => t.key === 'tasks');
         expect(tasksTab).toBeDefined();
         expect(tasksTab!.label).toBe('Plans');
+    });
+});
+
+describe('RepoDetail VISIBLE_SUB_TABS', () => {
+    it('excludes wiki when SHOW_WIKI_TAB is false', () => {
+        expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
+    });
+
+    it('has 8 entries (all SUB_TABS minus wiki)', () => {
+        expect(VISIBLE_SUB_TABS).toHaveLength(8);
+    });
+
+    it('contains all non-wiki tabs in order', () => {
+        const keys = VISIBLE_SUB_TABS.map(t => t.key);
+        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'workflows', 'schedules']);
+    });
+
+    it('renders VISIBLE_SUB_TABS.map in the tab strip', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('VISIBLE_SUB_TABS.map');
+    });
+
+    it('passes VISIBLE_SUB_TABS to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('tabs={VISIBLE_SUB_TABS}');
     });
 });
 

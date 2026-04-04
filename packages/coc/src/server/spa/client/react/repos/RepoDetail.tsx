@@ -28,6 +28,7 @@ import { fetchApi } from '../hooks/useApi';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
 import { useGitInfo } from '../hooks/useGitInfo';
 import { MobileTabBar } from '../layout/MobileTabBar';
+import { SHOW_WIKI_TAB } from '../layout/TopBar';
 import type { RepoData } from './repoGrouping';
 import type { RepoSubTab } from '../types/dashboard';
 
@@ -48,6 +49,11 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'wiki', label: 'Wiki', shortcut: 'Alt+I' },
 ];
+
+/** Tabs actually rendered in the UI — wiki is hidden behind a feature flag. */
+export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
+    ? SUB_TABS
+    : SUB_TABS.filter(t => t.key !== 'wiki');
 
 function getTabSuffix(tab: RepoSubTab, state: AppContextState): string {
     if (tab === 'settings') return '/settings/' + state.settingsSection;
@@ -321,7 +327,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 style={{ WebkitOverflowScrolling: 'touch' }}
                                 data-testid="repo-sub-tab-strip"
                             >
-                            {SUB_TABS.map(t => (
+                            {VISIBLE_SUB_TABS.map(t => (
                                 <button
                                     key={t.key}
                                     data-subtab={t.key}
@@ -437,7 +443,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 <MobileTabBar
                     activeTab={activeSubTab}
                     onTabChange={switchSubTab}
-                    tabs={SUB_TABS}
+                    tabs={VISIBLE_SUB_TABS}
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                 />

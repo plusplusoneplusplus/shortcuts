@@ -9,6 +9,7 @@ import { useQueue } from '../context/QueueContext';
 import { ProcessesView } from '../processes/ProcessesView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
+import { SHOW_WIKI_TAB } from './TopBar';
 import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 
@@ -191,7 +192,7 @@ export function parseCopilotSection(hash: string): SettingsSection {
     return parseSettingsSection(hash);
 }
 
-export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
+const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     g: 'git',
     e: 'explorer',
     p: 'tasks',
@@ -202,6 +203,10 @@ export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     c: 'settings',
     i: 'wiki',
 };
+
+export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
+    ? ALL_REPO_TAB_SHORTCUTS
+    : Object.fromEntries(Object.entries(ALL_REPO_TAB_SHORTCUTS).filter(([, v]) => v !== 'wiki'));
 
 
 export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts']);
