@@ -45,8 +45,9 @@ vi.mock('../../../src/server/spa/client/react/utils/document-context', () => ({
     extractDocumentContext: vi.fn(() => ({ surroundingLines: '', nearestHeading: null, allHeadings: [] })),
 }));
 
+const mockAddToast = vi.fn();
 vi.mock('../../../src/server/spa/client/react/context/ToastContext', () => ({
-    useGlobalToast: () => ({ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }),
+    useGlobalToast: () => ({ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/shared/SourceEditor', () => ({
@@ -97,6 +98,7 @@ afterEach(() => {
 describe('MarkdownReviewDialog', () => {
     beforeEach(() => {
         setupFetch();
+        mockAddToast.mockClear();
     });
 
     it('renders nothing when open=false', () => {
@@ -346,7 +348,7 @@ describe('MarkdownReviewDialog', () => {
         expect(btn!.getAttribute('aria-label')).toBe('Open in new window');
     });
 
-    it('pop-out button calls window.open and onClose', () => {
+    it('pop-out button calls window.open with named target and dimensions, then closes', () => {
         const mockPopup = { focus: vi.fn() };
         const windowOpenSpy = vi.spyOn(window, 'open').mockReturnValue(mockPopup as any);
         const onClose = vi.fn();
@@ -363,14 +365,19 @@ describe('MarkdownReviewDialog', () => {
         const btn = document.querySelector('[data-testid="markdown-review-popout-btn"]') as HTMLElement;
         fireEvent.click(btn);
         expect(windowOpenSpy).toHaveBeenCalledOnce();
-        const url = windowOpenSpy.mock.calls[0][0] as string;
+        const [url, target, features] = windowOpenSpy.mock.calls[0];
         expect(url).toContain('#popout/markdown');
         expect(url).toContain('workspace=ws1');
         expect(url).toContain('filePath=test.md');
+        // Named target for window reuse (not '_blank')
+        expect(target).toMatch(/^coc-md-popout-/);
+        // Window features to force a separate window
+        expect(features).toContain('width=900');
+        expect(features).toContain('height=700');
         expect(onClose).toHaveBeenCalledOnce();
     });
 
-    it('pop-out button does not close dialog when window.open returns null', () => {
+    it('pop-out button does not close dialog and shows toast when popup is blocked', () => {
         vi.spyOn(window, 'open').mockReturnValue(null);
         const onClose = vi.fn();
         render(
@@ -386,6 +393,10 @@ describe('MarkdownReviewDialog', () => {
         const btn = document.querySelector('[data-testid="markdown-review-popout-btn"]') as HTMLElement;
         fireEvent.click(btn);
         expect(onClose).not.toHaveBeenCalled();
+        expect(mockAddToast).toHaveBeenCalledWith(
+            'Pop-out blocked. Allow popups for this site and try again.',
+            'error',
+        );
     });
 
     it('renders inside a FloatingDialog (portal to body)', () => {
@@ -522,5 +533,24 @@ describe('MarkdownReviewDialog', () => {
         const btn = document.querySelector('[data-testid="markdown-review-popout-btn"]');
         expect(btn).not.toBeNull();
         expect(btn!.getAttribute('aria-label')).toBe('Open in new window');
+    });
+
+    it('pop-out uses deterministic named target derived from wsId and filePath', () => {
+        const windowOpenSpy = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as any);
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="src/readme.md"
+                displayPath="/workspace/src/readme.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-popout-btn"]') as HTMLElement;
+        fireEvent.click(btn);
+        const target = windowOpenSpy.mock.calls[0][1] as string;
+        // Target encodes wsId + filePath, sanitised for window.open
+        expect(target).toBe('coc-md-popout-ws1__src_readme_md');
     });
 });

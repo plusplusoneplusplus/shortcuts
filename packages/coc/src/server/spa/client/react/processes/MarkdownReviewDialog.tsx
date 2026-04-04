@@ -11,6 +11,7 @@ import { FloatingDialog } from '../shared/FloatingDialog';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useMarkdownPopOut } from '../context/MarkdownPopOutContext';
+import { useGlobalToast } from '../context/ToastContext';
 import { mdPopOutKey } from '../layout/PopOutMarkdownShell';
 
 function RevealInExplorerIcon() {
@@ -85,6 +86,7 @@ export function MarkdownReviewDialog({
     const { isMobile } = useBreakpoint();
     const scrollTopRef = useRef(0);
     const { markPoppedOut } = useMarkdownPopOut();
+    const { addToast } = useGlobalToast();
     const [isMaximized, setIsMaximized] = useState(false);
     const handleToggleMaximize = () => setIsMaximized(v => !v);
 
@@ -105,8 +107,11 @@ export function MarkdownReviewDialog({
         if (displayPath) params.set('displayPath', displayPath);
         params.set('fetchMode', fetchMode);
         const url = `${window.location.origin}${window.location.pathname}?${params.toString()}#popout/markdown`;
-        const popup = window.open(url, '_blank', 'noopener');
-        if (popup) {
+        const windowName = `coc-md-popout-${mdPopOutKey(wsId, filePath).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        const popup = window.open(url, windowName, 'width=900,height=700');
+        if (!popup) {
+            addToast('Pop-out blocked. Allow popups for this site and try again.', 'error');
+        } else {
             markPoppedOut(mdPopOutKey(wsId, filePath));
             onClose();
         }
