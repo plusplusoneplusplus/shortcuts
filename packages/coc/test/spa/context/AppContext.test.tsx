@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
-import { AppProvider, useApp, appReducer, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider, useApp, appReducer, type AppContextState, type AppAction, type OnboardingProgress } from '../../../src/server/spa/client/react/context/AppContext';
 
 // ── Reducer unit tests ────────────────────────────────────────────────────────
 
@@ -49,6 +49,10 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wikiTabState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
+        hasSeenWelcome: false,
+        onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+        dismissedTips: [],
+        preferencesLoaded: false,
         ...overrides,
     } as AppContextState;
 }
@@ -144,6 +148,136 @@ describe('AppContext reducer', () => {
             const state = makeState({ wsStatus: 'closed' });
             const result = appReducer(state, { type: 'SET_WS_STATUS', status: 'open' });
             expect(result.wsStatus).toBe('open');
+        });
+    });
+
+    describe('SET_WELCOME_PREFERENCES', () => {
+        it('sets all welcome fields from payload and marks preferencesLoaded', () => {
+            const state = makeState();
+            const result = appReducer(state, {
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: {
+                    hasSeenWelcome: true,
+                    onboardingProgress: { hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: true },
+                    dismissedTips: ['tip-1', 'tip-2'],
+                },
+            });
+            expect(result.hasSeenWelcome).toBe(true);
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: true });
+            expect(result.dismissedTips).toEqual(['tip-1', 'tip-2']);
+            expect(result.preferencesLoaded).toBe(true);
+        });
+
+        it('keeps defaults when payload fields are undefined', () => {
+            const state = makeState({
+                hasSeenWelcome: true,
+                onboardingProgress: { hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false },
+                dismissedTips: ['tip-a'],
+            });
+            const result = appReducer(state, { type: 'SET_WELCOME_PREFERENCES', payload: {} });
+            expect(result.hasSeenWelcome).toBe(true);
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false });
+            expect(result.dismissedTips).toEqual(['tip-a']);
+            expect(result.preferencesLoaded).toBe(true);
+        });
+
+        it('merges partial onboardingProgress without clobbering other fields', () => {
+            const state = makeState({
+                onboardingProgress: { hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false },
+            });
+            const result = appReducer(state, {
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: { onboardingProgress: { hasOpenedWiki: true } },
+            });
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: true, hasUsedChat: false });
+        });
+    });
+
+    describe('DISMISS_WELCOME', () => {
+        it('sets hasSeenWelcome to true', () => {
+            const state = makeState({ hasSeenWelcome: false });
+            const result = appReducer(state, { type: 'DISMISS_WELCOME' });
+            expect(result.hasSeenWelcome).toBe(true);
+        });
+
+        it('fires a PATCH fetch to /preferences', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState();
+            appReducer(state, { type: 'DISMISS_WELCOME' });
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ hasSeenWelcome: true }),
+                }),
+            );
+            vi.unstubAllGlobals();
+        });
+    });
+
+    describe('UPDATE_ONBOARDING', () => {
+        it('merges partial progress without clobbering other fields', () => {
+            const state = makeState({
+                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+            });
+            const result = appReducer(state, { type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } });
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false });
+        });
+
+        it('fires a PATCH fetch with the merged progress', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState({
+                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: false },
+            });
+            appReducer(state, { type: 'UPDATE_ONBOARDING', payload: { hasUsedChat: true } });
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: true } }),
+                }),
+            );
+            vi.unstubAllGlobals();
+        });
+    });
+
+    describe('DISMISS_TIP', () => {
+        it('appends a new tipId to dismissedTips', () => {
+            const state = makeState({ dismissedTips: ['tip-a'] });
+            const result = appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-b' } });
+            expect(result.dismissedTips).toEqual(['tip-a', 'tip-b']);
+        });
+
+        it('fires a PATCH fetch with the updated tips', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState({ dismissedTips: [] });
+            appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-x' } });
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ dismissedTips: ['tip-x'] }),
+                }),
+            );
+            vi.unstubAllGlobals();
+        });
+
+        it('returns same state reference for duplicate tipId (no-op)', () => {
+            const state = makeState({ dismissedTips: ['tip-a'] });
+            const result = appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-a' } });
+            expect(result).toBe(state);
+        });
+
+        it('does not fire a PATCH for duplicate tipId', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState({ dismissedTips: ['tip-a'] });
+            appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-a' } });
+            expect(fetchSpy).not.toHaveBeenCalled();
+            vi.unstubAllGlobals();
         });
     });
 });

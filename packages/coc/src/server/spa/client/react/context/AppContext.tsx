@@ -22,6 +22,12 @@ export function getInitialSidebarCollapsed(): boolean {
 
 // ── State ──────────────────────────────────────────────────────────────
 
+export interface OnboardingProgress {
+    hasRunWorkflow: boolean;
+    hasOpenedWiki: boolean;
+    hasUsedChat: boolean;
+}
+
 export interface AppContextState {
     processes: any[];
     selectedId: string | null;
@@ -68,6 +74,10 @@ export interface AppContextState {
     repoSubTabNavState: Record<string, TasksPanelNavState>;
     /** Currently active section within the Settings tab (Info / Preferences / MCP / Skills / Instructions). */
     settingsSection: SettingsSection;
+    hasSeenWelcome: boolean;
+    onboardingProgress: OnboardingProgress;
+    dismissedTips: string[];
+    preferencesLoaded: boolean;
 }
 
 const initialState: AppContextState = {
@@ -112,6 +122,10 @@ const initialState: AppContextState = {
     wikiTabState: {},
     repoSubTabNavState: {},
     settingsSection: 'info',
+    hasSeenWelcome: false,
+    onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+    dismissedTips: [],
+    preferencesLoaded: false,
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -174,7 +188,11 @@ export type AppAction =
     | { type: 'SET_PR_DETAIL_TAB'; tab: PrDetailTab }
     | { type: 'CLEAR_SELECTED_PR' }
     | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
-    | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection };
+    | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
+    | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[] } }
+    | { type: 'DISMISS_WELCOME' }
+    | { type: 'UPDATE_ONBOARDING'; payload: Partial<OnboardingProgress> }
+    | { type: 'DISMISS_TIP'; payload: { tipId: string } };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -394,6 +412,45 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             };
         case 'SET_SETTINGS_SECTION':
             return state.settingsSection === action.section ? state : { ...state, settingsSection: action.section };
+        case 'SET_WELCOME_PREFERENCES': {
+            const { hasSeenWelcome, onboardingProgress, dismissedTips } = action.payload;
+            return {
+                ...state,
+                hasSeenWelcome: hasSeenWelcome ?? state.hasSeenWelcome,
+                onboardingProgress: onboardingProgress
+                    ? { ...state.onboardingProgress, ...onboardingProgress }
+                    : state.onboardingProgress,
+                dismissedTips: dismissedTips ?? state.dismissedTips,
+                preferencesLoaded: true,
+            };
+        }
+        case 'DISMISS_WELCOME': {
+            fetch(getApiBase() + '/preferences', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hasSeenWelcome: true }),
+            }).catch(() => {});
+            return { ...state, hasSeenWelcome: true };
+        }
+        case 'UPDATE_ONBOARDING': {
+            const merged = { ...state.onboardingProgress, ...action.payload };
+            fetch(getApiBase() + '/preferences', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ onboardingProgress: merged }),
+            }).catch(() => {});
+            return { ...state, onboardingProgress: merged };
+        }
+        case 'DISMISS_TIP': {
+            if (state.dismissedTips.includes(action.payload.tipId)) return state;
+            const updated = [...state.dismissedTips, action.payload.tipId];
+            fetch(getApiBase() + '/preferences', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dismissedTips: updated }),
+            }).catch(() => {});
+            return { ...state, dismissedTips: updated };
+        }
         default:
             return state;
     }
@@ -406,19 +463,8 @@ const AppContext = createContext<{ state: AppContextState; dispatch: Dispatch<Ap
 export function AppProvider({ children }: { children: ReactNode }) {
     const [state, dispatch] = useReducer(appReducer, initialState);
 
-    // Sync sidebar collapsed state from server on mount + cross-tab sync
+    // Cross-tab sync for sidebar collapsed state
     useEffect(() => {
-        let cancelled = false;
-        fetch(getApiBase() + '/preferences')
-            .then(r => r.json())
-            .then((prefs) => {
-                if (!cancelled && typeof prefs.reposSidebarCollapsed === 'boolean') {
-                    dispatch({ type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: prefs.reposSidebarCollapsed });
-                    try { localStorage.setItem(SIDEBAR_KEY, String(prefs.reposSidebarCollapsed)); } catch { /* SSR / test */ }
-                }
-            })
-            .catch(() => {});
-
         const onStorage = (e: StorageEvent) => {
             if (e.key === SIDEBAR_KEY && e.newValue !== null) {
                 dispatch({ type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: e.newValue === 'true' });
@@ -426,7 +472,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         };
         window.addEventListener('storage', onStorage);
         return () => {
-            cancelled = true;
             window.removeEventListener('storage', onStorage);
         };
     }, []);
