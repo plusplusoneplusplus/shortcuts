@@ -201,33 +201,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         },
     });
 
-    // GET /api/processes/:id/children — Child processes for a pipeline run
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/processes\/([^/]+)\/children$/,
-        handler: async (req, res, match) => {
-            const parentId = decodeURIComponent(match![1]);
-
-            const baseFilter = parseQueryParams(req.url || '/');
-            const filter: ProcessFilter = {
-                ...baseFilter,
-                parentProcessId: parentId,
-            };
-
-            if (!filter.exclude) {
-                filter.exclude = ['conversation'];
-            }
-
-            const children = await store.getAllProcesses(filter);
-            const responseChildren = filter.exclude
-                ? children.map(p => stripExcludedFields(p, filter.exclude))
-                : children;
-
-            sendJSON(res, 200, { children: responseChildren, total: children.length });
-        },
-    });
-
-    // GET /api/processes/:id — Single process detail
+    // GET /api/processes/:id — Single process detail with embedded children
     routes.push({
         method: 'GET',
         pattern: /^\/api\/processes\/([^/]+)$/,
@@ -239,7 +213,21 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, notFound('Process'));
             }
             const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : proc;
-            sendJSON(res, 200, { process: result });
+
+            // Embed children using the same logic the deleted /children route used
+            const childFilter: ProcessFilter = {
+                ...filter,
+                parentProcessId: proc.id,
+            };
+            if (!childFilter.exclude) {
+                childFilter.exclude = ['conversation'];
+            }
+            const children = await store.getAllProcesses(childFilter);
+            const responseChildren = childFilter.exclude
+                ? children.map(p => stripExcludedFields(p, childFilter.exclude))
+                : children;
+
+            sendJSON(res, 200, { process: result, children: responseChildren, total: children.length });
         },
     });
 

@@ -38,14 +38,11 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
         setLoading(true);
         setError(null);
 
-        Promise.all([
-            fetchApi(`/processes/${encodeURIComponent(processId)}`),
-            fetchApi(`/processes/${encodeURIComponent(processId)}/children`),
-        ])
-            .then(([processData, childrenData]) => {
+        fetchApi(`/processes/${encodeURIComponent(processId)}`)
+            .then((data) => {
                 if (cancelled) return;
-                setProcess(processData.process ?? processData);
-                const items = Array.isArray(childrenData) ? childrenData : (childrenData.children ?? []);
+                setProcess(data.process ?? data);
+                const items = Array.isArray(data.children) ? data.children : [];
                 setChildren(items.map((c: any, i: number) => ({
                     processId: c.id ?? c.processId,
                     itemIndex: c.metadata?.itemIndex ?? c.itemIndex ?? i,

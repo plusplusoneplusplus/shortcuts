@@ -29,24 +29,22 @@ function makeProcessResponse(overrides: Record<string, any> = {}) {
             },
             ...overrides,
         },
+        children: [
+            {
+                id: 'proc-1-m0',
+                status: 'completed',
+                metadata: { itemIndex: 0, promptPreview: 'Item 0' },
+                durationMs: 1000,
+            },
+            {
+                id: 'proc-1-m1',
+                status: 'completed',
+                metadata: { itemIndex: 1, promptPreview: 'Item 1' },
+                durationMs: 1500,
+            },
+        ],
+        total: 2,
     };
-}
-
-function makeChildrenResponse() {
-    return [
-        {
-            id: 'proc-1-m0',
-            status: 'completed',
-            metadata: { itemIndex: 0, promptPreview: 'Item 0' },
-            durationMs: 1000,
-        },
-        {
-            id: 'proc-1-m1',
-            status: 'completed',
-            metadata: { itemIndex: 1, promptPreview: 'Item 1' },
-            durationMs: 1500,
-        },
-    ];
 }
 
 function makeChildProcessResponse() {
@@ -61,6 +59,8 @@ function makeChildProcessResponse() {
                 { role: 'assistant', content: 'Item 0 processed.', timeline: [] },
             ],
         },
+        children: [],
+        total: 0,
     };
 }
 
@@ -80,10 +80,7 @@ describe('WorkflowDetailView + ItemConversationPanel integration', () => {
 
     it('click item card → selectedItemProcessId set → panel opens → shows conversation', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildrenResponse()) });
-            }
-            if (url.includes('proc-1-m0') && !url.includes('/children')) {
+            if (url.includes('proc-1-m0')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildProcessResponse()) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessResponse()) });
@@ -117,9 +114,6 @@ describe('WorkflowDetailView + ItemConversationPanel integration', () => {
 
     it('closing conversation panel clears selectedItemProcessId', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildrenResponse()) });
-            }
             if (url.includes('proc-1-m0')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildProcessResponse()) });
             }

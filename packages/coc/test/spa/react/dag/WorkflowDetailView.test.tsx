@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { WorkflowDetailView } from '../../../../src/server/spa/client/react/processes/dag/WorkflowDetailView';
 
-function makeProcessResponse(overrides: Record<string, any> = {}) {
+function makeProcessWithChildrenResponse(overrides: Record<string, any> = {}) {
     return {
         process: {
             id: 'proc-1',
@@ -28,15 +28,13 @@ function makeProcessResponse(overrides: Record<string, any> = {}) {
             },
             ...overrides,
         },
+        children: [
+            { id: 'proc-1-m0', status: 'completed', metadata: { itemIndex: 0, promptPreview: 'Item 0' }, durationMs: 1000 },
+            { id: 'proc-1-m1', status: 'completed', metadata: { itemIndex: 1, promptPreview: 'Item 1' }, durationMs: 1500 },
+            { id: 'proc-1-m2', status: 'failed', metadata: { itemIndex: 2, promptPreview: 'Item 2', error: 'AI error' }, durationMs: 500 },
+        ],
+        total: 3,
     };
-}
-
-function makeChildrenResponse() {
-    return [
-        { id: 'proc-1-m0', status: 'completed', metadata: { itemIndex: 0, promptPreview: 'Item 0' }, durationMs: 1000 },
-        { id: 'proc-1-m1', status: 'completed', metadata: { itemIndex: 1, promptPreview: 'Item 1' }, durationMs: 1500 },
-        { id: 'proc-1-m2', status: 'failed', metadata: { itemIndex: 2, promptPreview: 'Item 2', error: 'AI error' }, durationMs: 500 },
-    ];
 }
 
 describe('WorkflowDetailView', () => {
@@ -73,10 +71,7 @@ describe('WorkflowDetailView', () => {
 
     it('renders DAG chart after successful fetch', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildrenResponse()) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessResponse()) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessWithChildrenResponse()) });
         });
 
         render(<WorkflowDetailView processId="proc-1" />);
@@ -90,10 +85,7 @@ describe('WorkflowDetailView', () => {
 
     it('renders correct pipeline status caption', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessResponse()) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessWithChildrenResponse()) });
         });
 
         render(<WorkflowDetailView processId="proc-1" />);
@@ -107,12 +99,9 @@ describe('WorkflowDetailView', () => {
 
     it('renders failed status caption', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-            }
             return Promise.resolve({
                 ok: true,
-                json: () => Promise.resolve(makeProcessResponse({ status: 'failed' })),
+                json: () => Promise.resolve(makeProcessWithChildrenResponse({ status: 'failed' })),
             });
         });
 
@@ -127,10 +116,7 @@ describe('WorkflowDetailView', () => {
 
     it('clicking map node reveals MapItemGrid', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildrenResponse()) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessResponse()) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessWithChildrenResponse()) });
         });
 
         render(<WorkflowDetailView processId="proc-1" />);
@@ -153,10 +139,7 @@ describe('WorkflowDetailView', () => {
 
     it('clicking map node again hides MapItemGrid', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildrenResponse()) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessResponse()) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessWithChildrenResponse()) });
         });
 
         render(<WorkflowDetailView processId="proc-1" />);
@@ -177,10 +160,7 @@ describe('WorkflowDetailView', () => {
 
     it('renders correct number of children in expanded grid', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildrenResponse()) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessResponse()) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessWithChildrenResponse()) });
         });
 
         render(<WorkflowDetailView processId="proc-1" />);
@@ -200,10 +180,7 @@ describe('WorkflowDetailView', () => {
     it('clicking item card opens conversation panel instead of navigating', async () => {
         const onNavigate = vi.fn();
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildrenResponse()) });
-            }
-            if (url.includes('proc-1-m0') && !url.includes('/children')) {
+            if (url.includes('proc-1-m0')) {
                 return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({
@@ -211,10 +188,12 @@ describe('WorkflowDetailView', () => {
                             id: 'proc-1-m0', status: 'completed', durationMs: 1000,
                             metadata: { itemIndex: 0 }, conversationTurns: [],
                         },
+                        children: [],
+                        total: 0,
                     }),
                 });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessResponse()) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessWithChildrenResponse()) });
         });
 
         render(<WorkflowDetailView processId="proc-1" onNavigateToProcess={onNavigate} />);
@@ -238,12 +217,13 @@ describe('WorkflowDetailView', () => {
 
     it('shows empty state when no DAG data available', async () => {
         fetchMock.mockImplementation((url: string) => {
-            if (url.includes('/children')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-            }
             return Promise.resolve({
                 ok: true,
-                json: () => Promise.resolve({ process: { id: 'proc-1', status: 'completed', metadata: {} } }),
+                json: () => Promise.resolve({
+                    process: { id: 'proc-1', status: 'completed', metadata: {} },
+                    children: [],
+                    total: 0,
+                }),
             });
         });
 

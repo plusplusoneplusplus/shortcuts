@@ -1,8 +1,9 @@
 /**
  * API Handler — Child Process Routes Tests
  *
- * Verifies GET /api/processes/:id/children and
+ * Verifies GET /api/processes/:id returns embedded children and
  * GET /api/processes?parentProcessId=X query parameter support.
+ * Also verifies that the old /children sub-route no longer exists.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -137,15 +138,17 @@ describe('Child process API routes', () => {
     });
 
     // ========================================================================
-    // GET /api/processes/:id/children
+    // GET /api/processes/:id — embedded children
     // ========================================================================
 
-    describe('GET /api/processes/:id/children', () => {
-        it('returns only child processes for the given parent', async () => {
-            const resp = await request(`${baseUrl}/api/processes/parent-1/children`);
+    describe('GET /api/processes/:id (embedded children)', () => {
+        it('returns process with embedded children array and total', async () => {
+            const resp = await request(`${baseUrl}/api/processes/parent-1`);
             expect(resp.status).toBe(200);
 
             const data = resp.json();
+            expect(data.process).toBeDefined();
+            expect(data.process.id).toBe('parent-1');
             expect(data.total).toBe(2);
             expect(data.children).toHaveLength(2);
 
@@ -153,25 +156,18 @@ describe('Child process API routes', () => {
             expect(ids).toEqual(['parent-1-m0', 'parent-1-m1']);
         });
 
-        it('filters children by status', async () => {
-            const resp = await request(`${baseUrl}/api/processes/parent-1/children?status=failed`);
+        it('returns empty children array for a process with no children', async () => {
+            const resp = await request(`${baseUrl}/api/processes/unrelated-1`);
             expect(resp.status).toBe(200);
 
             const data = resp.json();
-            expect(data.total).toBe(1);
-            expect(data.children[0].id).toBe('parent-1-m1');
+            expect(data.process.id).toBe('unrelated-1');
+            expect(data.children).toEqual([]);
+            expect(data.total).toBe(0);
         });
 
-        it('returns empty array for non-existent parent (not 404)', async () => {
-            const resp = await request(`${baseUrl}/api/processes/no-such-parent/children`);
-            expect(resp.status).toBe(200);
-
-            const data = resp.json();
-            expect(data).toEqual({ children: [], total: 0 });
-        });
-
-        it('strips conversationTurns by default', async () => {
-            const resp = await request(`${baseUrl}/api/processes/parent-1/children`);
+        it('strips conversationTurns from children by default', async () => {
+            const resp = await request(`${baseUrl}/api/processes/parent-1`);
             expect(resp.status).toBe(200);
 
             const data = resp.json();
@@ -180,16 +176,20 @@ describe('Child process API routes', () => {
             }
         });
 
-        it('includes conversationTurns when exclude is overridden', async () => {
-            // Pass exclude=none (not a valid field) to override the default exclusion
-            const resp = await request(`${baseUrl}/api/processes/parent-1/children?exclude=toolCalls`);
-            expect(resp.status).toBe(200);
+        it('returns 404 for non-existent process', async () => {
+            const resp = await request(`${baseUrl}/api/processes/no-such-id`);
+            expect(resp.status).toBe(404);
+        });
+    });
 
-            const data = resp.json();
-            // With exclude=toolCalls, conversation data should still be present
-            const completedChild = data.children.find((c: any) => c.id === 'parent-1-m0');
-            expect(completedChild).toBeDefined();
-            expect(completedChild.conversationTurns).toBeDefined();
+    // ========================================================================
+    // GET /api/processes/:id/children — deleted route
+    // ========================================================================
+
+    describe('GET /api/processes/:id/children (deleted)', () => {
+        it('no longer exists (returns 404)', async () => {
+            const resp = await request(`${baseUrl}/api/processes/parent-1/children`);
+            expect(resp.status).toBe(404);
         });
     });
 
