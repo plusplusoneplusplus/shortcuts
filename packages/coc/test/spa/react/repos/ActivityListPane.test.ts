@@ -1172,8 +1172,8 @@ describe('isChatTask: tab routing', () => {
         expect(isChatTask({ type: 'chat', payload: { mode: 'plan' } })).toBe(true);
     });
 
-    it('returns false for a chat task with autopilot mode (belongs in tasks tab)', () => {
-        expect(isChatTask({ type: 'chat', payload: { mode: 'autopilot' } })).toBe(false);
+    it('returns true for a chat task with autopilot mode (belongs in chats tab)', () => {
+        expect(isChatTask({ type: 'chat', payload: { mode: 'autopilot' } })).toBe(true);
     });
 
     it('returns false for a work-item execution chat task', () => {
