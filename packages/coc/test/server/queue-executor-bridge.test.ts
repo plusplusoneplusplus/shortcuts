@@ -4389,7 +4389,7 @@ describe('Queue execution via HTTP API', () => {
             // Verify output file was written with concatenated chunks
             const path = await import('path');
             const fsPromises = await import('fs/promises');
-            const outputPath = path.join(tmpDir, 'repos', '_shared', 'outputs', 'queue_task-output-1.md');
+            const outputPath = path.join(tmpDir, 'repos', '_shared', 'chat', 'queue_task-output-1.md');
             const content = await fsPromises.readFile(outputPath, 'utf-8');
             expect(content).toBe('chunk1chunk2chunk3');
         });
@@ -4416,7 +4416,7 @@ describe('Queue execution via HTTP API', () => {
 
             // Check that updateProcess was called with rawStdoutFilePath
             const path = await import('path');
-            const expectedPath = path.join(tmpDir, 'repos', '_shared', 'outputs', 'queue_task-output-path.md');
+            const expectedPath = path.join(tmpDir, 'repos', '_shared', 'chat', 'queue_task-output-path.md');
             expect(store.updateProcess).toHaveBeenCalledWith('queue_task-output-path', {
                 rawStdoutFilePath: expectedPath,
             });
@@ -4447,7 +4447,7 @@ describe('Queue execution via HTTP API', () => {
             // Verify partial output was still saved
             const path = await import('path');
             const fsPromises = await import('fs/promises');
-            const outputPath = path.join(tmpDir, 'repos', '_shared', 'outputs', 'queue_task-output-fail.md');
+            const outputPath = path.join(tmpDir, 'repos', '_shared', 'chat', 'queue_task-output-fail.md');
             const content = await fsPromises.readFile(outputPath, 'utf-8');
             expect(content).toBe('partial1partial2');
         });
@@ -4480,7 +4480,7 @@ describe('Queue execution via HTTP API', () => {
             // And also verify file was written
             const path = await import('path');
             const fsPromises = await import('fs/promises');
-            const outputPath = path.join(tmpDir, 'repos', '_shared', 'outputs', 'queue_task-output-sse.md');
+            const outputPath = path.join(tmpDir, 'repos', '_shared', 'chat', 'queue_task-output-sse.md');
             const content = await fsPromises.readFile(outputPath, 'utf-8');
             expect(content).toBe('chunk-achunk-b');
         });
