@@ -202,6 +202,72 @@ describe('createWebSocketInfrastructure', () => {
         });
     });
 
+    describe('mapQueued payload fields', () => {
+        function makeRegistryWithTasks(tasks: any[]): any {
+            const mockManager = {
+                getStats: vi.fn().mockReturnValue({ queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false }),
+                getQueued: vi.fn().mockReturnValue(tasks),
+                getRunning: vi.fn().mockReturnValue([]),
+                getHistory: vi.fn().mockReturnValue([]),
+            };
+            return {
+                getQueueForRepo: vi.fn().mockReturnValue(mockManager),
+                getAllQueues: vi.fn().mockReturnValue(new Map()),
+            };
+        }
+
+        it('preserves workItemId in queued task payload', () => {
+            const taskWithWorkItem = {
+                id: 't1', repoId: 'r1', type: 'chat', priority: 'normal',
+                status: 'queued', displayName: 'Work item task', createdAt: Date.now(),
+                payload: { kind: 'chat', mode: 'ask', workItemId: 'wi-42', workspaceId: 'ws-1' },
+            };
+            const reg = makeRegistryWithTasks([taskWithWorkItem]);
+            const ws = createWebSocketInfrastructure(server, store, bridge, reg, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'r1', type: 'enqueued', taskId: 't1' });
+
+            const perRepoEvent = broadcast.mock.calls[0][0] as any;
+            const serializedTask = perRepoEvent.queue.queued[0];
+            expect(serializedTask.payload.workItemId).toBe('wi-42');
+        });
+
+        it('preserves workspaceId in queued task payload', () => {
+            const taskWithWorkspace = {
+                id: 't2', repoId: 'r1', type: 'chat', priority: 'normal',
+                status: 'queued', displayName: 'WS task', createdAt: Date.now(),
+                payload: { kind: 'chat', mode: 'ask', workItemId: 'wi-99', workspaceId: 'ws-abc' },
+            };
+            const reg = makeRegistryWithTasks([taskWithWorkspace]);
+            const ws = createWebSocketInfrastructure(server, store, bridge, reg, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'r1', type: 'enqueued', taskId: 't2' });
+
+            const perRepoEvent = broadcast.mock.calls[0][0] as any;
+            const serializedTask = perRepoEvent.queue.queued[0];
+            expect(serializedTask.payload.workspaceId).toBe('ws-abc');
+        });
+
+        it('serializes workItemId as undefined when not set', () => {
+            const regularTask = {
+                id: 't3', repoId: 'r1', type: 'chat', priority: 'normal',
+                status: 'queued', displayName: 'Regular chat', createdAt: Date.now(),
+                payload: { kind: 'chat', mode: 'ask', prompt: 'hello' },
+            };
+            const reg = makeRegistryWithTasks([regularTask]);
+            const ws = createWebSocketInfrastructure(server, store, bridge, reg, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'r1', type: 'enqueued', taskId: 't3' });
+
+            const perRepoEvent = broadcast.mock.calls[0][0] as any;
+            const serializedTask = perRepoEvent.queue.queued[0];
+            expect(serializedTask.payload.workItemId).toBeUndefined();
+        });
+    });
+
     describe('schedule change wiring', () => {
         it('broadcasts schedule event when scheduleManager emits change', () => {
             const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
