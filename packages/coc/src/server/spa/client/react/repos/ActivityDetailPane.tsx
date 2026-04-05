@@ -25,9 +25,11 @@ export interface ActivityDetailPaneProps {
     workspaceId?: string;
     /** When true, hides the follow-up input area (read-only view). */
     readOnly?: boolean;
+    /** When true, hides the ask/plan/autopilot mode selector in the follow-up input. */
+    hideModeSelector?: boolean;
 }
 
-export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId, readOnly }: ActivityDetailPaneProps) {
+export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector }: ActivityDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
 
@@ -81,5 +83,5 @@ export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId, readOn
         );
     }
 
-    return <ActivityChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} />;
+    return <ActivityChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} />;
 }

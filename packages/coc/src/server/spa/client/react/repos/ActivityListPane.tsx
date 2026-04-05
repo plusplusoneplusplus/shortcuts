@@ -59,6 +59,11 @@ export function taskMatchesSearch(task: any, query: string): boolean {
 }
 
 
+/** Returns true if a task belongs to the Chats tab (ask/plan mode, not a work-item execution). */
+export function isChatTask(task: any): boolean {
+    return task.type === 'chat' && !task.payload?.workItemId && task.payload?.mode !== 'autopilot';
+}
+
 /** Extract a short preview of the user prompt from the task payload. */
 export function getTaskPromptPreview(task: any): string {
     const text = task.prompt || task.payload?.promptContent || task.payload?.prompt || '';
@@ -218,9 +223,9 @@ export function ActivityListPane({
     const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [history, excludedTypes, searchQuery]);
 
     // Tab-aware filtering:
-    //   chats = type === 'chat' (interactive sessions), excluding work item executions
-    //   tasks = everything else, including work item execution tasks (identified by payload.workItemId)
-    const isChat = (task: any) => task.type === 'chat' && !task.payload?.workItemId;
+    //   chats = type === 'chat', ask/plan modes only (no code changes), excluding work item executions
+    //   tasks = everything else, including work item execution tasks and autopilot chats
+    const isChat = isChatTask;
     const tabFilteredRunning = useMemo(() =>
         activeTab === 'chats' ? filteredRunning.filter(isChat) : filteredRunning.filter(t => !isChat(t)),
         [filteredRunning, activeTab]

@@ -286,6 +286,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                                 onBack={() => { setMobileShowDetail(false); }}
                                 workspaceId={workspaceId}
                                 readOnly={activeTab === 'tasks'}
+                                hideModeSelector={activeTab === 'chats'}
                             />
                         </div>
                     ) : (
@@ -329,6 +330,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                     selectedTask={selectedTask}
                     workspaceId={workspaceId}
                     readOnly={activeTab === 'tasks'}
+                    hideModeSelector={activeTab === 'chats'}
                 />
             </div>
         </div>

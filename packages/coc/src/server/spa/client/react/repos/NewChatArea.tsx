@@ -7,12 +7,10 @@ import { useRef, useState } from 'react';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { cn } from '../shared/cn';
-import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
-import type { ChatMode } from './modeConfig';
+import { MODE_BORDER_COLORS } from './modeConfig';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
-import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -20,10 +18,8 @@ export interface NewChatAreaProps {
 
 export function NewChatArea({ workspaceId }: NewChatAreaProps) {
     const [input, setInput] = useState('');
-    const [selectedMode, setSelectedMode] = useState<ChatMode>('autopilot');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showCreateWorkItem, setShowCreateWorkItem] = useState(false);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -49,7 +45,7 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
                     priority: 'normal',
                     payload: {
                         kind: 'chat',
-                        mode: selectedMode,
+                        mode: 'ask',
                         prompt: text,
                         workingDirectory: ws?.rootPath,
                         workspaceId,
@@ -89,30 +85,6 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
                     <div className="text-3xl mb-2">💬</div>
                     <div className="text-sm font-medium mb-1">Start a new conversation</div>
                     <div className="text-xs">Type a message below to begin</div>
-                    {/* Quick-action shortcuts */}
-                    <div className="flex flex-wrap justify-center gap-2 mt-4">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setSelectedMode('ask');
-                                richTextRef.current?.focus();
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:border-[#0078d4] hover:text-[#0078d4] dark:hover:border-[#3794ff] dark:hover:text-[#3794ff] transition-colors"
-                            data-testid="quick-ask-btn"
-                        >
-                            💡 Ask
-                        </button>
-                        {workspaceId && (
-                            <button
-                                type="button"
-                                onClick={() => setShowCreateWorkItem(true)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:border-[#0078d4] hover:text-[#0078d4] dark:hover:border-[#3794ff] dark:hover:text-[#3794ff] transition-colors"
-                                data-testid="quick-create-work-item-btn"
-                            >
-                                📌 Create Work Item
-                            </button>
-                        )}
-                    </div>
                 </div>
             </div>
 
@@ -120,29 +92,6 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
                 {error && <div className="text-xs text-[#f14c4c]" data-testid="new-chat-error">{error}</div>}
                 <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
-                    <div className="shrink-0" data-testid="mode-selector">
-                        {/* Mobile: icon-only button that cycles modes on tap */}
-                        <button
-                            type="button"
-                            onClick={() => setSelectedMode(cycleMode(selectedMode))}
-                            className="sm:hidden h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50"
-                            data-testid="mode-cycle-btn"
-                            aria-label={`Mode: ${selectedMode}. Tap to switch.`}
-                        >
-                            {MODE_ICONS[selectedMode]}
-                        </button>
-                        {/* Desktop: full select dropdown */}
-                        <select
-                            value={selectedMode}
-                            onChange={e => setSelectedMode(e.target.value as ChatMode)}
-                            className="hidden sm:block px-2.5 py-1.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
-                            data-testid="new-chat-mode-dropdown"
-                        >
-                            {(Object.entries(MODE_LABELS) as [string, string][]).map(([mode, label]) => (
-                                <option key={mode} value={mode}>{label}</option>
-                            ))}
-                        </select>
-                    </div>
                     <div className="flex-1 min-w-0">
                         <RichTextInput
                             ref={richTextRef}
@@ -150,16 +99,11 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
                             placeholder="Send a message..."
                             className={cn(
                                 'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
-                                MODE_BORDER_COLORS[selectedMode].border,
-                                MODE_BORDER_COLORS[selectedMode].ring,
+                                MODE_BORDER_COLORS['ask'].border,
+                                MODE_BORDER_COLORS['ask'].ring,
                             )}
                             onChange={(val) => setInput(val)}
                             onKeyDown={(e) => {
-                                if (e.key === 'Tab' && e.shiftKey) {
-                                    e.preventDefault();
-                                    setSelectedMode(cycleMode(selectedMode));
-                                    return;
-                                }
                                 if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
                                     void handleSend();
@@ -190,13 +134,6 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
                     )}
                 </div>
             </div>
-            {workspaceId && (
-                <CreateWorkItemDialog
-                    open={showCreateWorkItem}
-                    onClose={() => setShowCreateWorkItem(false)}
-                    workspaceId={workspaceId}
-                />
-            )}
         </div>
     );
 }

@@ -1158,3 +1158,78 @@ describe('ActivityListPane: New Chat button uses onNewChat', () => {
         expect(nearbyBlock).not.toContain('onNewChat');
     });
 });
+
+// ── isChatTask: tab routing logic ─────────────────────────────────────────────
+
+import { isChatTask } from '../../../../src/server/spa/client/react/repos/ActivityListPane';
+
+describe('isChatTask: tab routing', () => {
+    it('returns true for a chat task with ask mode', () => {
+        expect(isChatTask({ type: 'chat', payload: { mode: 'ask' } })).toBe(true);
+    });
+
+    it('returns true for a chat task with plan mode', () => {
+        expect(isChatTask({ type: 'chat', payload: { mode: 'plan' } })).toBe(true);
+    });
+
+    it('returns false for a chat task with autopilot mode (belongs in tasks tab)', () => {
+        expect(isChatTask({ type: 'chat', payload: { mode: 'autopilot' } })).toBe(false);
+    });
+
+    it('returns false for a work-item execution chat task', () => {
+        expect(isChatTask({ type: 'chat', payload: { mode: 'ask', workItemId: 'wi-123' } })).toBe(false);
+    });
+
+    it('returns false for non-chat task types', () => {
+        expect(isChatTask({ type: 'run-workflow', payload: {} })).toBe(false);
+        expect(isChatTask({ type: 'run-script', payload: {} })).toBe(false);
+    });
+
+    it('returns true for a chat task without a mode (legacy, defaults to chats tab)', () => {
+        expect(isChatTask({ type: 'chat', payload: {} })).toBe(true);
+    });
+});
+
+// ── NewChatArea: simplified chat-only UI ──────────────────────────────────────
+
+const NEW_CHAT_AREA_PATH = path.join(
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'NewChatArea.tsx'
+);
+
+describe('NewChatArea: chat-only UI', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(NEW_CHAT_AREA_PATH, 'utf-8');
+    });
+
+    it('does not render the quick-ask button', () => {
+        expect(source).not.toContain('data-testid="quick-ask-btn"');
+    });
+
+    it('does not render the quick-create-work-item button', () => {
+        expect(source).not.toContain('data-testid="quick-create-work-item-btn"');
+    });
+
+    it('does not import CreateWorkItemDialog', () => {
+        expect(source).not.toContain('CreateWorkItemDialog');
+    });
+
+    it('does not render a mode selector', () => {
+        expect(source).not.toContain('data-testid="new-chat-mode-dropdown"');
+        expect(source).not.toContain('data-testid="mode-cycle-btn"');
+    });
+
+    it('hardcodes mode as ask in the task payload', () => {
+        expect(source).toContain("mode: 'ask'");
+    });
+
+    it('still renders Start a new conversation hero text', () => {
+        expect(source).toContain('Start a new conversation');
+    });
+
+    it('still renders the send input', () => {
+        expect(source).toContain('data-testid="new-chat-input"');
+        expect(source).toContain('data-testid="new-chat-send-btn"');
+    });
+});

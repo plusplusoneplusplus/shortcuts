@@ -78,7 +78,6 @@ describe('NewChatArea', () => {
         expect(screen.getByText('Type a message below to begin')).toBeTruthy();
         expect(screen.getByTestId('new-chat-input')).toBeTruthy();
         expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
-        expect(screen.getByTestId('new-chat-mode-dropdown')).toBeTruthy();
     });
 
     it('send button is disabled when input is empty', () => {
@@ -95,17 +94,16 @@ describe('NewChatArea', () => {
         expect(btn.disabled).toBe(false);
     });
 
-    it('defaults to autopilot mode', () => {
+    it('does not render a mode selector (chat is always ask mode)', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        const dropdown = screen.getByTestId('new-chat-mode-dropdown') as HTMLSelectElement;
-        expect(dropdown.value).toBe('autopilot');
+        expect(screen.queryByTestId('new-chat-mode-dropdown')).toBeNull();
+        expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
     });
 
-    it('can switch mode via dropdown', () => {
+    it('does not render quick-action buttons', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        const dropdown = screen.getByTestId('new-chat-mode-dropdown') as HTMLSelectElement;
-        fireEvent.change(dropdown, { target: { value: 'ask' } });
-        expect(dropdown.value).toBe('ask');
+        expect(screen.queryByTestId('quick-ask-btn')).toBeNull();
+        expect(screen.queryByTestId('quick-create-work-item-btn')).toBeNull();
     });
 
     it('sends POST to /api/queue/tasks on submit and selects the new task', async () => {
@@ -130,7 +128,7 @@ describe('NewChatArea', () => {
         const body = JSON.parse(opts.body);
         expect(body.type).toBe('chat');
         expect(body.payload.kind).toBe('chat');
-        expect(body.payload.mode).toBe('autopilot');
+        expect(body.payload.mode).toBe('ask');
         expect(body.payload.prompt).toBe('Hello world');
         expect(body.payload.workingDirectory).toBe('/home/user/repo');
         expect(body.payload.workspaceId).toBe('ws-1');
@@ -185,25 +183,22 @@ describe('NewChatArea', () => {
         expect(btn.disabled).toBe(true);
     });
 
-    it('sends with selected mode when changed to plan', async () => {
+    it('always sends mode=ask regardless of any prior state', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
-            json: async () => ({ id: 'task-plan' }),
+            json: async () => ({ id: 'task-ask' }),
         });
 
         render(<NewChatArea workspaceId="ws-1" />);
-        const dropdown = screen.getByTestId('new-chat-mode-dropdown') as HTMLSelectElement;
-        fireEvent.change(dropdown, { target: { value: 'plan' } });
-
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
-        fireEvent.change(input, { target: { value: 'Plan this' } });
+        fireEvent.change(input, { target: { value: 'Ask this' } });
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('new-chat-send-btn'));
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.payload.mode).toBe('plan');
+        expect(body.payload.mode).toBe('ask');
     });
 
     it('shows stop button while sending', async () => {
