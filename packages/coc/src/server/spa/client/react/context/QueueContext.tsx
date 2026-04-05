@@ -146,7 +146,7 @@ export type QueueAction =
     | { type: 'SET_DIALOG_MODE'; mode: 'task' | 'ask' | 'resolve' }
     | { type: 'OPEN_SCRIPT_DIALOG'; workspaceId?: string | null }
     | { type: 'CLOSE_SCRIPT_DIALOG' }
-    | { type: 'SET_TASK_SUBMITTING'; value: boolean };
+    | { type: 'REPO_TASK_COMPLETED_OPTIMISTIC'; repoId: string; taskId: string; status: 'completed' | 'failed' | 'cancelled' };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -241,8 +241,37 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             return { ...state, showScriptDialog: true, scriptDialogWorkspaceId: action.workspaceId ?? null };
         case 'CLOSE_SCRIPT_DIALOG':
             return { ...state, showScriptDialog: false, scriptDialogWorkspaceId: null };
-        case 'SET_TASK_SUBMITTING':
-            return { ...state, isTaskSubmitting: action.value };
+        case 'REPO_TASK_COMPLETED_OPTIMISTIC': {
+            const existingRepo = state.repoQueueMap[action.repoId];
+            if (!existingRepo) return state;
+            const task = existingRepo.running.find((t: any) => t.id === action.taskId);
+            if (!task) return state;
+            const completedAt = task.completedAt || new Date().toISOString();
+            const updatedTask = { ...task, status: action.status, completedAt };
+            const updatedRunning = existingRepo.running.filter((t: any) => t.id !== action.taskId);
+            const alreadyInHistory = existingRepo.history.some((t: any) => t.id === action.taskId);
+            const updatedHistory = alreadyInHistory
+                ? existingRepo.history.map((t: any) => t.id === action.taskId ? { ...t, status: action.status, completedAt } : t)
+                : [updatedTask, ...existingRepo.history];
+            return {
+                ...state,
+                repoQueueMap: {
+                    ...state.repoQueueMap,
+                    [action.repoId]: {
+                        ...existingRepo,
+                        running: updatedRunning,
+                        history: updatedHistory,
+                        stats: {
+                            ...existingRepo.stats,
+                            running: Math.max(0, (existingRepo.stats.running || 0) - 1),
+                            completed: (existingRepo.stats.completed || 0) + (action.status === 'completed' ? 1 : 0),
+                            failed: (existingRepo.stats.failed || 0) + (action.status === 'failed' ? 1 : 0),
+                            cancelled: (existingRepo.stats.cancelled || 0) + (action.status === 'cancelled' ? 1 : 0),
+                        },
+                    },
+                },
+            };
+        }
         default:
             return state;
     }

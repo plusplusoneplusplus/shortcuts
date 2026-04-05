@@ -291,6 +291,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setTurnsAndRef,
         refreshConversation,
         onSendComplete,
+        queueDispatch,
+        workspaceId,
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
