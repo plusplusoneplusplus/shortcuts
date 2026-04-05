@@ -291,6 +291,37 @@ export function ActivityListPane({
         return tabFilteredRunning.filter(t => pinnedChatIds.has(t.id)).length;
     }, [tabFilteredRunning, pinnedChatIds]);
 
+    // Chats tab: merge running chats + history chats into a single sorted list
+    const chatAllItems = useMemo(() => {
+        if (activeTab !== 'chats') return { pinned: [] as any[], unpinned: [] as any[], archived: [] as any[] };
+        const runningChats = running.filter(isChat);
+        const historyChats = history.filter(isChat);
+        const all = [...runningChats, ...historyChats];
+        // Sort by most recent activity (running first via startedAt, then completedAt)
+        all.sort((a, b) => {
+            const timeA = a.completedAt || a.startedAt || a.createdAt || 0;
+            const timeB = b.completedAt || b.startedAt || b.createdAt || 0;
+            return new Date(timeB).getTime() - new Date(timeA).getTime();
+        });
+        const pinned: any[] = [];
+        const unpinned: any[] = [];
+        const archived: any[] = [];
+        const pinnedById = new Map<string, any>();
+        for (const t of all) {
+            if (archivedChatIds?.has(t.id)) { archived.push(t); continue; }
+            if (pinnedChatIds?.has(t.id)) { pinnedById.set(t.id, t); continue; }
+            unpinned.push(t);
+        }
+        // Preserve pin order
+        if (pinnedChatIds) {
+            for (const id of pinnedChatIds) {
+                const t = pinnedById.get(id);
+                if (t) pinned.push(t);
+            }
+        }
+        return { pinned, unpinned, archived };
+    }, [activeTab, running, history, pinnedChatIds, archivedChatIds]);
+
     const [showRunning, setShowRunning] = useState(true);
     const [showQueued, setShowQueued] = useState(true);
     const [showPinned, setShowPinned] = useState(true);
@@ -664,7 +695,7 @@ export function ActivityListPane({
                         💬 New Chat
                     </Button>
                 )}
-                {isPaused && (
+                {activeTab === 'tasks' && isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">
                             {pauseReason
@@ -687,7 +718,7 @@ export function ActivityListPane({
                         </Button>
                     </div>
                 )}
-                {isAutopilotPaused && (
+                {activeTab === 'tasks' && isAutopilotPaused && (
                     <div
                         className="rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 px-3 py-1.5 text-xs flex items-center gap-2"
                         data-testid="autopilot-paused-banner"
@@ -704,6 +735,7 @@ export function ActivityListPane({
                         </Button>
                     </div>
                 )}
+                {activeTab === 'tasks' && (
                 <div className={cn('flex items-center gap-2 mb-3')}>
                     {isPaused && <Badge status="warning" title={pauseReason ? `${pauseReason.displayName} failed` : undefined}>Paused</Badge>}
                     {availableFilters.length >= 1 && (
@@ -765,8 +797,9 @@ export function ActivityListPane({
                         )}
                     </div>
                 </div>
+                )}
 
-                {searchVisible && (
+                {activeTab === 'tasks' && searchVisible && (
                     <div className="flex items-center gap-1.5 px-1 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] text-xs">
                         <span className="text-[#848484]">🔍</span>
                         <input
@@ -790,7 +823,8 @@ export function ActivityListPane({
                         >✕</button>
                     </div>
                 )}
-
+
+                {activeTab === 'tasks' && (<>
                 {tabFilteredRunning.length > 0 && (
                     <div>
                         <button
@@ -1127,6 +1161,124 @@ export function ActivityListPane({
                     )}
                 </div>
             )}
+                </>)}
+
+                {/* Chats tab: flat list sorted by last activity, no filters/refresh/pause */}
+                {activeTab === 'chats' && (<>
+                    {chatAllItems.pinned.length > 0 && (
+                        <div>
+                            <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">📌 Pinned</div>
+                            <div className="flex flex-col gap-1">
+                                {chatAllItems.pinned.map(task => {
+                                    const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                    const hasDraft = !!getDraft(task.id);
+                                    const isRunning = running.some(t => t.id === task.id);
+                                    return (
+                                        <Card
+                                            key={task.id}
+                                            className={cn(
+                                                'p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500',
+                                                selectedTaskId === task.id && 'ring-2 ring-[#0078d4]'
+                                            )}
+                                            onClick={() => onSelectTask(task.id, task)}
+                                            onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
+                                            data-task-id={task.id}
+                                            data-pinned="true"
+                                        >
+                                            <div className="flex items-center justify-between gap-1.5 text-xs">
+                                                <span className="flex items-center gap-1 min-w-0 truncate">
+                                                    {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
+                                                    <span className="shrink-0">{getTaskTypeIcon(task)}{isRunning ? ' 🔄' : task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : ''}</span>
+                                                    <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                    {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft">✏️</span>}
+                                                </span>
+                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                    {isRunning ? 'running' : task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                </span>
+                                            </div>
+                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}
+                                        </Card>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                    {chatAllItems.unpinned.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                            {chatAllItems.unpinned.map(task => {
+                                const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                const hasDraft = !!getDraft(task.id);
+                                const isRunning = running.some(t => t.id === task.id);
+                                return (
+                                    <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
+                                    <Card
+                                        className={cn(
+                                            'p-2 cursor-pointer',
+                                            selectedTaskId === task.id && 'ring-2 ring-[#0078d4]'
+                                        )}
+                                        onClick={() => onSelectTask(task.id, task)}
+                                        onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
+                                        data-task-id={task.id}
+                                    >
+                                        <div className="flex items-center justify-between gap-1.5 text-xs">
+                                            <span className="flex items-center gap-1 min-w-0 truncate">
+                                                {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
+                                                <span className="shrink-0">{getTaskTypeIcon(task)}{isRunning ? ' 🔄' : task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : ''}</span>
+                                                <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft">✏️</span>}
+                                            </span>
+                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                {isRunning ? 'running' : task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                            </span>
+                                        </div>
+                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}
+                                    </Card>
+                                    </SwipeableHistoryItem>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && (
+                        <div className="text-center text-xs text-[#848484] py-4">No chat sessions yet</div>
+                    )}
+                    {chatAllItems.archived.length > 0 && (
+                        <div>
+                            <button
+                                className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
+                                onClick={() => setShowArchived(!showArchived)}
+                                data-testid="chat-archived-toggle"
+                            >
+                                {showArchived ? '▼' : '▶'} 📦 Archived ({chatAllItems.archived.length})
+                            </button>
+                            {showArchived && (
+                                <div className="flex flex-col gap-1">
+                                    {chatAllItems.archived.map(task => (
+                                        <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
+                                        <Card
+                                            className={cn('p-2 cursor-pointer opacity-60', selectedTaskId === task.id && 'ring-2 ring-[#0078d4]')}
+                                            onClick={() => onSelectTask(task.id, task)}
+                                            onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                                            data-task-id={task.id}
+                                            data-archived="true"
+                                        >
+                                            <div className="flex items-center justify-between gap-1.5 text-xs">
+                                                <span className="flex items-center gap-1 min-w-0 truncate">
+                                                    <span className="shrink-0">{getTaskTypeIcon(task)}</span>
+                                                    <span className="truncate" title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                </span>
+                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                    {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                </span>
+                                            </div>
+                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
+                                        </Card>
+                                        </SwipeableHistoryItem>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </>)}
         </div>
         {contextMenu && (
             <ContextMenu
