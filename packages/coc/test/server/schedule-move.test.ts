@@ -235,6 +235,48 @@ describe('ScheduleManager.moveSchedule', () => {
         expect(content).not.toMatch(/^status:/m);
     });
 
+    it('strips default outputFolder when moving user schedule to repo', async () => {
+        const repoId = 'repo1';
+        manager.registerWorkspacePath(repoId, workspaceRoot);
+
+        const sched = manager.addSchedule(repoId, {
+            name: 'Default Output',
+            target: 'task.md',
+            cron: '0 9 * * *',
+            params: {},
+            onFailure: 'notify',
+            status: 'active',
+            outputFolder: `~/.coc/repos/${repoId}/tasks`,
+        });
+
+        await manager.moveSchedule(repoId, sched.id, 'repo');
+
+        const yamlPath = path.join(workspaceRoot, '.github', 'schedules', 'default-output.yaml');
+        const content = fs.readFileSync(yamlPath, 'utf-8');
+        expect(content).not.toMatch(/outputFolder/);
+    });
+
+    it('preserves custom outputFolder when moving user schedule to repo', async () => {
+        const repoId = 'repo1';
+        manager.registerWorkspacePath(repoId, workspaceRoot);
+
+        const sched = manager.addSchedule(repoId, {
+            name: 'Custom Output',
+            target: 'task.md',
+            cron: '0 9 * * *',
+            params: {},
+            onFailure: 'notify',
+            status: 'active',
+            outputFolder: '/my/custom/path',
+        });
+
+        await manager.moveSchedule(repoId, sched.id, 'repo');
+
+        const yamlPath = path.join(workspaceRoot, '.github', 'schedules', 'custom-output.yaml');
+        const content = fs.readFileSync(yamlPath, 'utf-8');
+        expect(content).toMatch(/outputFolder: \/my\/custom\/path/);
+    });
+
     it('getWorkspacePath returns registered path', () => {
         manager.registerWorkspacePath('r1', '/some/path');
         expect(manager.getWorkspacePath('r1')).toBe('/some/path');

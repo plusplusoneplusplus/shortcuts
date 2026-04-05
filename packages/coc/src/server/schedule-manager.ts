@@ -408,7 +408,8 @@ export class ScheduleManager extends EventEmitter {
             onFailure: entry.onFailure,
         };
         if (entry.targetType && entry.targetType !== 'prompt') yamlObj.targetType = entry.targetType;
-        if (entry.outputFolder) yamlObj.outputFolder = entry.outputFolder;
+        const defaultOutputFolder = `~/.coc/repos/${repoId}/tasks`;
+        if (entry.outputFolder && entry.outputFolder !== defaultOutputFolder) yamlObj.outputFolder = entry.outputFolder;
         if (entry.model) yamlObj.model = entry.model;
         if (entry.mode && entry.mode !== 'autopilot') yamlObj.mode = entry.mode;
 
@@ -572,9 +573,8 @@ export class ScheduleManager extends EventEmitter {
             // Enqueue a task if queueManager is available
             if (this.queueManager) {
                 if (!schedule.targetType || schedule.targetType === 'prompt') {
-                    const outputPrefix = schedule.outputFolder
-                        ? `Output folder: ${schedule.outputFolder}\n\n`
-                        : '';
+                    const effectiveOutputFolder = schedule.outputFolder || `~/.coc/repos/${repoId}/tasks`;
+                    const outputPrefix = `Output folder: ${effectiveOutputFolder}\n\n`;
                     const taskId = this.queueManager.enqueue({
                         type: 'chat',
                         priority: 'normal',

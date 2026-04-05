@@ -8,4 +8,3 @@ target: >-
 params:
   pipeline: ''
 onFailure: notify
-outputFolder: ~/.coc/repos/ws-kss6a7/tasks

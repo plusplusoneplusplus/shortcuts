@@ -759,7 +759,7 @@ describe('ScheduleManager', () => {
             mgr.dispose();
         });
 
-        it('does not prepend output folder prefix when outputFolder is absent', async () => {
+        it('uses default output folder (based on repoId) when outputFolder is absent', async () => {
             const enqueued: any[] = [];
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_nof'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
@@ -775,7 +775,9 @@ describe('ScheduleManager', () => {
 
             await mgr.triggerRun(REPO_ID, schedule.id);
 
-            expect(enqueued[0].payload.prompt).toBe('Follow the instruction my-task.md.');
+            expect(enqueued[0].payload.prompt).toBe(
+                `Output folder: ~/.coc/repos/${REPO_ID}/tasks\n\nFollow the instruction my-task.md.`
+            );
 
             mgr.dispose();
         });
