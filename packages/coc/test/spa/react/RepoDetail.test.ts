@@ -751,6 +751,28 @@ describe('RepoDetail Git tab ahead/behind badge', () => {
     });
 });
 
+// ── TasksPanel always-mounted (keep-alive: no re-fetch on tab switch) ───────────
+
+describe('RepoDetail TasksPanel always-mounted', () => {
+    it('does NOT conditionally render TasksPanel with a ternary', () => {
+        // If conditionally rendered, the component unmounts/remounts on tab switch,
+        // triggering 3 API fetches. It must stay always-mounted.
+        expect(REPO_DETAIL_SOURCE).not.toContain("activeSubTab === 'tasks' ? (");
+        expect(REPO_DETAIL_SOURCE).not.toContain("activeSubTab === 'tasks' &&");
+    });
+
+    it('wraps TasksPanel in a div with display:none when inactive', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'tasks' ? undefined : 'none'");
+    });
+
+    it('tasks tab wrapper uses overflow-hidden layout', () => {
+        const overflowLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
+            l.includes("activeSubTab === 'tasks'") && l.includes('overflow-hidden')
+        );
+        expect(overflowLine).toBeDefined();
+    });
+});
+
 // ── PullRequestsTab always-mounted (regression: auto-refresh on tab switch) ────
 
 describe('RepoDetail PullRequestsTab always-mounted', () => {
