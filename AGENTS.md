@@ -126,6 +126,7 @@ Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/f
 - Filter executor (pipeline) → `utils/filter-executor.ts`
 - Input generator → `utils/input-generator.ts`
 - Retry utils → `utils/retry-utils.ts`
+- Paste context manager → `utils/paste-context-manager.ts` (large prompt externalization to temp files)
 
 **Workflow execution:** `compileToWorkflow(yamlContent)` converts legacy pipeline YAML or native workflow YAML to `WorkflowConfig`, then `executeWorkflow(config, options)` runs the DAG. Use `flattenWorkflowResult(result)` for flat display output.
 
@@ -160,6 +161,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `tasks/` — task and plan files
 - `processes/` — per-repo process store (`index.json` + one JSON file per process, 500-process cap)
 - `outputs/` — AI conversation output markdown files (`<processId>.md`), managed by `OutputFileManager`
+- `paste-context/` — temp files for large pasted content externalized from chat prompts (auto-cleaned after task completion and on server startup)
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/coc/src/server/`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
 
