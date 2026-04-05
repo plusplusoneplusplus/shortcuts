@@ -66,12 +66,14 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 
 ### 3.2 Preferences Section
 
-**US-04 — View repository preferences**
-> As a developer, I want to see the current AI preferences for this repository.
+**US-04 — Edit repository preferences**
+> As an AI operator, I want to configure AI models, depth, effort, skills, and linked repos from the Preferences page.
 
 - **Given** the Preferences section is selected
 - **When** preferences are loaded
-- **Then** a read-only display shows: Task/Ask model, depth, effort, and configured skills per mode
+- **Then** editable form controls show: Task/Ask/Plan model dropdowns, depth dropdown, effort dropdown, skill pickers per mode, and linked repo tags
+- **When** the user changes any field
+- **Then** `PATCH /api/workspaces/:id/preferences` auto-saves the change; a footer note reads "Changes are saved automatically."
 
 ---
 
@@ -142,7 +144,7 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 
 | Feature | Acceptance Criteria |
 |---|---|
-| Nav items | Info, Preferences, MCP Servers, Agent Skills, Custom Instructions, Memory, Run Script Templates |
+| Nav items | Info, Preferences, MCP Servers, Agent Skills, Custom Instructions, Memory, Run Script Templates, Plans Folder |
 | Badges | MCP: count of enabled servers; Skills: installed count; Instructions: blue dot if any mode has content |
 | Section routing | Hash updates to `#repos/<workspaceId>/settings/<section>` |
 | Sidebar width | Fixed `w-52` |
@@ -159,9 +161,15 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 
 | Feature | Acceptance Criteria |
 |---|---|
-| Read-only display | Task/Ask model, depth, effort, skills per mode |
-| Empty state | Shown when no meaningful preference keys exist |
-| Error state | Red text on load failure |
+| Model dropdowns | Task/Ask/Plan model `<select>` populated from `/api/models` (enabled only); "default" as first option; auto-saves via `PATCH /api/workspaces/:id/preferences` with `{ lastModels: { [mode]: value } }` |
+| Depth dropdown | Options: "default", "normal", "deep"; auto-saves via `{ lastDepth: value }` |
+| Effort dropdown | Options: "default", "low", "medium", "high"; auto-saves via `{ lastEffort: value }` |
+| Skill pickers | Task/Ask/Plan skills shown as searchable multi-select (SkillPicker); populated from `/api/workspaces/:id/skills/all`; auto-saves via `{ lastSkills: { [mode]: [...] } }` |
+| Linked repos | Removable tags with "+ Add" button; dropdown to add from available workspaces; auto-saves via `{ linkedRepoIds: [...] }` |
+| Empty defaults | Form shows all fields at "default" when no preferences exist |
+| Loading state | Spinner while preferences and models load |
+| Auto-save note | Muted footer reads "Changes are saved automatically." |
+| Error handling | Linked repo save failure reverts + toast |
 
 ### 4.4 MCP Servers Section
 
@@ -209,8 +217,7 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 | INV-02 | MCP server toggle with `null` means all servers are enabled (default) |
 | INV-03 | Skill toggles and linked repo changes revert on API failure |
 | INV-04 | Custom instructions blue dot in nav reflects whether any mode has content |
-| INV-05 | Preferences section is read-only; changes are made through other UI surfaces |
-| INV-06 | Run Script Templates section is read-only |
+| INV-05 | Run Script Templates section is read-only |
 
 ---
 
@@ -221,24 +228,27 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 │  [Repo Name]   Activity │ Git │ … │ Settings* │ …                   │
 ├──────────────┬──────────────────────────────────────────────────────┤
 │              │                                                      │
-│  Info        │  Repository Info                                    │
-│  Preferences │  ─────────────────────────────────────              │
+│  Info        │  Preferences                                        │
+│  Preferences*│  ─────────────────────────────────────              │
 │  MCP (3)     │                                                      │
-│  Skills (5)  │  Path: /Users/me/project                            │
-│  Instructions│  Branch: main (clean)                               │
-│  Memory      │  Remote: github.com/org/repo                       │
-│  Scripts     │  Workflows: 3  Plans: 12                            │
-│              │  Processes: ✓42 ✗2 ▶1                               │
+│  Skills (5)  │  ── Models ────────────────────────                  │
+│  Instructions│  Task Model   [ claude-sonnet-4  ▾ ]                │
+│  Memory      │  Ask Model    [ default          ▾ ]                │
+│  Scripts     │  Plan Model   [ default          ▾ ]                │
 │              │                                                      │
-│              │  Description:                                       │
-│              │  ┌──────────────────────────────────────┐           │
-│              │  │ Main project repository for…          │           │
-│              │  └──────────────────────────────────────┘           │
+│              │  ── Execution ─────────────────────                  │
+│              │  Depth        [ normal ▾ ]                           │
+│              │  Effort       [ medium ▾ ]                           │
 │              │                                                      │
-│              │  Recent Processes:                                   │
-│              │  ✓ Code review for PR #42        2h ago             │
-│              │  ▶ Generate auth module          5m ago             │
-│              │  ✗ Failed: timeout               1d ago             │
+│              │  ── Skills ────────────────────────                  │
+│              │  Task Skill   [impl ✕] [+ Add…]                     │
+│              │  Ask Skill    [+ Add…]                               │
+│              │  Plan Skill   [+ Add…]                               │
+│              │                                                      │
+│              │  ── Advanced ──────────────────────                  │
+│              │  Linked Repos [ repo-b ✕ ] [+ Add]                  │
+│              │                                                      │
+│              │  Changes are saved automatically.                    │
 └──────────────┴──────────────────────────────────────────────────────┘
 ```
 
@@ -263,7 +273,7 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 
 | State | Display |
 |---|---|
-| No meaningful preferences | Empty state message |
+| No meaningful preferences | Form shows all fields at default values |
 | No recent processes | "No processes yet" |
 | No skills installed | Empty skill list |
 | No custom instructions | No blue dot in nav; empty editors |
@@ -277,8 +287,10 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 |---|---|---|
 | `PATCH /api/workspaces/:id` | Description save | US-02 |
 | `GET /api/processes` | Recent processes | US-03 |
-| `GET /api/workspaces/:id/preferences` | Preferences display | US-04 |
-| `PATCH /api/workspaces/:id/preferences` | Linked repos, skill usage | US-06 |
+| `GET /api/workspaces/:id/preferences` | Preferences form, linked repos | US-04 |
+| `PATCH /api/workspaces/:id/preferences` | Preferences auto-save, linked repos | US-04, US-06 |
+| `GET /api/models` | Model dropdowns in preferences | US-04 |
+| `GET /api/workspaces/:id/skills/all` | Skill pickers in preferences | US-04 |
 | `GET/PUT /api/workspaces/:id/mcp-config` | MCP servers | US-05 |
 | `GET /api/workspaces/:id/skills` | Skill list | US-06 |
 | `GET /api/workspaces/:id/skills-config` | Skill config | US-06 |
@@ -297,3 +309,4 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 | Version | Date | Summary |
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification |
+| 1.1.0 | 2026-04-05 | Preferences section is now editable (models, depth, effort, skills, linked repos); removed INV-05 |

@@ -7,13 +7,17 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 
 interface SkillOption { name: string; description?: string; source?: string; }
 
+export type { SkillOption };
+
 interface SkillPickerProps {
     skills: SkillOption[];
     selectedSkills: string[];
     onSkillChange: (name: string) => void;
+    /** Custom label text. Pass empty string to hide. Default: "Skills (optional)". */
+    label?: string;
 }
 
-export function SkillPicker({ skills, selectedSkills, onSkillChange }: SkillPickerProps) {
+export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: SkillPickerProps) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [highlightIndex, setHighlightIndex] = useState(0);
@@ -163,9 +167,11 @@ export function SkillPicker({ skills, selectedSkills, onSkillChange }: SkillPick
     // Compute the flat index offset for global skills
     const globalOffset = filteredRepo.length;
 
+    const resolvedLabel = label ?? 'Skills (optional)';
+
     return (
         <div>
-            <label className="block text-xs font-medium text-[#848484] mb-1">Skills (optional)</label>
+            {resolvedLabel && <label className="block text-xs font-medium text-[#848484] mb-1">{resolvedLabel}</label>}
             <div className="flex flex-wrap items-center gap-1.5" data-testid="skill-chips">
                 {/* Selected skill chips */}
                 {selectedSkills.map(name => {

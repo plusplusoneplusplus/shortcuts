@@ -22,6 +22,7 @@ import { useRepos } from '../context/ReposContext';
 import { useScriptTemplates } from '../hooks/useScriptTemplates';
 import type { ScriptTemplate } from '../hooks/useScriptTemplates';
 import { TasksSettingsSection } from './TasksSettingsSection';
+import { RepoPreferencesSection } from './RepoPreferencesSection';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -43,41 +44,9 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
 
 // ── Info section types ──────────────────────────────────────────────────────
 
-interface LastModelsByMode {
-    task?: string;
-    ask?: string;
-    plan?: string;
-}
-
-interface LastSkillsByMode {
-    task?: string | string[];
-    ask?: string | string[];
-    plan?: string | string[];
-}
-
-interface PerRepoPreferences {
-    lastModel?: string;
-    lastModels?: LastModelsByMode;
-    lastDepth?: 'deep' | 'normal';
-    lastEffort?: 'low' | 'medium' | 'high';
-    lastSkills?: LastSkillsByMode;
-}
-
 const STATUS_ICON: Record<string, string> = {
     running: '⏳', completed: '✓', failed: '✗', cancelled: '🚫', queued: '⏳',
 };
-
-function formatSkillValue(val: string | string[] | undefined): string {
-    if (!val || (Array.isArray(val) && val.length === 0)) return 'none';
-    if (Array.isArray(val)) return val.join(', ');
-    return val || 'none';
-}
-
-function hasSkillValue(val: string | string[] | undefined): boolean {
-    if (!val) return false;
-    if (Array.isArray(val)) return val.length > 0;
-    return val.length > 0;
-}
 
 function MetaRow({ label, value, mono, children, valueClass }: { label: string; value?: string; mono?: boolean; children?: React.ReactNode; valueClass?: string }) {
     return (
@@ -368,9 +337,6 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const [processes, setProcesses] = useState<any[]>([]);
     const [loadingProcesses, setLoadingProcesses] = useState(true);
     const [tasksFolder, setTasksFolder] = useState<string | null>(null);
-    const [preferences, setPreferences] = useState<PerRepoPreferences | null>(null);
-    const [loadingPreferences, setLoadingPreferences] = useState(true);
-    const [preferencesError, setPreferencesError] = useState<string | null>(null);
 
     useEffect(() => {
         setLoadingProcesses(true);
@@ -384,15 +350,6 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks/settings`)
             .then(res => setTasksFolder(res?.taskRootPath || res?.folderPath || null))
             .catch(() => setTasksFolder(null));
-    }, [ws.id]);
-
-    useEffect(() => {
-        setLoadingPreferences(true);
-        setPreferencesError(null);
-        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/preferences`)
-            .then(res => setPreferences(res ?? {}))
-            .catch((err: unknown) => setPreferencesError(err instanceof Error ? err.message : 'Failed to load preferences'))
-            .finally(() => setLoadingPreferences(false));
     }, [ws.id]);
 
     // ── Sidebar navigation state ──────────────────────────────────────────────
@@ -532,35 +489,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                     </div>
                 )}
                 {activeSection === 'preferences' && (
-                    <div id="repo-preferences-section">
-                        <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Preferences</h3>
-                        {loadingPreferences ? (
-                            <div className="text-xs text-[#848484]">Loading...</div>
-                        ) : preferencesError ? (
-                            <div className="text-xs text-red-500">{preferencesError}</div>
-                        ) : !preferences || Object.keys(preferences).length === 0 || (
-                            !preferences.lastModels?.task &&
-                            !preferences.lastModels?.ask &&
-                            !preferences.lastModel &&
-                            !preferences.lastDepth &&
-                            !preferences.lastEffort &&
-                            !hasSkillValue(preferences.lastSkills?.task) &&
-                            !hasSkillValue(preferences.lastSkills?.ask) &&
-                            !hasSkillValue(preferences.lastSkills?.plan)
-                        ) ? (
-                            <div className="text-xs text-[#848484]" id="repo-preferences-empty">No preferences set</div>
-                        ) : (
-                            <div className="meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm" id="repo-preferences-grid">
-                                <MetaRow label="Task Model" value={preferences.lastModels?.task || preferences.lastModel || 'default'} />
-                                <MetaRow label="Ask Model" value={preferences.lastModels?.ask || preferences.lastModel || 'default'} />
-                                <MetaRow label="Depth" value={preferences.lastDepth || 'default'} />
-                                <MetaRow label="Effort" value={preferences.lastEffort || 'default'} />
-                                <MetaRow label="Task Skill" value={formatSkillValue(preferences.lastSkills?.task)} />
-                                <MetaRow label="Ask Skill" value={formatSkillValue(preferences.lastSkills?.ask)} />
-                                <MetaRow label="Plan Skill" value={formatSkillValue(preferences.lastSkills?.plan)} />
-                            </div>
-                        )}
-                    </div>
+                    <RepoPreferencesSection workspaceId={workspaceId} />
                 )}
                 {activeSection === 'mcp' && (
                     <McpServersPanel
