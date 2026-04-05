@@ -34,7 +34,7 @@ export function ReferencesDropdown({ planPath, files }: ReferencesDropdownProps)
                 References ({total}) ▾
             </button>
             {open && (
-                <div className="absolute top-full left-0 mt-1 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] rounded shadow-lg p-2 min-w-[300px] max-w-[600px] max-h-[300px] overflow-y-auto z-50 flex flex-col gap-1">
+                <div className="absolute top-full left-0 mt-1 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] rounded shadow-lg p-2 min-w-[420px] max-w-[800px] max-h-[300px] overflow-y-auto z-50 flex flex-col gap-1">
                     {planPath && (
                         <span className="inline-flex items-center gap-1 hover:bg-[#f3f3f3] dark:hover:bg-[#2d2d2d] rounded px-1">
                             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0" aria-hidden="true">

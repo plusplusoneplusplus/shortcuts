@@ -77,14 +77,14 @@ describe('ReferencesDropdown', () => {
     it('popover has max-width and scroll constraints', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
-        const popover = document.querySelector('.max-w-\\[600px\\]');
+        const popover = document.querySelector('.max-w-\\[800px\\]');
         expect(popover).not.toBeNull();
     });
 
-    it('popover uses wider min-width after change', () => {
+    it('popover uses wider min-width', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
-        const popover = document.querySelector('.min-w-\\[300px\\]');
+        const popover = document.querySelector('.min-w-\\[420px\\]');
         expect(popover).not.toBeNull();
     });
 

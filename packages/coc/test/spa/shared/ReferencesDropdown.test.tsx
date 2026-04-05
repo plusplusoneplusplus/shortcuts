@@ -55,7 +55,7 @@ describe('ReferencesDropdown component', () => {
         expect(SOURCE).toContain('bg-white');
         expect(SOURCE).toContain('dark:bg-[#252526]');
         expect(SOURCE).toContain('dark:border-[#3c3c3c]');
-        expect(SOURCE).toContain('min-w-[300px]');
+        expect(SOURCE).toContain('min-w-[420px]');
         expect(SOURCE).toContain('z-50');
     });
 });
