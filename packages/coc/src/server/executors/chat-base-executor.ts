@@ -40,6 +40,7 @@ import {
     SkillResolverError,
     TASK_FILTER,
     ToolCallCapture,
+    rewriteLargePrompt,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
@@ -186,6 +187,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         let attachments: Attachment[] | undefined;
         let imageTempDir: string | undefined;
+        let pasteCleanup: (() => void) | undefined;
         const payloadImages = (payload as unknown as Record<string, unknown>)?.images;
         if (Array.isArray(payloadImages) && payloadImages.length > 0) {
             const validImages = payloadImages
@@ -199,6 +201,17 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         }
 
         try {
+            // Rewrite large prompts to file-path references
+            const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
+            const wsId = payload.workspaceId;
+            if (wsId) {
+                const rewritten = await rewriteLargePrompt(effectivePrompt, effectiveDataDir, wsId);
+                if (rewritten) {
+                    effectivePrompt = rewritten.rewrittenPrompt;
+                    pasteCleanup = rewritten.cleanup;
+                }
+            }
+
             const availability = await this.aiService.isAvailable();
             if (!availability.available) {
                 throw new Error(`Copilot SDK not available: ${availability.error || 'unknown reason'}`);
@@ -311,6 +324,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             };
         } finally {
             if (imageTempDir) { cleanupTempDir(imageTempDir); }
+            if (pasteCleanup) { pasteCleanup(); }
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);

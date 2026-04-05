@@ -115,6 +115,19 @@ export {
     isWithinDirectory
 } from './path-security';
 
+// Paste context manager
+export {
+    PASTE_THRESHOLD,
+    sniffContentExtension,
+    separateQuestionFromPaste,
+    savePasteContent,
+    buildPasteFileReference,
+    rewriteLargePrompt,
+    cleanupStalePasteFiles,
+    cleanupAllStalePasteFiles,
+} from './paste-context-manager';
+export type { SeparatedContent, SavePasteResult } from './paste-context-manager';
+
 // Template engine
 export {
     TEMPLATE_VARIABLE_REGEX,

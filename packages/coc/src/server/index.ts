@@ -22,6 +22,7 @@ import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
+import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
@@ -154,6 +155,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     modelMetadataStore.initialize(resolvedAiService).catch((err: unknown) => {
         process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
     });
+    cleanupAllStalePasteFiles(dataDir).catch(() => { /* best-effort */ });
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;

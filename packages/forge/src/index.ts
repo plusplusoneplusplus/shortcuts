@@ -209,8 +209,18 @@ export {
     extractTemplateVariables,
     hasVariables,
     containsVariables,
-    validateVariables
+    validateVariables,
+    // Paste context manager
+    PASTE_THRESHOLD,
+    sniffContentExtension,
+    separateQuestionFromPaste,
+    savePasteContent,
+    buildPasteFileReference,
+    rewriteLargePrompt,
+    cleanupStalePasteFiles,
+    cleanupAllStalePasteFiles,
 } from './utils';
+export type { SeparatedContent, SavePasteResult } from './utils';
 
 // ============================================================================
 // Config (Centralized Defaults)
