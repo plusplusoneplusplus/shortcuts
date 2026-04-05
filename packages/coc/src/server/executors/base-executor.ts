@@ -44,6 +44,12 @@ export abstract class BaseExecutor {
     /** Set of task IDs that have been cancelled. */
     protected readonly cancelledTasks: Set<string> = new Set();
 
+    /**
+     * Subfolder under `<dataDir>/repos/<workspaceId>/` where output files are persisted.
+     * Defaults to `'outputs'`; chat-mode executors override this to `'chat'`.
+     */
+    protected readonly outputSubfolder: string = 'outputs';
+
     /** Consolidated per-process session state. */
     protected readonly sessions = new Map<string, ProcessSessionState>();
 
@@ -251,7 +257,7 @@ export abstract class BaseExecutor {
     protected async persistOutput(processId: string, content: string, workspaceId?: string): Promise<void> {
         if (!content || !this.dataDir) { return; }
         try {
-            const outputPath = await OutputFileManager.saveOutput(processId, content, this.dataDir, workspaceId);
+            const outputPath = await OutputFileManager.saveOutput(processId, content, this.dataDir, workspaceId, this.outputSubfolder);
             if (outputPath) {
                 await this.store.updateProcess(processId, { rawStdoutFilePath: outputPath });
             }

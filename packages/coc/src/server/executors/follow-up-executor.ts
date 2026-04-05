@@ -90,6 +90,9 @@ export class FollowUpExecutor extends BaseExecutor {
     private readonly _resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<SkillConfig>;
     private readonly onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
 
+    /** Follow-up messages are part of chat sessions — output goes to the `chat/` subfolder. */
+    protected override readonly outputSubfolder: string = 'chat';
+
     constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string) {
         super(store, dataDir);
         this.approvePermissions = options.approvePermissions !== false;

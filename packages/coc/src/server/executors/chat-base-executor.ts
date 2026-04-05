@@ -106,6 +106,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly getWsServerFn?: () => import('../websocket').ProcessWebSocketServer | undefined;
 
+    /** Chat session output files go to the dedicated `chat/` subfolder. */
+    protected override readonly outputSubfolder: string = 'chat';
+
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
         this.approvePermissions = options.approvePermissions !== false;

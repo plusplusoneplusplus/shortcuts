@@ -85,6 +85,36 @@ describe('OutputFileManager', () => {
             const content = await fs.readFile(filePath!, 'utf-8');
             expect(content).toBe('second');
         });
+
+        it('should write to chat/ subfolder when subfolder="chat"', async () => {
+            const filePath = await OutputFileManager.saveOutput('proc-chat', 'chat content', tmpDir, 'ws-abc', 'chat');
+
+            expect(filePath).toBe(path.join(tmpDir, 'repos', 'ws-abc', 'chat', 'proc-chat.md'));
+            const content = await fs.readFile(filePath!, 'utf-8');
+            expect(content).toBe('chat content');
+        });
+
+        it('should create chat/ directory on first write with chat subfolder', async () => {
+            const chatDir = path.join(tmpDir, 'repos', 'ws-chat', 'chat');
+
+            await expect(fs.access(chatDir)).rejects.toThrow();
+
+            await OutputFileManager.saveOutput('proc-chat-new', 'hi', tmpDir, 'ws-chat', 'chat');
+
+            const stat = await fs.stat(chatDir);
+            expect(stat.isDirectory()).toBe(true);
+        });
+
+        it('should keep chat/ and outputs/ files separate for the same workspace', async () => {
+            const chatPath = await OutputFileManager.saveOutput('proc-x', 'chat', tmpDir, 'ws-sep', 'chat');
+            const outputPath = await OutputFileManager.saveOutput('proc-x', 'output', tmpDir, 'ws-sep', 'outputs');
+
+            expect(chatPath).toBe(path.join(tmpDir, 'repos', 'ws-sep', 'chat', 'proc-x.md'));
+            expect(outputPath).toBe(path.join(tmpDir, 'repos', 'ws-sep', 'outputs', 'proc-x.md'));
+
+            expect(await fs.readFile(chatPath!, 'utf-8')).toBe('chat');
+            expect(await fs.readFile(outputPath!, 'utf-8')).toBe('output');
+        });
     });
 
     // ========================================================================
