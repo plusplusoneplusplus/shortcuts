@@ -3,13 +3,13 @@
 **Document type:** Formal UX Specification  
 **Scope:** CoC Dashboard → Repository Detail → Activity Tab  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Activity tab.  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 ---
 
 ## 1. Overview
 
-The **Repository Activity Tab** is the primary workspace for monitoring and interacting with AI tasks associated with a specific repository. It is the first and default tab shown when a user selects a repository in the CoC dashboard. It provides a unified interface to: enqueue new tasks, observe running and queued work, review historical conversations, send follow-up messages, and manage the execution queue.
+The **Repository Activity Tab** is the primary workspace for monitoring and interacting with AI tasks associated with a specific repository. It is the first tab shown in the `RepoDetail` tab bar. The default tab for a new repo is `settings`; tab state is persisted per-repo, so Activity is shown on return if it was last used. It provides a unified interface to: enqueue new tasks, observe running and queued work, review completed conversations, send follow-up messages, and manage the execution queue.
 
 ### 1.1 Tab Identity
 
@@ -17,7 +17,7 @@ The **Repository Activity Tab** is the primary workspace for monitoring and inte
 |---|---|
 | Tab label | `Activity` |
 | Tab position | First (leftmost) tab in `RepoDetail` |
-| Default tab | Yes — shown on first repo selection |
+| Default tab | No — default is `settings`; tab state is persisted per-repo, so Activity is shown on return if last used |
 | Keyboard shortcut | `Alt+A` |
 | URL fragment | `#repos/<workspaceId>/activity` |
 | Deep-link URL | `#repos/<workspaceId>/activity/<taskId>` |
@@ -64,7 +64,7 @@ Each story uses the **Given / When / Then** format to enable formal verification
 
 - **Given** the Activity tab is open  
 - **When** completed tasks exist  
-- **Then** a "History" section appears below "Queued", listing completed tasks in reverse-chronological order
+- **Then** a "Completed Tasks" section appears below "Queued" (or below "Pinned" if pinned tasks exist), listing completed tasks in reverse-chronological order
 
 ---
 
@@ -73,7 +73,7 @@ Each story uses the **Given / When / Then** format to enable formal verification
 
 - **Given** the Activity tab is open  
 - **When** archived tasks exist  
-- **Then** an "Archive" section appears below "History", listing archived tasks in reverse-chronological order
+- **Then** an "📦 Archived" section appears below "Completed Tasks", collapsed by default, listing archived tasks in reverse-chronological order. Archive is a client-side grouping (stored as a set of task IDs); there is no server-side archive state.
 
 ---
 
@@ -81,7 +81,7 @@ Each story uses the **Given / When / Then** format to enable formal verification
 > As a developer, I want to read the full AI conversation for any task so I can understand what was done.
 
 - **Given** the Activity tab is open  
-- **When** the user clicks a task in any section (Running / Queued / History / Archive)  
+- **When** the user clicks a task in any section (Running / Queued / Pinned / Completed Tasks / Archived)  
 - **Then** the right pane shows the full conversation thread for that task, including all turns (user prompt, AI response, tool calls)
 
 ---
@@ -92,6 +92,24 @@ Each story uses the **Given / When / Then** format to enable formal verification
 - **Given** a URL of the form `#repos/<workspaceId>/activity/<taskId>`  
 - **When** the user navigates to that URL  
 - **Then** the Activity tab opens and the specified task is selected and shown in the detail pane
+
+---
+
+**US-05a — Pin a task to the top**
+> As a developer, I want to pin important tasks so they stay visible at the top of my completed list.
+
+- **Given** a completed or running task exists
+- **When** the user selects "Pin to top" from the context menu
+- **Then** the task appears in the "📌 Pinned" section (between Queued and Completed Tasks); pinned running tasks show in Pinned instead of Running
+
+---
+
+**US-05b — Archive a task via swipe (mobile)**
+> As a developer on mobile, I want to swipe a completed task to archive it quickly.
+
+- **Given** the Activity tab is open on a mobile/touch viewport
+- **When** the user swipes a completed task card horizontally
+- **Then** the task moves to the "📦 Archived" section with an undo toast
 
 ---
 
@@ -164,7 +182,7 @@ Each story uses the **Given / When / Then** format to enable formal verification
 
 - **Given** a task is in `running` state  
 - **When** the user clicks the Cancel button in the detail pane header  
-- **Then** a `DELETE /api/queue/:id` request is sent; the task transitions to `cancelled` state and moves to History
+- **Then** a `DELETE /api/queue/:id` request is sent; the task transitions to `cancelled` state and moves to Completed Tasks
 
 ---
 
@@ -183,12 +201,12 @@ Each story uses the **Given / When / Then** format to enable formal verification
 **US-14 — Delete history entries**
 > As a developer, I want to delete one or all history entries to clean up the list.
 
-- **Given** items exist in the History section  
+- **Given** items exist in the Completed Tasks section  
 - **When** the user selects "Delete" from a task's context menu  
 - **Then** `DELETE /api/queue/history/:taskId` is called and the entry is removed from the list
 
 - **When** the user selects "Clear All History"  
-- **Then** `DELETE /api/queue/history` is called and the History section becomes empty
+- **Then** `DELETE /api/queue/history` is called and the Completed Tasks section becomes empty
 
 ---
 
@@ -270,15 +288,18 @@ Each story uses the **Given / When / Then** format to enable formal verification
 
 | Feature | Acceptance Criteria |
 |---|---|
-| Three-section layout | Running → Queued → History order is always preserved; sections absent when empty |
-| Task type icons | Every task card shows the correct icon for its type: 🤖 autopilot, 💡 ask, 📋 plan, ▶️ run-workflow, ⚡ run-script, 📅 scheduled |
+| Five-section layout | Running Tasks → Queued Tasks → 📌 Pinned → Completed Tasks → 📦 Archived; each section hidden when empty; Archived collapsed by default |
+| Task type icons | Every task card shows the correct icon for its type: 🤖 autopilot, 💡 ask, 📋 plan, ▶️ run-workflow, ⚡ run-script, 📅 scheduled. Additional state overlays: ❄️ frozen, 🚀 admitted (schedule-immediately), 🤖⏸ held (autopilot paused) |
 | Display name truncation | Task display name is truncated to ≤ 60 characters with ellipsis when longer |
 | Live elapsed timer | Running tasks show an elapsed timer; it increments every 1 second while the task is in `running` state; it stops when the task leaves `running` |
 | Unseen activity dot | Completed tasks not yet viewed by the user show a bold title and a visual dot indicator |
 | Filter dropdown | Multi-select filter by task type; filtered sections collapse when empty |
 | Search input | Real-time filter by displayName / title / prompt; case-insensitive |
 | Context menu | Available on each task card; contains actions relevant to the task's current state |
-| Drag-and-drop reorder | Mouse and touch dragging reorders queued tasks; running and history items are not reorderable |
+| Drag-and-drop reorder | Mouse and touch dragging reorders queued tasks; running, pinned, completed, and archived items are not reorderable |
+| Pin/Unpin | Running and completed tasks can be pinned; pinned tasks appear in the dedicated Pinned section |
+| Swipe-to-archive | On mobile/touch viewports, horizontal swipe on a completed task card archives it with an undo toast |
+| Draft badge | Task cards show a ✏️ indicator when an unsent draft exists for that task |
 
 ### 4.2 Right Pane — Detail / Chat
 
@@ -315,19 +336,21 @@ These properties **must hold at all times**. Any change that violates an invaria
 |---|---|
 | INV-01 | The Activity tab is always the first tab in `RepoDetail`; its position never changes |
 | INV-02 | Task selection is always scoped to the current repository; selecting a task in Repo A never affects the selected task state of Repo B |
-| INV-03 | The "Running" section always appears before "Queued"; "Queued" always appears before "History" |
+| INV-03 | Sections always appear in order: Running Tasks → Queued Tasks → 📌 Pinned → Completed Tasks → 📦 Archived |
 | INV-04 | A frozen task never transitions to `running` until explicitly unfrozen |
 | INV-05 | A paused queue never starts a new task until explicitly resumed |
 | INV-06 | The elapsed-time counter on a running task only increments; it never decrements or resets while the task is running |
 | INV-07 | The unseen-activity dot for a task disappears exactly once the task is viewed; it does not reappear unless a new event arrives for that task |
-| INV-08 | Drag-and-drop reordering only applies to queued tasks; running tasks and history entries cannot be reordered via drag |
-| INV-09 | Deleting a history entry only removes it from the History section; it does not affect running or queued tasks |
-| INV-10 | A cancelled task always moves to History; it never remains in Running or Queued |
+| INV-08 | Drag-and-drop reordering only applies to queued tasks; running, pinned, completed, and archived items are not reorderable via drag |
+| INV-09 | Deleting a completed task only removes it from the Completed Tasks or Archived section; it does not affect running or queued tasks |
+| INV-10 | A cancelled task always moves to Completed Tasks; it never remains in Running or Queued |
 | INV-11 | Draft text is scoped to the individual task; drafts for different tasks are fully isolated |
 | INV-12 | The token-limit bar never causes input to be blocked; it is informational only |
 | INV-13 | When the pop-out window is open for a task, the main pane shows the placeholder — not a duplicate of the conversation |
-| INV-14 | The Activity tab renders correctly with zero tasks in all three sections (empty state) |
+| INV-14 | The Activity tab renders correctly with zero tasks in all five sections (empty state) |
 | INV-15 | Switching workspace (repo) mounts a completely fresh Activity tab (`key={ws.id}`); no state leaks across repos |
+| INV-16 | A pinned task always appears in the Pinned section regardless of its original state; unpinning returns it to its natural section |
+| INV-17 | Archiving a task is a client-side-only operation; it does not change the task's server state or queue status |
 
 ---
 
@@ -353,9 +376,9 @@ These properties **must hold at all times**. Any change that violates an invaria
 ```
 
 **State visibility rules:**
-- `QUEUED` (including frozen) → shown in Queued section
-- `RUNNING` → shown in Running section
-- `COMPLETED`, `CANCELLED`, error states → shown in History section
+- `QUEUED` (including frozen) → shown in Queued Tasks section
+- `RUNNING` → shown in Running Tasks section (unless pinned → Pinned section)
+- `COMPLETED`, `CANCELLED`, error states → shown in Completed Tasks section (or Archived if archived, or Pinned if pinned)
 
 ---
 
@@ -368,27 +391,34 @@ These properties **must hold at all times**. Any change that violates an invaria
 │                        │                                            │
 │  [🔍 Search...  ] [▼]  │  [Task Title]           [↗] [⬜] [✕]     │
 │                        │  ─────────────────────────────────────    │
-│  ▶ RUNNING (N)         │  Turn 1: User prompt text…               │
+│  ▶ RUNNING TASKS (N)   │  Turn 1: User prompt text…               │
 │  ┌──────────────────┐  │                                            │
 │  │ 🤖 Task name  2m │  │  Turn 1: AI response text…               │
 │  └──────────────────┘  │  [tool calls collapsed/expanded]          │
 │                        │                                            │
-│  ⏳ QUEUED (N)         │  Turn 2: Follow-up text…                 │
+│  ⏳ QUEUED TASKS (N)   │  Turn 2: Follow-up text…                 │
 │  ┌──────────────────┐  │                                            │
 │  │ 📋 Plan: refac…  │  │  Turn 2: AI response (streaming…)        │
 │  └──────────────────┘  │                                            │
 │                        │  [───── token limit bar ─────]            │
-│  🕐 HISTORY (N)        │                                            │
+│  📌 PINNED (N)         │                                            │
 │  ┌──────────────────┐  │  ┌─────────────────────────────────────┐  │
-│  │ 💡 Ask: how do…  │  │  │ [mode ▼] Type a follow-up…    [▶]  │  │
+│  │ 💡 Ask: impor…   │  │  │ [mode ▼] Type a follow-up…    [▶]  │  │
 │  └──────────────────┘  │  └─────────────────────────────────────┘  │
 │                        │                                            │
-│  (scrollable)          │                        [MiniMap] (desktop) │
+│  ✅ COMPLETED TASKS (N)│                        [MiniMap] (desktop) │
+│  ┌──────────────────┐  │                                            │
+│  │ 💡 Ask: how do…  │  │                                            │
+│  └──────────────────┘  │                                            │
+│                        │                                            │
+│  📦 ARCHIVED (N) ▶     │  (collapsed by default)                   │
+│                        │                                            │
+│  (scrollable)          │                                            │
 └────────────────────────┴────────────────────────────────────────────┘
 ```
 
 **Layout rules:**
-- Left pane: fixed width, vertically scrollable, contains all three sections
+- Left pane: fixed width, vertically scrollable, contains all five sections
 - Right pane: fills remaining width, contains header + conversation + input
 - The split is fixed (no resizable divider is specified; if one is added it must default to the original proportions)
 - MiniMap appears only on desktop viewports
@@ -408,25 +438,45 @@ Each task card in the list must display:
 | Unseen dot | When task completed and not viewed | Adjacent to title |
 | Bold title | When task has unseen activity | Same condition as dot |
 | Context menu trigger | On hover or right-click | See Section 9 |
+| Draft badge (✏️) | When an unsent draft exists for this task | Adjacent to title |
 
 ---
 
 ## 9. Context Menu Specification
 
-Context menu items and their availability by task state:
+Context menu items vary by task state. Completed tasks support bulk context menu via shift-click multi-select.
 
-| Action | Running | Queued | Frozen | History |
-|---|---|---|---|---|
-| Move to Top | ✗ | ✓ | ✓ | ✗ |
-| Move Up | ✗ | ✓ | ✓ | ✗ |
-| Move Down | ✗ | ✓ | ✓ | ✗ |
-| Freeze | ✗ | ✓ | ✗ | ✗ |
-| Unfreeze | ✗ | ✗ | ✓ | ✗ |
-| Force Fail | ✓ | ✗ | ✗ | ✗ |
-| Cancel | ✓ | ✓ | ✗ | ✗ |
-| Mark as Read | ✗ | ✗ | ✗ | ✓ (unseen) |
-| Mark as Unread | ✗ | ✗ | ✗ | ✓ (seen) |
-| Delete | ✗ | ✗ | ✗ | ✓ |
+**Running tasks:**
+
+| Action | Available |
+|---|---|
+| 📌 Pin / Unpin | ✓ |
+| 📋 Copy metadata | ✓ |
+| ✕ Cancel | ✓ |
+
+**Queued tasks:**
+
+| Action | Available |
+|---|---|
+| ▲ Move Up | ✓ (if not first) |
+| ⏬ Move to Top | ✓ |
+| 🚀 Schedule Immediately | ✓ (only when held: autopilot paused + not admitted) |
+| 🚫 Cancel Scheduling | ✓ (only when admitted) |
+| 📋 Copy metadata | ✓ |
+| ❄️ Freeze / ▶ Unfreeze | ✓ (toggle) |
+| ✕ Cancel | ✓ |
+
+**Completed tasks (supports multi-select):**
+
+| Action | Available |
+|---|---|
+| ✓ Mark as Read | ✓ (if any unseen) |
+| ● Mark as Unread | ✓ (if any seen) |
+| 📌 Pin / Unpin | ✓ |
+| 📦 Archive / 📤 Unarchive | ✓ |
+| 📝 Summarize chat(s) | ✓ (≤ 20 selected) |
+| 📋 Copy metadata | ✓ |
+| 🗑 Delete | ✓ |
 
 ---
 
@@ -435,7 +485,7 @@ Context menu items and their availability by task state:
 | Property | Specification |
 |---|---|
 | Mode selector | Dropdown with options: Ask, Plan, Autopilot |
-| Default mode | Ask |
+| Default mode | Autopilot |
 | Slash commands | Triggered by `/` as first character; menu populated from skills API |
 | Image paste | Clipboard paste of image creates an inline preview; image is attached to the message |
 | Draft persistence | Draft survives page reload; scoped to individual task ID |
@@ -462,10 +512,12 @@ Context menu items and their availability by task state:
 
 | State | Display |
 |---|---|
-| No tasks at all | All three sections absent; a prompt/CTA is shown encouraging the user to start a task |
+| No tasks at all | All five sections absent; a prompt/CTA is shown encouraging the user to start a task |
 | Running section empty | Section header hidden |
 | Queued section empty | Section header hidden |
-| History section empty | Section header hidden |
+| Pinned section empty | Section header hidden |
+| Completed Tasks section empty | Section header hidden |
+| Archived section empty | Section header hidden |
 | No task selected | Right pane shows a neutral placeholder ("Select a task to view its conversation") |
 | Search returns no results | "No tasks match your search" message; sections collapse |
 
@@ -499,7 +551,7 @@ These are non-negotiable constraints that must be preserved in all future implem
 
 | Configuration | Default | Description |
 |---|---|---|
-| Auto-open Activity tab | Yes | Activity tab is the default when selecting a repo |
+| Auto-open Activity tab | No | Activity tab is the first tab; default tab is `settings`; Activity is shown on return if last used |
 | Draft auto-save | Yes (localStorage) | Unsent drafts are saved automatically |
 | MiniMap visibility | Desktop only | Shown on wide viewports; hidden on narrow/mobile |
 
@@ -536,3 +588,4 @@ The Activity tab depends on the following server endpoints. Any change to these 
 | Version | Date | Summary |
 |---|---|---|
 | 1.0.0 | 2026-03-24 | Initial golden state specification |
+| 1.1.0 | 2026-04-05 | Fix default tab (settings, not activity), five-section layout (Running→Queued→Pinned→Completed→Archived), default follow-up mode (autopilot), rewrite context menu per codebase, add pin/unpin and swipe-to-archive features, add draft badge |
