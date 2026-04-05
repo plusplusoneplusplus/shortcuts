@@ -20,7 +20,7 @@ import type { RepoData } from '../../../src/server/spa/client/react/repos/repoGr
 import { RepoCard } from '../../../src/server/spa/client/react/repos/RepoCard';
 import { ReposView } from '../../../src/server/spa/client/react/repos/ReposView';
 import { RepoInfoTab } from '../../../src/server/spa/client/react/repos/RepoInfoTab';
-import { WorkflowsTab } from '../../../src/server/spa/client/react/repos/WorkflowsTab';
+import { TemplatesTab } from '../../../src/server/spa/client/react/repos/TemplatesTab';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { AddRepoDialog } from '../../../src/server/spa/client/react/repos/AddRepoDialog';
 import { ReposGrid } from '../../../src/server/spa/client/react/repos/ReposGrid';
@@ -601,10 +601,10 @@ describe('RepoInfoTab', () => {
     });
 });
 
-describe('WorkflowsTab', () => {
+describe('TemplatesTab', () => {
     it('shows empty state when no pipelines', () => {
         const repo = makeRepo({ workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' }, workflows: [] });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         expect(screen.getByText('No workflows found')).toBeDefined();
     });
 
@@ -613,7 +613,7 @@ describe('WorkflowsTab', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [{ name: 'build', path: 'build.yaml' }, { name: 'deploy', path: 'deploy.yaml' }],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         expect(screen.getByText(/build/)).toBeDefined();
         expect(screen.getByText(/deploy/)).toBeDefined();
     });
@@ -663,7 +663,7 @@ describe('RepoDetail', () => {
         const buttons = document.querySelectorAll('button');
         const tabLabels = Array.from(buttons).map(b => b.textContent?.trim());
         expect(tabLabels).toContain('Settings');
-        expect(tabLabels).toContain('Workflows');
+        expect(tabLabels).toContain('Templates');
         expect(tabLabels).toContain('Activity');
     });
 

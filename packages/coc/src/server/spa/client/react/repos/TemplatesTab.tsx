@@ -1,5 +1,6 @@
 /**
- * WorkflowsTab — two-panel layout with collapsible Workflows and Templates sections.
+ * TemplatesTab — two-panel layout with collapsible Workflows, Templates,
+ * AI Chat Templates, and Run Script Templates sections.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -14,6 +15,8 @@ import { WorkflowDetail } from './WorkflowDetail';
 import { AddWorkflowDialog } from './AddWorkflowDialog';
 import { useSkillTemplates } from '../hooks/useSkillTemplates';
 import type { SkillTemplate } from '../hooks/useSkillTemplates';
+import { useScriptTemplates } from '../hooks/useScriptTemplates';
+import type { ScriptTemplate } from '../hooks/useScriptTemplates';
 
 // ── Template types ──
 
@@ -744,11 +747,11 @@ function CollapsibleSection({ label, count, expanded, onToggle, actionButton, ch
 
 // ── Main component ──
 
-interface WorkflowsTabProps {
+interface TemplatesTabProps {
     repo: RepoData;
 }
 
-export function WorkflowsTab({ repo }: WorkflowsTabProps) {
+export function TemplatesTab({ repo }: TemplatesTabProps) {
     const { state, dispatch } = useApp();
     const workspaceId = repo.workspace.id;
     const pipelines = repo.workflows || [];
@@ -778,6 +781,10 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
     const selectedSkillTemplateId = state.selectedSkillTemplateId;
     const [skillTemplatesExpanded, setSkillTemplatesExpanded] = useState(true);
 
+    // ── Run Script Template state ──
+    const { templates: scriptTemplates, deleteTemplate: deleteScriptTemplate, loaded: scriptTemplatesLoaded } = useScriptTemplates(workspaceId);
+    const [scriptTemplatesExpanded, setScriptTemplatesExpanded] = useState(true);
+
     // ── Derived ──
     const selectedPipeline: WorkflowInfo | null =
         pipelines.find(p => p.name === state.selectedWorkflowName) ?? null;
@@ -790,12 +797,12 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
         setSelectedTemplateName(null);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows/' + encodeURIComponent(p.name);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates/' + encodeURIComponent(p.name);
     };
 
     const handleCloseWorkflow = () => {
         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows';
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates';
     };
 
     const handleWorkflowDeleted = () => {
@@ -863,7 +870,7 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
         setSelectedTemplateName(name);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows';
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates';
     };
 
     // ── Skill template handlers ──
@@ -874,7 +881,7 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
         setSelectedTemplateName(null);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows/chat-template/' + encodeURIComponent(id);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates/chat-template/' + encodeURIComponent(id);
     };
 
     const handleDeleteSkillTemplate = (id: string) => {
@@ -882,7 +889,7 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
         deleteSkillTemplate(id);
         if (selectedSkillTemplateId === id) {
             dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
-            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows';
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates';
         }
     };
 
@@ -1044,6 +1051,56 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
                             </ul>
                         )}
                     </CollapsibleSection>
+
+                    {/* Run Script Templates section */}
+                    <CollapsibleSection
+                        label="Run Script Templates"
+                        count={scriptTemplates.length}
+                        expanded={scriptTemplatesExpanded}
+                        onToggle={() => setScriptTemplatesExpanded(v => !v)}
+                        testId="script-templates-section"
+                    >
+                        {!scriptTemplatesLoaded ? (
+                            <div className="flex items-center justify-center py-4">
+                                <Spinner />
+                            </div>
+                        ) : scriptTemplates.length === 0 ? (
+                            <div className="flex items-center justify-center text-center px-4 py-4" data-testid="script-templates-empty">
+                                <div>
+                                    <div className="text-2xl mb-2">📜</div>
+                                    <div className="text-sm text-[#6e6e6e] dark:text-[#888]">No run script templates</div>
+                                    <div className="text-xs text-[#999] dark:text-[#666] mt-1">
+                                        Save templates from the Run Script dialog
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <ul data-testid="script-templates-list">
+                                {scriptTemplates.map((t: ScriptTemplate) => (
+                                    <li
+                                        key={t.id}
+                                        className="flex items-center justify-between gap-2 py-1.5 px-4 cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333]"
+                                        data-testid="script-template-item"
+                                    >
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc] truncate">📜 {t.name}</div>
+                                            <div className="font-mono text-xs text-[#848484] truncate">{t.scriptPath}</div>
+                                            {t.args && <div className="font-mono text-xs text-[#848484] truncate">{t.args}</div>}
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                {t.model && (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999]">{t.model}</span>
+                                                )}
+                                                {t.pauseOnFailure && (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#fff3cd] dark:bg-[#4d3800] text-[#856404] dark:text-[#ffc107]">pause on failure</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <Button variant="ghost" size="sm" onClick={() => deleteScriptTemplate(t.id)} title="Delete template">✕</Button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </CollapsibleSection>
                 </div>
             </div>
 
@@ -1105,7 +1162,7 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
                         if (createdName) {
                             dispatch({ type: 'SET_SELECTED_WORKFLOW', name: createdName });
                             setSelectedTemplateName(null);
-                            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflows/' + encodeURIComponent(createdName);
+                            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates/' + encodeURIComponent(createdName);
                         }
                     }}
                     onClose={() => setShowAddDialog(false)}

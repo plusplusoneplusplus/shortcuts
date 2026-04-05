@@ -27,8 +27,8 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#repos/my-repo/tasks')).toBe('repos');
     });
 
-    it('returns "repos" for #repos/some-id/workflows', () => {
-        expect(tabFromHash('#repos/my-repo/workflows')).toBe('repos');
+    it('returns "repos" for #repos/some-id/templates', () => {
+        expect(tabFromHash('#repos/my-repo/templates')).toBe('repos');
     });
 
     it('returns "repos" for #repos/some-id/info', () => {
@@ -99,8 +99,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('tasks')).toBe(true);
     });
 
-    it('includes "workflows"', () => {
-        expect(VALID_REPO_SUB_TABS.has('workflows')).toBe(true);
+    it('includes "templates"', () => {
+        expect(VALID_REPO_SUB_TABS.has('templates')).toBe(true);
     });
 
     it('includes "schedules"', () => {
@@ -172,10 +172,10 @@ describe('repo sub-tab deep-link parsing', () => {
         expect(result.subTab).toBe('tasks');
     });
 
-    it('parses #repos/my-repo/workflows correctly', () => {
-        const result = parseRepoDeepLink('#repos/my-repo/workflows');
+    it('parses #repos/my-repo/templates correctly', () => {
+        const result = parseRepoDeepLink('#repos/my-repo/templates');
         expect(result.repoId).toBe('my-repo');
-        expect(result.subTab).toBe('workflows');
+        expect(result.subTab).toBe('templates');
     });
 
     it('parses #repos/my-repo/schedules correctly', () => {
@@ -556,6 +556,14 @@ describe('parseWorkflowsDeepLink', () => {
     it('returns null for chat-template sub-path', () => {
         expect(parseWorkflowsDeepLink('#repos/my-repo/workflows/chat-template/st-1')).toBeNull();
     });
+
+    it('parses #repos/my-repo/templates/my-pipe (new URL form)', () => {
+        expect(parseWorkflowsDeepLink('#repos/my-repo/templates/my-pipe')).toBe('my-pipe');
+    });
+
+    it('returns null for chat-template sub-path under templates', () => {
+        expect(parseWorkflowsDeepLink('#repos/my-repo/templates/chat-template/st-1')).toBeNull();
+    });
 });
 
 // ─── parseChatTemplateDeepLink ───────────────────────────────────
@@ -587,6 +595,10 @@ describe('parseChatTemplateDeepLink', () => {
 
     it('returns null for empty string', () => {
         expect(parseChatTemplateDeepLink('')).toBeNull();
+    });
+
+    it('parses #repos/my-repo/templates/chat-template/st-1 (new URL form)', () => {
+        expect(parseChatTemplateDeepLink('#repos/my-repo/templates/chat-template/st-1')).toBe('st-1');
     });
 });
 
@@ -638,11 +650,17 @@ describe('handleHash wiki dispatch simulation', () => {
 // ─── workflow deep-link integration ────────────────────────────
 
 describe('workflow deep-link integration', () => {
-    it('tabFromHash returns "repos" for #repos/ws-abc/workflows/my-pipeline', () => {
-        expect(tabFromHash('#repos/ws-abc/workflows/my-pipeline')).toBe('repos');
+    it('tabFromHash returns "repos" for #repos/ws-abc/templates/my-pipeline', () => {
+        expect(tabFromHash('#repos/ws-abc/templates/my-pipeline')).toBe('repos');
     });
 
     it('parseWorkflowsDeepLink and tabFromHash compose correctly for a pipeline deep link', () => {
+        const hash = '#repos/ws-abc/templates/my-pipeline';
+        expect(tabFromHash(hash)).toBe('repos');
+        expect(parseWorkflowsDeepLink(hash)).toBe('my-pipeline');
+    });
+
+    it('legacy #repos/ws-abc/workflows/my-pipeline still parses', () => {
         const hash = '#repos/ws-abc/workflows/my-pipeline';
         expect(tabFromHash(hash)).toBe('repos');
         expect(parseWorkflowsDeepLink(hash)).toBe('my-pipeline');
@@ -664,11 +682,11 @@ describe('handleHash workflow dispatch simulation', () => {
                 if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                     dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
                 }
-                if (parts[2] === 'workflows' && parts[3]) {
+                if (parts[2] === 'templates' && parts[3]) {
                     dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: decodeURIComponent(parts[3]) });
-                } else if (parts[2] === 'workflows') {
+                } else if (parts[2] === 'templates') {
                     dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: null });
-                } else if (parts[2] && parts[2] !== 'workflows') {
+                } else if (parts[2] && parts[2] !== 'templates') {
                     dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: null });
                 }
             }
@@ -676,15 +694,15 @@ describe('handleHash workflow dispatch simulation', () => {
         return dispatches;
     }
 
-    it('dispatches SET_SELECTED_WORKFLOW with name for #repos/r1/workflows/pipe1', () => {
-        const dispatches = simulateHandleHash('#repos/r1/workflows/pipe1');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' });
+    it('dispatches SET_SELECTED_WORKFLOW with name for #repos/r1/templates/pipe1', () => {
+        const dispatches = simulateHandleHash('#repos/r1/templates/pipe1');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'templates' });
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: 'pipe1' });
     });
 
-    it('dispatches SET_SELECTED_WORKFLOW with null for #repos/r1/workflows (no name)', () => {
-        const dispatches = simulateHandleHash('#repos/r1/workflows');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' });
+    it('dispatches SET_SELECTED_WORKFLOW with null for #repos/r1/templates (no name)', () => {
+        const dispatches = simulateHandleHash('#repos/r1/templates');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'templates' });
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: null });
     });
 
@@ -803,8 +821,8 @@ describe('handleHash activity dispatch simulation', () => {
         expect(dispatches).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: null });
     });
 
-    it('does not dispatch SELECT_QUEUE_TASK for #repos/r1/workflows', () => {
-        const dispatches = simulateActivityHash('#repos/r1/workflows');
+    it('does not dispatch SELECT_QUEUE_TASK for #repos/r1/templates', () => {
+        const dispatches = simulateActivityHash('#repos/r1/templates');
         expect(dispatches.find(d => d.type === 'SELECT_QUEUE_TASK')).toBeUndefined();
     });
 
@@ -870,7 +888,7 @@ describe('parseGitCommitDeepLink', () => {
     });
 
     it('returns null for non-git sub-tab', () => {
-        expect(parseGitCommitDeepLink('#repos/my-repo/workflows')).toBeNull();
+        expect(parseGitCommitDeepLink('#repos/my-repo/templates')).toBeNull();
     });
 
     it('returns null for non-repo hash', () => {
@@ -940,7 +958,7 @@ describe('parseGitFileDeepLink', () => {
     });
 
     it('returns null for non-git sub-tab', () => {
-        expect(parseGitFileDeepLink('#repos/my-repo/workflows/abc/file.ts')).toBeNull();
+        expect(parseGitFileDeepLink('#repos/my-repo/templates/abc/file.ts')).toBeNull();
     });
 
     it('returns null for empty string', () => {
@@ -1251,7 +1269,7 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
         ['p', 'KeyP', 'tasks'],
         ['r', 'KeyR', 'pull-requests'],
         ['a', 'KeyA', 'activity'],
-        ['w', 'KeyW', 'workflows'],
+        ['w', 'KeyW', 'templates'],
         ['s', 'KeyS', 'schedules'],
         ['c', 'KeyC', 'settings'],
     ] as [string, string, string][])('Alt+%s dispatches SET_REPO_SUB_TAB %s', (letter, code, tab) => {
@@ -1591,17 +1609,17 @@ describe('handleHash workflow run dispatch simulation', () => {
                     dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
                 }
                 // Workflow deep-link handling (mirrors Router.tsx)
-                if (parts[2] === 'workflows' && parts[3]) {
+                if (parts[2] === 'templates' && parts[3]) {
                     dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: decodeURIComponent(parts[3]) });
                     if (parts[4] === 'run' && parts[5]) {
                         dispatches.push({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: decodeURIComponent(parts[5]) });
                     } else {
                         dispatches.push({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                     }
-                } else if (parts[2] === 'workflows') {
+                } else if (parts[2] === 'templates') {
                     dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: null });
                     dispatches.push({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
-                } else if (parts[2] && parts[2] !== 'workflows') {
+                } else if (parts[2] && parts[2] !== 'templates') {
                     dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: null });
                     dispatches.push({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                 }
@@ -1610,31 +1628,31 @@ describe('handleHash workflow run dispatch simulation', () => {
         return dispatches;
     }
 
-    it('dispatches SET_WORKFLOW_RUN_PROCESS for #repos/r1/workflows/pipe1/run/proc-1', () => {
-        const dispatches = simulateWorkflowRunHash('#repos/r1/workflows/pipe1/run/proc-1');
+    it('dispatches SET_WORKFLOW_RUN_PROCESS for #repos/r1/templates/pipe1/run/proc-1', () => {
+        const dispatches = simulateWorkflowRunHash('#repos/r1/templates/pipe1/run/proc-1');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: 'pipe1' });
         expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: 'proc-1' });
     });
 
-    it('dispatches SET_WORKFLOW_RUN_PROCESS null for #repos/r1/workflows/pipe1 (no run)', () => {
-        const dispatches = simulateWorkflowRunHash('#repos/r1/workflows/pipe1');
+    it('dispatches SET_WORKFLOW_RUN_PROCESS null for #repos/r1/templates/pipe1 (no run)', () => {
+        const dispatches = simulateWorkflowRunHash('#repos/r1/templates/pipe1');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: 'pipe1' });
         expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
     });
 
-    it('dispatches SET_WORKFLOW_RUN_PROCESS null for #repos/r1/workflows (no name)', () => {
-        const dispatches = simulateWorkflowRunHash('#repos/r1/workflows');
+    it('dispatches SET_WORKFLOW_RUN_PROCESS null for #repos/r1/templates (no name)', () => {
+        const dispatches = simulateWorkflowRunHash('#repos/r1/templates');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: null });
         expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
     });
 
-    it('dispatches SET_WORKFLOW_RUN_PROCESS null for non-workflow sub-tab', () => {
+    it('dispatches SET_WORKFLOW_RUN_PROCESS null for non-templates sub-tab', () => {
         const dispatches = simulateWorkflowRunHash('#repos/r1/tasks');
         expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
     });
 
     it('URL-decodes processId in dispatch', () => {
-        const dispatches = simulateWorkflowRunHash('#repos/r1/workflows/pipe1/run/queue_abc%2F1');
+        const dispatches = simulateWorkflowRunHash('#repos/r1/templates/pipe1/run/queue_abc%2F1');
         expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: 'queue_abc/1' });
     });
 });
@@ -1663,8 +1681,8 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).toContain("a: 'activity'");
     });
 
-    it('dispatches workflows sub-tab via Alt+W', () => {
-        expect(ROUTER_SOURCE).toContain("w: 'workflows'");
+    it('dispatches templates sub-tab via Alt+W', () => {
+        expect(ROUTER_SOURCE).toContain("w: 'templates'");
     });
 
     it('bare W → wiki shortcut has been removed', () => {
@@ -1863,8 +1881,8 @@ describe('parseSettingsSection', () => {
         expect(parseSettingsSection('#repos/r1/settings/memory')).toBe('memory');
     });
 
-    it('returns "run-script-template" for #repos/r1/settings/run-script-template', () => {
-        expect(parseSettingsSection('#repos/r1/settings/run-script-template')).toBe('run-script-template');
+    it('returns "run-script-template" falls back to "info" (moved to Templates tab)', () => {
+        expect(parseSettingsSection('#repos/r1/settings/run-script-template')).toBe('info');
     });
 
     it('returns "tasks" for #repos/r1/settings/tasks', () => {
@@ -1915,8 +1933,8 @@ describe('VALID_SETTINGS_SECTIONS', () => {
         expect(VALID_SETTINGS_SECTIONS.has('memory')).toBe(true);
     });
 
-    it('includes "run-script-template"', () => {
-        expect(VALID_SETTINGS_SECTIONS.has('run-script-template')).toBe(true);
+    it('does not include "run-script-template" (moved to Templates tab)', () => {
+        expect(VALID_SETTINGS_SECTIONS.has('run-script-template')).toBe(false);
     });
 
     it('includes "tasks"', () => {
@@ -1980,9 +1998,9 @@ describe('settings section hash routing', () => {
         expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'preferences' });
     });
 
-    it('dispatches SET_SETTINGS_SECTION run-script-template for #repos/r1/settings/run-script-template', () => {
+    it('run-script-template falls back to info (moved to Templates tab)', () => {
         const dispatches = simulateSettingsHash('#repos/r1/settings/run-script-template');
-        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'run-script-template' });
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'info' });
     });
 
     it('dispatches SET_SETTINGS_SECTION tasks for #repos/r1/settings/tasks', () => {

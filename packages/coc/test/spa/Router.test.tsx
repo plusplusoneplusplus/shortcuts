@@ -185,7 +185,7 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(true);
         expect(VALID_REPO_SUB_TABS.has('git')).toBe(true);
         expect(VALID_REPO_SUB_TABS.has('tasks')).toBe(true);
-        expect(VALID_REPO_SUB_TABS.has('workflows')).toBe(true);
+        expect(VALID_REPO_SUB_TABS.has('templates')).toBe(true);
     });
 
     it('does not include removed tabs', () => {

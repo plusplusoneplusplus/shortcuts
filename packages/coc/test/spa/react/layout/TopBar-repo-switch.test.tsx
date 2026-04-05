@@ -84,11 +84,11 @@ describe('TopBar — selectRepo restores target repo sub-tab from repoTabState',
         expect(location.hash).toBe('#repos/repo-abc/git');
     });
 
-    it('restores workflows sub-tab from repoTabState for target repo', () => {
-        mockRepoTabState = { 'repo-xyz': 'workflows' };
+    it('restores templates sub-tab from repoTabState for target repo', () => {
+        mockRepoTabState = { 'repo-xyz': 'templates' };
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo-xyz'); });
-        expect(location.hash).toBe('#repos/repo-xyz/workflows');
+        expect(location.hash).toBe('#repos/repo-xyz/templates');
     });
 
     it('restores explorer sub-tab from repoTabState for target repo', () => {

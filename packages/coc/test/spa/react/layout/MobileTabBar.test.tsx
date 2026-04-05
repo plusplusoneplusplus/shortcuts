@@ -13,7 +13,7 @@ const ALL_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'explorer', label: 'Explorer' },
     { key: 'tasks', label: 'Plans' },
     { key: 'activity', label: 'Activity' },
-    { key: 'workflows', label: 'Workflows' },
+    { key: 'templates', label: 'Templates' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'copilot', label: 'Copilot' },
 ];
@@ -193,11 +193,11 @@ describe('MobileTabBar: More sheet', () => {
         expect(screen.getByTestId('mobile-tab-more-sheet')).toBeTruthy();
     });
 
-    it('sheet lists non-pinned tabs (Info, Workflows, Schedules, Copilot, Explorer)', () => {
+    it('sheet lists non-pinned tabs (Info, Templates, Schedules, Copilot, Explorer)', () => {
         renderBar();
         fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
         expect(screen.getByTestId('mobile-tab-more-item-info')).toBeTruthy();
-        expect(screen.getByTestId('mobile-tab-more-item-workflows')).toBeTruthy();
+        expect(screen.getByTestId('mobile-tab-more-item-templates')).toBeTruthy();
         expect(screen.getByTestId('mobile-tab-more-item-schedules')).toBeTruthy();
         expect(screen.getByTestId('mobile-tab-more-item-copilot')).toBeTruthy();
         expect(screen.getByTestId('mobile-tab-more-item-explorer')).toBeTruthy();

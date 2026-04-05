@@ -272,9 +272,9 @@ describe('AppContext reducer', () => {
             expect(result.activeRepoSubTab).toBe('tasks');
         });
 
-        it('SET_REPO_SUB_TAB switches to workflows', () => {
-            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'workflows' });
-            expect(result.activeRepoSubTab).toBe('workflows');
+        it('SET_REPO_SUB_TAB switches to templates', () => {
+            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'templates' });
+            expect(result.activeRepoSubTab).toBe('templates');
         });
 
         it('SET_REPO_SUB_TAB switches to settings', () => {
@@ -329,10 +329,10 @@ describe('AppContext reducer', () => {
 
         it('SET_SELECTED_REPO to null preserves repoTabState but keeps current tab', () => {
             let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'pipelines' });
-            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'workflows' });
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'templates' });
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: null });
-            expect(state.repoTabState['repo-a']).toBe('workflows');
-            expect(state.activeRepoSubTab).toBe('workflows');
+            expect(state.repoTabState['repo-a']).toBe('templates');
+            expect(state.activeRepoSubTab).toBe('templates');
         });
 
         it('explicit SET_REPO_SUB_TAB after SET_SELECTED_REPO overrides the restored tab', () => {

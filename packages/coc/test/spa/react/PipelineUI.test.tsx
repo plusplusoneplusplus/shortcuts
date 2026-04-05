@@ -1,5 +1,5 @@
 /**
- * Tests for Pipeline UI components: WorkflowDetail, AddWorkflowDialog, WorkflowsTab interactions.
+ * Tests for Pipeline UI components: WorkflowDetail, AddWorkflowDialog, TemplatesTab interactions.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -10,7 +10,7 @@ import { QueueProvider } from '../../../src/server/spa/client/react/context/Queu
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { WorkflowDetail } from '../../../src/server/spa/client/react/repos/WorkflowDetail';
 import { AddWorkflowDialog } from '../../../src/server/spa/client/react/repos/AddWorkflowDialog';
-import { WorkflowsTab } from '../../../src/server/spa/client/react/repos/WorkflowsTab';
+import { TemplatesTab } from '../../../src/server/spa/client/react/repos/TemplatesTab';
 import type { RepoData, WorkflowInfo } from '../../../src/server/spa/client/react/repos/repoGrouping';
 import * as pipelineApi from '../../../src/server/spa/client/react/repos/workflow-api';
 
@@ -1103,10 +1103,10 @@ describe('AddWorkflowDialog', () => {
 });
 
 // ============================================================================
-// WorkflowsTab split-panel layout
+// TemplatesTab split-panel layout
 // ============================================================================
 
-describe('WorkflowsTab (split-panel layout)', () => {
+describe('TemplatesTab (split-panel layout)', () => {
     beforeEach(() => {
         location.hash = '';
     });
@@ -1116,7 +1116,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         // Left panel has the pipeline name
         expect(screen.getByText(/my-pipeline/)).toBeDefined();
         // Right panel shows placeholder
@@ -1132,7 +1132,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         // Click the pipeline row (not a View button — row is clickable)
         const row = screen.getByRole('option');
         fireEvent.click(row);
@@ -1140,7 +1140,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             expect(screen.getByText(/name: my-pipeline/)).toBeDefined();
         });
         // URL updated
-        expect(location.hash).toBe('#repos/ws-1/workflows/my-pipeline');
+        expect(location.hash).toBe('#repos/ws-1/templates/my-pipeline');
     });
 
     it('updates location.hash on workflow selection', () => {
@@ -1148,9 +1148,9 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getByRole('option'));
-        expect(location.hash).toBe('#repos/ws-1/workflows/my-pipeline');
+        expect(location.hash).toBe('#repos/ws-1/templates/my-pipeline');
     });
 
     it('Close button clears selection and resets hash', async () => {
@@ -1162,7 +1162,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         // Select pipeline
         fireEvent.click(screen.getByRole('option'));
         await waitFor(() => screen.getByText('Close'));
@@ -1170,7 +1170,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
         fireEvent.click(screen.getByText('Close'));
         // Placeholder returns
         expect(screen.getByText('Select a workflow or template')).toBeDefined();
-        expect(location.hash).toBe('#repos/ws-1/workflows');
+        expect(location.hash).toBe('#repos/ws-1/templates');
     });
 
     it('onDeleted clears selection and resets hash', async () => {
@@ -1183,7 +1183,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         // Select pipeline
         fireEvent.click(screen.getByRole('option'));
         await waitFor(() => screen.getByText('Delete'));
@@ -1195,7 +1195,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
         });
         // Selection cleared
         expect(screen.getByText('Select a workflow or template')).toBeDefined();
-        expect(location.hash).toBe('#repos/ws-1/workflows');
+        expect(location.hash).toBe('#repos/ws-1/templates');
     });
 
     it('shows "New Workflow" button when workflows exist', () => {
@@ -1203,7 +1203,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         expect(screen.getAllByText('+ New')[0]).toBeDefined();
     });
 
@@ -1212,7 +1212,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         expect(screen.getAllByText('+ New')[0]).toBeDefined();
     });
 
@@ -1221,7 +1221,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getAllByText('+ New')[0]);
         expect(screen.getByText('New Workflow')).toBeDefined();
         expect(screen.getByText('Name')).toBeDefined();
@@ -1232,7 +1232,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline, { name: 'other', path: 'other.yaml' }],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         expect(screen.getByText('(2)')).toBeDefined();
     });
 
@@ -1241,7 +1241,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         // Empty state message in left panel
         expect(screen.getByText('No workflows found')).toBeDefined();
         // Placeholder still visible in right panel
@@ -1260,7 +1260,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline, secondPipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         const rows = screen.getAllByRole('option');
         fireEvent.click(rows[0]);
         await waitFor(() => {
@@ -1280,7 +1280,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         const row = screen.getByRole('option');
         expect(row.getAttribute('aria-selected')).toBe('false');
         fireEvent.click(row);
@@ -1293,9 +1293,9 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [specialPipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getByRole('option'));
-        expect(location.hash).toBe('#repos/ws-1/workflows/my%20pipeline');
+        expect(location.hash).toBe('#repos/ws-1/templates/my%20pipeline');
     });
 
     it('onCreated with name auto-selects the workflow and updates hash', async () => {
@@ -1304,7 +1304,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getAllByText('+ New')[0]);
         fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
         const input = document.querySelector('input[type="text"]')!;
@@ -1312,7 +1312,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
         await act(async () => {
             fireEvent.click(screen.getByText('Create'));
         });
-        expect(location.hash).toBe('#repos/ws-1/workflows/new-created');
+        expect(location.hash).toBe('#repos/ws-1/templates/new-created');
     });
 
     it('empty state includes natural language discoverability text', () => {
@@ -1320,7 +1320,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         expect(screen.getByText(/Add YAML files to .vscode\/workflows\//)).toBeDefined();
     });
 
@@ -1334,7 +1334,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             workflows: [samplePipeline],
         });
-        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+        render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
         // Select the pipeline
         fireEvent.click(screen.getAllByText(/my-pipeline/)[0]);
         await waitFor(() => screen.getByTestId('workflow-run-btn'));
@@ -1342,7 +1342,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
         await waitFor(() => {
             expect(pipelineApi.runWorkflow).toHaveBeenCalledWith('ws-1', 'my-pipeline');
             // Hash stays on pipelines (no auto-switch to queue tab)
-            expect(location.hash).toBe('#repos/ws-1/workflows/my-pipeline');
+            expect(location.hash).toBe('#repos/ws-1/templates/my-pipeline');
         });
     });
 });

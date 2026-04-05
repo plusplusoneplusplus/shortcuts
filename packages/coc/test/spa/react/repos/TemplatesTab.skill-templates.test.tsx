@@ -1,5 +1,5 @@
 /**
- * Tests for AI Chat Templates section in WorkflowsTab.
+ * Tests for AI Chat Templates section in TemplatesTab.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -75,16 +75,16 @@ function makeRepo() {
     } as any;
 }
 
-async function renderWorkflowsTab(skillTemplateOverride: SkillTemplate[] = SKILL_TEMPLATES) {
+async function renderTemplatesTab(skillTemplateOverride: SkillTemplate[] = SKILL_TEMPLATES) {
     const { useSkillTemplates } = await import('../../../../src/server/spa/client/react/hooks/useSkillTemplates');
     vi.mocked(useSkillTemplates).mockReturnValue({
         templates: skillTemplateOverride,
         deleteTemplate: mockDeleteTemplate,
         loaded: true,
     });
-    const { WorkflowsTab } = await import('../../../../src/server/spa/client/react/repos/WorkflowsTab');
+    const { TemplatesTab } = await import('../../../../src/server/spa/client/react/repos/TemplatesTab');
     const repo = makeRepo();
-    render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
+    render(<Wrap><TemplatesTab repo={repo} /></Wrap>);
     await waitFor(() => expect(screen.getByTestId('skill-templates-section')).toBeDefined());
 }
 
@@ -97,27 +97,27 @@ describe('AI Chat Templates section', () => {
     });
 
     it('renders "AI Chat Templates" section header', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         const section = screen.getByTestId('skill-templates-section');
         expect(section.textContent).toContain('AI Chat Templates');
     });
 
     it('shows empty state when no skill templates', async () => {
-        await renderWorkflowsTab([]);
+        await renderTemplatesTab([]);
         const empty = screen.getByTestId('skill-templates-empty');
         expect(empty).toBeDefined();
         expect(empty.textContent).toContain('Save templates from the AI chat dialog');
     });
 
     it('renders list of skill templates', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         expect(screen.getByTestId('skill-templates-list')).toBeDefined();
         expect(screen.getByTestId('skill-template-item-st-1')).toBeDefined();
         expect(screen.getByTestId('skill-template-item-st-2')).toBeDefined();
     });
 
     it('shows mode badge and model in list item', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         const item1 = screen.getByTestId('skill-template-item-st-1');
         expect(item1.textContent).toContain('task');
         expect(item1.textContent).toContain('gpt-4o');
@@ -128,7 +128,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('clicking a list item shows SkillTemplateDetailView', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
         await waitFor(() => {
             const detail = screen.getByTestId('skill-template-detail');
@@ -138,7 +138,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('detail view shows mode, model, and skills', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
         await waitFor(() => {
             const detail = screen.getByTestId('skill-template-detail');
@@ -150,7 +150,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('detail view shows "None" for empty skills', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         fireEvent.click(screen.getByTestId('skill-template-item-st-2'));
         await waitFor(() => {
             const detail = screen.getByTestId('skill-template-detail');
@@ -159,7 +159,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('detail view shows "default" for empty model', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         fireEvent.click(screen.getByTestId('skill-template-item-st-2'));
         await waitFor(() => {
             const detail = screen.getByTestId('skill-template-detail');
@@ -168,7 +168,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('detail view shows the template ID', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
         await waitFor(() => {
             const idValue = screen.getByTestId('skill-template-id-value');
@@ -177,7 +177,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('clicking copy button copies the template ID to clipboard', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
         await waitFor(() => screen.getByTestId('skill-template-copy-id-btn'));
         fireEvent.click(screen.getByTestId('skill-template-copy-id-btn'));
@@ -185,7 +185,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('selecting a skill template updates location hash', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
         await waitFor(() => {
             expect(location.hash).toContain('chat-template/st-1');
@@ -193,7 +193,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('deleting a skill template via context menu calls deleteTemplate', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         const item = screen.getByTestId('skill-template-item-st-1');
         fireEvent.contextMenu(item);
         await waitFor(() => {
@@ -205,7 +205,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('deleting clears right panel when deleted item was selected', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         // Select st-1
         fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
         await waitFor(() => expect(screen.getByTestId('skill-template-detail')).toBeDefined());
@@ -224,7 +224,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('section collapses on header click', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         expect(screen.getByTestId('skill-templates-list')).toBeDefined();
 
         // Click the section header (the clickable div inside skill-templates-section)
@@ -238,7 +238,7 @@ describe('AI Chat Templates section', () => {
     });
 
     it('selecting a skill template clears selected workflow', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         // Click a skill template item; the handler dispatches SET_SELECTED_WORKFLOW with name: null
         // We verify indirectly: after selecting a skill template, the detail view appears
         // (which means no workflow is shown in the right panel)
@@ -251,17 +251,17 @@ describe('AI Chat Templates section', () => {
     });
 
     it('renders workflows refresh button', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         expect(screen.getByTestId('workflows-refresh-btn')).toBeTruthy();
     });
 
     it('renders templates refresh button', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         expect(screen.getByTestId('templates-refresh-btn')).toBeTruthy();
     });
 
     it('clicking templates refresh calls fetchApi for templates', async () => {
-        await renderWorkflowsTab();
+        await renderTemplatesTab();
         const callsBefore = mockFetchApi.mock.calls.length;
         fireEvent.click(screen.getByTestId('templates-refresh-btn'));
         await waitFor(() => {

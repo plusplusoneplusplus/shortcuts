@@ -10,7 +10,7 @@ import { Button, cn } from '../shared';
 import { BottomSheet } from '../shared/BottomSheet';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
-import { WorkflowsTab } from './WorkflowsTab';
+import { TemplatesTab } from './TemplatesTab';
 import { TasksPanel } from '../tasks/TasksPanel';
 import { RepoActivityTab } from './RepoActivityTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
@@ -45,7 +45,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
-    { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
+    { key: 'templates', label: 'Templates', shortcut: 'Alt+W' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'wiki', label: 'Wiki', shortcut: 'Alt+I' },
 ];
@@ -463,7 +463,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 </div>
                 <div style={{ display: activeSubTab !== 'tasks' ? undefined : 'none' }} className={cn("h-full min-w-0", isMobile && "pb-12", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' ? "overflow-hidden" : "overflow-y-auto")}>
                     {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
-                    {activeSubTab === 'workflows' && <WorkflowsTab key={ws.id} repo={repo} />}
+                    {activeSubTab === 'templates' && <TemplatesTab key={ws.id} repo={repo} />}
                     {activeSubTab === 'activity' && <RepoActivityTab key={ws.id} workspaceId={ws.id} />}
                     {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
                     {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}

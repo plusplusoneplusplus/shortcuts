@@ -40,7 +40,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'workflows', 'schedules', 'wiki']);
+        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'templates', 'schedules', 'wiki']);
     });
 
     it('includes "wiki" entry with Alt+I shortcut', () => {
@@ -75,7 +75,7 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
 
     it('contains all non-wiki tabs in order', () => {
         const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'workflows', 'schedules']);
+        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'templates', 'schedules']);
     });
 
     it('renders VISIBLE_SUB_TABS.map in the tab strip', () => {
@@ -489,8 +489,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('<RepoInfoTab');
     });
 
-    it('mounts a fresh WorkflowsTab on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<WorkflowsTab key={ws.id}');
+    it('mounts a fresh TemplatesTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<TemplatesTab key={ws.id}');
     });
 
     it('mounts a fresh RepoWikiTab on every repo switch via key={ws.id}', () => {

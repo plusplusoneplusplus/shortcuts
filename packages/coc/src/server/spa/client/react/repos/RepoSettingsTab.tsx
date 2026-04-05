@@ -19,8 +19,6 @@ import type { SettingsSection } from '../types/dashboard';
 import type { RepoData } from './repoGrouping';
 import { RepoMemorySection } from './memory/RepoMemorySection';
 import { useRepos } from '../context/ReposContext';
-import { useScriptTemplates } from '../hooks/useScriptTemplates';
-import type { ScriptTemplate } from '../hooks/useScriptTemplates';
 import { TasksSettingsSection } from './TasksSettingsSection';
 import { RepoPreferencesSection } from './RepoPreferencesSection';
 
@@ -38,7 +36,6 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'skills', label: 'Agent Skills', icon: '🧩' },
     { id: 'instructions', label: 'Custom Instructions', icon: '📝' },
     { id: 'memory', label: 'Memory', icon: '🧠' },
-    { id: 'run-script-template', label: 'Run Script Templates', icon: '📜' },
     { id: 'tasks', label: 'Plans Folder', icon: '📁' },
 ];
 
@@ -538,61 +535,10 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 {activeSection === 'memory' && (
                     <RepoMemorySection repoId={workspaceId} repoPath={ws.rootPath} />
                 )}
-                {activeSection === 'run-script-template' && (
-                    <RunScriptTemplatesSection workspaceId={workspaceId} />
-                )}
                 {activeSection === 'tasks' && (
                     <TasksSettingsSection workspaceId={workspaceId} />
                 )}
             </div>
-        </div>
-    );
-}
-
-// ── Run Script Templates section ────────────────────────────────────────────
-
-function RunScriptTemplatesSection({ workspaceId }: { workspaceId: string }) {
-    const { templates, loaded } = useScriptTemplates(workspaceId);
-
-    return (
-        <div data-testid="run-script-templates-section">
-            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-3">Run Script Templates</h3>
-            {!loaded ? (
-                <div className="text-xs text-[#848484]">Loading…</div>
-            ) : templates.length === 0 ? (
-                <div className="text-xs text-[#848484]" data-testid="templates-empty">No run script templates saved yet.</div>
-            ) : (
-                <div className="flex flex-col gap-2">
-                    {templates.map((t: ScriptTemplate) => (
-                        <div
-                            key={t.id}
-                            className="border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md p-3 bg-white dark:bg-[#1e1e1e]"
-                            data-testid="template-card"
-                        >
-                            <div className="font-semibold text-xs text-[#1e1e1e] dark:text-[#cccccc] mb-1">{t.name}</div>
-                            <div className="font-mono text-xs text-[#1e1e1e] dark:text-[#cccccc]">{t.scriptPath}</div>
-                            {t.args && (
-                                <div className="font-mono text-xs text-[#848484] mt-0.5">{t.args}</div>
-                            )}
-                            {t.workingDirectory && (
-                                <div className="text-xs text-[#848484] mt-0.5">cwd: {t.workingDirectory}</div>
-                            )}
-                            <div className="flex items-center gap-2 mt-1.5">
-                                {t.model && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999]">
-                                        {t.model}
-                                    </span>
-                                )}
-                                {t.pauseOnFailure && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#fff3cd] dark:bg-[#4d3800] text-[#856404] dark:text-[#ffc107]">
-                                        pause on failure
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
         </div>
     );
 }

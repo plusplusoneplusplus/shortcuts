@@ -83,7 +83,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoDetail', () => ({
         { key: 'git', label: 'Git' },
         { key: 'tasks', label: 'Plans' },
         { key: 'activity', label: 'Activity' },
-        { key: 'workflows', label: 'Workflows' },
+        { key: 'templates', label: 'Templates' },
         { key: 'schedules', label: 'Schedules' },
         { key: 'copilot', label: 'Copilot' },
     ],
@@ -133,8 +133,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoInfoTab', () => ({
     RepoInfoTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/WorkflowsTab', () => ({
-    WorkflowsTab: () => null,
+vi.mock('../../../../src/server/spa/client/react/repos/TemplatesTab', () => ({
+    TemplatesTab: () => null,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/RepoSchedulesTab', () => ({

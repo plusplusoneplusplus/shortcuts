@@ -35,8 +35,8 @@ function createWorkflowFixtureRepo(tmpDir: string): string {
     return repoDir;
 }
 
-/** Navigate to repos tab → select a repo → switch to the workflows sub-tab. */
-async function navigateToWorkflowsTab(
+/** Navigate to repos tab → select a repo → switch to the templates sub-tab. */
+async function navigateToTemplatesTab(
     page: import('@playwright/test').Page,
     serverUrl: string,
 ): Promise<void> {
@@ -45,8 +45,8 @@ async function navigateToWorkflowsTab(
     await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
     await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible();
-    await page.click('button[data-subtab="workflows"]');
-    await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
+    await page.click('button[data-subtab="templates"]');
+    await expect(page.locator('button[data-subtab="templates"]')).toHaveClass(/active/);
 }
 
 /** Create a minimal wiki directory with component-graph and articles. */
@@ -83,7 +83,7 @@ test.describe('AI service unavailable — workflow generate (503)', () => {
             const repoDir = createWorkflowFixtureRepo(tmpDir);
             await seedWorkspace(serverUrl, 'ws-ai-503-gen', 'test-repo', repoDir);
 
-            await navigateToWorkflowsTab(page, serverUrl);
+            await navigateToTemplatesTab(page, serverUrl);
 
             // Intercept the generate endpoint to return 503 before opening the dialog
             await page.route('**/workflows/generate', route =>
@@ -138,7 +138,7 @@ test.describe('AI service unavailable — workflow refine (503)', () => {
 
             await seedWorkspace(serverUrl, 'ws-ai-503-refine', 'test-repo', repoDir);
 
-            await navigateToWorkflowsTab(page, serverUrl);
+            await navigateToTemplatesTab(page, serverUrl);
 
             // Click the workflow item to open it
             await expect(page.locator('.repo-workflow-item')).toHaveCount(1, { timeout: 10_000 });
