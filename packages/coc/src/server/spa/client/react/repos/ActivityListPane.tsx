@@ -58,20 +58,6 @@ export function taskMatchesSearch(task: any, query: string): boolean {
     return title.includes(q) || prompt.includes(q);
 }
 
-/** Return a type-specific icon for a task, matching the chat mode selector icons. */
-export function getTaskTypeIcon(task: any): string {
-    const type = task.type as string;
-    const payload = task.payload || {};
-    if (payload.scheduleId) return '📅';
-    if (type === 'chat') {
-        if (payload.mode === 'ask') return '💡';
-        if (payload.mode === 'plan') return '📋';
-        return '🤖';
-    }
-    if (type === 'run-workflow') return '▶️';
-    if (type === 'run-script') return '⚡';
-    return '🤖';
-}
 
 /** Extract a short preview of the user prompt from the task payload. */
 export function getTaskPromptPreview(task: any): string {
@@ -886,6 +872,7 @@ export function ActivityListPane({
                                                     onContextMenu={e => handleTaskContextMenu(e, item.id, 'queued')}
                                                     onLongPress={(x, y) => handleTaskContextMenu({ clientX: x, clientY: y, preventDefault: () => {}, stopPropagation: () => {}, shiftKey: false } as any, item.id, 'queued')}
                                                     cancelLongPress={!!activeDraggedTaskId}
+                                                    onRemove={() => handleCancel(item.id)}
                                                 />
                                             </div>
                                             {!isMobile && (
@@ -948,7 +935,7 @@ export function ActivityListPane({
                                                     {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
                                                     {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
                                                     <span className="shrink-0">
-                                                        {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                                                        {task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : task.status === 'cancelled' ? '🚫' : ''}
                                                     </span>
                                                     <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
                                                         {task.displayName || task.type || 'Task'}
@@ -1038,7 +1025,7 @@ export function ActivityListPane({
                                                     {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
                                                     {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
                                                     <span className="shrink-0">
-                                                        {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                                                        {task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : task.status === 'cancelled' ? '🚫' : ''}
                                                     </span>
                                                     <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
                                                         {task.displayName || task.type || 'Task'}
@@ -1097,7 +1084,7 @@ export function ActivityListPane({
                                         <div className="flex items-center justify-between gap-1.5 text-xs">
                                             <span className="flex items-center gap-1 min-w-0 truncate">
                                                 <span className="shrink-0">
-                                                    {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                                                    {task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : task.status === 'cancelled' ? '🚫' : ''}
                                                 </span>
                                                 <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
                                                     {task.displayName || task.type || 'Task'}
@@ -1143,7 +1130,7 @@ export function ActivityListPane({
                                             <div className="flex items-center justify-between gap-1.5 text-xs">
                                                 <span className="flex items-center gap-1 min-w-0 truncate">
                                                     {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
-                                                    <span className="shrink-0">{getTaskTypeIcon(task)}{isRunning ? ' 🔄' : task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : ''}</span>
+                                                    <span className="shrink-0">{isRunning ? '🔄' : task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : ''}</span>
                                                     <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
                                                     {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft">✏️</span>}
                                                 </span>
@@ -1178,7 +1165,7 @@ export function ActivityListPane({
                                         <div className="flex items-center justify-between gap-1.5 text-xs">
                                             <span className="flex items-center gap-1 min-w-0 truncate">
                                                 {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
-                                                <span className="shrink-0">{getTaskTypeIcon(task)}{isRunning ? ' 🔄' : task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : ''}</span>
+                                                <span className="shrink-0">{isRunning ? '🔄' : task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : ''}</span>
                                                 <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
                                                 {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft">✏️</span>}
                                             </span>
@@ -1218,7 +1205,6 @@ export function ActivityListPane({
                                         >
                                             <div className="flex items-center justify-between gap-1.5 text-xs">
                                                 <span className="flex items-center gap-1 min-w-0 truncate">
-                                                    <span className="shrink-0">{getTaskTypeIcon(task)}</span>
                                                     <span className="truncate" title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
                                                 </span>
                                                 <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
@@ -1268,7 +1254,7 @@ export function ActivityListPane({
     );
 }
 
-export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopilotPaused, onClick, onContextMenu, onLongPress, cancelLongPress }: {
+export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopilotPaused, onClick, onContextMenu, onLongPress, cancelLongPress, onRemove }: {
     task: any;
     status: 'running' | 'queued';
     now: number;
@@ -1279,9 +1265,10 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
     onContextMenu?: (e: React.MouseEvent) => void;
     onLongPress?: (x: number, y: number) => void;
     cancelLongPress?: boolean;
+    /** For queued tasks: removes/cancels the task immediately without confirmation. */
+    onRemove?: () => void;
 }){
     const name = task.displayName || task.type || 'Task';
-    const icon = getTaskTypeIcon(task);
     const promptPreview = getTaskPromptPreview(task);
     const showProgress = task.type === 'run-workflow' && status === 'running';
     const progress = useWorkflowProgress(showProgress ? (task.processId || task.id) : null);
@@ -1313,7 +1300,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
 
     return (
         <Card
-            className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60", isAdmitted && !isPinned && "border-l-2 border-l-green-500 dark:border-l-green-400")}
+            className={cn("p-2 cursor-pointer group", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60", isAdmitted && !isPinned && "border-l-2 border-l-green-500 dark:border-l-green-400")}
             onClick={handleClick}
             onContextMenu={onContextMenu}
             onTouchStart={longPress.onTouchStart}
@@ -1323,7 +1310,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
         >
             <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
-                    <span className="shrink-0">{task.frozen ? '❄️' : isAdmitted ? '🚀' : isHeld ? '🤖⏸' : icon}</span>
+                    <span className="shrink-0">{task.frozen ? '❄️' : isAdmitted ? '🚀' : isHeld ? '🤖⏸' : ''}</span>
                     <span className="truncate" title={name}>{name}</span>
                     {isPinned && <span className="shrink-0 text-[10px]" data-testid="running-pin-badge">📌</span>}
                     {isHeld && (
@@ -1344,11 +1331,24 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
                     )}
                     {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                 </div>
-                {elapsed && (
-                    <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                        {elapsed}
-                    </span>
-                )}
+                <div className="flex items-center gap-1 shrink-0">
+                    {elapsed && (
+                        <span className="text-[10px] text-[#848484] dark:text-[#999] whitespace-nowrap tabular-nums">
+                            {elapsed}
+                        </span>
+                    )}
+                    {status === 'queued' && onRemove && (
+                        <button
+                            type="button"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[#848484] hover:text-[#f14c4c] hover:bg-[#f14c4c]/10 leading-none"
+                            onClick={e => { e.stopPropagation(); onRemove(); }}
+                            title="Remove from queue"
+                            data-testid="queue-task-remove-btn"
+                        >
+                            ✕
+                        </button>
+                    )}
+                </div>
             </div>
             {promptPreview && (
                 <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5 truncate" title={promptPreview}>{promptPreview}</div>

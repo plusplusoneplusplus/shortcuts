@@ -115,14 +115,11 @@ describe('QueueTaskItem frozen visual', () => {
         expect(document.querySelector('.task-frozen')).toBeTruthy();
     });
 
-    it('shows ❄️ icon when frozen', () => {
-        render(
-            <Wrap>
-                <QueueTaskItem task={{ id: 't1', type: 'chat', frozen: true }} status="queued" now={Date.now()} />
-            </Wrap>,
-        );
-        const card = document.querySelector('.task-frozen')!;
-        expect(card.textContent).toContain('❄️');
+    it('shows ❄️ icon when frozen, no type icon otherwise', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("task.frozen ? '❄️'");
+        // Type icons removed — falls through to empty string
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("isHeld ? '🤖⏸' : ''");
+        expect(ACTIVITY_LIST_PANE_SOURCE).not.toContain(': icon');
     });
 
     it('does not apply task-frozen class to non-frozen task', () => {
