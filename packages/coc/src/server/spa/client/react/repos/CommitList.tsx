@@ -12,7 +12,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
 import { CommitTooltip } from './CommitTooltip';
-import { buildFileTree, compactFolders, FileTreeView } from './FileTree';
+import { buildFileTree, compactFolders, FileTreeView, FlatFileList, FilesViewToggle } from './FileTree';
+import type { FileChange, FilesViewMode } from './FileTree';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { useCommitCommentTotals } from '../hooks/useCommitCommentTotals';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
@@ -28,15 +29,19 @@ export interface GitCommitItem {
     body?: string;
 }
 
-interface FileChange {
-    status: string;
-    path: string;
-}
-
 // Returns true on touch-only devices where hover events are unreliable (iOS, Android).
 // Uses CSS `(hover: none)` which matches devices with no fine pointer (mouse/trackpad).
 const isTouchOnly = (): boolean =>
     typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
+
+const COMMIT_VIEW_MODE_KEY = 'coc-commit-files-view-mode';
+function readCommitViewMode(): FilesViewMode {
+    try {
+        const v = localStorage.getItem(COMMIT_VIEW_MODE_KEY);
+        if (v === 'flat' || v === 'tree') return v;
+    } catch { /* ignore */ }
+    return 'tree';
+}
 
 interface CommitListProps {
     title: string;
@@ -84,6 +89,13 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     // Drag-and-drop reorder state
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+    // Flat/tree toggle for commit file lists
+    const [commitViewMode, setCommitViewModeState] = useState<FilesViewMode>(readCommitViewMode);
+    const setCommitViewMode = useCallback((m: FilesViewMode) => {
+        try { localStorage.setItem(COMMIT_VIEW_MODE_KEY, m); } catch { /* ignore */ }
+        setCommitViewModeState(m);
+    }, []);
 
     // Fetch active comment countsfor the currently expanded commit
     const commentCounts = useFileCommentCounts(
@@ -432,13 +444,29 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                         {isFilesLoading ? (
                                             <div className="text-[11px] text-[#848484] py-1" data-testid="commit-files-loading">Loading files...</div>
                                         ) : files && files.length > 0 ? (
-                                            <FileTreeView
-                                                nodes={compactFolders(buildFileTree(files))}
-                                                commitHash={commit.hash}
-                                                selectedFile={selectedFile}
-                                                onFileSelect={onFileSelect}
-                                                fileCommentMap={fileCommentMap}
-                                            />
+                                            <>
+                                                <div className="flex justify-end mb-1">
+                                                    <FilesViewToggle mode={commitViewMode} onChange={setCommitViewMode} testIdPrefix="commit-files-view-toggle" />
+                                                </div>
+                                                {commitViewMode === 'tree' ? (
+                                                    <FileTreeView
+                                                        nodes={compactFolders(buildFileTree(files))}
+                                                        commitHash={commit.hash}
+                                                        selectedFile={selectedFile}
+                                                        onFileSelect={onFileSelect}
+                                                        fileCommentMap={fileCommentMap}
+                                                    />
+                                                ) : (
+                                                    <FlatFileList
+                                                        files={files}
+                                                        onFileSelect={(filePath) => onFileSelect?.(commit.hash, filePath)}
+                                                        selectedFilePath={selectedFile?.hash === commit.hash ? selectedFile?.filePath : null}
+                                                        fileCommentMap={fileCommentMap}
+                                                        commentBadgeTestIdPrefix="commit-file-comment-badge"
+                                                        fileTestIdPrefix="commit-file"
+                                                    />
+                                                )}
+                                            </>
                                         ) : files ? (
                                             <div className="text-[11px] text-[#848484] py-1">No files changed</div>
                                         ) : null}

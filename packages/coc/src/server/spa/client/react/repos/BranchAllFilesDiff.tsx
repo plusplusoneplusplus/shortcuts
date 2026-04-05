@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, TruncatedPath } from '../shared';
 import { UnifiedDiffViewer } from './UnifiedDiffViewer';
+import { STATUS_COLORS, STATUS_LABELS, normalizeStatus } from './FileTree';
 
 export interface BranchRangeFile {
     path: string;
@@ -34,30 +35,6 @@ type FileState = {
 };
 
 const DIFF_LINE_LIMIT = 200;
-
-const STATUS_CHARS: Record<string, string> = {
-    added: 'A',
-    modified: 'M',
-    deleted: 'D',
-    renamed: 'R',
-    copied: 'C',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-    added:    'text-[#16825d]',
-    modified: 'text-[#0078d4]',
-    deleted:  'text-[#d32f2f]',
-    renamed:  'text-[#9c27b0]',
-    copied:   'text-[#848484]',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-    added: 'Added',
-    modified: 'Modified',
-    deleted: 'Deleted',
-    renamed: 'Renamed',
-    copied: 'Copied',
-};
 
 export function BranchAllFilesDiff({ workspaceId, files, onFileSelect }: BranchAllFilesDiffProps) {
     const [fileStates, setFileStates] = useState<Record<string, FileState>>({});
@@ -137,10 +114,10 @@ export function BranchAllFilesDiff({ workspaceId, files, onFileSelect }: BranchA
                                     {state.expanded ? '▼' : '▶'}
                                 </span>
                                 <span
-                                    className={`font-mono font-bold text-xs w-4 text-center flex-shrink-0 ${STATUS_COLORS[file.status] || 'text-[#848484]'}`}
-                                    title={STATUS_LABELS[file.status] || file.status}
+                                    className={`font-mono font-bold text-xs w-4 text-center flex-shrink-0 ${STATUS_COLORS[normalizeStatus(file.status)] || 'text-[#848484]'}`}
+                                    title={STATUS_LABELS[normalizeStatus(file.status)] || file.status}
                                 >
-                                    {STATUS_CHARS[file.status] || '?'}
+                                    {normalizeStatus(file.status)}
                                 </span>
                                 {file.oldPath ? (
                                     <span className="font-mono text-xs text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 truncate" title={`${file.oldPath} → ${file.path}`}>

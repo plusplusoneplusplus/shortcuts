@@ -10,6 +10,8 @@ import { fetchApi } from '../hooks/useApi';
 import { Spinner } from '../shared';
 import { copyToClipboard } from '../utils/format';
 import type { DiffComment } from '../../diff-comment-types';
+import { FlatFileList, FileTreeView, FilesViewToggle, buildFileTree, compactFolders, STATUS_COLORS, STATUS_LABELS, normalizeStatus } from './FileTree';
+import type { FileChange, FileNode, FilesViewMode } from './FileTree';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -18,7 +20,10 @@ import type { DiffComment } from '../../diff-comment-types';
 export interface WorkingTreeChange {
     filePath: string;
     originalPath?: string;
+    /** Single-char status from API (M/A/D/R/C/U/?) */
     status: string;
+    /** Also exposed as oldPath by the normalized API */
+    oldPath?: string;
     stage: 'staged' | 'unstaged' | 'untracked';
     repositoryRoot: string;
     repositoryName: string;
@@ -42,163 +47,31 @@ interface WorkingTreeProps {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STATUS_CHAR: Record<string, string> = {
-    modified:  'M',
-    added:     'A',
-    deleted:   'D',
-    renamed:   'R',
-    copied:    'C',
-    conflict:  'U',
-    untracked: '?',
-};
-
-const STATUS_COLOR: Record<string, string> = {
-    modified:  'text-[#0078d4]',
-    added:     'text-[#16825d]',
-    deleted:   'text-[#d32f2f]',
-    renamed:   'text-[#9c27b0]',
-    copied:    'text-[#848484]',
-    conflict:  'text-[#d32f2f]',
-    untracked: 'text-[#848484]',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-    modified:  'Modified',
-    added:     'Added',
-    deleted:   'Deleted',
-    renamed:   'Renamed',
-    copied:    'Copied',
-    conflict:  'Conflict',
-    untracked: 'Untracked',
-};
-
 function basename(filePath: string): string {
     return filePath.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? filePath;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-component: file row
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface FileRowProps {
-    change: WorkingTreeChange;
-    onAction: (action: 'stage' | 'unstage' | 'discard' | 'delete') => void;
-    busy: boolean;
-    onFileSelect?: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => void;
-    selected?: boolean;
+/** Convert WorkingTreeChange[] to FileChange[] for shared components. */
+function toFileChanges(changes: WorkingTreeChange[]): FileChange[] {
+    return changes.map(c => ({
+        path: c.filePath,
+        status: c.status,
+        oldPath: c.oldPath ?? c.originalPath,
+    }));
 }
 
-function FileRow({ change, onAction, busy, onFileSelect, selected }: FileRowProps) {
-    const [copied, setCopied] = useState(false);
-
-    const displayPath = change.originalPath
-        ? `${basename(change.originalPath)} → ${basename(change.filePath)}`
-        : basename(change.filePath);
-
-    const fullPath = change.originalPath
-        ? `${change.originalPath} → ${change.filePath}`
-        : change.filePath;
-
-    const handleCopyPath = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        copyToClipboard(change.filePath).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        });
-    };
-
-    const handleRowClick = () => {
-        onFileSelect?.(change.filePath, change.stage);
-    };
-
-    return (
-        <div
-            className={`group flex items-center gap-1.5 px-2 py-0.5 rounded text-xs ${
-                selected
-                    ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10'
-                    : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'
-            } ${onFileSelect ? 'cursor-pointer' : ''}`}
-            title={fullPath}
-            data-testid={`working-tree-file-row-${change.filePath}`}
-            onClick={onFileSelect ? handleRowClick : undefined}
-        >
-            <span
-                className={`font-mono font-bold w-4 text-center flex-shrink-0 ${STATUS_COLOR[change.status] ?? 'text-[#848484]'}`}
-                title={STATUS_LABEL[change.status] ?? change.status}
-            >
-                {STATUS_CHAR[change.status] ?? '?'}
-            </span>
-            <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 truncate">
-                {displayPath}
-            </span>
-
-            {/* Action buttons — visible on hover or when busy */}
-            <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                {/* Copy Path button */}
-                <button
-                    className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#3c3c3c] transition-colors"
-                    title={copied ? 'Copied!' : 'Copy path'}
-                    onClick={handleCopyPath}
-                    data-testid={`copy-path-btn-${change.filePath}`}
-                >
-                    {copied ? '✓' : '⧉'}
-                </button>
-
-                {change.stage === 'unstaged' && (
-                    <>
-                        <ActionButton
-                            label="+"
-                            title="Stage"
-                            onClick={() => onAction('stage')}
-                            disabled={busy}
-                            colorClass="text-[#16825d] hover:bg-[#d4edda] dark:hover:bg-[#1a3a22]"
-                            testId={`stage-btn-${change.filePath}`}
-                        />
-                        <ActionButton
-                            label="↩"
-                            title="Discard changes"
-                            onClick={() => onAction('discard')}
-                            disabled={busy}
-                            colorClass="text-[#d32f2f] hover:bg-[#fdecea] dark:hover:bg-[#3c2020]"
-                            testId={`discard-btn-${change.filePath}`}
-                        />
-                    </>
-                )}
-                {change.stage === 'staged' && (
-                    <ActionButton
-                        label="−"
-                        title="Unstage"
-                        onClick={() => onAction('unstage')}
-                        disabled={busy}
-                        colorClass="text-[#f57c00] hover:bg-[#fff3e0] dark:hover:bg-[#3a2800]"
-                        testId={`unstage-btn-${change.filePath}`}
-                    />
-                )}
-                {change.stage === 'untracked' && (
-                    <>
-                        <ActionButton
-                            label="+"
-                            title="Stage (add)"
-                            onClick={() => onAction('stage')}
-                            disabled={busy}
-                            colorClass="text-[#16825d] hover:bg-[#d4edda] dark:hover:bg-[#1a3a22]"
-                            testId={`stage-btn-${change.filePath}`}
-                        />
-                        <ActionButton
-                            label="✕"
-                            title="Delete file"
-                            onClick={() => onAction('delete')}
-                            disabled={busy}
-                            colorClass="text-[#d32f2f] hover:bg-[#fdecea] dark:hover:bg-[#3c2020]"
-                            testId={`delete-btn-${change.filePath}`}
-                        />
-                    </>
-                )}
-                {busy && <Spinner size="sm" />}
-            </span>
-        </div>
-    );
+const WORKING_TREE_VIEW_MODE_KEY = 'coc-working-tree-view-mode';
+function readWorkingTreeViewMode(): FilesViewMode {
+    try {
+        const v = localStorage.getItem(WORKING_TREE_VIEW_MODE_KEY);
+        if (v === 'flat' || v === 'tree') return v;
+    } catch { /* ignore */ }
+    return 'flat';
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-component: action buttons for file rows
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface ActionButtonProps {
     label: string;
@@ -220,6 +93,92 @@ function ActionButton({ label, title, onClick, disabled, colorClass, testId }: A
         >
             {label}
         </button>
+    );
+}
+
+/** Renders the action buttons (stage/unstage/discard/delete/copy) for a file row. */
+function FileActions({
+    change,
+    onAction,
+    busy,
+}: {
+    change: WorkingTreeChange;
+    onAction: (action: 'stage' | 'unstage' | 'discard' | 'delete') => void;
+    busy: boolean;
+}) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopyPath = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        copyToClipboard(change.filePath).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    };
+
+    return (
+        <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            <button
+                className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#3c3c3c] transition-colors"
+                title={copied ? 'Copied!' : 'Copy path'}
+                onClick={handleCopyPath}
+                data-testid={`copy-path-btn-${change.filePath}`}
+            >
+                {copied ? '✓' : '⧉'}
+            </button>
+
+            {change.stage === 'unstaged' && (
+                <>
+                    <ActionButton
+                        label="+"
+                        title="Stage"
+                        onClick={() => onAction('stage')}
+                        disabled={busy}
+                        colorClass="text-[#16825d] hover:bg-[#d4edda] dark:hover:bg-[#1a3a22]"
+                        testId={`stage-btn-${change.filePath}`}
+                    />
+                    <ActionButton
+                        label="↩"
+                        title="Discard changes"
+                        onClick={() => onAction('discard')}
+                        disabled={busy}
+                        colorClass="text-[#d32f2f] hover:bg-[#fdecea] dark:hover:bg-[#3c2020]"
+                        testId={`discard-btn-${change.filePath}`}
+                    />
+                </>
+            )}
+            {change.stage === 'staged' && (
+                <ActionButton
+                    label="−"
+                    title="Unstage"
+                    onClick={() => onAction('unstage')}
+                    disabled={busy}
+                    colorClass="text-[#f57c00] hover:bg-[#fff3e0] dark:hover:bg-[#3a2800]"
+                    testId={`unstage-btn-${change.filePath}`}
+                />
+            )}
+            {change.stage === 'untracked' && (
+                <>
+                    <ActionButton
+                        label="+"
+                        title="Stage (add)"
+                        onClick={() => onAction('stage')}
+                        disabled={busy}
+                        colorClass="text-[#16825d] hover:bg-[#d4edda] dark:hover:bg-[#1a3a22]"
+                        testId={`stage-btn-${change.filePath}`}
+                    />
+                    <ActionButton
+                        label="✕"
+                        title="Delete file"
+                        onClick={() => onAction('delete')}
+                        disabled={busy}
+                        colorClass="text-[#d32f2f] hover:bg-[#fdecea] dark:hover:bg-[#3c2020]"
+                        testId={`delete-btn-${change.filePath}`}
+                    />
+                </>
+            )}
+            {busy && <Spinner size="sm" />}
+        </span>
     );
 }
 
@@ -449,6 +408,61 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     const untracked = changes.filter(c => c.stage === 'untracked');
     const totalCount = staged.length + unstaged.length + untracked.length;
 
+    // Flat/tree toggle for working-tree file lists
+    const [wtViewMode, setWtViewModeState] = useState<FilesViewMode>(readWorkingTreeViewMode);
+    const setWtViewMode = useCallback((m: FilesViewMode) => {
+        try { localStorage.setItem(WORKING_TREE_VIEW_MODE_KEY, m); } catch { /* ignore */ }
+        setWtViewModeState(m);
+    }, []);
+
+    /** Build a changeLookup map for quick filePath → WorkingTreeChange access */
+    const changeLookup = new Map(changes.map(c => [c.filePath, c]));
+
+    /** Render file actions for a file identified by path */
+    const renderFileActionsForPath = useCallback((filePath: string) => {
+        const change = changeLookup.get(filePath);
+        if (!change) return null;
+        return (
+            <FileActions
+                change={change}
+                onAction={action => handleAction(action, change.filePath)}
+                busy={busyFiles.has(change.filePath)}
+            />
+        );
+    }, [changeLookup, handleAction, busyFiles]);
+
+    /** Render a section's file list using shared components */
+    const renderSectionFiles = (sectionChanges: WorkingTreeChange[]) => {
+        const fileChanges = toFileChanges(sectionChanges);
+        const handleSelect = (filePath: string) => {
+            const change = changeLookup.get(filePath);
+            if (change && onFileSelect) onFileSelect(change.filePath, change.stage);
+        };
+
+        if (wtViewMode === 'tree') {
+            return (
+                <FileTreeView
+                    nodes={compactFolders(buildFileTree(fileChanges))}
+                    onFileSelectSimple={onFileSelect ? handleSelect : undefined}
+                    selectedFilePath={selectedFilePath}
+                    fileCommentMap={new Map()}
+                    fileTestIdPrefix="working-tree-file-row"
+                    renderActions={(node) => renderFileActionsForPath(node.path)}
+                />
+            );
+        }
+
+        return (
+            <FlatFileList
+                files={fileChanges}
+                onFileSelect={onFileSelect ? handleSelect : () => {}}
+                selectedFilePath={selectedFilePath}
+                fileTestIdPrefix="working-tree-file-row"
+                renderActions={(file) => renderFileActionsForPath(file.path)}
+            />
+        );
+    };
+
     if (loading) {
         return (
             <div className="flex items-center gap-2 px-4 py-2 text-xs text-[#848484]" data-testid="working-tree-loading">
@@ -497,6 +511,9 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                 </button>
                 {workingChangesExpanded && (
                     <div data-testid="working-changes-content">
+                        <div className="flex justify-end px-4 py-1">
+                            <FilesViewToggle mode={wtViewMode} onChange={setWtViewMode} testIdPrefix="working-tree-view-toggle" />
+                        </div>
                         <Section
                             title="Staged"
                             count={staged.length}
@@ -504,16 +521,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                             stagingAll={stagingAll}
                             testId="working-tree-staged"
                         >
-                            {staged.map(c => (
-                                <FileRow
-                                    key={`staged-${c.filePath}`}
-                                    change={c}
-                                    onAction={action => handleAction(action, c.filePath)}
-                                    busy={busyFiles.has(c.filePath)}
-                                    onFileSelect={onFileSelect}
-                                    selected={selectedFilePath === c.filePath}
-                                />
-                            ))}
+                            {renderSectionFiles(staged)}
                         </Section>
 
                         <Section
@@ -523,16 +531,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                             stagingAll={stagingAll}
                             testId="working-tree-unstaged"
                         >
-                            {unstaged.map(c => (
-                                <FileRow
-                                    key={`unstaged-${c.filePath}`}
-                                    change={c}
-                                    onAction={action => handleAction(action, c.filePath)}
-                                    busy={busyFiles.has(c.filePath)}
-                                    onFileSelect={onFileSelect}
-                                    selected={selectedFilePath === c.filePath}
-                                />
-                            ))}
+                            {renderSectionFiles(unstaged)}
                         </Section>
 
                         <Section
@@ -543,16 +542,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                             defaultExpanded={false}
                             testId="working-tree-untracked"
                         >
-                            {untracked.map(c => (
-                                <FileRow
-                                    key={`untracked-${c.filePath}`}
-                                    change={c}
-                                    onAction={action => handleAction(action, c.filePath)}
-                                    busy={busyFiles.has(c.filePath)}
-                                    onFileSelect={onFileSelect}
-                                    selected={selectedFilePath === c.filePath}
-                                />
-                            ))}
+                            {renderSectionFiles(untracked)}
                         </Section>
                     </div>
                 )}

@@ -168,13 +168,49 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                const raw = execGitSync(`diff-tree --no-commit-id -r --name-status ${hash}`, ws.rootPath);
-                const files: Array<{ status: string; path: string }> = [];
-                for (const line of raw.split('\n').filter(Boolean)) {
-                    const [status, ...pathParts] = line.split('\t');
-                    if (status && pathParts.length > 0) {
-                        files.push({ status: status.charAt(0), path: pathParts.join('\t') });
+                // name-status with rename/copy detection
+                const nameStatusRaw = execGitSync(`diff-tree --no-commit-id -r --name-status -M -C ${hash}`, ws.rootPath);
+                // numstat for additions/deletions
+                const numstatRaw = execGitSync(`diff-tree --no-commit-id -r --numstat -M -C ${hash}`, ws.rootPath);
+
+                // Parse numstat: "additions\tdeletions\tpath" (renames: "old\tnew")
+                const numstatMap = new Map<string, { additions: number; deletions: number }>();
+                for (const line of numstatRaw.split('\n').filter(Boolean)) {
+                    const parts = line.split('\t');
+                    if (parts.length < 3) continue;
+                    const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0;
+                    const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0;
+                    // For renames, numstat shows "old => new" or "{old => new}" — use the resolved path
+                    let filePath = parts.slice(2).join('\t');
+                    if (filePath.includes(' => ')) {
+                        const m = filePath.match(/(?:{[^}]*? => ([^}]+)}|.* => (.+))/);
+                        if (m) filePath = m[1] || m[2];
                     }
+                    numstatMap.set(filePath, { additions, deletions });
+                }
+
+                const files: Array<{ status: string; path: string; additions?: number; deletions?: number; oldPath?: string }> = [];
+                for (const line of nameStatusRaw.split('\n').filter(Boolean)) {
+                    const [status, ...pathParts] = line.split('\t');
+                    if (!status || pathParts.length === 0) continue;
+                    const statusChar = status.charAt(0);
+                    let filePath: string;
+                    let oldPath: string | undefined;
+
+                    if ((statusChar === 'R' || statusChar === 'C') && pathParts.length >= 2) {
+                        oldPath = pathParts[0];
+                        filePath = pathParts[1];
+                    } else {
+                        filePath = pathParts.join('\t');
+                    }
+
+                    const stats = numstatMap.get(filePath);
+                    files.push({
+                        status: statusChar,
+                        path: filePath,
+                        ...(stats && { additions: stats.additions, deletions: stats.deletions }),
+                        ...(oldPath && { oldPath }),
+                    });
                 }
                 const result = { files };
                 gitCache.set(cacheKey, result);

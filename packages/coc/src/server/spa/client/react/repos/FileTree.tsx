@@ -1,16 +1,20 @@
 /**
- * FileTree — collapsible folder tree for commit file lists.
+ * FileTree — shared file-list components for commit, branch, and working-tree views.
  *
- * `buildFileTree` converts a flat array of FileChange objects into a nested
- * tree of DirNode / FileNode entries. `FileTreeView` renders that tree with
- * collapsible directories and depth-based indentation.
+ * Exports:
+ * - `buildFileTree` / `compactFolders` — tree builder utilities
+ * - `FileTreeView` — collapsible folder tree (with optional renderActions slot)
+ * - `FlatFileList` — flat file list (with optional renderActions slot)
+ * - `FilesViewToggle` — flat/tree toggle button group
+ * - Status helpers: `normalizeStatus`, `STATUS_COLORS`, `STATUS_LABELS`
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { TruncatedPath } from '../shared';
 
 // ----- Types -----
 
-interface FileChange {
+export interface FileChange {
     status: string;
     path: string;
     additions?: number;
@@ -18,14 +22,14 @@ interface FileChange {
     oldPath?: string;
 }
 
-interface DirNode {
+export interface DirNode {
     type: 'dir';
     name: string;
     path: string;
     children: TreeNode[];
 }
 
-interface FileNode {
+export interface FileNode {
     type: 'file';
     name: string;
     path: string;
@@ -35,7 +39,7 @@ interface FileNode {
     oldPath?: string;
 }
 
-type TreeNode = DirNode | FileNode;
+export type TreeNode = DirNode | FileNode;
 
 // ----- Tree builder -----
 
@@ -97,7 +101,7 @@ export function buildFileTree(files: FileChange[]): TreeNode[] {
     return root;
 }
 
-// ----- Status helpers -----
+// ----- Status helpers (single source of truth) -----
 
 const WORD_TO_CHAR: Record<string, string> = {
     added: 'A',
@@ -105,6 +109,8 @@ const WORD_TO_CHAR: Record<string, string> = {
     deleted: 'D',
     renamed: 'R',
     copied: 'C',
+    conflict: 'U',
+    untracked: '?',
 };
 
 /** Normalize a word status (e.g. "added") to a single char ("A"). Already-single-char values pass through. */
@@ -112,24 +118,148 @@ export function normalizeStatus(status: string): string {
     return WORD_TO_CHAR[status] ?? status;
 }
 
-// ----- Status styling (mirrors CommitList) -----
-
-const STATUS_COLORS: Record<string, string> = {
+export const STATUS_COLORS: Record<string, string> = {
     A: 'text-[#16825d]',
     M: 'text-[#0078d4]',
     D: 'text-[#d32f2f]',
+    R: 'text-[#9c27b0]',
+    C: 'text-[#848484]',
+    U: 'text-[#d32f2f]',
+    '?': 'text-[#848484]',
 };
 
-const STATUS_LABELS: Record<string, string> = {
+export const STATUS_LABELS: Record<string, string> = {
     A: 'Added',
     M: 'Modified',
     D: 'Deleted',
     R: 'Renamed',
     C: 'Copied',
     T: 'Type changed',
+    U: 'Conflict',
+    '?': 'Untracked',
 };
 
-// ----- Components -----
+// ----- FilesViewToggle -----
+
+export type FilesViewMode = 'flat' | 'tree';
+
+export interface FilesViewToggleProps {
+    mode: FilesViewMode;
+    onChange: (mode: FilesViewMode) => void;
+    testIdPrefix?: string;
+}
+
+export function FilesViewToggle({ mode, onChange, testIdPrefix = 'files-view-toggle' }: FilesViewToggleProps) {
+    const BUTTONS: { value: FilesViewMode; label: string }[] = [
+        { value: 'flat', label: '☰ Flat' },
+        { value: 'tree', label: '🌲 Tree' },
+    ];
+    return (
+        <div
+            className="inline-flex rounded border border-[#d0d7de] dark:border-[#30363d] overflow-hidden text-xs"
+            role="group"
+            aria-label="File list view mode"
+            data-testid={testIdPrefix}
+        >
+            {BUTTONS.map(({ value, label }, i) => (
+                <button
+                    key={value}
+                    onClick={(e) => { e.stopPropagation(); onChange(value); }}
+                    aria-pressed={mode === value}
+                    data-testid={`${testIdPrefix}-${value}`}
+                    className={[
+                        'px-2 py-0.5 transition-colors',
+                        i > 0 ? 'border-l border-[#d0d7de] dark:border-[#30363d]' : '',
+                        mode === value
+                            ? 'bg-[#0550ae] dark:bg-[#79c0ff] text-white dark:text-black font-medium'
+                            : 'bg-white dark:bg-[#161b22] text-[#6e7681] hover:bg-[#f3f4f6] dark:hover:bg-[#21262d]',
+                    ].join(' ')}
+                >
+                    {label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+// ----- FlatFileList -----
+
+export interface FlatFileListProps {
+    files: FileChange[];
+    onFileSelect: (filePath: string) => void;
+    selectedFilePath?: string | null;
+    fileCommentMap?: Map<string, number>;
+    commentBadgeTestIdPrefix?: string;
+    fileTestIdPrefix?: string;
+    /** Render extra content below a file entry (e.g. inline diff). */
+    renderFileExtra?: (file: FileChange) => React.ReactNode;
+    /** Trailing content per row — used by WorkingTree for action buttons. */
+    renderActions?: (file: FileChange) => React.ReactNode;
+}
+
+export function FlatFileList({
+    files,
+    onFileSelect,
+    selectedFilePath,
+    fileCommentMap = new Map(),
+    commentBadgeTestIdPrefix = 'flat-file-comment-badge',
+    fileTestIdPrefix = 'flat-file-row',
+    renderFileExtra,
+    renderActions,
+}: FlatFileListProps) {
+    return (
+        <div className="flex flex-col gap-0.5" data-testid="flat-file-list">
+            {files.map((file, i) => {
+                const displayStatus = normalizeStatus(file.status);
+                const count = fileCommentMap.get(file.path) ?? 0;
+                return (
+                    <div key={i}>
+                        <button
+                            className={`group w-full flex items-center gap-2 text-xs py-1 px-1 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors text-left ${
+                                selectedFilePath === file.path ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10' : ''
+                            }`}
+                            onClick={() => onFileSelect(file.path)}
+                            data-testid={`${fileTestIdPrefix}-${file.path}`}
+                        >
+                            {count > 0 && (
+                                <span
+                                    className="text-xs text-[#848484] mr-0.5 flex-shrink-0"
+                                    title={`${count} active comment${count > 1 ? 's' : ''}`}
+                                    data-testid={`${commentBadgeTestIdPrefix}-${file.path}`}
+                                >
+                                    💬{count}
+                                </span>
+                            )}
+                            <span
+                                className={`font-mono font-bold w-4 text-center flex-shrink-0 ${STATUS_COLORS[displayStatus] || 'text-[#848484]'}`}
+                                title={STATUS_LABELS[displayStatus] || file.status}
+                            >
+                                {displayStatus}
+                            </span>
+                            {file.oldPath ? (
+                                <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 truncate" title={`${file.oldPath} → ${file.path}`}>
+                                    {file.oldPath} → {file.path}
+                                </span>
+                            ) : (
+                                <TruncatedPath path={file.path} className="text-[#1e1e1e] dark:text-[#ccc] flex-1" />
+                            )}
+                            {file.additions !== undefined && (
+                                <span className="text-[#16825d] text-xs flex-shrink-0">+{file.additions}</span>
+                            )}
+                            {file.deletions !== undefined && (
+                                <span className="text-[#d32f2f] text-xs flex-shrink-0">−{file.deletions}</span>
+                            )}
+                            {renderActions?.(file)}
+                        </button>
+                        {renderFileExtra?.(file)}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ----- FileTreeView -----
 
 interface FileTreeViewProps {
     nodes: TreeNode[];
@@ -148,6 +278,8 @@ interface FileTreeViewProps {
     fileTestIdPrefix?: string;
     /** Render extra content below a file entry (e.g. inline diff). */
     renderFileExtra?: (node: FileNode) => React.ReactNode;
+    /** Trailing content per row — used by WorkingTree for action buttons. */
+    renderActions?: (node: FileNode) => React.ReactNode;
 }
 
 export function FileTreeView({
@@ -162,6 +294,7 @@ export function FileTreeView({
     commentBadgeTestIdPrefix = 'commit-file-comment-badge',
     fileTestIdPrefix = 'commit-file',
     renderFileExtra,
+    renderActions,
 }: FileTreeViewProps) {
     return (
         <div className="flex flex-col gap-0.5" data-testid={depth === 0 ? 'commit-file-list' : undefined}>
@@ -180,6 +313,7 @@ export function FileTreeView({
                         commentBadgeTestIdPrefix={commentBadgeTestIdPrefix}
                         fileTestIdPrefix={fileTestIdPrefix}
                         renderFileExtra={renderFileExtra}
+                        renderActions={renderActions}
                     />
                 ) : (
                     <FileEntry
@@ -195,6 +329,7 @@ export function FileTreeView({
                         commentBadgeTestIdPrefix={commentBadgeTestIdPrefix}
                         fileTestIdPrefix={fileTestIdPrefix}
                         renderFileExtra={renderFileExtra}
+                        renderActions={renderActions}
                     />
                 ),
             )}
@@ -214,6 +349,7 @@ function DirEntry({
     commentBadgeTestIdPrefix,
     fileTestIdPrefix,
     renderFileExtra,
+    renderActions,
 }: {
     node: DirNode;
     depth: number;
@@ -226,6 +362,7 @@ function DirEntry({
     commentBadgeTestIdPrefix?: string;
     fileTestIdPrefix?: string;
     renderFileExtra?: (node: FileNode) => React.ReactNode;
+    renderActions?: (node: FileNode) => React.ReactNode;
 }) {
     const [open, setOpen] = useState(true);
 
@@ -257,6 +394,7 @@ function DirEntry({
                     commentBadgeTestIdPrefix={commentBadgeTestIdPrefix}
                     fileTestIdPrefix={fileTestIdPrefix}
                     renderFileExtra={renderFileExtra}
+                    renderActions={renderActions}
                 />
             )}
         </div>
@@ -275,6 +413,7 @@ function FileEntry({
     commentBadgeTestIdPrefix = 'commit-file-comment-badge',
     fileTestIdPrefix = 'commit-file',
     renderFileExtra,
+    renderActions,
 }: {
     node: FileNode;
     depth: number;
@@ -287,6 +426,7 @@ function FileEntry({
     commentBadgeTestIdPrefix?: string;
     fileTestIdPrefix?: string;
     renderFileExtra?: (node: FileNode) => React.ReactNode;
+    renderActions?: (node: FileNode) => React.ReactNode;
 }) {
     const isActiveFile = onFileSelectSimple
         ? selectedFilePath === node.path
@@ -297,7 +437,7 @@ function FileEntry({
     return (
         <div>
             <button
-                className={`flex items-center gap-2 text-[11px] py-0.5 px-1 rounded text-left w-full transition-colors ${
+                className={`group flex items-center gap-2 text-[11px] py-0.5 px-1 rounded text-left w-full transition-colors ${
                     isActiveFile
                         ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10'
                         : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
@@ -337,6 +477,7 @@ function FileEntry({
                 {node.deletions !== undefined && (
                     <span className="text-[#d32f2f] text-xs flex-shrink-0">−{node.deletions}</span>
                 )}
+                {renderActions?.(node)}
             </button>
             {renderFileExtra?.(node)}
         </div>

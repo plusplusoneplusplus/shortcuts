@@ -447,17 +447,42 @@ describe('Git API endpoints', () => {
     // ========================================================================
 
     describe('GET /api/workspaces/:id/git/commits/:hash/files', () => {
-        it('returns changed files for a commit', async () => {
-            const diffTreeOutput = 'M\tsrc/index.ts\nA\tsrc/new-file.ts\nD\told-file.ts';
-            mockExecSync.mockReturnValue(diffTreeOutput);
+        it('returns changed files for a commit with additions/deletions and oldPath', async () => {
+            // First call: name-status (with -M -C for rename detection)
+            const nameStatusOutput = 'M\tsrc/index.ts\nA\tsrc/new-file.ts\nD\told-file.ts';
+            // Second call: numstat
+            const numstatOutput = '10\t3\tsrc/index.ts\n25\t0\tsrc/new-file.ts\n0\t15\told-file.ts';
+            mockExecSync
+                .mockReturnValueOnce(nameStatusOutput)
+                .mockReturnValueOnce(numstatOutput);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.files).toHaveLength(3);
-            expect(data.files[0]).toEqual({ status: 'M', path: 'src/index.ts' });
-            expect(data.files[1]).toEqual({ status: 'A', path: 'src/new-file.ts' });
-            expect(data.files[2]).toEqual({ status: 'D', path: 'old-file.ts' });
+            expect(data.files[0]).toEqual({ status: 'M', path: 'src/index.ts', additions: 10, deletions: 3 });
+            expect(data.files[1]).toEqual({ status: 'A', path: 'src/new-file.ts', additions: 25, deletions: 0 });
+            expect(data.files[2]).toEqual({ status: 'D', path: 'old-file.ts', additions: 0, deletions: 15 });
+        });
+
+        it('returns rename info with oldPath', async () => {
+            const nameStatusOutput = 'R100\told/path.ts\tnew/path.ts';
+            const numstatOutput = '5\t2\tnew/path.ts';
+            mockExecSync
+                .mockReturnValueOnce(nameStatusOutput)
+                .mockReturnValueOnce(numstatOutput);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.files).toHaveLength(1);
+            expect(data.files[0]).toEqual({
+                status: 'R',
+                path: 'new/path.ts',
+                oldPath: 'old/path.ts',
+                additions: 5,
+                deletions: 2,
+            });
         });
 
         it('returns error on git failure', async () => {

@@ -89,14 +89,9 @@ describe('BranchChanges', () => {
             expect(source).toContain('deletions: number');
         });
 
-        it('defines BranchRangeFile interface', () => {
+        it('defines BranchRangeFile interface extending FileChange', () => {
             expect(source).toContain('interface BranchRangeFile');
-        });
-
-        it('BranchRangeFile has path, status, additions, deletions, oldPath', () => {
-            expect(source).toMatch(/interface BranchRangeFile[\s\S]*?path: string/);
-            expect(source).toMatch(/interface BranchRangeFile[\s\S]*?status: string/);
-            expect(source).toMatch(/interface BranchRangeFile[\s\S]*?oldPath\?: string/);
+            expect(source).toContain('extends FileChange');
         });
     });
 
@@ -182,31 +177,39 @@ describe('BranchChanges', () => {
         });
     });
 
-    describe('status mappings', () => {
-        it('maps full word statuses to single chars', () => {
-            expect(source).toContain("added: 'A'");
-            expect(source).toContain("modified: 'M'");
-            expect(source).toContain("deleted: 'D'");
-            expect(source).toContain("renamed: 'R'");
-            expect(source).toContain("copied: 'C'");
+    describe('status mappings (shared from FileTree)', () => {
+        let fileTreeSource: string;
+
+        beforeAll(() => {
+            const fileTreePath = path.join(
+                __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'FileTree.tsx'
+            );
+            fileTreeSource = fs.readFileSync(fileTreePath, 'utf-8');
         });
 
-        it('has status colors matching CommitDetail palette', () => {
-            expect(source).toContain("added:    'text-[#16825d]'");
-            expect(source).toContain("modified: 'text-[#0078d4]'");
-            expect(source).toContain("deleted:  'text-[#d32f2f]'");
+        it('imports shared status infrastructure from FileTree', () => {
+            expect(source).toContain("from './FileTree'");
+            expect(source).toContain('FlatFileList');
+            expect(source).toContain('FilesViewToggle');
         });
 
-        it('has purple color for renamed files', () => {
-            expect(source).toContain("renamed:  'text-[#9c27b0]'");
+        it('FileTree has char-keyed STATUS_COLORS for all statuses', () => {
+            expect(fileTreeSource).toContain("A: 'text-[#16825d]'");
+            expect(fileTreeSource).toContain("M: 'text-[#0078d4]'");
+            expect(fileTreeSource).toContain("D: 'text-[#d32f2f]'");
+            expect(fileTreeSource).toContain("R: 'text-[#9c27b0]'");
         });
 
-        it('has status labels for tooltips', () => {
-            expect(source).toContain("added: 'Added'");
-            expect(source).toContain("modified: 'Modified'");
-            expect(source).toContain("deleted: 'Deleted'");
-            expect(source).toContain("renamed: 'Renamed'");
-            expect(source).toContain("copied: 'Copied'");
+        it('FileTree has STATUS_LABELS for tooltips', () => {
+            expect(fileTreeSource).toContain("A: 'Added'");
+            expect(fileTreeSource).toContain("M: 'Modified'");
+            expect(fileTreeSource).toContain("D: 'Deleted'");
+            expect(fileTreeSource).toContain("R: 'Renamed'");
+            expect(fileTreeSource).toContain("C: 'Copied'");
+        });
+
+        it('does not define local STATUS_CHARS map (delegated to FileTree)', () => {
+            expect(source).not.toContain('const STATUS_CHARS');
         });
     });
 
@@ -245,18 +248,14 @@ describe('BranchChanges', () => {
             expect(source).toContain('file.path');
         });
 
-        it('renders file additions and deletions', () => {
-            expect(source).toContain('+{file.additions}');
-            expect(source).toContain('−{file.deletions}');
+        it('delegates flat file rendering to shared FlatFileList', () => {
+            expect(source).toContain('<FlatFileList');
+            expect(source).toContain('files={files}');
         });
 
-        it('renders renamed files with old → new path', () => {
-            expect(source).toContain('file.oldPath');
-            expect(source).toContain('→');
-        });
-
-        it('applies min-w-0 on the renamed file span for proper truncation', () => {
-            expect(source).toContain('flex-1 min-w-0 truncate');
+        it('passes renderFileExtra slot for inline diff expansion', () => {
+            expect(source).toContain('renderFileExtra=');
+            expect(source).toContain('expandedFile');
         });
 
         it('imports Spinner from shared', () => {
@@ -381,8 +380,8 @@ describe('BranchChanges', () => {
         });
 
         describe('file rows — clickable buttons', () => {
-            it('renders file rows as <button> elements that call handleFileClick', () => {
-                expect(source).toContain('onClick={() => handleFileClick(file.path)');
+            it('uses FlatFileList with onFileSelect={handleFileClick}', () => {
+                expect(source).toContain('onFileSelect={handleFileClick}');
             });
 
             it('defines handleFileClick that delegates to onFileSelect or toggleFileDiff', () => {
@@ -391,32 +390,22 @@ describe('BranchChanges', () => {
                 expect(source).toContain('toggleFileDiff(filePath)');
             });
 
-            it('has data-testid on each file row button', () => {
-                expect(source).toContain('data-testid={`branch-file-row-${file.path}`}');
+            it('passes file test ID prefix to shared FlatFileList', () => {
+                expect(source).toContain('fileTestIdPrefix="branch-file-row"');
             });
 
-            it('shows expand/collapse chevron only when onFileSelect is absent', () => {
-                expect(source).toContain('!onFileSelect && (');
-                expect(source).toContain('expandedFile === file.path');
-            });
-
-            it('applies selected highlight when selectedFile matches', () => {
-                expect(source).toContain('selectedFile === file.path');
-                expect(source).toContain('ring-1 ring-[#0078d4]');
-            });
-
-            it('uses text-left for proper button text alignment', () => {
-                expect(source).toContain('text-left');
+            it('passes renderFileExtra slot for inline diff expansion', () => {
+                expect(source).toContain('renderFileExtra=');
             });
         });
 
         describe('inline diff panel', () => {
-            it('renders diff panel only when onFileSelect is absent and file is expanded', () => {
-                expect(source).toContain('!onFileSelect && expandedFile === file.path && (');
+            it('renders diff panel via renderFileExtra when onFileSelect is absent and file is expanded', () => {
+                expect(source).toContain('!onFileSelect && expandedFile ===');
             });
 
             it('has data-testid on each diff panel', () => {
-                expect(source).toContain('data-testid={`branch-file-diff-${file.path}`}');
+                expect(source).toContain('data-testid={`branch-file-diff-${');
             });
 
             it('shows loading spinner while diff is fetching', () => {

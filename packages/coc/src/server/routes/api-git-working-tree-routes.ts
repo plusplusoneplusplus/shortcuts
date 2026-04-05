@@ -18,6 +18,18 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     const workingTreeService = new WorkingTreeService();
     const branchService = new BranchService();
 
+    const STATUS_WORD_TO_CHAR: Record<string, string> = {
+        added: 'A', modified: 'M', deleted: 'D', renamed: 'R', copied: 'C', conflict: 'U', untracked: '?',
+    };
+
+    function normalizeChanges(changes: Array<{ filePath: string; originalPath?: string; status: string; stage: string; repositoryRoot: string; repositoryName: string }>) {
+        return changes.map(c => ({
+            ...c,
+            status: STATUS_WORD_TO_CHAR[c.status] ?? c.status,
+            ...(c.originalPath ? { oldPath: c.originalPath } : {}),
+        }));
+    }
+
     // GET /api/workspaces/:id/git/changes — All working-tree changes + repo state
     routes.push({
         method: 'GET',
@@ -28,7 +40,7 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
 
             const changes = await workingTreeService.getAllChanges(ws.rootPath);
             const repoState = branchService.getRepoState(ws.rootPath);
-            sendJSON(res, 200, { changes, repoState });
+            sendJSON(res, 200, { changes: normalizeChanges(changes), repoState });
         },
     });
 

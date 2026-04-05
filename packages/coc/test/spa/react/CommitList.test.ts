@@ -229,6 +229,16 @@ describe('CommitList', () => {
             expect(source).toContain('workspaceId');
             expect(source).toContain('!fileCache[commit.hash] && workspaceId');
         });
+
+        it('has flat/tree view toggle for commit file lists', () => {
+            expect(source).toContain('FilesViewToggle');
+            expect(source).toContain('commitViewMode');
+            expect(source).toContain('coc-commit-files-view-mode');
+        });
+
+        it('renders FlatFileList in flat mode', () => {
+            expect(source).toContain('<FlatFileList');
+        });
     });
 
     describe('hover tooltip', () => {

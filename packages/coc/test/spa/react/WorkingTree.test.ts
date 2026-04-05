@@ -141,6 +141,11 @@ describe('WorkingTree', () => {
         it('has Unstage All button for Staged section', () => {
             expect(source).toContain('handleUnstageAll');
         });
+
+        it('renders actions via shared components with renderActions slot', () => {
+            expect(source).toContain('renderActions');
+            expect(source).toContain('FileActions');
+        });
     });
 
     describe('basename helper', () => {

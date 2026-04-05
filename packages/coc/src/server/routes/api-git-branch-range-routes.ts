@@ -17,6 +17,20 @@ import { truncateDiffIfNeeded } from './api-shared';
 export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
 
+    const STATUS_WORD_TO_CHAR: Record<string, string> = {
+        added: 'A', modified: 'M', deleted: 'D', renamed: 'R', copied: 'C', conflict: 'U', untracked: '?',
+    };
+
+    function normalizeRangeFiles(files: Array<{ path: string; status: string; additions: number; deletions: number; oldPath?: string; repositoryRoot: string }>) {
+        return files.map(f => ({
+            path: f.path,
+            status: STATUS_WORD_TO_CHAR[f.status] ?? f.status,
+            additions: f.additions,
+            deletions: f.deletions,
+            ...(f.oldPath && { oldPath: f.oldPath }),
+        }));
+    }
+
     // Lazy singleton
     let _gitRangeService: GitRangeService | undefined;
     function getGitRangeService(): GitRangeService {
@@ -54,8 +68,12 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                     gitCache.set(cacheKey, result);
                     return sendJSON(res, 200, result);
                 }
-                gitCache.set(cacheKey, range);
-                sendJSON(res, 200, range);
+                const result = {
+                    ...range,
+                    ...(range.files && { files: normalizeRangeFiles(range.files) }),
+                };
+                gitCache.set(cacheKey, result);
+                sendJSON(res, 200, result);
             } catch {
                 sendJSON(res, 200, { onDefaultBranch: true });
             }
@@ -76,7 +94,8 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                 if (!range) {
                     return sendJSON(res, 200, { files: [] });
                 }
-                sendJSON(res, 200, { files: range.files });
+                const files = normalizeRangeFiles(range.files ?? []);
+                sendJSON(res, 200, { files });
             } catch {
                 sendJSON(res, 200, { files: [] });
             }
