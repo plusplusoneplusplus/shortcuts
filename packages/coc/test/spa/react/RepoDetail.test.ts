@@ -24,14 +24,14 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS.find(t => t.key === 'queue')).toBeUndefined();
     });
 
-    it('"chats" is followed by "tasks" entry', () => {
+    it('"chats" is followed by "work-items" entry', () => {
         const chatsIdx = SUB_TABS.findIndex(t => t.key === 'chats');
-        const tasksIdx = SUB_TABS.findIndex(t => t.key === 'tasks');
-        expect(tasksIdx).toBe(chatsIdx + 1);
+        const workItemsIdx = SUB_TABS.findIndex(t => t.key === 'work-items');
+        expect(workItemsIdx).toBe(chatsIdx + 1);
     });
 
-    it('"tasks" is the second entry', () => {
-        expect(SUB_TABS[1].key).toBe('tasks');
+    it('"work-items" is the second entry', () => {
+        expect(SUB_TABS[1].key).toBe('work-items');
     });
 
     it('has exactly 10 entries', () => {
@@ -40,7 +40,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'tasks', 'git', 'work-items', 'pull-requests', 'workflows', 'schedules', 'explorer', 'settings', 'wiki']);
+        expect(keys).toEqual(['chats', 'work-items', 'git', 'pull-requests', 'workflows', 'schedules', 'explorer', 'tasks', 'settings', 'wiki']);
     });
 
     it('includes "wiki" entry', () => {
@@ -48,7 +48,7 @@ describe('RepoDetail SUB_TABS', () => {
         expect(wikiTab).toBeDefined();
     });
 
-    it('has git as the third tab (after tasks)', () => {
+    it('has git as the third tab (after work-items)', () => {
         expect(SUB_TABS[2].key).toBe('git');
     });
 
@@ -74,7 +74,7 @@ describe('RepoDetail BASE_VISIBLE_SUB_TABS', () => {
 
     it('contains all non-wiki tabs in order', () => {
         const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'tasks', 'git', 'work-items', 'pull-requests', 'workflows', 'schedules', 'explorer', 'settings']);
+        expect(keys).toEqual(['chats', 'work-items', 'git', 'pull-requests', 'workflows', 'schedules', 'explorer', 'tasks', 'settings']);
     });
 
     it('renders visibleSubTabs.map in the tab strip', () => {
