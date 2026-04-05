@@ -907,11 +907,11 @@ describe('Task Comments REST API', () => {
         });
     });
 
-    // -- GET /api/comment-counts/:wsId --
+    // -- GET /api/workspaces/:wsId/tasks/comment-counts --
 
-    describe('GET /api/comment-counts/:wsId', () => {
+    describe('GET /api/workspaces/:wsId/tasks/comment-counts', () => {
         function countsUrl(wsId = WS_ID) {
-            return `${baseUrl}/api/comment-counts/${wsId}`;
+            return `${baseUrl}/api/workspaces/${wsId}/tasks/comment-counts`;
         }
 
         it('returns empty counts for workspace with no comments', async () => {
@@ -933,7 +933,7 @@ describe('Task Comments REST API', () => {
         });
 
         it('rejects invalid workspace ID', async () => {
-            const res = await getJSON(`${baseUrl}/api/comment-counts/bad..id`);
+            const res = await getJSON(`${baseUrl}/api/workspaces/bad..id/tasks/comment-counts`);
             // Pattern doesn't match dots, so route won't match (404)
             expect([400, 404]).toContain(res.status);
         });

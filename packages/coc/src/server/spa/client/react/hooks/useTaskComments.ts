@@ -145,7 +145,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     const fetchCounts = useCallback(async () => {
         if (!wsId) return;
         try {
-            const res = await fetch(getApiBase() + '/comment-counts/' + encodeURIComponent(wsId));
+            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/comment-counts');
             if (!res.ok) return;
             const data = await res.json();
             if (mountedRef.current) setCommentCounts(data.counts || {});

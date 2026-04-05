@@ -59,7 +59,7 @@ function findMissingField(body: any): string | null {
  * Mutates the `routes` array in-place.
  *
  * Endpoints:
- *   GET    /api/comment-counts/:wsId                   — comment counts per file
+ *   GET    /api/workspaces/:wsId/tasks/comment-counts  — comment counts per file
  *   GET    /api/comments/:wsId/:taskPath(*)           — list comments
  *   POST   /api/comments/:wsId/:taskPath(*)           — create comment
  *   GET    /api/comments/:wsId/:taskPath(*)/:id       — get single comment
@@ -149,8 +149,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         return queueManager.enqueue(input);
     }
 
-    // Pattern for comment counts endpoint: /api/comment-counts/{wsId}
-    const countsPattern = /^\/api\/comment-counts\/([a-zA-Z0-9_-]+)$/;
+    // Pattern for comment counts endpoint: /api/workspaces/{wsId}/tasks/comment-counts
+    const countsPattern = /^\/api\/workspaces\/([a-zA-Z0-9_-]+)\/tasks\/comment-counts$/;
 
     // Pattern for collection endpoints: /api/comments/{wsId}/{taskPath...}
     // taskPath is everything after the wsId segment, captured greedily.
@@ -170,7 +170,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
     const batchResolvePattern = /^\/api\/comments\/([a-zA-Z0-9_-]+)\/(.+)\/batch-resolve$/;
 
     // ------------------------------------------------------------------
-    // GET /api/comment-counts/:wsId — comment counts per file
+    // GET /api/workspaces/:wsId/tasks/comment-counts — comment counts per file
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
