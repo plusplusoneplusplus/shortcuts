@@ -229,7 +229,7 @@ describe('ActivityChatDetail', () => {
         it('extracts skills from message before sending', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 1800,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 2200,
             );
             expect(sendBlock).toContain('slashCommands.parseAndExtract(');
             expect(sendBlock).toContain('skillNames');
@@ -238,7 +238,7 @@ describe('ActivityChatDetail', () => {
         it('dismisses slash menu on send', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 1800,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 2200,
             );
             expect(sendBlock).toContain('slashCommands.dismissMenu()');
         });
@@ -768,7 +768,7 @@ describe('ActivityChatDetail', () => {
         it('drains in sendFollowUp finally block', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5500,
             );
             expect(sendBlock).toContain('flushQueueRef.current?.()');
         });

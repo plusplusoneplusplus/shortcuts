@@ -30,6 +30,9 @@ export function useTextPaste(
         const text = e.clipboardData?.getData('text/plain');
         if (!text || text.length <= threshold) return;
 
+        // Prevent the raw text from flooding the input — the PastePreview chip serves as the visual reference
+        e.preventDefault();
+
         setPastedContent(text);
         setCharCount(text.length);
         setPreviewLines(

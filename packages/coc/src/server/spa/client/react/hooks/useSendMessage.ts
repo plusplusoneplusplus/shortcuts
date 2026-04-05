@@ -36,6 +36,8 @@ export interface UseSendMessageOptions {
     images: string[];
     clearImages: () => void;
     clearPaste: () => void;
+    /** Returns the raw pasted content held by useTextPaste, or null if no large paste is active. */
+    getPastedContent?: () => string | null;
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
 }
@@ -63,6 +65,7 @@ export function useSendMessage({
     images,
     clearImages,
     clearPaste,
+    getPastedContent,
     lastFailedMessageRef,
     setTask,
 }: UseSendMessageOptions): {
@@ -150,7 +153,12 @@ export function useSendMessage({
     }, [pendingQueue, processId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue') => {
-        const rawContent = (overrideContent ?? followUpInputRef.current).trim();
+        const userText = (overrideContent ?? followUpInputRef.current).trim();
+        // Compose the full content: user text + pasted content (if any)
+        const pastedContent = getPastedContent?.() ?? null;
+        const rawContent = pastedContent
+            ? (userText ? userText + '\n\n' + pastedContent : pastedContent)
+            : userText;
         if (!rawContent || !processId || inputDisabled) return;
 
         if (archivedChatIds.has(taskId)) {

@@ -71,6 +71,7 @@ function makeOptions(overrides: Partial<Parameters<typeof useSendMessage>[0]> = 
         selectedModeRef: { current: 'ask' as const },
         images: [],
         clearImages: vi.fn(),
+        clearPaste: vi.fn(),
         lastFailedMessageRef: { current: '' },
         setTask: vi.fn(),
         ...overrides,

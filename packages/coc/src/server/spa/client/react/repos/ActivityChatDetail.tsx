@@ -226,6 +226,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         images,
         clearImages,
         clearPaste: textPaste.clearPaste,
+        getPastedContent: () => textPaste.pastedContent,
         lastFailedMessageRef,
         setTask,
     });

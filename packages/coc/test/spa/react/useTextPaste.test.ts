@@ -34,6 +34,30 @@ describe('useTextPaste', () => {
         expect(result.current.charCount).toBe(largeText.length);
     });
 
+    it('calls preventDefault on large paste to keep input clean', () => {
+        const { result } = renderHook(() => useTextPaste());
+        const largeText = 'x'.repeat(CLIENT_PASTE_THRESHOLD + 100);
+        const event = createMockPasteEvent(largeText);
+
+        act(() => {
+            result.current.addFromPaste(event);
+        });
+
+        expect(event.preventDefault).toHaveBeenCalled();
+    });
+
+    it('does not call preventDefault on small paste', () => {
+        const { result } = renderHook(() => useTextPaste());
+        const shortText = 'hello world';
+        const event = createMockPasteEvent(shortText);
+
+        act(() => {
+            result.current.addFromPaste(event);
+        });
+
+        expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+
     it('ignores paste under threshold', () => {
         const { result } = renderHook(() => useTextPaste());
         const shortText = 'hello world';

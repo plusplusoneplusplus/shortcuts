@@ -70,6 +70,7 @@ function makeOptions(overrides: Partial<UseSendMessageOptions> = {}): UseSendMes
         selectedModeRef: { current: 'ask' },
         images: [],
         clearImages: vi.fn(),
+        clearPaste: vi.fn(),
         lastFailedMessageRef: { current: '' },
         setTask: vi.fn(),
         ...overrides,
@@ -262,5 +263,89 @@ describe('useSendMessage', () => {
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp(); });
         expect(refreshConversation).toHaveBeenCalledWith('pid-1');
+    });
+
+    // ── Paste content composition tests ─────────────────────────────────
+
+    it('composes user text with pasted content when getPastedContent returns a value', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({
+            getPastedContent: () => 'PASTED_CONTENT',
+        });
+        opts.followUpInputRef.current = 'my question';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.content).toBe('my question\n\nPASTED_CONTENT');
+    });
+
+    it('sends only user text when getPastedContent returns null', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({
+            getPastedContent: () => null,
+        });
+        opts.followUpInputRef.current = 'just a question';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.content).toBe('just a question');
+    });
+
+    it('sends only pasted content when user text is empty but paste exists', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({
+            getPastedContent: () => 'PASTED_ONLY',
+        });
+        opts.followUpInputRef.current = '';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.content).toBe('PASTED_ONLY');
+    });
+
+    it('does nothing when both user text and pasted content are empty', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({
+            getPastedContent: () => null,
+        });
+        opts.followUpInputRef.current = '';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('sends only user text when getPastedContent is not provided', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions();
+        opts.followUpInputRef.current = 'no paste getter';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.content).toBe('no paste getter');
+    });
+
+    it('clears paste state after successful compose-and-send', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const clearPaste = vi.fn();
+        const opts = makeOptions({
+            getPastedContent: () => 'BIG_PASTE',
+            clearPaste,
+        });
+        opts.followUpInputRef.current = 'question';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+
+        expect(clearPaste).toHaveBeenCalled();
     });
 });
