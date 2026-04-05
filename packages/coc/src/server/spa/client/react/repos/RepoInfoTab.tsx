@@ -103,8 +103,8 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
             {/* Metadata grid */}
             <div className="meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
                 <MetaRow label="Path" value={ws.rootPath || ''} mono valueClass="meta-path" />
-                {tasksFolder && <MetaRow label="Tasks" value={tasksFolder} mono />}
-                <MetaRow label="Branch" value={branch + dirty} />
+                {tasksFolder && <MetaRow label="Plans Folder" value={tasksFolder} mono />}
+                <MetaRow label="Branch"value={branch + dirty} />
                 <MetaRow label="Sync" value={syncLabel} />
                 {remoteUrl && <MetaRow label="Remote" value={remoteUrl} mono />}
                 <MetaRow label="Color">

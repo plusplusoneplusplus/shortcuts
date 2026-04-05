@@ -344,6 +344,6 @@ describe('RepoSettingsTab tasks nav item', () => {
         await waitFor(() => {
             expect(screen.getByTestId('nav-item-tasks')).toBeTruthy();
         });
-        expect(screen.getByTestId('nav-item-tasks').textContent).toContain('Tasks');
+        expect(screen.getByTestId('nav-item-tasks').textContent).toContain('Plans Folder');
     });
 });

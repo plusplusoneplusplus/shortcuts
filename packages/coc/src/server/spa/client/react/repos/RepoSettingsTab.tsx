@@ -38,7 +38,7 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'instructions', label: 'Custom Instructions', icon: '📝' },
     { id: 'memory', label: 'Memory', icon: '🧠' },
     { id: 'run-script-template', label: 'Run Script Templates', icon: '📜' },
-    { id: 'tasks', label: 'Tasks', icon: '📁' },
+    { id: 'tasks', label: 'Plans Folder', icon: '📁' },
 ];
 
 // ── Info section types ──────────────────────────────────────────────────────
@@ -461,8 +461,8 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                         {/* Metadata grid */}
                         <div className="meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
                             <MetaRow label="Path" value={ws.rootPath || ''} mono valueClass="meta-path" />
-                            {tasksFolder && <MetaRow label="Tasks" value={tasksFolder} mono />}
-                            <MetaRow label="Branch" value={branch + dirty} />
+                            {tasksFolder && <MetaRow label="Plans Folder" value={tasksFolder} mono />}
+                            <MetaRow label="Branch"value={branch + dirty} />
                             <MetaRow label="Sync" value={syncLabel} />
                             {remoteUrl && <MetaRow label="Remote" value={remoteUrl} mono />}
                             <MetaRow label="Color">

@@ -1,5 +1,5 @@
 /**
- * TasksSettingsSection — Settings panel for configuring task folder paths.
+ * TasksSettingsSection — Settings panel for configuring plans folder paths.
  * Displays the primary (read-only) folder and lets users add/remove extra folders.
  */
 
@@ -93,7 +93,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
 
     return (
         <div data-testid="tasks-settings-section">
-            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-3">Tasks</h3>
+            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-3">Plans Folder</h3>
 
             {/* Primary folder (read-only) */}
             <div className="mb-4">
