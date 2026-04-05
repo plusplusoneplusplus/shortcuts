@@ -93,12 +93,6 @@ npm install -g @plusplusoneplusplus/coc
 
 # Start the dashboard
 coc serve
-
-# Run a YAML workflow
-coc run path/to/workflow.yaml
-
-# Validate a workflow
-coc validate path/to/workflow.yaml
 ```
 
 **Configuration:** `~/.coc/config.yaml` — CLI flags override config file values.
