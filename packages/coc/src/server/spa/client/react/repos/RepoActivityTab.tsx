@@ -23,9 +23,11 @@ import { useNotifications } from '../context/NotificationContext';
 export interface RepoActivityTabProps {
     workspaceId: string;
     mode?: 'chats' | 'tasks';
+    /** Opens the Generate Plan dialog in the parent. */
+    onGeneratePlan?: () => void;
 }
 
-export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
+export function RepoActivityTab({ workspaceId, mode, onGeneratePlan }: RepoActivityTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
     const [history, setHistory] = useState<any[]>([]);
@@ -75,7 +77,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             queueDispatch({
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: workspaceId,
-                queue: { queued: nextQueued, running: nextRunning, history: nextHistory, stats: nextStats },
+                queue: { queued: nextQueued, running: nextRunning, history: nextHistory.length > 0 ? nextHistory : undefined, stats: nextStats },
             });
         } catch {
             setRunning([]);
@@ -95,7 +97,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         if (!repoQueue) return;
         setRunning(repoQueue.running);
         setQueued(repoQueue.queued);
-        setHistory(repoQueue.history);
+        setHistory(prev => repoQueue.history.length > 0 ? repoQueue.history : prev);
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
             setPauseReason(repoQueue.stats.pauseReason);
@@ -286,6 +288,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                                 onBack={() => { setMobileShowDetail(false); }}
                                 workspaceId={workspaceId}
                                 readOnly={activeTab === 'tasks'}
+                                onGeneratePlan={onGeneratePlan}
                             />
                         </div>
                     ) : (
@@ -329,6 +332,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                     selectedTask={selectedTask}
                     workspaceId={workspaceId}
                     readOnly={activeTab === 'tasks'}
+                    onGeneratePlan={onGeneratePlan}
                 />
             </div>
         </div>

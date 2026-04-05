@@ -63,6 +63,37 @@ describe('queueReducer', () => {
             });
             expect(result.queueInitialized).toBe(true);
         });
+
+        it('preserves existing history when action history is empty array (WS→fetch race)', () => {
+            const existingHistory = [{ id: 'done-1', status: 'done' }];
+            const state = makeState({ history: existingHistory });
+            const result = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: { queued: [], running: [], history: [], stats: undefined },
+            });
+            expect(result.history).toEqual(existingHistory);
+        });
+
+        it('preserves existing history when action history is undefined', () => {
+            const existingHistory = [{ id: 'done-1', status: 'done' }];
+            const state = makeState({ history: existingHistory });
+            const result = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: { queued: [], running: [], history: undefined, stats: undefined },
+            });
+            expect(result.history).toEqual(existingHistory);
+        });
+
+        it('replaces history when action history is non-empty', () => {
+            const existingHistory = [{ id: 'done-old', status: 'done' }];
+            const newHistory = [{ id: 'done-new', status: 'done' }];
+            const state = makeState({ history: existingHistory });
+            const result = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: { queued: [], running: [], history: newHistory, stats: undefined },
+            });
+            expect(result.history).toEqual(newHistory);
+        });
     });
 
     describe('REPO_QUEUE_UPDATED', () => {
@@ -87,6 +118,56 @@ describe('queueReducer', () => {
                 queue: { queued: [{ id: 'a1' }], running: [] },
             });
             expect(result.repoQueueMap['repo-B'].queued[0].id).toBe('b1');
+        });
+
+        it('preserves existing repo history when action history is empty array (WS→fetch race)', () => {
+            const existingHistory = [{ id: 'done-1', status: 'done' }];
+            const state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [], history: existingHistory, stats: makeState().stats } },
+            });
+            const result = queueReducer(state, {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'repo-A',
+                queue: { queued: [], running: [], history: [], stats: undefined },
+            });
+            expect(result.repoQueueMap['repo-A'].history).toEqual(existingHistory);
+        });
+
+        it('preserves existing repo history when action history is undefined', () => {
+            const existingHistory = [{ id: 'done-1', status: 'done' }];
+            const state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [], history: existingHistory, stats: makeState().stats } },
+            });
+            const result = queueReducer(state, {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'repo-A',
+                queue: { queued: [], running: [], history: undefined, stats: undefined },
+            });
+            expect(result.repoQueueMap['repo-A'].history).toEqual(existingHistory);
+        });
+
+        it('replaces repo history when action history is non-empty', () => {
+            const existingHistory = [{ id: 'done-old', status: 'done' }];
+            const newHistory = [{ id: 'done-new', status: 'done' }];
+            const state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [], history: existingHistory, stats: makeState().stats } },
+            });
+            const result = queueReducer(state, {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'repo-A',
+                queue: { queued: [], running: [], history: newHistory, stats: undefined },
+            });
+            expect(result.repoQueueMap['repo-A'].history).toEqual(newHistory);
+        });
+
+        it('starts with empty history for new repo when action history is empty', () => {
+            const state = makeState();
+            const result = queueReducer(state, {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'repo-new',
+                queue: { queued: [], running: [], history: [], stats: undefined },
+            });
+            expect(result.repoQueueMap['repo-new'].history).toEqual([]);
         });
     });
 
