@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { Button, cn, Dialog, Spinner } from '../shared';
 import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
+import { useGlobalToast } from '../context/ToastContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { formatRelativeTime } from '../utils/format';
@@ -406,6 +408,186 @@ function SkillTemplateDetailView({ template, onDelete }: SkillTemplateDetailView
     );
 }
 
+// ── ScriptTemplateListItem ──
+
+interface ScriptTemplateListItemProps {
+    template: ScriptTemplate;
+    isSelected: boolean;
+    onSelect: () => void;
+    onDelete: () => void;
+}
+
+function ScriptTemplateListItem({ template, isSelected, onSelect, onDelete }: ScriptTemplateListItemProps) {
+    const [showContextMenu, setShowContextMenu] = useState(false);
+    const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+
+    return (
+        <li
+            className={cn(
+                "px-4 py-2.5 cursor-pointer border-b border-[#f0f0f0] dark:border-[#2a2a2a] text-sm",
+                "hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a]",
+                isSelected && "bg-[#e8f0fe] dark:bg-[#1a3a5c] border-l-2 border-l-[#0078d4]"
+            )}
+            onClick={onSelect}
+            onContextMenu={(e) => {
+                if (e.shiftKey) return;
+                e.preventDefault();
+                setMenuPos({ x: e.clientX, y: e.clientY });
+                setShowContextMenu(true);
+            }}
+            data-testid={`script-template-item-${template.id}`}
+        >
+            <div className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                📜 {template.name}
+            </div>
+            <div className="font-mono text-xs text-[#848484] truncate">{template.scriptPath}</div>
+            {template.args && <div className="font-mono text-xs text-[#848484] truncate">{template.args}</div>}
+            <div className="flex items-center gap-1.5 mt-0.5">
+                {template.model && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999]">{template.model}</span>
+                )}
+                {template.pauseOnFailure && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#fff3cd] dark:bg-[#4d3800] text-[#856404] dark:text-[#ffc107]">pause on failure</span>
+                )}
+            </div>
+
+            {showContextMenu && (
+                <ContextMenu
+                    x={menuPos.x}
+                    y={menuPos.y}
+                    onClose={() => setShowContextMenu(false)}
+                    items={[
+                        { label: 'Delete', onClick: onDelete, danger: true },
+                    ]}
+                />
+            )}
+        </li>
+    );
+}
+
+// ── ScriptTemplateDetailView ──
+
+interface ScriptTemplateDetailViewProps {
+    template: ScriptTemplate;
+    workspaceId: string;
+    onDelete: () => void;
+}
+
+function ScriptTemplateDetailView({ template, workspaceId, onDelete }: ScriptTemplateDetailViewProps) {
+    const { dispatch: queueDispatch } = useQueue();
+    const { addToast } = useGlobalToast();
+    const [enqueueing, setEnqueueing] = useState(false);
+
+    const handleEnqueue = async () => {
+        setEnqueueing(true);
+        try {
+            const fullScript = template.args ? `${template.scriptPath} ${template.args}` : template.scriptPath;
+            const displayName = template.scriptPath.split(/[\\/]/).pop() || template.scriptPath;
+
+            const payload: Record<string, unknown> = { script: fullScript };
+            if (template.workingDirectory) payload.workingDirectory = template.workingDirectory;
+
+            const config: Record<string, unknown> = {};
+            if (template.model) config.model = template.model;
+            if (template.pauseOnFailure) config.pauseOnFailure = true;
+
+            await fetch(getApiBase() + '/queue/tasks', {
+                method: 'POST',
+                headers: CT_JSON,
+                body: JSON.stringify({
+                    type: 'run-script',
+                    displayName,
+                    payload,
+                    config,
+                    repoId: workspaceId || undefined,
+                }),
+            });
+
+            const data = await fetch(getApiBase() + '/queue').then(r => r.json());
+            queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
+            addToast(`Enqueued "${template.name}"`, 'success');
+        } catch {
+            addToast('Failed to enqueue script', 'error');
+        } finally {
+            setEnqueueing(false);
+        }
+    };
+
+    return (
+        <div className="p-6" data-testid="script-template-detail">
+            {/* Header */}
+            <div className="flex items-start justify-between mb-6">
+                <h2 className="text-lg font-semibold text-[#1e1e1e] dark:text-[#e0e0e0]">
+                    {template.name}
+                </h2>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="primary" onClick={handleEnqueue} disabled={enqueueing} data-testid="script-template-enqueue-btn">
+                        {enqueueing ? 'Enqueuing…' : '▶ Enqueue'}
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={onDelete} data-testid="script-template-delete-btn">
+                        Delete
+                    </Button>
+                </div>
+            </div>
+
+            {/* Script / Command */}
+            <div className="mb-4">
+                <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Script / Command</label>
+                <div className="mt-1">
+                    <code className="text-sm text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2a2a2a] px-2 py-1 rounded font-mono block" data-testid="script-template-script-value">
+                        {template.scriptPath}
+                    </code>
+                </div>
+            </div>
+
+            {/* Args */}
+            {template.args && (
+                <div className="mb-4">
+                    <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Args</label>
+                    <div className="mt-1">
+                        <code className="text-sm text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2a2a2a] px-2 py-1 rounded font-mono block" data-testid="script-template-args-value">
+                            {template.args}
+                        </code>
+                    </div>
+                </div>
+            )}
+
+            {/* Working Directory */}
+            {template.workingDirectory && (
+                <div className="mb-4">
+                    <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Working Directory</label>
+                    <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]" data-testid="script-template-cwd-value">
+                        {template.workingDirectory}
+                    </p>
+                </div>
+            )}
+
+            {/* Model */}
+            <div className="mb-4">
+                <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Model</label>
+                <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]" data-testid="script-template-model-value">
+                    {template.model || 'default'}
+                </p>
+            </div>
+
+            {/* Pause on Failure */}
+            <div className="mb-4">
+                <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Pause on Failure</label>
+                <div className="mt-1">
+                    <span className={cn(
+                        "px-2 py-0.5 text-xs rounded",
+                        template.pauseOnFailure
+                            ? "bg-[#fff3cd] dark:bg-[#4d3800] text-[#856404] dark:text-[#ffc107]"
+                            : "bg-[#f0f0f0] dark:bg-[#2a2a2a] text-[#6e6e6e] dark:text-[#888]"
+                    )} data-testid="script-template-pause-value">
+                        {template.pauseOnFailure ? 'Yes' : 'No'}
+                    </span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ── CreateTemplateForm ──
 
 interface CreateTemplateFormProps {
@@ -783,6 +965,7 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
 
     // ── Run Script Template state ──
     const { templates: scriptTemplates, deleteTemplate: deleteScriptTemplate, loaded: scriptTemplatesLoaded } = useScriptTemplates(workspaceId);
+    const selectedScriptTemplateId = state.selectedScriptTemplateId;
     const [scriptTemplatesExpanded, setScriptTemplatesExpanded] = useState(true);
 
     // ── Derived ──
@@ -794,6 +977,7 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
     const handleSelectWorkflow = (p: WorkflowInfo) => {
         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: p.name });
         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
+        dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
         setSelectedTemplateName(null);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
@@ -867,6 +1051,7 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
     const handleSelectTemplate = (name: string) => {
         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
+        dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
         setSelectedTemplateName(name);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
@@ -878,6 +1063,7 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
     const handleSelectSkillTemplate = (id: string) => {
         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id });
+        dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
         setSelectedTemplateName(null);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
@@ -889,6 +1075,27 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
         deleteSkillTemplate(id);
         if (selectedSkillTemplateId === id) {
             dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates';
+        }
+    };
+
+    // ── Script template handlers ──
+
+    const handleSelectScriptTemplate = (id: string) => {
+        dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+        dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
+        dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id });
+        setSelectedTemplateName(null);
+        setShowTemplateCreate(false);
+        setEditingTemplateName(null);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates/script-template/' + encodeURIComponent(id);
+    };
+
+    const handleDeleteScriptTemplate = (id: string) => {
+        if (!confirm('Delete this run script template?')) return;
+        deleteScriptTemplate(id);
+        if (selectedScriptTemplateId === id) {
+            dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates';
         }
     };
@@ -1077,26 +1284,13 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
                         ) : (
                             <ul data-testid="script-templates-list">
                                 {scriptTemplates.map((t: ScriptTemplate) => (
-                                    <li
+                                    <ScriptTemplateListItem
                                         key={t.id}
-                                        className="flex items-center justify-between gap-2 py-1.5 px-4 cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333]"
-                                        data-testid="script-template-item"
-                                    >
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc] truncate">📜 {t.name}</div>
-                                            <div className="font-mono text-xs text-[#848484] truncate">{t.scriptPath}</div>
-                                            {t.args && <div className="font-mono text-xs text-[#848484] truncate">{t.args}</div>}
-                                            <div className="flex items-center gap-1.5 mt-0.5">
-                                                {t.model && (
-                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999]">{t.model}</span>
-                                                )}
-                                                {t.pauseOnFailure && (
-                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#fff3cd] dark:bg-[#4d3800] text-[#856404] dark:text-[#ffc107]">pause on failure</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <Button variant="ghost" size="sm" onClick={() => deleteScriptTemplate(t.id)} title="Delete template">✕</Button>
-                                    </li>
+                                        template={t}
+                                        isSelected={selectedScriptTemplateId === t.id}
+                                        onSelect={() => handleSelectScriptTemplate(t.id)}
+                                        onDelete={() => handleDeleteScriptTemplate(t.id)}
+                                    />
                                 ))}
                             </ul>
                         )}
@@ -1111,6 +1305,14 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
                         <SkillTemplateDetailView
                             template={skillTemplates.find(t => t.id === selectedSkillTemplateId)!}
                             onDelete={() => handleDeleteSkillTemplate(selectedSkillTemplateId)}
+                        />
+                    </div>
+                ) : selectedScriptTemplateId && scriptTemplates.find(t => t.id === selectedScriptTemplateId) ? (
+                    <div className="overflow-y-auto h-full">
+                        <ScriptTemplateDetailView
+                            template={scriptTemplates.find(t => t.id === selectedScriptTemplateId)!}
+                            workspaceId={workspaceId}
+                            onDelete={() => handleDeleteScriptTemplate(selectedScriptTemplateId)}
                         />
                     </div>
                 ) : selectedPipeline && !showTemplatePanel ? (

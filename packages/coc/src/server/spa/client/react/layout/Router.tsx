@@ -288,14 +288,22 @@ export function Router() {
                         dispatch({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab });
                     }
                     // Workflow deep-link handling
-                    if (parts[2] === 'templates' && parts[3] === 'chat-template' && parts[4]) {
+                    if (parts[2] === 'templates' && parts[3] === 'script-template' && parts[4]) {
+                        // Script template deep-link: #repos/:id/templates/script-template/:templateId
+                        dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: decodeURIComponent(parts[4]) });
+                        dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+                        dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
+                        dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
+                    } else if (parts[2] === 'templates' && parts[3] === 'chat-template' && parts[4]) {
                         // Chat template deep-link: #repos/:id/templates/chat-template/:templateId
                         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: decodeURIComponent(parts[4]) });
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+                        dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                     } else if (parts[2] === 'templates' && parts[3]) {
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: decodeURIComponent(parts[3]) });
                         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
+                        dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
                         // Workflow run detail: #repos/:id/templates/:name/run/:processId
                         if (parts[4] === 'run' && parts[5]) {
                             dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: decodeURIComponent(parts[5]) });
@@ -306,6 +314,7 @@ export function Router() {
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
+                        dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
                     } else if (parts[2] && parts[2] !== 'templates') {
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });

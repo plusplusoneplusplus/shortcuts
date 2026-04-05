@@ -56,6 +56,7 @@ export interface AppContextState {
     selectedWorkflowName: string | null;
     selectedWorkflowRunProcessId: string | null;
     selectedSkillTemplateId: string | null;
+    selectedScriptTemplateId: string | null;
     selectedScheduleId: string | null;
     selectedGitCommitHash: string | null;
     selectedGitFilePath: string | null;
@@ -108,6 +109,7 @@ const initialState: AppContextState = {
     selectedWorkflowName: null,
     selectedWorkflowRunProcessId: null,
     selectedSkillTemplateId: null,
+    selectedScriptTemplateId: null,
     selectedScheduleId: null,
     selectedGitCommitHash: null,
     selectedGitFilePath: null,
@@ -172,6 +174,7 @@ export type AppAction =
     | { type: 'SET_SELECTED_WORKFLOW'; name: string | null }
     | { type: 'SET_WORKFLOW_RUN_PROCESS'; processId: string | null }
     | { type: 'SET_SELECTED_SKILL_TEMPLATE'; id: string | null }
+    | { type: 'SET_SELECTED_SCRIPT_TEMPLATE'; id: string | null }
     | { type: 'SET_SELECTED_SCHEDULE'; id: string | null }
     | { type: 'SET_GIT_COMMIT_HASH'; hash: string | null }
     | { type: 'SET_GIT_FILE_PATH'; filePath: string }
@@ -364,6 +367,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedWorkflowRunProcessId: action.processId };
         case 'SET_SELECTED_SKILL_TEMPLATE':
             return { ...state, selectedSkillTemplateId: action.id };
+        case 'SET_SELECTED_SCRIPT_TEMPLATE':
+            return { ...state, selectedScriptTemplateId: action.id };
         case 'SET_SELECTED_SCHEDULE':
             return { ...state, selectedScheduleId: action.id };
         case 'SET_GIT_COMMIT_HASH':

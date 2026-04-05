@@ -131,8 +131,8 @@ describe('RunScriptTemplatesSection', () => {
         ];
         await renderTemplatesTab(templates);
         await waitFor(() => {
-            const items = screen.getAllByTestId('script-template-item');
-            expect(items.length).toBe(2);
+            expect(screen.getByTestId('script-template-item-t1')).toBeTruthy();
+            expect(screen.getByTestId('script-template-item-t2')).toBeTruthy();
         });
         expect(screen.getByText(/Build/)).toBeTruthy();
         expect(screen.getByText('./build.sh')).toBeTruthy();
@@ -156,7 +156,7 @@ describe('RunScriptTemplatesSection', () => {
         ];
         await renderTemplatesTab(templates);
         await waitFor(() => {
-            expect(screen.getByTestId('script-template-item')).toBeTruthy();
+            expect(screen.getByTestId('script-template-item-t1')).toBeTruthy();
         });
         expect(screen.queryByText('cwd: /workspace/src')).toBeNull();
     });
@@ -187,8 +187,7 @@ describe('RunScriptTemplatesSection', () => {
         ];
         await renderTemplatesTab(templates);
         await waitFor(() => {
-            expect(screen.getByTestId('script-template-item')).toBeTruthy();
-        });
+            expect(screen.getByTestId('script-template-item-t1')).toBeTruthy();        });
         expect(screen.queryByText('pause on failure')).toBeNull();
     });
 
