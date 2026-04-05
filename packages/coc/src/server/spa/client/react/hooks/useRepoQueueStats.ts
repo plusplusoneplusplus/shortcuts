@@ -13,7 +13,7 @@ export interface RepoQueueStats {
     queued: number;
 }
 
-const isHidden = (t: { type?: string; payload?: any }) => t.type === 'chat' && t.payload?.processId;
+export const isHidden = (t: { type?: string; payload?: any }) => t.type === 'chat' && t.payload?.processId;
 
 export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
     const { state } = useQueue();

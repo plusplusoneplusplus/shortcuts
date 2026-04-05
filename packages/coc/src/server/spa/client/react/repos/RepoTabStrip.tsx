@@ -10,8 +10,21 @@ import type { RepoData, RepoGroup } from './repoGrouping';
 import { groupReposByRemote } from './repoGrouping';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
+import { isHidden as isHiddenTask } from '../hooks/useRepoQueueStats';
 import { getApiBase } from '../utils/config';
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
+
+export type QueueDotStatus = 'idle' | 'running' | 'queued' | 'paused';
+
+/** Returns the extra CSS class(es) for a repo-tab dot based on its queue status. */
+export function getDotAnimationClass(status: QueueDotStatus): string {
+    switch (status) {
+        case 'running': return ' animate-pulse';
+        case 'queued': return ' animate-blink';
+        case 'paused': return ' ring-1 ring-[#f14c4c]';
+        default: return '';
+    }
+}
 
 export interface RepoTabStripProps {
     repos: RepoData[];
@@ -111,7 +124,24 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const groups = useMemo(() => groupReposByRemote(repos, {}), [repos]);
     const allRepoIds = useMemo(() => flattenGroups(groups), [groups]);
     const { dispatch } = useApp();
-    const { dispatch: queueDispatch } = useQueue();
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
+
+    /** Pre-computed queue-dot status for each repo. */
+    const repoQueueStatusMap = useMemo<Record<string, QueueDotStatus>>(() => {
+        const map: Record<string, QueueDotStatus> = {};
+        for (const repo of repos) {
+            const wsId = repo.workspace.id;
+            const entry = queueState.repoQueueMap?.[wsId];
+            if (!entry) { map[wsId] = 'idle'; continue; }
+            if (entry.stats?.isPaused) { map[wsId] = 'paused'; continue; }
+            const running = (entry.running ?? []).filter(t => !isHiddenTask(t)).length;
+            if (running > 0) { map[wsId] = 'running'; continue; }
+            const queued = (entry.queued ?? []).filter(t => !isHiddenTask(t)).length;
+            if (queued > 0) { map[wsId] = 'queued'; continue; }
+            map[wsId] = 'idle';
+        }
+        return map;
+    }, [repos, queueState.repoQueueMap]);
 
     const handleRemove = async (repoId: string) => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
@@ -304,8 +334,9 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 }}
             >
                 <span
-                    className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                    className={"inline-block w-2 h-2 rounded-full flex-shrink-0" + getDotAnimationClass(repoQueueStatusMap[ws.id] ?? 'idle')}
                     style={{ background: isSelected ? 'rgba(255,255,255,0.7)' : color }}
+                    data-testid="repo-tab-dot"
                 />
                 <span className="max-w-[100px] truncate">{ws.name}</span>
                 {unseenCount > 0 && (
@@ -466,8 +497,9 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                     }}
                                                 >
                                                     <span
-                                                        className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                                                        className={"inline-block w-2 h-2 rounded-full flex-shrink-0" + getDotAnimationClass(repoQueueStatusMap[ws.id] ?? 'idle')}
                                                         style={{ background: color }}
+                                                        data-testid="overflow-repo-dot"
                                                     />
                                                     <span className="flex-1 truncate">{ws.name}</span>
                                                     {isSelected && (

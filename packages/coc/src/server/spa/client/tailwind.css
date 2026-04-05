@@ -10,6 +10,13 @@
     .scrollbar-hide::-webkit-scrollbar {
         display: none;
     }
+    .animate-blink {
+        animation: blink 1.5s steps(1) infinite;
+    }
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
 }
 
 /* Subtree collapse: hide nested tool-call children when parent is collapsed */
