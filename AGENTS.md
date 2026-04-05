@@ -167,14 +167,24 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `schedules.json` — schedule definitions
 - `git-ops.json` — background git operations
 - `preferences.json` — per-repo UI preferences
-- `tasks/` — task and plan files
-- `processes/` — legacy file-based process store (used only when `store.backend: file` in config)
+- `tasks/` — task and plan files (.plan.md, shown in **Tasks tab**)
+- `work-items/` — work items (index.json + `<uuid>.json` per item, shown in **Work Items tab**)
+- `processes/` — per-repo process store (`index.json` + one JSON file per process, 500-process cap)
 - `outputs/` — AI conversation output markdown files (`<processId>.md`), managed by `OutputFileManager`
 - `paste-context/` — temp files for large pasted content externalized from chat prompts (auto-cleaned after task completion and on server startup)
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/coc/src/server/`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
 
 **Convention — repo-scoped data:** All runtime data that is specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `packages/coc/src/server/` to resolve the path.
+
+**Convention — creating work items:** Work items are stored as JSON files in `~/.coc/repos/<workspaceId>/work-items/` (NOT as `.plan.md` files in `tasks/`). `.plan.md` files appear in the **Tasks tab**; work item JSON files appear in the **Work Items tab**. These are completely separate systems.
+- **ALWAYS use the REST API** to create/update work items when the CoC server is running (default port 4000):
+  ```
+  POST http://localhost:4000/api/workspaces/<workspaceId>/work-items
+  Body: { title, description, priority, tags, source }
+  ```
+- **Never write work-item JSON files directly** via file I/O — the server uses an atomic write-queue and direct writes will be silently overwritten on the next server-side write.
+- The API also broadcasts a `work-item-added` WebSocket event so the dashboard UI updates immediately without a page refresh.
 
 **Wiki layer:** `WikiManager` registry, `WikiData` in-memory store, `ContextBuilder` (RAG-style retrieval), `ConversationSessionManager` (multi-turn AI), `FileWatcher`, deep-wiki integration. Handler deduplication: `wiki-backend.ts` defines shared `ResolvedAskContext`/`ResolvedExploreContext`/`WikiProvider` interfaces; `handleAskCore()`/`handleExploreCore()` are the single-path implementations shared by both multi-wiki (native) and standalone handlers; `api-handlers.ts` directly creates context objects and delegates to core handlers; `standalone-admin-handlers.ts` and `standalone-config-loader.ts` handle deep-wiki-specific admin (seeds, config); generate handlers accept `WikiProvider` (satisfied by `WikiManager` or `createSingleWikiProvider()`).
 
