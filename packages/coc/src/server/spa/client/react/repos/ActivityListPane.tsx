@@ -111,6 +111,8 @@ export interface ActivityListPaneProps {
     onPauseResumeAutopilot?: () => void;
     onRefresh: () => void;
     onOpenDialog: () => void;
+    /** Deselect the current task so the inline NewChatArea is shown. */
+    onNewChat?: () => void;
     fetchQueue: () => Promise<void>;
     /** Reason for the current pause (present when auto-paused due to task failure). */
     pauseReason?: { taskId: string; displayName: string; failedAt: string };
@@ -144,6 +146,7 @@ export function ActivityListPane({
     onTabChange,
     onRefresh,
     onOpenDialog,
+    onNewChat,
     fetchQueue,
     pauseReason,
 }: ActivityListPaneProps) {
@@ -657,7 +660,7 @@ export function ActivityListPane({
         <>
             <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
                 {activeTab === 'chats' && (
-                    <Button variant="ghost" size="sm" onClick={onOpenDialog} className="self-start" data-testid="new-chat-btn">
+                    <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className="self-start" data-testid="new-chat-btn">
                         💬 New Chat
                     </Button>
                 )}

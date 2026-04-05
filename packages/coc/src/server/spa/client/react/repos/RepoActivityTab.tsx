@@ -408,6 +408,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             onPauseResumeAutopilot={handlePauseResumeAutopilot}
             onRefresh={handleRefresh}
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
+            onNewChat={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId })}
             fetchQueue={fetchQueue}
             pauseReason={pauseReason}
         />
