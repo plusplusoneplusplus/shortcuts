@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { getApiBase } from '../utils/config';
 import { clearDraft } from './useDraftStore';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
+import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { QueuedMessage } from '../utils/chatUtils';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
@@ -34,6 +35,7 @@ export interface UseSendMessageOptions {
     selectedModeRef: React.MutableRefObject<'ask' | 'plan' | 'autopilot'>;
     images: string[];
     clearImages: () => void;
+    clearPaste: () => void;
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
 }
@@ -60,6 +62,7 @@ export function useSendMessage({
     selectedModeRef,
     images,
     clearImages,
+    clearPaste,
     lastFailedMessageRef,
     setTask,
 }: UseSendMessageOptions): {
@@ -190,6 +193,7 @@ export function useSendMessage({
             // flushQueueRef drains after the current turn completes. The server's
             // per-process serialization in peek() ensures safe ordering.
             clearImages();
+            clearPaste();
             return;
         }
 
@@ -197,11 +201,12 @@ export function useSendMessage({
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
 
         const timestamp = new Date().toISOString();
+        const pasteExternalized = rawContent.length > CLIENT_PASTE_THRESHOLD || undefined;
         setTurnsAndRef(prev => {
             const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
             return [
                 ...prev,
-                { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx },
+                { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, pasteExternalized },
                 { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1 },
             ];
         });
@@ -237,6 +242,7 @@ export function useSendMessage({
             lastFailedMessageRef.current = '';
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
             clearImages();
+            clearPaste();
             await waitForSendCompletion(processId);
         } catch (err: any) {
             setError(err?.message || 'Failed to send follow-up message.');

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Button, SuggestionChips } from '../shared';
 import { ImagePreviews } from '../shared/ImagePreviews';
+import { PastePreview } from '../shared/PastePreview';
 import { cn } from '../shared/cn';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
@@ -26,6 +27,12 @@ export interface FollowUpInputAreaProps {
     images: string[];
     onImagePaste: (e: React.ClipboardEvent) => void;
     onImageRemove: (index: number) => void;
+    pastePreview: {
+        charCount: number;
+        previewLines: string[];
+        onTextPaste: (e: React.ClipboardEvent) => void;
+        clearPaste: () => void;
+    } | null;
     task: any;
     slashCommands: {
         handleInputChange: (val: string, cursor: number) => void;
@@ -63,6 +70,7 @@ export function FollowUpInputArea({
     images,
     onImagePaste,
     onImageRemove,
+    pastePreview,
     task,
     slashCommands,
     hideModeSelector = false,
@@ -123,6 +131,13 @@ export function FollowUpInputArea({
                 />
             )}
             <ImagePreviews images={images} onRemove={onImageRemove} />
+            {pastePreview && pastePreview.charCount > 0 && (
+                <PastePreview
+                    charCount={pastePreview.charCount}
+                    previewLines={pastePreview.previewLines}
+                    onDismiss={pastePreview.clearPaste}
+                />
+            )}
             <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
                 {!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">
                     {/* Mobile: icon-only button that cycles modes on tap */}
@@ -187,7 +202,10 @@ export function FollowUpInputArea({
                                 }
                             }
                         }}
-                        onPaste={onImagePaste}
+                        onPaste={(e: React.ClipboardEvent) => {
+                            onImagePaste(e);
+                            pastePreview?.onTextPaste(e);
+                        }}
                         data-testid="activity-chat-input"
                     />
                     <SlashCommandMenu

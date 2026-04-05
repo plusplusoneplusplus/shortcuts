@@ -6,12 +6,14 @@
 import { useRef, useState } from 'react';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
+import { PastePreview } from '../shared/PastePreview';
 import { cn } from '../shared/cn';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
 import type { ChatMode } from './modeConfig';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
+import { useTextPaste } from '../hooks/useTextPaste';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -23,6 +25,7 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
+    const textPaste = useTextPaste();
 
     const { dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
@@ -61,6 +64,7 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newTask.task?.id ?? newTask.id, repoId: workspaceId });
             setInput('');
             richTextRef.current?.setValue('');
+            textPaste.clearPaste();
         } catch (err: any) {
             setError(err.message || 'Failed to create task');
         } finally {
@@ -82,6 +86,13 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
             {/* Input area */}
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
                 {error && <div className="text-xs text-[#f14c4c]" data-testid="new-chat-error">{error}</div>}
+                {textPaste.charCount > 0 && (
+                    <PastePreview
+                        charCount={textPaste.charCount}
+                        previewLines={textPaste.previewLines}
+                        onDismiss={textPaste.clearPaste}
+                    />
+                )}
                 <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
                     <div className="shrink-0" data-testid="mode-selector">
                         {/* Mobile: icon-only button that cycles modes on tap */}
@@ -129,6 +140,7 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
                                 }
                             }}
                             data-testid="new-chat-input"
+                            onPaste={textPaste.addFromPaste}
                         />
                     </div>
                     <button

@@ -139,6 +139,8 @@ export interface ConversationTurn {
     suggestions?: string[];
     /** Token usage for this turn (assistant turns only, undefined for non-streaming or legacy). */
     tokenUsage?: TokenUsage;
+    /** True when the user's large pasted content was externalized to a temp file reference */
+    pasteExternalized?: boolean;
 }
 
 /**
@@ -161,6 +163,8 @@ export interface SerializedConversationTurn {
     suggestions?: string[];
     /** Token usage for this turn (assistant turns only). */
     tokenUsage?: TokenUsage;
+    /** True when the user's large pasted content was externalized to a temp file reference */
+    pasteExternalized?: boolean;
 }
 
 /**
@@ -584,6 +588,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
             images: turn.images,
             suggestions: turn.suggestions,
             tokenUsage: turn.tokenUsage,
+            pasteExternalized: turn.pasteExternalized,
         })),
         // Context window tracking fields
         tokenLimit: process.tokenLimit,
@@ -680,6 +685,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
             images: turn.images,
             suggestions: turn.suggestions,
             tokenUsage: turn.tokenUsage,
+            pasteExternalized: turn.pasteExternalized,
         })),
         // Context window tracking fields
         tokenLimit: serialized.tokenLimit,

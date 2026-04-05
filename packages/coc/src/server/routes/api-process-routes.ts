@@ -12,7 +12,7 @@ import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment,
 } from '@plusplusoneplusplus/forge';
-import { deserializeProcess } from '@plusplusoneplusplus/forge';
+import { deserializeProcess, PASTE_THRESHOLD } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, stripExcludedFields,
@@ -411,6 +411,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // preventing a race where the snapshot replaces optimistic UI state
             // before the executor has written the turn.
             const priorStatus = proc.status;
+            const isPasteExternalized = messageContent.length > PASTE_THRESHOLD;
             const appendResult = await store.appendConversationTurn(
                 id,
                 (turnIndex) => ({
@@ -420,6 +421,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     turnIndex,
                     timeline: [],
                     images: validatedImages,
+                    ...(isPasteExternalized ? { pasteExternalized: true } : {}),
                 }),
                 { additionalUpdates: { status: 'running' } },
             );
@@ -471,7 +473,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${turnIndex}\n`);
 
-            sendJSON(res, 202, { processId: id, turnIndex });
+            sendJSON(res, 202, {
+                processId: id,
+                turnIndex,
+                ...(isPasteExternalized ? { pasteExternalized: true } : {}),
+            });
         },
     });
 

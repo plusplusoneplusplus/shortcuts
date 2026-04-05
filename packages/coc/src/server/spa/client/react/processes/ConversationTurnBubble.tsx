@@ -889,6 +889,15 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             ⚠ Failed to load images · Retry
                         </button>
                     )}
+                    {isUser && turn.pasteExternalized && (
+                        <div
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] text-[#848484] bg-[#f0f0f0] dark:bg-[#2d2d2d]"
+                            data-testid="paste-externalized-badge"
+                            title="Large pasted content was saved as a file reference for the AI"
+                        >
+                            📎 Content saved as file reference
+                        </div>
+                    )}
                     {!isUser && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
                             <pre className="p-3 font-mono text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">

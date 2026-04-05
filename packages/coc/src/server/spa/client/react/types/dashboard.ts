@@ -74,6 +74,8 @@ export interface ClientConversationTurn {
     skillNames?: string[];
     /** Token usage for this turn (assistant turns only, undefined for non-streaming/legacy) */
     tokenUsage?: ClientTokenUsage;
+    /** True when the user's large pasted content was externalized to a temp file reference */
+    pasteExternalized?: boolean;
 }
 
 /** Cached conversation data for a historical process. */

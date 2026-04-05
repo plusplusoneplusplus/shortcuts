@@ -15,6 +15,7 @@ import { getSessionIdFromProcess } from '../processes/ConversationMetadataPopove
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { useImagePaste } from '../hooks/useImagePaste';
+import { useTextPaste } from '../hooks/useTextPaste';
 import { useSlashCommands } from './useSlashCommands';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
@@ -105,6 +106,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const isInitialLoadRef = useRef(true);
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+    const textPaste = useTextPaste();
     const { isMobile } = useBreakpoint();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
@@ -223,6 +225,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         selectedModeRef,
         images,
         clearImages,
+        clearPaste: textPaste.clearPaste,
         lastFailedMessageRef,
         setTask,
     });
@@ -290,6 +293,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setSessionTokenLimit(undefined);
         setSessionCurrentTokens(undefined);
         clearImages();
+        textPaste.clearPaste();
         stopStreaming();
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
@@ -560,6 +564,12 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     images={images}
                     onImagePaste={addFromPaste}
                     onImageRemove={removeImage}
+                    pastePreview={{
+                        charCount: textPaste.charCount,
+                        previewLines: textPaste.previewLines,
+                        onTextPaste: textPaste.addFromPaste,
+                        clearPaste: textPaste.clearPaste,
+                    }}
                     task={task}
                     slashCommands={slashCommands}
                     hideModeSelector={hideModeSelector}
