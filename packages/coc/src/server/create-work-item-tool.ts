@@ -37,6 +37,22 @@ export type BroadcastWorkItemFn = (event: {
 // Factory
 // ============================================================================
 
+/** 
+ * Detect when a model puts the plan markdown into `description` and move it to `plan`.
+ * This happens when the model ignores the separate `plan` parameter and stuffs the
+ * structured plan template into the `description` field.
+ */
+function normalizePlanFromDescription(args: CreateWorkItemArgs): CreateWorkItemArgs {
+    if (args.plan?.trim()) return args; // plan already provided — nothing to do
+    const desc = (args.description ?? '').trim();
+    if (!desc) return args;
+    // Heuristic: if description contains plan-template headings or task checkboxes, treat it as plan
+    const looksPlan = /^##\s+(Objective|Steps|Background|Acceptance Criteria|Notes)\b/im.test(desc)
+        || /^\s*-\s+\[[ x]\]/im.test(desc);
+    if (!looksPlan) return args;
+    return { ...args, plan: desc, description: '' };
+}
+
 /**
  * Create a `create_work_item` custom tool definition for the Copilot SDK.
  *
@@ -90,7 +106,8 @@ export function createWorkItemTool(
             },
             required: ['title'],
         },
-        handler: async (args: CreateWorkItemArgs) => {
+        handler: async (rawArgs: CreateWorkItemArgs) => {
+            const args = normalizePlanFromDescription(rawArgs);
             const now = new Date().toISOString();
             const hasPlan = !!(args.plan && args.plan.trim());
             const status: WorkItemStatus = hasPlan ? 'planning' : 'created';

@@ -85,6 +85,45 @@ export interface WorkItemExecution {
 }
 
 // ============================================================================
+// Change Tracking
+// ============================================================================
+
+/** A lightweight git commit record attached to a Change entry. */
+export interface WorkItemChangeCommit {
+    sha: string;
+    message: string;
+    author?: string;
+    date?: string;
+}
+
+/**
+ * A Change bundles one plan version with the git commits produced during
+ * the corresponding execution cycle.
+ *
+ * Lifecycle:
+ *   open   — plan has been saved; execution may or may not have started
+ *   closed — execution completed (successfully or not); commits attached
+ */
+export interface WorkItemChange {
+    /** Unique identifier (UUID). */
+    id: string;
+    /** Plan version number that was active when this Change was opened. */
+    planVersion: number;
+    /** Git commits produced during this Change's execution window. */
+    commits: WorkItemChangeCommit[];
+    /** ISO timestamp when this Change was opened (plan saved / execution queued). */
+    startedAt: string;
+    /** ISO timestamp when this Change was closed (execution completed). */
+    completedAt?: string;
+    /** Queue task ID linked to this Change (set when execution starts). */
+    taskId?: string;
+    /** Git HEAD SHA captured immediately before execution enqueued. */
+    headBefore?: string;
+    /** Whether this Change is still tracking an active execution. */
+    status: 'open' | 'closed';
+}
+
+// ============================================================================
 // Work Item
 // ============================================================================
 
@@ -124,6 +163,8 @@ export interface WorkItem {
     processId?: string;
     /** History of all execution attempts. */
     executionHistory?: WorkItemExecution[];
+    /** Change tracking entries (plan version + commits per execution cycle). */
+    changes?: WorkItemChange[];
 
     // Metadata
     /** Freeform tags for categorization. */
@@ -208,6 +249,11 @@ export interface WorkItemStore {
     // Execution history
     addExecution(workItemId: string, execution: WorkItemExecution): Promise<void>;
     updateExecution(workItemId: string, taskId: string, updates: Partial<WorkItemExecution>): Promise<void>;
+
+    // Change tracking
+    addChange(workItemId: string, change: WorkItemChange): Promise<void>;
+    updateChange(workItemId: string, changeId: string, updates: Partial<WorkItemChange>): Promise<void>;
+    getChanges(workItemId: string): Promise<WorkItemChange[]>;
 }
 
 // ============================================================================

@@ -53,6 +53,15 @@ interface WorkItemFull {
     tags?: string[];
     autoExecute?: boolean;
     reviewComments?: Array<{ id: string; text: string; createdAt: string; resolved?: boolean }>;
+    changes?: Array<{
+        id: string;
+        planVersion: number;
+        commits: Array<{ sha: string; message: string; author?: string; date?: string }>;
+        startedAt: string;
+        completedAt?: string;
+        taskId?: string;
+        status: 'open' | 'closed';
+    }>;
 }
 
 export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onNavigateToTasksTab }: WorkItemDetailProps) {
@@ -404,6 +413,57 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                     <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
                                     {exec.error && <span className="text-red-500 truncate">{exec.error}</span>}
                                 </div>
+                            ))}
+                        </div>
+                    </section>
+                )}
+
+                {/* Changes */}
+                {item.changes && item.changes.length > 0 && (
+                    <section data-testid="work-item-changes-section">
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-2">Changes</h3>
+                        <div className="space-y-2">
+                            {[...item.changes].reverse().map((change, i) => (
+                                <details key={change.id} className={cn(
+                                    'rounded-md border text-xs',
+                                    change.status === 'open'
+                                        ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10'
+                                        : 'border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]',
+                                )}>
+                                    <summary className="px-3 py-2 cursor-pointer flex items-center gap-2 select-none list-none [&::-webkit-details-marker]:hidden">
+                                        <span>{change.status === 'open' ? '🔵' : '🟢'}</span>
+                                        <span className="font-medium">Change {item.changes!.length - i}</span>
+                                        <span className="text-[#848484]">plan v{change.planVersion}</span>
+                                        {change.commits.length > 0 && (
+                                            <span className="ml-auto text-[#848484]">{change.commits.length} commit{change.commits.length !== 1 ? 's' : ''}</span>
+                                        )}
+                                        {change.status === 'open' && !change.completedAt && (
+                                            <span className="ml-auto text-blue-600 dark:text-blue-400">In progress</span>
+                                        )}
+                                    </summary>
+                                    <div className="px-3 pb-3 pt-1 space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
+                                        <div className="text-[10px] text-[#848484]">
+                                            Started: {formatRelativeTime(change.startedAt)}
+                                            {change.completedAt && <> · Completed: {formatRelativeTime(change.completedAt)}</>}
+                                        </div>
+                                        {change.commits.length > 0 ? (
+                                            <div>
+                                                <div className="text-[10px] font-medium text-[#606060] dark:text-[#aaa] mb-1">Commits</div>
+                                                <div className="space-y-0.5">
+                                                    {change.commits.map(commit => (
+                                                        <div key={commit.sha} className="flex items-start gap-1.5 text-[10px]">
+                                                            <code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>
+                                                            <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={commit.message}>{commit.message}</span>
+                                                            {commit.author && <span className="text-[#848484] shrink-0">— {commit.author}</span>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-[10px] italic text-[#848484]">No commits recorded</div>
+                                        )}
+                                    </div>
+                                </details>
                             ))}
                         </div>
                     </section>

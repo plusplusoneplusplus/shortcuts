@@ -12,10 +12,11 @@
  */
 
 import * as http from 'http';
+import * as crypto from 'crypto';
 import type { Route } from '../types';
 import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
-import type { WorkItemStore, WorkItemPlanVersion } from '../work-items/types';
+import type { WorkItemStore, WorkItemPlanVersion, WorkItemChange } from '../work-items/types';
 import type { ProcessWebSocketServer } from '../websocket';
 
 export interface WorkItemPlanRouteContext {
@@ -108,6 +109,16 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
             if (updated) {
                 getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             }
+
+            // Open a new Change entry linked to this plan version (fire-and-forget)
+            const change: WorkItemChange = {
+                id: crypto.randomUUID(),
+                planVersion: newVersion,
+                commits: [],
+                startedAt: now,
+                status: 'open',
+            };
+            workItemStore.addChange(workItemId, change).catch(() => { /* non-fatal */ });
 
             sendJSON(res, 200, { plan: planVersion, version: newVersion });
         },
@@ -212,6 +223,16 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
             if (updated) {
                 getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             }
+
+            // Open a new Change for the refined plan version (fire-and-forget)
+            const refineChange: WorkItemChange = {
+                id: crypto.randomUUID(),
+                planVersion: newVersion,
+                commits: [],
+                startedAt: now,
+                status: 'open',
+            };
+            workItemStore.addChange(workItemId, refineChange).catch(() => { /* non-fatal */ });
 
             sendJSON(res, 200, {
                 plan: planVersion,

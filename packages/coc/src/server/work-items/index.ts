@@ -29,3 +29,5 @@ export {
     type EnqueueFunction,
     type ExecuteWorkItemOptions,
 } from './work-item-executor';
+
+export type { WorkItemChange, WorkItemChangeCommit } from './types';

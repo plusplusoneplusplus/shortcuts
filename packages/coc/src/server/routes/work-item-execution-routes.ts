@@ -10,6 +10,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItem } from '../work-items/types';
@@ -52,10 +53,21 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 body = {};
             }
 
+            // Capture git HEAD before execution for commit range tracking
+            let headBefore: string | undefined;
+            try {
+                const workspaces = await processStore.getWorkspaces();
+                const workspace = workspaces.find(w => w.id === repoId);
+                if (workspace?.rootPath) {
+                    headBefore = execGit(['rev-parse', 'HEAD'], workspace.rootPath);
+                }
+            } catch { /* non-fatal — commit tracking will be skipped */ }
+
             try {
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
                     model: body.model,
                     mode: body.mode,
+                    headBefore,
                 });
                 const updatedItem = await workItemStore.getWorkItem(workItemId);
                 if (updatedItem) {
