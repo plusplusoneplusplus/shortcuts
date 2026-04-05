@@ -209,6 +209,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         location.hash = '#repos/' + encodeURIComponent(ws.id) + getTabSuffix(tab, state);
     };
 
+    /** Navigate to the Tasks tab and select a specific queue task by ID. */
+    const handleNavigateToTask = useCallback((taskId: string) => {
+        switchSubTab('tasks');
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId: ws.id });
+    }, [ws.id, queueDispatch]);
+
     const handleOpenGenerateDialog = useCallback((targetFolder?: string) => {
         setGenerateDialog({ open: true, minimized: false, targetFolder });
     }, []);
@@ -475,7 +481,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'work-items' && "pb-12")}>
                 {activeSubTab === 'work-items' ? (
-                    <WorkItemsTab key={ws.id} workspaceId={ws.id} />
+                    <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'chats' || activeSubTab === 'tasks' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}

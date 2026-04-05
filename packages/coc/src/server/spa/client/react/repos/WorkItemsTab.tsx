@@ -15,9 +15,11 @@ import { useWorkItems } from '../context/WorkItemContext';
 
 export interface WorkItemsTabProps {
     workspaceId: string;
+    /** Called when the user wants to view a completed task in the Tasks tab. */
+    onNavigateToTasksTab?: (taskId: string) => void;
 }
 
-export function WorkItemsTab({ workspaceId }: WorkItemsTabProps) {
+export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTabProps) {
     const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
     const [selectedSessionTaskId, setSelectedSessionTaskId] = useState<string | null>(null);
     const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -93,6 +95,7 @@ export function WorkItemsTab({ workspaceId }: WorkItemsTabProps) {
                 onBack={handleBack}
                 onExecuted={handleExecuted}
                 onViewTask={handleViewTask}
+                onNavigateToTasksTab={onNavigateToTasksTab}
             />
         )
     ) : (

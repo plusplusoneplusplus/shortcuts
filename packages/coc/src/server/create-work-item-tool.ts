@@ -10,7 +10,8 @@
 import * as crypto from 'crypto';
 import { defineTool } from '@plusplusoneplusplus/forge';
 import { FileWorkItemStore } from './work-items/work-item-store';
-import type { WorkItemPriority } from './work-items/types';
+import type { WorkItemPriority, WorkItemStatus } from './work-items/types';
+import { WORK_ITEM_PLAN_TEMPLATE } from './work-items/plan-template';
 
 // ============================================================================
 // Types
@@ -21,6 +22,9 @@ export interface CreateWorkItemArgs {
     description?: string;
     priority?: 'high' | 'normal' | 'low';
     tags?: string[];
+    /** Markdown plan for the work item. Use the standard template sections:
+     * ## Objective, ## Background, ## Steps (checkboxes), ## Acceptance Criteria, ## Notes */
+    plan?: string;
 }
 
 export type BroadcastWorkItemFn = (event: {
@@ -51,7 +55,10 @@ export function createWorkItemTool(
         description:
             'Create a new work item in the Work Items page for this repository. ' +
             'Use this when the user asks to create a work item, track a feature request, ' +
-            'file a bug, or save a task for later execution.',
+            'file a bug, or save a task for later execution. ' +
+            'Always include a `plan` field using the standard template: ' +
+            '## Objective, ## Background, ## Steps (with checkboxes), ## Acceptance Criteria, ## Notes. ' +
+            `Template:\n${WORK_ITEM_PLAN_TEMPLATE}`,
         parameters: {
             type: 'object',
             properties: {
@@ -73,25 +80,54 @@ export function createWorkItemTool(
                     items: { type: 'string' },
                     description: 'Optional tags for categorization (e.g. ["bug", "frontend"]).',
                 },
+                plan: {
+                    type: 'string',
+                    description:
+                        'Markdown plan following the standard template sections: ' +
+                        '## Objective, ## Background, ## Steps (with - [ ] checkboxes), ' +
+                        '## Acceptance Criteria, ## Notes.',
+                },
             },
             required: ['title'],
         },
         handler: async (args: CreateWorkItemArgs) => {
             const now = new Date().toISOString();
+            const hasPlan = !!(args.plan && args.plan.trim());
+            const status: WorkItemStatus = hasPlan ? 'planning' : 'created';
+
             const item = {
                 id: crypto.randomUUID(),
                 repoId,
                 title: args.title,
                 description: args.description ?? '',
-                status: 'created' as const,
+                status,
                 createdAt: now,
                 updatedAt: now,
                 source: 'chat' as const,
                 priority: (args.priority ?? 'normal') as WorkItemPriority,
                 tags: args.tags,
+                ...(hasPlan ? {
+                    plan: {
+                        version: 1,
+                        content: args.plan!.trim(),
+                        updatedAt: now,
+                        resolvedBy: 'ai' as const,
+                    },
+                } : {}),
             };
 
             await store.addWorkItem(item);
+
+            if (hasPlan) {
+                await store.savePlanVersion(item.id, {
+                    version: 1,
+                    content: args.plan!.trim(),
+                    createdAt: now,
+                    resolvedBy: 'ai',
+                    summary: 'Initial plan from chat',
+                });
+            }
+
             broadcastFn?.({ type: 'work-item-added', workspaceId: repoId, item });
 
             return { created: true, id: item.id, title: item.title };

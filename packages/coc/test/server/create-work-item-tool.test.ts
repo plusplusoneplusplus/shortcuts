@@ -11,9 +11,11 @@ import * as fs from 'fs/promises';
 
 // Mock FileWorkItemStore before importing the tool
 const mockAddWorkItem = vi.fn();
+const mockSavePlanVersion = vi.fn();
 vi.mock('../../src/server/work-items/work-item-store', () => ({
     FileWorkItemStore: vi.fn().mockImplementation(() => ({
         addWorkItem: mockAddWorkItem,
+        savePlanVersion: mockSavePlanVersion,
     })),
 }));
 
@@ -26,6 +28,8 @@ describe('createWorkItemTool', () => {
     beforeEach(() => {
         mockAddWorkItem.mockReset();
         mockAddWorkItem.mockResolvedValue(undefined);
+        mockSavePlanVersion.mockReset();
+        mockSavePlanVersion.mockResolvedValue(undefined);
     });
 
     it('returns an object with a tool property', () => {
@@ -142,5 +146,71 @@ describe('createWorkItemTool', () => {
         const t2 = createWorkItemTool(dataDir, repoId);
         expect(t1.tool).not.toBe(t2.tool);
         expect(t1.tool.name).toBe(t2.tool.name);
+    });
+
+    // ── Plan parameter tests ──────────────────────────────────────────────────
+
+    it('parameters include optional plan field', () => {
+        const { tool } = createWorkItemTool(dataDir, repoId);
+        const params = tool.parameters as Record<string, any>;
+        expect(params.properties.plan).toBeDefined();
+        expect(params.properties.plan.type).toBe('string');
+        // plan is optional (not in required array)
+        expect(params.required).not.toContain('plan');
+    });
+
+    it('handler creates item with status "created" when no plan is provided', async () => {
+        const { tool } = createWorkItemTool(dataDir, repoId);
+        await tool.handler({ title: 'No plan item' });
+
+        const callArg = mockAddWorkItem.mock.calls[0][0];
+        expect(callArg.status).toBe('created');
+        expect(callArg.plan).toBeUndefined();
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+    });
+
+    it('handler creates item with status "planning" when plan is provided', async () => {
+        const { tool } = createWorkItemTool(dataDir, repoId);
+        await tool.handler({ title: 'Planned item', plan: '## Objective\n\nBuild the feature.' });
+
+        const callArg = mockAddWorkItem.mock.calls[0][0];
+        expect(callArg.status).toBe('planning');
+        expect(callArg.plan).toBeDefined();
+        expect(callArg.plan.version).toBe(1);
+        expect(callArg.plan.content).toBe('## Objective\n\nBuild the feature.');
+        expect(callArg.plan.resolvedBy).toBe('ai');
+    });
+
+    it('handler calls savePlanVersion when plan is provided', async () => {
+        const { tool } = createWorkItemTool(dataDir, repoId);
+        await tool.handler({ title: 'Planned item', plan: '## Objective\n\nBuild the feature.' });
+
+        expect(mockSavePlanVersion).toHaveBeenCalledOnce();
+        const pvArg = mockSavePlanVersion.mock.calls[0][1];
+        expect(pvArg.version).toBe(1);
+        expect(pvArg.content).toBe('## Objective\n\nBuild the feature.');
+        expect(pvArg.resolvedBy).toBe('ai');
+        expect(pvArg.summary).toBe('Initial plan from chat');
+    });
+
+    it('handler does NOT call savePlanVersion when plan is absent', async () => {
+        const { tool } = createWorkItemTool(dataDir, repoId);
+        await tool.handler({ title: 'No plan' });
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+    });
+
+    it('handler trims whitespace-only plan as no plan', async () => {
+        const { tool } = createWorkItemTool(dataDir, repoId);
+        await tool.handler({ title: 'Whitespace plan', plan: '   ' });
+
+        const callArg = mockAddWorkItem.mock.calls[0][0];
+        expect(callArg.status).toBe('created');
+        expect(callArg.plan).toBeUndefined();
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+    });
+
+    it('tool description mentions the plan template', () => {
+        const { tool } = createWorkItemTool(dataDir, repoId);
+        expect(tool.description).toContain('## Objective');
     });
 });
