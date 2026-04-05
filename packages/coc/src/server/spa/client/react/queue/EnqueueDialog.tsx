@@ -28,7 +28,7 @@ import type { RichTextInputHandle } from '../shared/RichTextInput';
 interface FolderOption { label: string; value: string; }
 interface SkillOption { name: string; description?: string; }
 
-function flattenFolders(node: any, depth = 0): FolderOption[] {
+export function flattenFolders(node: any, depth = 0): FolderOption[] {
     const indent = '\u00a0\u00a0'.repeat(depth);
     const options: FolderOption[] = [];
     if (node.relativePath !== undefined) {
@@ -56,7 +56,11 @@ export function EnqueueDialog() {
     const { templates, saveTemplate, deleteTemplate, loaded: templatesLoaded } = useSkillTemplates(workspaceId || undefined);
     const { models: modelInfos } = useModels();
     const enabledModels = modelInfos.filter(m => m.enabled);
-    const models = (enabledModels.length > 0 ? enabledModels : modelInfos).map(m => m.id);
+    const models = [...new Set(
+        (enabledModels.length > 0 ? enabledModels : modelInfos)
+            .map(m => m.id)
+            .filter(Boolean)
+    )];
     const [folders, setFolders] = useState<FolderOption[]>([]);
     const [folderPath, setFolderPath] = useState<string>('');
     const [skills, setSkills] = useState<SkillOption[]>([]);
@@ -474,8 +478,8 @@ export function EnqueueDialog() {
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
                     >
                         <option value="">None</option>
-                        {appState.workspaces.map((ws: any) => (
-                            <option key={ws.id} value={ws.id}>{ws.name || ws.path || ws.id}</option>
+                        {appState.workspaces.map((ws: any, i: number) => (
+                            <option key={`${ws.id}::${i}`} value={ws.id}>{ws.name || ws.path || ws.id}</option>
                         ))}
                     </select>
                 </div>
@@ -489,8 +493,8 @@ export function EnqueueDialog() {
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
                         data-testid="folder-select"
                     >
-                        {folders.map(f => (
-                            <option key={f.value} value={f.value}>{f.label}</option>
+                        {folders.map((f, i) => (
+                            <option key={`${f.value}::${i}`} value={f.value}>{f.label}</option>
                         ))}
                     </select>
                 </div>
