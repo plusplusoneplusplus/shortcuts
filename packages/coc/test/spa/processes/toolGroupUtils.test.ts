@@ -1114,4 +1114,181 @@ describe('filterWhisperChunks', () => {
         const wg = result[0] as WhisperGroupChunk;
         expect(wg.summary.commitCount).toBe(2);
     });
+
+    it('fixupCommitCount separates fixup commits from regular commits', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'tool', key: 'k-t3', toolId: 't3' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: add auth"' },
+                result: '[main abc1111] feat: add auth\n 5 files changed, 42 insertions(+)',
+            }],
+            ['t2', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit --fixup abc1111' },
+                result: '[main abc2222] fixup! feat: add auth\n 1 file changed, 1 insertion(+)',
+            }],
+            ['t3', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "docs: readme"' },
+                result: '[main abc3333] docs: readme\n 1 file changed, 3 insertions(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBe(2);
+        expect(wg.summary.fixupCommitCount).toBe(1);
+    });
+
+    it('fixupCommitCount is omitted when no fixup commits', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: stuff"' },
+                result: '[main abc1234] feat: stuff\n 1 file changed, 5 insertions(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBe(1);
+        expect(wg.summary.fixupCommitCount).toBeUndefined();
+    });
+
+    it('only fixup commits → commitCount omitted, fixupCommitCount set', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit --fixup abc0000' },
+                result: '[main fff1234] fixup! original msg\n 1 file changed, 1 insertion(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBeUndefined();
+        expect(wg.summary.fixupCommitCount).toBe(1);
+    });
+
+    it('skillCount counts unique skill invocations', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'tool', key: 'k-t3', toolId: 't3' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'skill', status: 'completed', args: { skill: 'impl' } }],
+            ['t2', { toolName: 'skill', status: 'completed', args: { skill: 'code-review' } }],
+            ['t3', { toolName: 'skill', status: 'completed', args: { skill: 'impl' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.skillCount).toBe(2);
+        expect(wg.summary.skillNames).toEqual(['code-review', 'impl']);
+    });
+
+    it('skillCount is omitted when no skill tool calls exist', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'view', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.skillCount).toBeUndefined();
+        expect(wg.summary.skillNames).toBeUndefined();
+    });
+
+    it('skillCount works with args.name and args.skill_name variants', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'skill', status: 'completed', args: { name: 'draft' } }],
+            ['t2', { toolName: 'skill', status: 'completed', args: { skill_name: 'test-gap-analysis' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.skillCount).toBe(2);
+        expect(wg.summary.skillNames).toEqual(['draft', 'test-gap-analysis']);
+    });
+
+    it('skillCount from skills inside tool-group chunks', () => {
+        const chunks = [
+            {
+                kind: 'tool-group', key: 'group-1', category: 'read',
+                toolIds: ['t1', 't2'],
+                contentItems: [], orderedItems: [],
+                startTime: 1000, endTime: 3000, allSucceeded: true,
+            },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'skill', status: 'completed', startTime: '2024-01-01T00:00:01Z', endTime: '2024-01-01T00:00:02Z', args: { skill: 'impl' } }],
+            ['t2', { toolName: 'skill', status: 'completed', startTime: '2024-01-01T00:00:02Z', endTime: '2024-01-01T00:00:03Z', args: { skill: 'go-deep' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.skillCount).toBe(2);
+        expect(wg.summary.skillNames).toEqual(['go-deep', 'impl']);
+    });
+
+    it('combined: commits, fixups, and skills in one summary', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'tool', key: 'k-t3', toolId: 't3' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: auth"' },
+                result: '[main aaa1111] feat: auth\n 3 files changed, 20 insertions(+)',
+            }],
+            ['t2', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit --fixup aaa1111' },
+                result: '[main bbb2222] fixup! feat: auth\n 1 file changed, 1 insertion(+)',
+            }],
+            ['t3', { toolName: 'skill', status: 'completed', args: { skill: 'impl' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBe(1);
+        expect(wg.summary.fixupCommitCount).toBe(1);
+        expect(wg.summary.skillCount).toBe(1);
+        expect(wg.summary.skillNames).toEqual(['impl']);
+    });
 });

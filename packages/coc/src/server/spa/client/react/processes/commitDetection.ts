@@ -12,6 +12,8 @@ export interface DetectedCommit {
     insertions?: number;
     deletions?: number;
     toolCallId: string;
+    /** True when the commit subject starts with fixup!, squash!, or amend!. */
+    isFixup: boolean;
 }
 
 interface ToolCallLike {
@@ -117,11 +119,15 @@ export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCom
             if (seenHashes.has(shortHash)) continue;
             seenHashes.add(shortHash);
 
+            const trimmedSubject = subject.trim();
+            const isFixup = /^(?:fixup|squash|amend)! /.test(trimmedSubject);
+
             const commit: DetectedCommit = {
                 shortHash,
-                subject: subject.trim(),
+                subject: trimmedSubject,
                 branch,
                 toolCallId: tc.id,
+                isFixup,
             };
 
             // Look for diffstat on subsequent lines

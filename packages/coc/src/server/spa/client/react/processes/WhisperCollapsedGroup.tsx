@@ -64,18 +64,40 @@ export function WhisperCollapsedGroup({
 }: WhisperCollapsedGroupProps) {
     const [expanded, setExpanded] = useState(false);
 
-    const headerParts: string[] = [];
+    const headerParts: Array<{ text: string; title?: string }> = [];
     if (summary.toolCallCount > 0) {
-        headerParts.push(`${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}`);
+        headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
     }
     if (summary.messageCount > 0) {
-        headerParts.push(`${summary.messageCount} message${summary.messageCount !== 1 ? 's' : ''}`);
+        headerParts.push({ text: `${summary.messageCount} message${summary.messageCount !== 1 ? 's' : ''}` });
     }
     if (summary.commitCount && summary.commitCount > 0) {
-        headerParts.push(`${summary.commitCount} commit${summary.commitCount !== 1 ? 's' : ''}`);
+        headerParts.push({ text: `${summary.commitCount} commit${summary.commitCount !== 1 ? 's' : ''}` });
+    }
+    if (summary.fixupCommitCount && summary.fixupCommitCount > 0) {
+        headerParts.push({ text: `${summary.fixupCommitCount} fixup${summary.fixupCommitCount !== 1 ? 's' : ''}` });
+    }
+    if (summary.skillCount && summary.skillCount > 0) {
+        headerParts.push({
+            text: `${summary.skillCount} skill${summary.skillCount !== 1 ? 's' : ''}`,
+            title: summary.skillNames?.join(', '),
+        });
     }
     const duration = formatDuration(summary.startTime, summary.endTime);
-    const headerText = headerParts.join(' · ') + (duration ? ` (${duration})` : '');
+    const headerTextPlain = headerParts.map(p => p.text).join(' · ') + (duration ? ` (${duration})` : '');
+
+    const headerElements: React.ReactNode[] = [];
+    headerParts.forEach((part, idx) => {
+        if (idx > 0) headerElements.push(<span key={`sep-${idx}`}> · </span>);
+        headerElements.push(
+            part.title
+                ? <span key={`part-${idx}`} title={part.title}>{part.text}</span>
+                : <span key={`part-${idx}`}>{part.text}</span>,
+        );
+    });
+    if (duration) {
+        headerElements.push(<span key="duration"> ({duration})</span>);
+    }
 
     // When expanded, apply Compact-level grouping to preceding chunks
     const groupedChunks = useMemo(() => {
@@ -109,7 +131,7 @@ export function WhisperCollapsedGroup({
                 data-testid="whisper-toggle"
             >
                 <span>🔇</span>
-                <span className="flex-1 truncate">{headerText}</span>
+                <span className="flex-1 truncate" data-testid="whisper-header-text" title={headerTextPlain}>{headerElements}</span>
                 <span className="text-[10px]">{expanded ? '▼' : '▶'}</span>
             </button>
             {expanded && (

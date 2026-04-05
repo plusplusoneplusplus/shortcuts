@@ -308,8 +308,14 @@ export function groupConsecutiveToolChunks(
 export interface WhisperSummary {
     toolCallCount: number;
     messageCount: number;
-    /** Number of unique commits detected across all collapsed tool calls. */
+    /** Number of non-fixup commits detected across all collapsed tool calls. */
     commitCount?: number;
+    /** Number of fixup/squash/amend commits detected. */
+    fixupCommitCount?: number;
+    /** Number of unique skill invocations. */
+    skillCount?: number;
+    /** Names of unique skills invoked. */
+    skillNames?: string[];
     /** Epoch ms — earliest startTime among all tool calls. */
     startTime?: number;
     /** Epoch ms — latest endTime among all tool calls (undefined if any still running). */
@@ -430,12 +436,28 @@ export function filterWhisperChunks(
         }
     }
     const detectedCommits = detectCommitsInToolGroup(allToolCalls);
-    const commitCount = detectedCommits.length;
+    const regularCommits = detectedCommits.filter(c => !c.isFixup);
+    const fixupCommits = detectedCommits.filter(c => c.isFixup);
+    const commitCount = regularCommits.length;
+    const fixupCommitCount = fixupCommits.length;
+
+    // Count unique skill invocations
+    const skillNameSet = new Set<string>();
+    for (const tc of allToolCalls) {
+        if (tc.toolName === 'skill' && tc.args) {
+            const name = tc.args.skill || tc.args.name || tc.args.skill_name;
+            if (typeof name === 'string' && name) {
+                skillNameSet.add(name);
+            }
+        }
+    }
 
     const summary: WhisperSummary = {
         toolCallCount,
         messageCount,
         ...(commitCount > 0 ? { commitCount } : {}),
+        ...(fixupCommitCount > 0 ? { fixupCommitCount } : {}),
+        ...(skillNameSet.size > 0 ? { skillCount: skillNameSet.size, skillNames: [...skillNameSet].sort() } : {}),
         startTime: startTimes.length ? Math.min(...startTimes) : undefined,
         endTime: allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
     };

@@ -25,6 +25,7 @@ describe('detectCommitsInToolGroup', () => {
                 insertions: 42,
                 deletions: 17,
                 toolCallId: 't1',
+                isFixup: false,
             });
         });
 
@@ -293,6 +294,73 @@ describe('detectCommitsInToolGroup', () => {
 
             const commits = detectCommitsInToolGroup(toolCalls);
             expect(commits).toHaveLength(1);
+        });
+    });
+
+    describe('fixup / squash / amend commit detection', () => {
+        it('marks fixup! commits with isFixup = true', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit --fixup abc1234', '[main aaa1111] fixup! Add user authentication\n 1 file changed, 1 insertion(+)'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].isFixup).toBe(true);
+            expect(commits[0].subject).toBe('fixup! Add user authentication');
+        });
+
+        it('marks squash! commits with isFixup = true', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit --squash abc1234', '[main bbb2222] squash! Refactor parser\n 2 files changed, 5 insertions(+)'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].isFixup).toBe(true);
+        });
+
+        it('marks amend! commits with isFixup = true', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit --fixup=amend:abc1234', '[main ccc3333] amend! Improve error handling'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].isFixup).toBe(true);
+        });
+
+        it('regular commits have isFixup = false', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "Normal commit"', '[main ddd4444] Normal commit'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].isFixup).toBe(false);
+        });
+
+        it('mixed regular and fixup commits are correctly distinguished', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth"', '[main abc1111] feat: add auth\n 5 files changed, 42 insertions(+)'),
+                makeShellCall('t2', 'git commit --fixup abc1111', '[main abc2222] fixup! feat: add auth\n 1 file changed, 1 insertion(+)'),
+                makeShellCall('t3', 'git commit -m "docs: readme"', '[main abc3333] docs: readme\n 1 file changed, 3 insertions(+)'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(3);
+            expect(commits[0].isFixup).toBe(false);
+            expect(commits[1].isFixup).toBe(true);
+            expect(commits[2].isFixup).toBe(false);
+        });
+
+        it('subject starting with "fixup" but not "fixup! " is not treated as fixup', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "fixup the broken test"', '[main eee5555] fixup the broken test'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].isFixup).toBe(false);
         });
     });
 });
