@@ -60,6 +60,11 @@ vi.mock('../../src/server/llm-tools/update-task-status-tool', () => ({
     createUpdateTaskStatusTool: () => mockCreateUpdateTaskStatusTool(),
 }));
 
+const mockCreateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_work_item' } }));
+vi.mock('../../src/server/create-work-item-tool', () => ({
+    createWorkItemTool: (...args: any[]) => mockCreateWorkItemTool(...args),
+}));
+
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
@@ -71,7 +76,7 @@ import {
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
-    buildSearchConversationsAddon,
+    buildCreateWorkItemAddon,
 } from '../../src/server/executors/prompt-builder';
 
 // ============================================================================
@@ -475,28 +480,55 @@ describe('buildUpdateTaskStatusAddon', () => {
 });
 
 // ============================================================================
-// buildSearchConversationsAddon
+// buildCreateWorkItemAddon
 // ============================================================================
 
-describe('buildSearchConversationsAddon', () => {
-    it('returns empty tools and suffix when store does not support searchConversations', () => {
-        const store = {} as any; // no searchConversations method
-        const result = buildSearchConversationsAddon(store);
+describe('buildCreateWorkItemAddon', () => {
+    beforeEach(() => {
+        mockCreateWorkItemTool.mockReset();
+        mockCreateWorkItemTool.mockReturnValue({ tool: { name: 'create_work_item' } });
+    });
+
+    it('returns empty tools and suffix when dataDir is undefined', () => {
+        const result = buildCreateWorkItemAddon(undefined, 'repo-1');
+        expect(result.tools).toEqual([]);
+        expect(result.suffix).toBe('');
+        expect(mockCreateWorkItemTool).not.toHaveBeenCalled();
+    });
+
+    it('returns empty tools and suffix when repoId is undefined', () => {
+        const result = buildCreateWorkItemAddon('/data', undefined);
+        expect(result.tools).toEqual([]);
+        expect(result.suffix).toBe('');
+        expect(mockCreateWorkItemTool).not.toHaveBeenCalled();
+    });
+
+    it('returns empty tools and suffix when both are undefined', () => {
+        const result = buildCreateWorkItemAddon(undefined, undefined);
         expect(result.tools).toEqual([]);
         expect(result.suffix).toBe('');
     });
 
-    it('returns tool and suffix when store supports searchConversations', () => {
-        const store = { searchConversations: vi.fn() } as any;
-        const result = buildSearchConversationsAddon(store, 'ws-1');
+    it('returns tool and suffix when dataDir and repoId are provided', () => {
+        const result = buildCreateWorkItemAddon('/data', 'repo-1');
         expect(result.tools).toHaveLength(1);
-        expect(result.tools[0].name).toBe('search_conversations');
-        expect(result.suffix).toContain('search_conversations');
+        expect(result.tools[0]).toEqual({ name: 'create_work_item' });
+        expect(result.suffix).toContain('create_work_item');
     });
 
-    it('suffix mentions past conversation history', () => {
-        const store = { searchConversations: vi.fn() } as any;
-        const result = buildSearchConversationsAddon(store);
-        expect(result.suffix).toContain('conversation history');
+    it('passes dataDir and repoId to createWorkItemTool', () => {
+        buildCreateWorkItemAddon('/my/data', 'my-repo');
+        expect(mockCreateWorkItemTool).toHaveBeenCalledWith('/my/data', 'my-repo', undefined);
+    });
+
+    it('passes broadcastFn to createWorkItemTool when provided', () => {
+        const broadcast = vi.fn();
+        buildCreateWorkItemAddon('/data', 'repo-1', broadcast);
+        expect(mockCreateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
+    });
+
+    it('creates tool exactly once when called with valid args', () => {
+        buildCreateWorkItemAddon('/data', 'repo-1');
+        expect(mockCreateWorkItemTool).toHaveBeenCalledOnce();
     });
 });

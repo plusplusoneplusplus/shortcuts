@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import type { AppContextState } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
+import { useWorkItems } from '../context/WorkItemContext';
 import { Button, cn } from '../shared';
 import { BottomSheet } from '../shared/BottomSheet';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -137,6 +138,21 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         }
         prevNotesEnabled.current = notesEnabled;
     }, [activeSubTab, notesEnabled, dispatch]);
+
+    // Work items: load for this repo if not yet in context (for badge)
+    const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
+    useEffect(() => {
+        if (workItemState.workItemsByRepo[ws.id] !== undefined) return;
+        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/work-items`)
+            .then(data => {
+                if (data) workItemDispatch({ type: 'SET_WORK_ITEMS', repoId: ws.id, items: data });
+            })
+            .catch(() => {});
+    }, [ws.id]);
+    const newWorkItemsCount = useMemo(
+        () => (workItemState.workItemsByRepo[ws.id] || []).filter(i => i.status === 'created').length,
+        [workItemState.workItemsByRepo[ws.id]],
+    );
 
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
@@ -419,6 +435,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                             data-testid="wiki-warning-badge"
                                             title="Needs attention"
                                         />
+                                    )}
+                                    {t.key === 'work-items' && newWorkItemsCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="work-items-new-badge" title="New work items">{newWorkItemsCount}</span>
                                     )}
                                     {activeSubTab === t.key && (
                                         <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />

@@ -37,9 +37,9 @@ import {
     isRunScriptPayload,
     isRunWorkflowPayload,
 } from '../task-types';
-import { createUpdateTaskStatusTool } from '../llm-tools/update-task-status-tool';
-import { readRepoPreferences } from '../preferences-handler';
-import { getRepoDataPath } from '../paths';
+import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
+import { createUpdateTaskStatusTool } from '../update-task-status-tool';
+import { createWorkItemTool, type BroadcastWorkItemFn } from '../create-work-item-tool';
 
 // ============================================================================
 // System Message Builders
@@ -372,28 +372,30 @@ export function buildUpdateTaskStatusAddon(
 }
 
 // ============================================================================
-// Search Conversations
+// Create Work Item
 // ============================================================================
 
 /**
- * Builds the tools array and prompt suffix for the `search_conversations` tool.
- * The tool is only injected when the store supports `searchConversations` (SQLite only).
+ * Builds the tools array and prompt suffix for the `create_work_item` tool.
+ * The tool is only injected when a valid dataDir and repoId are available.
  *
- * @param store        The ProcessStore instance.
- * @param workspaceId  Optional default workspace to scope searches.
+ * @param dataDir     - Base data directory (e.g. `~/.coc`).
+ * @param repoId      - Workspace / repo ID the item should be created in.
+ * @param broadcastFn - Optional function to broadcast a WebSocket event after creation.
  */
-export function buildSearchConversationsAddon(
-    store: ProcessStore,
-    workspaceId?: string,
+export function buildCreateWorkItemAddon(
+    dataDir: string | undefined,
+    repoId: string | undefined,
+    broadcastFn?: BroadcastWorkItemFn,
 ): { tools: Tool<any>[]; suffix: string } {
-    if (!store.searchConversations) {
+    if (!dataDir || !repoId) {
         return { tools: [], suffix: '' };
     }
 
-    const { tool } = createSearchConversationsTool(store, workspaceId);
+    const { tool } = createWorkItemTool(dataDir, repoId, broadcastFn);
     const suffix =
-        '\n\nYou have access to `search_conversations` to search past AI conversation history in this workspace. ' +
-        'Use it when the user references previous discussions or you need context from earlier sessions.';
+        '\n\nYou have access to the `create_work_item` tool. ' +
+        'Call it when the user explicitly asks to create a work item, track a task, or save something for later execution.';
 
     return { tools: [tool], suffix };
 }
