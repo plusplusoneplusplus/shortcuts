@@ -70,7 +70,7 @@ export async function executeWorkItem(
 
     if (!isValidTransition(item.status, 'executing')) {
         throw new Error(
-            `Cannot execute work item in status '${item.status}'. Must be 'ready' to execute.`
+            `Cannot execute work item in status '${item.status}'. Must be 'readyToExecute' to execute.`
         );
     }
 
@@ -125,10 +125,11 @@ export async function handleWorkItemTaskComplete(
         processId: result.processId,
     });
 
-    const newStatus = result.status === 'completed' ? 'done' : 'failed';
+    const newStatus = result.status === 'completed' ? 'aiDone' : 'failed';
+    const completedAt = newStatus === 'failed' ? new Date().toISOString() : undefined;
     await store.updateWorkItem(workItemId, {
         status: newStatus,
-        completedAt: new Date().toISOString(),
+        ...(completedAt ? { completedAt } : {}),
         processId: result.processId,
     });
 }

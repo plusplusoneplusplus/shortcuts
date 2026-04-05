@@ -63,7 +63,7 @@ describe('executeWorkItem', () => {
     it('enqueues a task and transitions to executing', async () => {
         const item = makeWorkItem({
             id: 'wi-exec-1',
-            status: 'ready',
+            status: 'readyToExecute',
             plan: { version: 1, content: 'Plan content', updatedAt: '' },
             priority: 'high',
         });
@@ -110,7 +110,7 @@ describe('executeWorkItem', () => {
     });
 
     it('respects model override', async () => {
-        const item = makeWorkItem({ id: 'wi-model', status: 'ready' });
+        const item = makeWorkItem({ id: 'wi-model', status: 'readyToExecute' });
         await store.addWorkItem(item);
 
         const enqueue = vi.fn().mockResolvedValue('task-456');
@@ -137,8 +137,7 @@ describe('handleWorkItemTaskComplete', () => {
         }, store);
 
         const updated = await store.getWorkItem('wi-done', 'test-repo');
-        expect(updated!.status).toBe('done');
-        expect(updated!.completedAt).toBeDefined();
+        expect(updated!.status).toBe('aiDone');
         expect(updated!.processId).toBe('proc-1');
         expect(updated!.executionHistory![0].status).toBe('completed');
     });
@@ -159,7 +158,27 @@ describe('handleWorkItemTaskComplete', () => {
 
         const updated = await store.getWorkItem('wi-fail', 'test-repo');
         expect(updated!.status).toBe('failed');
+        expect(updated!.completedAt).toBeDefined();
         expect(updated!.executionHistory![0].status).toBe('failed');
         expect(updated!.executionHistory![0].error).toBe('Timeout exceeded');
+    });
+
+    it('does not set completedAt when transitioning to aiDone', async () => {
+        const item = makeWorkItem({ id: 'wi-aidone', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-aidone', {
+            taskId: 'task-3',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+        });
+
+        await handleWorkItemTaskComplete('wi-aidone', 'task-3', {
+            status: 'completed',
+            processId: 'proc-2',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-aidone', 'test-repo');
+        expect(updated!.status).toBe('aiDone');
+        expect(updated!.completedAt).toBeUndefined();
     });
 });

@@ -9,6 +9,7 @@ export type {
     WorkItemIndexEntry,
     WorkItemFilter,
     WorkItemStore,
+    ReviewComment,
 } from './types';
 
 export {

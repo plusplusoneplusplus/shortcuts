@@ -182,14 +182,15 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.tags !== undefined) updates.tags = body.tags;
             if (body.autoExecute !== undefined) updates.autoExecute = body.autoExecute;
             if (body.completedAt !== undefined) updates.completedAt = body.completedAt;
+            if (body.reviewComments !== undefined) updates.reviewComments = body.reviewComments;
 
             const updated = await workItemStore.updateWorkItem(workItemId, updates);
             if (!updated) {
                 return handleAPIError(res, notFound('Work item'));
             }
 
-            // Auto-execute if status transitioned to 'ready' and autoExecute is enabled
-            if (updated.status === 'ready' && updated.autoExecute && enqueue) {
+            // Auto-execute if status transitioned to 'readyToExecute' and autoExecute is enabled
+            if (updated.status === 'readyToExecute' && updated.autoExecute && enqueue) {
                 try {
                     await executeWorkItem(workItemId, workItemStore, enqueue);
                     const afterExec = await workItemStore.getWorkItem(workItemId);
@@ -204,6 +205,72 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
             sendJSON(res, 200, updated);
+        },
+    });
+
+    // POST /api/workspaces/:id/work-items/:workItemId/request-changes — Incorporate review comments into plan, transition to readyToExecute
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/request-changes$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            const repoId = decodeURIComponent(match![1]);
+            const workItemId = decodeURIComponent(match![2]);
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, badRequest('Invalid JSON body'));
+            }
+
+            const comments = body.comments;
+            if (!Array.isArray(comments) || comments.length === 0) {
+                return handleAPIError(res, badRequest('At least one comment is required'));
+            }
+
+            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            if (!item) {
+                return handleAPIError(res, notFound('Work item'));
+            }
+
+            if (item.status !== 'aiDone') {
+                return handleAPIError(res, badRequest(
+                    `Cannot request changes in status '${item.status}'. Work item must be in 'aiDone' status.`
+                ));
+            }
+
+            // Build new plan version incorporating the comments
+            const now = new Date().toISOString();
+            const currentPlan = item.plan?.content || '';
+            const commentBlock = comments.map((c: string, i: number) => `${i + 1}. ${c}`).join('\n');
+            const newContent = currentPlan + '\n\n## Review Comments (to address)\n\n' + commentBlock;
+            const newVersion = (item.plan?.version ?? 0) + 1;
+
+            const planVersion = {
+                version: newVersion,
+                content: newContent,
+                createdAt: now,
+                resolvedBy: 'user' as const,
+                summary: `Incorporated ${comments.length} review comment(s)`,
+            };
+
+            await workItemStore.savePlanVersion(workItemId, planVersion);
+            const updated = await workItemStore.updateWorkItem(workItemId, {
+                status: 'readyToExecute',
+                plan: {
+                    version: newVersion,
+                    content: newContent,
+                    updatedAt: now,
+                    resolvedBy: 'user',
+                },
+                reviewComments: [],
+            });
+
+            if (updated) {
+                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+            }
+
+            sendJSON(res, 200, { plan: planVersion, newVersion });
         },
     });
 

@@ -31,7 +31,7 @@ describe('Work Item Types', () => {
     describe('WORK_ITEM_STATUSES', () => {
         it('contains all expected statuses', () => {
             expect(WORK_ITEM_STATUSES).toEqual([
-                'created', 'planning', 'ready', 'executing', 'done', 'failed',
+                'created', 'planning', 'readyToExecute', 'executing', 'aiDone', 'done', 'failed',
             ]);
         });
 
@@ -51,8 +51,9 @@ describe('Work Item Types', () => {
         it('does not contain non-terminal statuses', () => {
             expect(TERMINAL_WORK_ITEM_STATUSES.has('created')).toBe(false);
             expect(TERMINAL_WORK_ITEM_STATUSES.has('planning')).toBe(false);
-            expect(TERMINAL_WORK_ITEM_STATUSES.has('ready')).toBe(false);
+            expect(TERMINAL_WORK_ITEM_STATUSES.has('readyToExecute')).toBe(false);
             expect(TERMINAL_WORK_ITEM_STATUSES.has('executing')).toBe(false);
+            expect(TERMINAL_WORK_ITEM_STATUSES.has('aiDone')).toBe(false);
         });
     });
 
@@ -65,8 +66,9 @@ describe('Work Item Types', () => {
         it('returns false for non-terminal statuses', () => {
             expect(isTerminalStatus('created')).toBe(false);
             expect(isTerminalStatus('planning')).toBe(false);
-            expect(isTerminalStatus('ready')).toBe(false);
+            expect(isTerminalStatus('readyToExecute')).toBe(false);
             expect(isTerminalStatus('executing')).toBe(false);
+            expect(isTerminalStatus('aiDone')).toBe(false);
         });
     });
 
@@ -75,28 +77,36 @@ describe('Work Item Types', () => {
             expect(isValidTransition('created', 'planning')).toBe(true);
         });
 
-        it('allows created → ready (skip planning)', () => {
-            expect(isValidTransition('created', 'ready')).toBe(true);
+        it('allows created → readyToExecute (skip planning)', () => {
+            expect(isValidTransition('created', 'readyToExecute')).toBe(true);
         });
 
-        it('allows planning → ready', () => {
-            expect(isValidTransition('planning', 'ready')).toBe(true);
+        it('allows planning → readyToExecute', () => {
+            expect(isValidTransition('planning', 'readyToExecute')).toBe(true);
         });
 
-        it('allows ready → executing', () => {
-            expect(isValidTransition('ready', 'executing')).toBe(true);
+        it('allows readyToExecute → executing', () => {
+            expect(isValidTransition('readyToExecute', 'executing')).toBe(true);
         });
 
-        it('allows executing → done', () => {
-            expect(isValidTransition('executing', 'done')).toBe(true);
+        it('allows executing → aiDone', () => {
+            expect(isValidTransition('executing', 'aiDone')).toBe(true);
         });
 
         it('allows executing → failed', () => {
             expect(isValidTransition('executing', 'failed')).toBe(true);
         });
 
-        it('allows ready → planning (go back to refine)', () => {
-            expect(isValidTransition('ready', 'planning')).toBe(true);
+        it('allows readyToExecute → planning (go back to refine)', () => {
+            expect(isValidTransition('readyToExecute', 'planning')).toBe(true);
+        });
+
+        it('allows aiDone → readyToExecute (request changes)', () => {
+            expect(isValidTransition('aiDone', 'readyToExecute')).toBe(true);
+        });
+
+        it('allows aiDone → done (accept)', () => {
+            expect(isValidTransition('aiDone', 'done')).toBe(true);
         });
 
         it('allows done → created (re-open)', () => {
@@ -107,8 +117,8 @@ describe('Work Item Types', () => {
             expect(isValidTransition('failed', 'created')).toBe(true);
         });
 
-        it('allows executing → ready (retry after failure)', () => {
-            expect(isValidTransition('executing', 'ready')).toBe(true);
+        it('allows executing → readyToExecute (retry)', () => {
+            expect(isValidTransition('executing', 'readyToExecute')).toBe(true);
         });
 
         it('rejects invalid transitions', () => {
@@ -118,6 +128,7 @@ describe('Work Item Types', () => {
             expect(isValidTransition('planning', 'done')).toBe(false);
             expect(isValidTransition('done', 'executing')).toBe(false);
             expect(isValidTransition('failed', 'executing')).toBe(false);
+            expect(isValidTransition('created', 'aiDone')).toBe(false);
         });
 
         it('every status has at least one valid transition', () => {
