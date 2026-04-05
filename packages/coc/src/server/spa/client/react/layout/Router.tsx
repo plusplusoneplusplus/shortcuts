@@ -181,19 +181,7 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
-/**
- * Parse a note deep-link: `#repos/{wsId}/notes/{path/segments}`.
- * Each path segment is decoded individually so embedded `/` delimiters
- * within segment names (encoded as `%2F`) are preserved correctly.
- */
-export function parseNoteDeepLink(hash: string): string | null {
-    const cleaned = hash.replace(/^#/, '');
-    const parts = cleaned.split('/');
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'notes' && parts[3]) {
-        return parts.slice(3).map(decodeURIComponent).join('/');
-    }
-    return null;
-}
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'workflows', 'tasks', 'work-items', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests']);
 
 /**
  * Build a hash string for a note deep-link.
@@ -235,7 +223,7 @@ const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     w: 'templates',
     s: 'schedules',
     c: 'settings',
-    i: 'wiki',
+    i: 'work-items',
 };
 
 export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB

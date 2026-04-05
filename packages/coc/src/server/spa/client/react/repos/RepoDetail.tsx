@@ -19,6 +19,7 @@ import { RepoWikiTab } from './RepoWikiTab';
 import { RepoSettingsTab } from './RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { PullRequestsTab } from './pull-requests/PullRequestsTab';
+import { WorkItemsTab } from './WorkItemsTab';
 import { WorkflowDetailView } from '../processes/dag';
 import { TerminalView } from './TerminalView';
 import { NotesView } from './NotesView';
@@ -45,9 +46,7 @@ interface RepoDetailProps {
 export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
     { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
-    { key: 'terminal', label: 'Terminal', shortcut: 'Alt+T' },
-    { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
-    { key: 'tasks', label: 'Plans', shortcut: 'Alt+P' },
+    { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
@@ -501,8 +500,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}
 
             {/* Sub-tab content */}
-            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden")}>
-                <div style={{ display: activeSubTab === 'tasks' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'tasks' && activeSubTab !== 'work-items' && "pb-12")}>
+                {activeSubTab === 'tasks' ? (
                     <TasksPanel
                         key={ws.id}
                         wsId={ws.id}
@@ -511,12 +510,27 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         initialNavState={state.repoSubTabNavState[`${ws.id}::tasks`]}
                         onNavStateChange={(navState) => dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState })}
                     />
-                </div>
-                <div style={{ display: activeSubTab !== 'tasks' ? undefined : 'none' }} className={cn("h-full min-w-0", isMobile && "pb-12", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
-                    {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
-                    {activeSubTab === 'templates' && <TemplatesTab key={ws.id} repo={repo} />}
-                    <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                        <RepoActivityTab key={ws.id} workspaceId={ws.id} />
+                ) : activeSubTab === 'work-items' ? (
+                    <WorkItemsTab key={ws.id} workspaceId={ws.id} />
+                ) : (
+                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' ? "overflow-hidden" : "overflow-y-auto")}>
+                        {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
+                        {activeSubTab === 'workflows' && <WorkflowsTab key={ws.id} repo={repo} />}
+                        {activeSubTab === 'activity' && <RepoActivityTab key={ws.id} workspaceId={ws.id} />}
+                        {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
+                        {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
+                        {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
+                        <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                            <ExplorerPanel key={ws.id} workspaceId={ws.id} />
+                        </div>
+                        <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                            <PullRequestsTab
+                                repoId={ws.id}
+                                workspaceId={ws.id}
+                                remoteUrl={ws.remoteUrl ?? undefined}
+                            />
+                        </div>
+                        {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}
                     </div>
                     {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
                     {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
