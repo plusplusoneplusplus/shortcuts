@@ -209,4 +209,67 @@ describe('useChatSSE', () => {
         await act(async () => { MockEventSource.last._emit('done', {}); });
         expect(setBackgroundTasks).toHaveBeenCalledWith(null);
     });
+
+    it('sets task status to completed on done event', async () => {
+        const setTask = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        await act(async () => { MockEventSource.last._emit('done', {}); });
+        // setTask receives an updater — call it with a running task
+        const updater = setTask.mock.calls.find(([arg]) => typeof arg === 'function')?.[0];
+        expect(updater).toBeDefined();
+        expect(updater({ status: 'running' })).toEqual({ status: 'completed' });
+    });
+
+    it('dispatches REPO_TASK_COMPLETED_OPTIMISTIC with completed on done event', async () => {
+        const queueDispatch = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ queueDispatch, workspaceId: 'ws-1' })));
+        await act(async () => { MockEventSource.last._emit('done', {}); });
+        expect(queueDispatch).toHaveBeenCalledWith({
+            type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+            repoId: 'ws-1',
+            taskId: 'task-1',
+            status: 'completed',
+        });
+    });
+
+    it('dispatches REPO_TASK_COMPLETED_OPTIMISTIC with failed on status failed event', async () => {
+        const queueDispatch = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ queueDispatch, workspaceId: 'ws-1' })));
+        await act(async () => { MockEventSource.last._emit('status', { status: 'failed' }); });
+        expect(queueDispatch).toHaveBeenCalledWith({
+            type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+            repoId: 'ws-1',
+            taskId: 'task-1',
+            status: 'failed',
+        });
+    });
+
+    it('dispatches REPO_TASK_COMPLETED_OPTIMISTIC with cancelled on status cancelled event', async () => {
+        const queueDispatch = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ queueDispatch, workspaceId: 'ws-1' })));
+        await act(async () => { MockEventSource.last._emit('status', { status: 'cancelled' }); });
+        expect(queueDispatch).toHaveBeenCalledWith({
+            type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+            repoId: 'ws-1',
+            taskId: 'task-1',
+            status: 'cancelled',
+        });
+    });
+
+    it('does not dispatch REPO_TASK_COMPLETED_OPTIMISTIC when queueDispatch is not provided', async () => {
+        // Should not throw even without queueDispatch
+        const setTask = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        await act(async () => { MockEventSource.last._emit('done', {}); });
+        expect(setTask).toHaveBeenCalled(); // still updates task
+    });
+
+    it('sets task status to failed on status failed event', async () => {
+        const setTask = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        await act(async () => { MockEventSource.last._emit('status', { status: 'failed' }); });
+        const updater = setTask.mock.calls.find(([arg]) => typeof arg === 'function')?.[0];
+        expect(updater).toBeDefined();
+        expect(updater({ status: 'running' })).toEqual({ status: 'failed' });
+    });
 });
