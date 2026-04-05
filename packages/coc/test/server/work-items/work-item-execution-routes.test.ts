@@ -160,6 +160,41 @@ describe('Work Item Execution Routes', () => {
             expect(res.body.sourceId).toBe('proc-1');
         });
 
+        it('auto-generates a plan template for chat-created work items', async () => {
+            mockProcessStore.getProcess.mockResolvedValue({
+                id: 'proc-auto',
+                title: 'Implement dark mode',
+                fullPrompt: 'Add dark mode support to the dashboard.',
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/from-chat`, {
+                processId: 'proc-auto',
+            });
+
+            expect(res.status).toBe(201);
+            expect(res.body.plan).toBeDefined();
+            expect(res.body.plan.content).toContain('## Objective');
+            expect(res.body.plan.content).toContain('## Steps');
+            expect(res.body.plan.version).toBe(1);
+            expect(res.body.status).toBe('planning');
+        });
+
+        it('auto-generated plan uses work item title as objective', async () => {
+            mockProcessStore.getProcess.mockResolvedValue({
+                id: 'proc-title',
+                title: 'Refactor auth module',
+                fullPrompt: 'Refactor the authentication module for clarity.',
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/from-chat`, {
+                processId: 'proc-title',
+                title: 'Refactor auth module',
+            });
+
+            expect(res.status).toBe(201);
+            expect(res.body.plan.content).toContain('Refactor auth module');
+        });
+
         it('extracts title from chat process when not provided', async () => {
             mockProcessStore.getProcess.mockResolvedValue({
                 id: 'proc-2',
@@ -174,6 +209,8 @@ describe('Work Item Execution Routes', () => {
 
             expect(res.status).toBe(201);
             expect(res.body.title).toBe('Discuss caching strategy');
+            // Always starts as 'planning' now (auto-plan template is generated)
+            expect(res.body.status).toBe('planning');
         });
 
         it('extracts plan from chat result when extractPlan is true', async () => {

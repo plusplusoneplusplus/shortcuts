@@ -14,6 +14,7 @@ import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItem } from '../work-items/types';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
+import { buildPlanFromContext } from '../work-items/plan-template';
 import type { ProcessWebSocketServer } from '../websocket';
 
 export interface WorkItemExecutionRouteContext {
@@ -100,7 +101,7 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 repoId,
                 title,
                 description,
-                status: 'created',
+                status: 'planning',
                 createdAt: now,
                 updatedAt: now,
                 source: 'chat',
@@ -109,7 +110,8 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 tags: body.tags,
             };
 
-            // If the chat was in plan mode and has a result, use it as the initial plan
+            // Use AI result as plan when extractPlan is requested; otherwise auto-generate
+            // a structured plan template populated with the work item's title and description.
             if (body.extractPlan && process.result) {
                 item.plan = {
                     version: 1,
@@ -117,21 +119,27 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     updatedAt: now,
                     resolvedBy: 'ai',
                 };
-                item.status = 'planning';
+            } else {
+                item.plan = {
+                    version: 1,
+                    content: buildPlanFromContext(title, description),
+                    updatedAt: now,
+                    resolvedBy: 'user',
+                };
             }
 
             await workItemStore.addWorkItem(item);
 
-            // Save plan version if plan was extracted
-            if (item.plan) {
-                await workItemStore.savePlanVersion(item.id, {
-                    version: 1,
-                    content: item.plan.content,
-                    createdAt: now,
-                    resolvedBy: 'ai',
-                    summary: 'Extracted from chat session',
-                });
-            }
+            // Persist the plan version record
+            await workItemStore.savePlanVersion(item.id, {
+                version: 1,
+                content: item.plan.content,
+                createdAt: now,
+                resolvedBy: body.extractPlan && process.result ? 'ai' : 'user',
+                summary: body.extractPlan && process.result
+                    ? 'Extracted from chat session'
+                    : 'Auto-generated plan template',
+            });
 
             getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-added', workspaceId: repoId, item });
             sendJSON(res, 201, item);
