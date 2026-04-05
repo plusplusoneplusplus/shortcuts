@@ -38,6 +38,8 @@ export interface ChatHeaderProps {
     title?: string;
     /** Workspace ID for HTML copy (markdown rendering with image path rewriting) */
     wsId?: string;
+    /** Callback to open the "Create Work Item from Chat" dialog */
+    onCreateWorkItem?: () => void;
 }
 
 export function ChatHeader({
@@ -65,6 +67,7 @@ export function ChatHeader({
     onFloat,
     title,
     wsId,
+    onCreateWorkItem,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -116,6 +119,19 @@ export function ChatHeader({
                 />
             </div>
             <div className="flex items-center gap-2">
+                {onCreateWorkItem && (
+                    <button
+                        title="Create work item from chat"
+                        data-testid="create-work-item-from-chat-btn"
+                        onClick={onCreateWorkItem}
+                        className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                    >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <rect x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+                            <path d="M5 8h6M8 5v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                    </button>
+                )}
                 {variant !== 'floating' && !isPopOut && !isMobile && !isFloating(taskId) && (
                     <button
                         title="Float in current window"

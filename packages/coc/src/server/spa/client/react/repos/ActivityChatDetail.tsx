@@ -31,6 +31,7 @@ import type { ModelInfo } from '../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
 import { FollowUpInputArea } from './FollowUpInputArea';
+import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { ConversationMiniMap } from '../processes/ConversationMiniMap';
 
@@ -92,6 +93,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
     const [backgroundTasks, setBackgroundTasks] = useState<import('../hooks/useChatSSE').BackgroundTasksState | null>(null);
+    const [showCreateWorkItem, setShowCreateWorkItem] = useState(false);
     const lastFailedMessageRef = useRef<string>('');
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
@@ -505,6 +507,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 onFloat={handleFloat}
                 title={title}
                 wsId={workspaceId}
+                onCreateWorkItem={workspaceId ? () => setShowCreateWorkItem(true) : undefined}
             />
             <div className="relative flex-1 min-h-0 flex overflow-x-hidden min-w-0">
                 <ConversationArea
@@ -563,6 +566,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     task={task}
                     slashCommands={slashCommands}
                     hideModeSelector={hideModeSelector}
+                />
+            )}
+            {workspaceId && (
+                <CreateWorkItemDialog
+                    open={showCreateWorkItem}
+                    onClose={() => setShowCreateWorkItem(false)}
+                    workspaceId={workspaceId}
+                    fromChatId={processId ?? undefined}
                 />
             )}
         </div>
