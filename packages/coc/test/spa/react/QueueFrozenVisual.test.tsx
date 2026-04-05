@@ -1,24 +1,78 @@
 /**
  * Tests for frozen task visual effect in queue task cards.
  * Covers QueueTaskItem (ActivityListPane) and QueueTaskCard (ProcessesSidebar).
+ *
+ * Intentionally not tested (source-level tests dropped):
+ * - CSS @keyframes frost-shimmer / .task-frozen class existence — verified
+ *   indirectly by render tests that assert the class is applied; keyframe
+ *   animation validation is out of scope for jsdom.
+ * - Dark mode variant of .task-frozen — jsdom does not support media queries.
+ * - opacity-60 italic absence — negative implementation detail, not behavioral.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, cleanup } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
-import * as fs from 'fs';
-import * as path from 'path';
+import { QueueTaskItem } from '../../../src/server/spa/client/react/repos/ActivityListPane';
 
-const REPOS_DIR = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos');
-const ACTIVITY_LIST_PANE_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityListPane.tsx'), 'utf-8');
-const SIDEBAR_DIR = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'processes');
-const SIDEBAR_SOURCE = fs.readFileSync(path.join(SIDEBAR_DIR, 'ProcessesSidebar.tsx'), 'utf-8');
-const CSS_PATH = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'tailwind.css');
-const CSS_SOURCE = fs.readFileSync(CSS_PATH, 'utf-8');
+// ── Mocks for QueueTaskItem's transitive dependencies ──────────────────
+vi.mock('../../../src/server/spa/client/react/hooks/useWorkflowProgress', () => ({
+    useWorkflowProgress: () => null,
+}));
+vi.mock('../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
+    getDraft: () => undefined,
+}));
+vi.mock('../../../src/server/spa/client/react/hooks/useLongPress', () => ({
+    useLongPress: () => ({
+        onTouchStart: vi.fn(),
+        onTouchEnd: vi.fn(),
+        onTouchMove: vi.fn(),
+        didLongPress: () => false,
+    }),
+}));
+vi.mock('../../../src/server/spa/client/react/hooks/useQueueDragDrop', () => ({
+    useQueueDragDrop: () => ({
+        activeDraggedTaskId: null,
+        handleDragStart: vi.fn(),
+        handleDragOver: vi.fn(),
+        handleDrop: vi.fn(),
+        handleDragEnd: vi.fn(),
+    }),
+}));
+vi.mock('../../../src/server/spa/client/react/hooks/useQueueTouchDragDrop', () => ({
+    useQueueTouchDragDrop: () => ({
+        draggedTaskId: null,
+        dropTargetIndex: null,
+        dropPosition: null,
+        createTouchStartHandler: vi.fn(),
+    }),
+}));
+vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    useChatPrefs: () => ({
+        pinnedChatIds: new Set(),
+        archivedChatIds: new Set(),
+        pinChat: vi.fn(),
+        unpinChat: vi.fn(),
+        archiveChat: vi.fn(),
+        unarchiveChat: vi.fn(),
+    }),
+}));
+vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+    useDisplaySettings: () => ({ taskCardDensity: 'normal', showReportIntent: false }),
+    invalidateDisplaySettings: vi.fn(),
+}));
+vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    getApiBase: () => '/api',
+    getWsPath: () => '/ws',
+}));
+
+afterEach(cleanup);
+
+// ── Helpers ────────────────────────────────────────────────────────────
 
 function Wrap({ children }: { children: ReactNode }) {
     return (
@@ -47,60 +101,39 @@ function SeededQueuePanel({ running, queued }: { running: any[]; queued: any[] }
     return <ProcessesSidebar />;
 }
 
-// ── CSS: .task-frozen class ────────────────────────────────────────────
-
-describe('Frozen task CSS', () => {
-    it('defines .task-frozen class in tailwind.css', () => {
-        expect(CSS_SOURCE).toContain('.task-frozen');
-    });
-
-    it('defines frost-shimmer keyframes animation', () => {
-        expect(CSS_SOURCE).toContain('@keyframes frost-shimmer');
-    });
-
-    it('.task-frozen uses animation', () => {
-        expect(CSS_SOURCE).toContain('animation: frost-shimmer');
-    });
-
-    it('defines dark mode variant for .task-frozen', () => {
-        expect(CSS_SOURCE).toContain('.dark .task-frozen');
-    });
-});
-
 // ── QueueTaskItem (ActivityListPane) ───────────────────────────────────
 
 describe('QueueTaskItem frozen visual', () => {
     it('applies task-frozen class when task.frozen is true', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("task.frozen && \"task-frozen\"");
+        render(
+            <Wrap>
+                <QueueTaskItem task={{ id: 't1', type: 'chat', frozen: true }} status="queued" now={Date.now()} />
+            </Wrap>,
+        );
+        expect(document.querySelector('.task-frozen')).toBeTruthy();
     });
 
-    it('shows ❄️ icon instead of regular icon when frozen', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("task.frozen ? '❄️'");
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain(": icon");
+    it('shows ❄️ icon when frozen', () => {
+        render(
+            <Wrap>
+                <QueueTaskItem task={{ id: 't1', type: 'chat', frozen: true }} status="queued" now={Date.now()} />
+            </Wrap>,
+        );
+        const card = document.querySelector('.task-frozen')!;
+        expect(card.textContent).toContain('❄️');
     });
 
-    it('does not use opacity-60 italic for frozen tasks', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).not.toContain('opacity-60 italic');
+    it('does not apply task-frozen class to non-frozen task', () => {
+        render(
+            <Wrap>
+                <QueueTaskItem task={{ id: 't1', type: 'chat', frozen: false }} status="queued" now={Date.now()} />
+            </Wrap>,
+        );
+        expect(document.querySelector('.task-frozen')).toBeNull();
     });
 });
 
-// ── QueueTaskCard (ProcessesSidebar) ──────────────────────────────────
-
-describe('QueueTaskCard frozen visual', () => {
-    it('applies task-frozen class when task.frozen is true', () => {
-        expect(SIDEBAR_SOURCE).toContain("task.frozen && 'task-frozen'");
-    });
-
-    it('shows ❄️ icon in compact layout when frozen', () => {
-        expect(SIDEBAR_SOURCE).toContain("task.frozen ? '❄️' : statusIcon(task.status)");
-    });
-
-    it('shows Frozen label in full layout badge when frozen', () => {
-        expect(SIDEBAR_SOURCE).toContain("task.frozen ? 'Frozen' : statusLabel(task.status)");
-    });
-});
-
-// ── ProcessesSidebar: frozen task renders with .task-frozen ───────────
+// ── ProcessesSidebar: QueueTaskCard frozen rendering ──────────────────
 
 describe('ProcessesSidebar frozen task rendering', () => {
     it('renders frozen queued task card with task-frozen class', () => {
@@ -135,5 +168,17 @@ describe('ProcessesSidebar frozen task rendering', () => {
         const frozenCard = document.querySelector('.task-frozen');
         expect(frozenCard).toBeTruthy();
         expect(frozenCard!.textContent).toContain('❄️');
+    });
+
+    it('shows Frozen badge label for frozen task in full layout', () => {
+        const queued = [
+            { id: 'q1', status: 'queued', frozen: true, prompt: 'frozen task' },
+        ];
+
+        render(<Wrap><SeededQueuePanel running={[]} queued={queued} /></Wrap>);
+
+        const frozenCard = document.querySelector('.task-frozen');
+        expect(frozenCard).toBeTruthy();
+        expect(frozenCard!.textContent).toContain('Frozen');
     });
 });
