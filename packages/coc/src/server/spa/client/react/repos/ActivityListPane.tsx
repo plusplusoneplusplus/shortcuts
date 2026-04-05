@@ -19,6 +19,7 @@ import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 import { getDraft } from '../hooks/useDraftStore';
 import { useLongPress } from '../hooks/useLongPress';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
+import { useQueue } from '../context/QueueContext';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
@@ -142,6 +143,8 @@ export function ActivityListPane({
     fetchQueue,
     pauseReason,
 }: ActivityListPaneProps) {
+    const { state: queueState } = useQueue();
+    const isTaskSubmitting = queueState.isTaskSubmitting;
     const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
@@ -312,9 +315,16 @@ export function ActivityListPane({
         fetchQueue();
     };
 
+    const [isAdmitting, setIsAdmitting] = useState(false);
+
     const handleAdmit = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/admit', { method: 'POST' });
-        fetchQueue();
+        setIsAdmitting(true);
+        try {
+            await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/admit', { method: 'POST' });
+            await fetchQueue();
+        } finally {
+            setIsAdmitting(false);
+        }
     };
 
     const handleUnadmit = async (taskId: string) => {
@@ -665,7 +675,11 @@ export function ActivityListPane({
                         title="Refresh queue"
                         data-testid="queue-refresh-btn"
                     >
-                        {!isRefreshing && '↺'}
+                        {!isRefreshing && (
+                            <span className={(isAdmitting || isTaskSubmitting) ? 'inline-block animate-spin' : 'inline-block'}>
+                                ↺
+                            </span>
+                        )}
                     </Button>
                     <div
                         className="flex items-center text-xs rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden"

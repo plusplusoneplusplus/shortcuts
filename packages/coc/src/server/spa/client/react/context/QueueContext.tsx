@@ -56,6 +56,8 @@ export interface QueueContextState {
     /** Incremented each time the user clicks an already-selected task to force a refresh. */
     refreshVersion: number;
     queueInitialized: boolean;
+    /** True while EnqueueDialog is submitting a new task. */
+    isTaskSubmitting: boolean;
 }
 
 function createEmptyQueueStats(): QueueStats {
@@ -104,6 +106,7 @@ const initialState: QueueContextState = {
     selectedTaskIdByRepo: {},
     refreshVersion: 0,
     queueInitialized: false,
+    isTaskSubmitting: false,
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -129,7 +132,8 @@ export type QueueAction =
     | { type: 'CHAT_STREAMING_STOPPED'; workspaceId: string }
     | { type: 'SET_DIALOG_MODE'; mode: 'task' | 'ask' }
     | { type: 'OPEN_SCRIPT_DIALOG'; workspaceId?: string | null }
-    | { type: 'CLOSE_SCRIPT_DIALOG' };
+    | { type: 'CLOSE_SCRIPT_DIALOG' }
+    | { type: 'SET_TASK_SUBMITTING'; value: boolean };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -239,6 +243,8 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             return { ...state, showScriptDialog: true, scriptDialogWorkspaceId: action.workspaceId ?? null };
         case 'CLOSE_SCRIPT_DIALOG':
             return { ...state, showScriptDialog: false, scriptDialogWorkspaceId: null };
+        case 'SET_TASK_SUBMITTING':
+            return { ...state, isTaskSubmitting: action.value };
         default:
             return state;
     }

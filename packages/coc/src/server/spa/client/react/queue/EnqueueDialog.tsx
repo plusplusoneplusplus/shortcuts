@@ -186,6 +186,7 @@ export function EnqueueDialog() {
 
         if (effectiveSkills.length === 0 && !effectivePrompt) return;
         setSubmitting(true);
+        queueDispatch({ type: 'SET_TASK_SUBMITTING', value: true });
         try {
             let body: any;
             if (isAskMode) {
@@ -283,7 +284,7 @@ export function EnqueueDialog() {
             clearImages();
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
-        finally { setSubmitting(false); }
+        finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
     }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode]);
 
     const handleSlashSelect = useCallback((name: string) => {

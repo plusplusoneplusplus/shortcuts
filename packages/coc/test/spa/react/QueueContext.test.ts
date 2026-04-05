@@ -31,6 +31,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         selectedTaskIdByRepo: {},
         refreshVersion: 0,
         queueInitialized: false,
+        isTaskSubmitting: false,
         ...overrides,
     };
 }
@@ -687,6 +688,33 @@ describe('QueueContext reducer', () => {
                 },
             });
             expect(result.repoQueueMap['repo-a'].stats.pauseReason).toEqual(reason);
+        });
+    });
+
+    // ── SET_TASK_SUBMITTING ──────────────────────────────────────────
+    describe('SET_TASK_SUBMITTING', () => {
+        it('sets isTaskSubmitting to true', () => {
+            const state = makeState({ isTaskSubmitting: false });
+            const result = queueReducer(state, { type: 'SET_TASK_SUBMITTING', value: true });
+            expect(result.isTaskSubmitting).toBe(true);
+        });
+
+        it('sets isTaskSubmitting to false', () => {
+            const state = makeState({ isTaskSubmitting: true });
+            const result = queueReducer(state, { type: 'SET_TASK_SUBMITTING', value: false });
+            expect(result.isTaskSubmitting).toBe(false);
+        });
+
+        it('does not affect other state', () => {
+            const state = makeState({ showDialog: true, selectedTaskId: 'abc' });
+            const result = queueReducer(state, { type: 'SET_TASK_SUBMITTING', value: true });
+            expect(result.showDialog).toBe(true);
+            expect(result.selectedTaskId).toBe('abc');
+        });
+
+        it('defaults to false in initial state', () => {
+            const state = makeState();
+            expect(state.isTaskSubmitting).toBe(false);
         });
     });
 });
