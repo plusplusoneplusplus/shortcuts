@@ -20,6 +20,27 @@ const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     failed:           { label: 'Failed',            badgeStatus: 'failed' },
 };
 
+/** Mirror of server-side VALID_TRANSITIONS so the UI can render the right buttons. */
+const VALID_TRANSITIONS: Record<string, string[]> = {
+    created:        ['planning', 'readyToExecute', 'done', 'failed'],
+    planning:       ['readyToExecute', 'created', 'done', 'failed'],
+    readyToExecute: ['executing', 'planning', 'done', 'failed'],
+    executing:      ['aiDone', 'failed', 'readyToExecute'],
+    aiDone:         ['readyToExecute', 'done', 'failed'],
+    done:           ['created'],
+    failed:         ['created'],
+};
+
+const TRANSITION_LABELS: Record<string, string> = {
+    planning:       '🔍 Start Planning',
+    readyToExecute: '✅ Mark Ready to Execute',
+    executing:      '▶ Start Executing',
+    aiDone:         '🤖 Mark AI Done',
+    done:           '✅ Mark Done',
+    failed:         '❌ Mark Failed',
+    created:        '🔄 Reopen',
+};
+
 interface WorkItemDetailProps {
     workItemId: string;
     workspaceId: string;
@@ -280,21 +301,24 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
 
                 {/* Status transitions */}
                 <section>
-                    <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Actions</h3>
-                    <div className="flex flex-wrap gap-1">
-                        {item.status === 'created' && (
-                            <Button variant="ghost" size="sm" onClick={() => handleStatusChange('planning')}>🔍 Start Planning</Button>
-                        )}
-                        {item.status === 'planning' && (
-                            <Button variant="ghost" size="sm" onClick={() => handleStatusChange('readyToExecute')}>✅ Mark Ready</Button>
-                        )}
-                        {item.status === 'readyToExecute' && (
-                            <Button variant="ghost" size="sm" onClick={() => handleStatusChange('planning')}>🔍 Back to Planning</Button>
-                        )}
-                        {(item.status === 'done' || item.status === 'failed') && (
-                            <Button variant="ghost" size="sm" onClick={() => handleStatusChange('created')}>🔄 Reopen</Button>
-                        )}
-                        <Button variant="ghost" size="sm" className="text-red-500" data-testid="work-item-delete-btn"
+                    <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-2">Change Status</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                        {(VALID_TRANSITIONS[item.status] ?? []).map(nextStatus => (
+                            <Button
+                                key={nextStatus}
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleStatusChange(nextStatus)}
+                                className={cn(
+                                    nextStatus === 'failed' && 'text-red-500 hover:text-red-600',
+                                    nextStatus === 'done' && 'text-green-600 dark:text-green-400',
+                                )}
+                                data-testid={`work-item-transition-${nextStatus}`}
+                            >
+                                {TRANSITION_LABELS[nextStatus] ?? nextStatus}
+                            </Button>
+                        ))}
+                        <Button variant="ghost" size="sm" className="text-red-500 ml-auto" data-testid="work-item-delete-btn"
                             onClick={async () => {
                                 if (confirm('Delete this work item?')) {
                                     await fetchApi(basePath, { method: 'DELETE' });
