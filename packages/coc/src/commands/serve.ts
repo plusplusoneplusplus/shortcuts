@@ -23,7 +23,7 @@ import {
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 import { FileProcessStore, setLogger, initAIServiceLogger } from '@plusplusoneplusplus/forge';
 import { resolveLoggingConfig, loadConfigFile } from '../config';
-import { setServerLogger } from '../server/server-logger';
+import { setServerLogger, getServerLogger } from '../server/server-logger';
 import type { ServeCommandOptions } from '../server/types';
 
 // ============================================================================
@@ -54,7 +54,7 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
     ));
     setLogger(pinoAdapterForPipelineCore(ai));
     setServerLogger(coc);
-    initAIServiceLogger(coc.child({ component: 'ai-service' }));
+    initAIServiceLogger(getServerLogger().child({ component: 'ai-service' }));
 
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });

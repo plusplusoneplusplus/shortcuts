@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import pino from 'pino';
 import { Writable } from 'stream';
 import { setServerLogger, getServerLogger, createRequestLogger, createWSLogger, createQueueLogger } from '../../src/server/server-logger';
+import { clearLogBuffer, getLogHistory } from '../../src/server/server-log-capture';
 
 // ============================================================================
 // Helper: in-memory log capture stream
@@ -116,6 +117,61 @@ describe('createRequestLogger / createWSLogger / createQueueLogger', () => {
         const parsed = lines().map(l => JSON.parse(l));
         expect(parsed[0].component).toBe('queue');
         expect(parsed[0].msg).toBe('queue-test');
+    });
+});
+
+describe('wrapped logger child → ring buffer (session log regression)', () => {
+    beforeEach(() => {
+        clearLogBuffer();
+    });
+
+    it('child logger with sessionId feeds entries into ring buffer', () => {
+        const { stream } = createCaptureStream();
+        setServerLogger(pino({ level: 'debug' }, stream));
+
+        const sessionChild = getServerLogger().child({ component: 'ai-service' }).child({ sessionId: 'sess-abc' });
+        sessionChild.info('session log message');
+
+        const history = getLogHistory({});
+        expect(history).toHaveLength(1);
+        expect(history[0].sessionId).toBe('sess-abc');
+        expect(history[0].component).toBe('ai-service');
+        expect(history[0].msg).toBe('session log message');
+    });
+
+    it('ring buffer entries are filterable by sessionId', () => {
+        const { stream } = createCaptureStream();
+        setServerLogger(pino({ level: 'debug' }, stream));
+
+        const wrapped = getServerLogger();
+        const sess1 = wrapped.child({ component: 'ai-service', sessionId: 'sess-1' });
+        const sess2 = wrapped.child({ component: 'ai-service', sessionId: 'sess-2' });
+        wrapped.child({ component: 'http' }).info('unrelated log');
+
+        sess1.info('message from session 1');
+        sess2.info('message from session 2');
+
+        const filtered = getLogHistory({ sessionId: 'sess-1' });
+        expect(filtered).toHaveLength(1);
+        expect(filtered[0].msg).toBe('message from session 1');
+    });
+
+    it('deeply nested child preserves sessionId through ring buffer', () => {
+        const { stream } = createCaptureStream();
+        setServerLogger(pino({ level: 'debug' }, stream));
+
+        const deep = getServerLogger()
+            .child({ component: 'ai-service' })
+            .child({ sessionId: 'deep-sess' })
+            .child({ requestId: 'req-42' });
+
+        deep.warn('nested warning');
+
+        const history = getLogHistory({ sessionId: 'deep-sess' });
+        expect(history).toHaveLength(1);
+        expect(history[0].level).toBe('warn');
+        expect(history[0].sessionId).toBe('deep-sess');
+        expect(history[0].component).toBe('ai-service');
     });
 });
 
