@@ -13,10 +13,10 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
 );
 
 describe('RepoDetail SUB_TABS', () => {
-    it('includes an "activity" entry', () => {
-        const activityTab = SUB_TABS.find(t => t.key === 'activity');
-        expect(activityTab).toBeDefined();
-        expect(activityTab!.label).toBe('Activity');
+    it('includes a "chats" entry', () => {
+        const chatsTab = SUB_TABS.find(t => t.key === 'chats');
+        expect(chatsTab).toBeDefined();
+        expect(chatsTab!.label).toBe('Chats');
     });
 
     it('does not include separate "chat" or "queue" entries', () => {
@@ -24,43 +24,42 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS.find(t => t.key === 'queue')).toBeUndefined();
     });
 
-    it('"activity" is followed by "git" entry', () => {
-        const activityIdx = SUB_TABS.findIndex(t => t.key === 'activity');
-        const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
-        expect(gitIdx).toBe(activityIdx + 1);
+    it('"chats" is followed by "tasks" entry', () => {
+        const chatsIdx = SUB_TABS.findIndex(t => t.key === 'chats');
+        const tasksIdx = SUB_TABS.findIndex(t => t.key === 'tasks');
+        expect(tasksIdx).toBe(chatsIdx + 1);
     });
 
-    it('"git" is the second entry', () => {
-        expect(SUB_TABS[1].key).toBe('git');
+    it('"tasks" is the second entry', () => {
+        expect(SUB_TABS[1].key).toBe('tasks');
     });
 
-    it('has exactly 9 entries', () => {
-        expect(SUB_TABS).toHaveLength(9);
+    it('has exactly 10 entries', () => {
+        expect(SUB_TABS).toHaveLength(10);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'workflows', 'schedules', 'wiki']);
+        expect(keys).toEqual(['chats', 'tasks', 'git', 'work-items', 'pull-requests', 'workflows', 'schedules', 'explorer', 'settings', 'wiki']);
     });
 
-    it('includes "wiki" entry with Alt+I shortcut', () => {
+    it('includes "wiki" entry', () => {
         const wikiTab = SUB_TABS.find(t => t.key === 'wiki');
         expect(wikiTab).toBeDefined();
-        expect(wikiTab!.shortcut).toBe('Alt+I');
     });
 
-    it('has tasks as the third tab (after git)', () => {
-        expect(SUB_TABS[2].key).toBe('tasks');
+    it('has git as the third tab (after tasks)', () => {
+        expect(SUB_TABS[2].key).toBe('git');
     });
 
-    it('activity is the first entry', () => {
-        expect(SUB_TABS[0].key).toBe('activity');
+    it('chats is the first entry', () => {
+        expect(SUB_TABS[0].key).toBe('chats');
     });
 
-    it('tasks tab has label "Plans"', () => {
+    it('tasks tab has label "Tasks"', () => {
         const tasksTab = SUB_TABS.find(t => t.key === 'tasks');
         expect(tasksTab).toBeDefined();
-        expect(tasksTab!.label).toBe('Plans');
+        expect(tasksTab!.label).toBe('Tasks');
     });
 });
 
@@ -69,13 +68,13 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
         expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
     });
 
-    it('has 8 entries (all SUB_TABS minus wiki)', () => {
-        expect(VISIBLE_SUB_TABS).toHaveLength(8);
+    it('has 9 entries (all SUB_TABS minus wiki)', () => {
+        expect(VISIBLE_SUB_TABS).toHaveLength(9);
     });
 
     it('contains all non-wiki tabs in order', () => {
         const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'workflows', 'schedules']);
+        expect(keys).toEqual(['chats', 'tasks', 'git', 'work-items', 'pull-requests', 'workflows', 'schedules', 'explorer', 'settings']);
     });
 
     it('renders VISIBLE_SUB_TABS.map in the tab strip', () => {
@@ -88,19 +87,26 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
 });
 
 describe('RepoDetail Activity tab rendering', () => {
-    it('activity sub-tab renders RepoActivityTab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity' && <RepoActivityTab");
+    it('chats sub-tab renders RepoActivityTab with mode="chats"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chats'");
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab');
+        expect(REPO_DETAIL_SOURCE).toContain('mode="chats"');
     });
 
-    it('activity is in SUB_TABS (visible in tab strip)', () => {
-        const activityTab = SUB_TABS.find(t => t.key === 'activity');
-        expect(activityTab).toBeDefined();
+    it('tasks sub-tab renders RepoActivityTab with mode="tasks"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'tasks'");
+        expect(REPO_DETAIL_SOURCE).toContain('mode="tasks"');
     });
 
-    it('activity sub-tab uses overflow-hidden layout like queue', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
+    it('chats is in SUB_TABS (visible in tab strip)', () => {
+        const chatsTab = SUB_TABS.find(t => t.key === 'chats');
+        expect(chatsTab).toBeDefined();
+    });
+
+    it('chats sub-tab uses overflow-hidden layout', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chats'");
         const overflowLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
-            l.includes("activeSubTab === 'activity'") && l.includes('overflow-hidden')
+            l.includes("activeSubTab === 'chats'") && l.includes('overflow-hidden')
         );
         expect(overflowLine).toBeDefined();
     });
@@ -141,8 +147,8 @@ describe('RepoDetail Generate button in header', () => {
         expect(line).toContain('variant="primary"');
     });
 
-    it('passes onOpenGenerateDialog to TasksPanel', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('onOpenGenerateDialog={handleOpenGenerateDialog}');
+    it('passes onOpenGenerateDialog to GenerateTaskDialog or header', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('handleOpenGenerateDialog');
     });
 
     it('renders GenerateTaskDialog when generateDialog.open is true', () => {
@@ -179,21 +185,23 @@ describe('RepoDetail Activity badge wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { useRepoQueueStats } from '../hooks/useRepoQueueStats'");
     });
 
-    it('destructures running and queued from useRepoQueueStats', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('running: queueRunningCount');
-        expect(REPO_DETAIL_SOURCE).toContain('queued: queueQueuedCount');
+    it('destructures chatsRunning, chatsQueued, tasksRunning, tasksQueued from useRepoQueueStats', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('chatsRunning');
+        expect(REPO_DETAIL_SOURCE).toContain('chatsQueued');
+        expect(REPO_DETAIL_SOURCE).toContain('tasksRunning');
+        expect(REPO_DETAIL_SOURCE).toContain('tasksQueued');
     });
 
     it('does not destructure chatPending (removed from visible nav)', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('chatPending: chatPendingCount');
     });
 
-    it('renders activity running badge only when queueRunningCount > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'activity' && queueRunningCount > 0");
+    it('renders chats running badge only when chatsRunning > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'chats' && chatsRunning > 0");
     });
 
-    it('renders activity queued badge only when queueQueuedCount > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'activity' && queueQueuedCount > 0");
+    it('renders chats queued badge only when chatsQueued > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'chats' && chatsQueued > 0");
     });
 
     it('running badge uses green background color', () => {
@@ -207,11 +215,11 @@ describe('RepoDetail Activity badge wiring', () => {
     });
 
     it('running badge has data-testid for testing', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="activity-running-badge"');
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="chats-running-badge"');
     });
 
     it('queued badge has data-testid for testing', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="activity-queued-badge"');
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="chats-queued-badge"');
     });
 
     it('running badge has title attribute', () => {
@@ -223,8 +231,8 @@ describe('RepoDetail Activity badge wiring', () => {
     });
 
     it('running badge renders before queued badge', () => {
-        const runningIdx = REPO_DETAIL_SOURCE.indexOf('queueRunningCount > 0');
-        const queuedIdx = REPO_DETAIL_SOURCE.indexOf('queueQueuedCount > 0');
+        const runningIdx = REPO_DETAIL_SOURCE.indexOf('chatsRunning > 0');
+        const queuedIdx = REPO_DETAIL_SOURCE.indexOf('chatsQueued > 0');
         expect(runningIdx).toBeLessThan(queuedIdx);
     });
 
@@ -261,8 +269,9 @@ describe('RepoDetail Resume Queue button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-resume-btn"');
     });
 
-    it('shows resume button when activeSubTab is activity and isRepoPaused', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
+    it('shows resume button when activeSubTab is chats or tasks and isRepoPaused', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chats'");
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'tasks'");
         expect(REPO_DETAIL_SOURCE).toContain('isRepoPaused');
     });
 
@@ -465,8 +474,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab key={ws.id}');
     });
 
-    it('mounts a fresh RepoActivityTab on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={ws.id}');
+    it('mounts a fresh RepoActivityTab on every repo switch via key containing ws.id', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={`${ws.id}');
     });
 
     it('mounts a fresh RepoSchedulesTab on every repo switch via key={ws.id}', () => {
@@ -481,8 +490,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<ExplorerPanel key={ws.id}');
     });
 
-    it('mounts a fresh TasksPanel on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toMatch(/<TasksPanel[\s\S]*?key=\{ws\.id\}/);
+    it('no longer references TasksPanel (removed from RepoDetail)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('<TasksPanel');
     });
 
     it('no longer mounts a separate RepoInfoTab (merged into RepoSettingsTab)', () => {

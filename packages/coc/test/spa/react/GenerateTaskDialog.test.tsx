@@ -227,8 +227,8 @@ describe('GenerateTaskDialog', () => {
             );
         });
 
-        // activeRepoSubTab should remain at its initial value ('settings'), not 'queue'
-        expect(capturedTab).toBe('settings');
+        // activeRepoSubTab should remain at its initial value ('chats'), not 'queue'
+        expect(capturedTab).toBe('chats');
     });
 
     it('error state shows error message and Retry button', async () => {

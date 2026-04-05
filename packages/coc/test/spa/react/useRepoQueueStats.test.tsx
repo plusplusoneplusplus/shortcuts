@@ -21,7 +21,7 @@ function Wrap({ children }: { children: ReactNode }) {
 describe('useRepoQueueStats', () => {
     it('returns zeros when no queue data exists for workspace', () => {
         const { result } = renderHook(() => useRepoQueueStats('nonexistent'), { wrapper: Wrap });
-        expect(result.current).toEqual({ running: 0, queued: 0 });
+        expect(result.current).toEqual({ running: 0, queued: 0, chatsRunning: 0, chatsQueued: 0, tasksRunning: 0, tasksQueued: 0 });
     });
 
     it('counts all visible tasks (including chat) in running/queued', () => {
@@ -45,7 +45,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 2, queued: 1 });
+        expect(hookResult).toEqual({ running: 2, queued: 1, chatsRunning: 2, chatsQueued: 0, tasksRunning: 0, tasksQueued: 1 });
     });
 
     it('includes chat tasks in running/queued counts', () => {
@@ -75,7 +75,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 2, queued: 3 });
+        expect(hookResult).toEqual({ running: 2, queued: 3, chatsRunning: 1, chatsQueued: 2, tasksRunning: 1, tasksQueued: 1 });
     });
 
     it('returns all zeros when only empty arrays are provided', () => {
@@ -98,7 +98,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0 });
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatsRunning: 0, chatsQueued: 0, tasksRunning: 0, tasksQueued: 0 });
     });
 
     it('returns zeros for different workspace id', () => {
@@ -122,7 +122,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0 });
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatsRunning: 0, chatsQueued: 0, tasksRunning: 0, tasksQueued: 0 });
     });
 
     it('counts tasks without type as non-chat', () => {
@@ -145,7 +145,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatsRunning: 0, chatsQueued: 0, tasksRunning: 1, tasksQueued: 1 });
     });
 
     it('excludes chat follow-up tasks from running/queued badge counts', () => {
@@ -172,7 +172,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 2, queued: 1 });
+        expect(hookResult).toEqual({ running: 2, queued: 1, chatsRunning: 2, chatsQueued: 0, tasksRunning: 0, tasksQueued: 1 });
     });
 
     it('excludes chat follow-up from queued badge count', () => {
@@ -198,7 +198,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 1 });
+        expect(hookResult).toEqual({ running: 0, queued: 1, chatsRunning: 0, chatsQueued: 0, tasksRunning: 0, tasksQueued: 1 });
     });
 
     it('re-activated parent chat task is counted in running badge', () => {

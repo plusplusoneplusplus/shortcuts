@@ -22,9 +22,10 @@ import { useNotifications } from '../context/NotificationContext';
 
 export interface RepoActivityTabProps {
     workspaceId: string;
+    mode?: 'chats' | 'tasks';
 }
 
-export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
+export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
     const [history, setHistory] = useState<any[]>([]);
@@ -32,7 +33,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<ActivityTabMode>('chats');
+    const activeTab: ActivityTabMode = mode ?? 'chats';
     const [isAutopilotPaused, setIsAutopilotPaused] = useState(false);
     const [isAutopilotPauseLoading, setIsAutopilotPauseLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -253,7 +254,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             now={now}
             workspaceId={workspaceId}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={() => {}}
             unseenTaskIds={unseenTaskIds}
             onMarkAllRead={markTasksSeen}
             onMarkRead={markSeen}

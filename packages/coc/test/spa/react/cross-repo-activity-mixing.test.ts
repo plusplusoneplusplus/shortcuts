@@ -77,8 +77,8 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
 // ════════════════════════════════════════════════════════════════════════
 
 describe('Fix 1: key={ws.id} on workspace-dependent tab components', () => {
-    it('RepoActivityTab has key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={ws.id}');
+    it('RepoActivityTab has key containing ws.id', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={`${ws.id}');
     });
 
     it('RepoSchedulesTab has key={ws.id}', () => {

@@ -11,14 +11,14 @@ const ALL_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'info', label: 'Info' },
     { key: 'git', label: 'Git' },
     { key: 'explorer', label: 'Explorer' },
-    { key: 'tasks', label: 'Plans' },
-    { key: 'activity', label: 'Activity' },
+    { key: 'chats', label: 'Chats' },
+    { key: 'tasks', label: 'Tasks' },
     { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'copilot', label: 'Copilot' },
 ];
 
-const DEFAULT_PINNED: RepoSubTab[] = ['tasks', 'activity', 'git'];
+const DEFAULT_PINNED: RepoSubTab[] = ['chats', 'tasks', 'git'];
 
 function renderBar(overrides: Partial<Parameters<typeof MobileTabBar>[0]> = {}) {
     const onTabChange = overrides.onTabChange ?? vi.fn();
@@ -41,11 +41,11 @@ describe('MobileTabBar: basic render', () => {
         expect(screen.getByTestId('mobile-tab-bar')).toBeTruthy();
     });
 
-    it('renders pinned tabs by default (Plans, Activity, Git)', () => {
+    it('renders pinned tabs by default (Chats, Tasks, Git)', () => {
         renderBar();
         const nav = screen.getByTestId('mobile-tab-bar');
+        expect(nav.querySelector('[data-tab="chats"]')).toBeTruthy();
         expect(nav.querySelector('[data-tab="tasks"]')).toBeTruthy();
-        expect(nav.querySelector('[data-tab="activity"]')).toBeTruthy();
         expect(nav.querySelector('[data-tab="git"]')).toBeTruthy();
     });
 
@@ -99,25 +99,25 @@ describe('MobileTabBar: active tab highlighting', () => {
     });
 
     it('inactive pinned tabs are gray', () => {
-        renderBar({ activeTab: 'tasks' });
+        renderBar({ activeTab: 'chats' });
         const nav = screen.getByTestId('mobile-tab-bar');
-        const activityBtn = nav.querySelector('[data-tab="activity"]') as HTMLElement;
-        expect(activityBtn.className).not.toContain('text-[#0078d4]');
-        expect(activityBtn.className).toContain('text-[#616161]');
+        const tasksBtn = nav.querySelector('[data-tab="tasks"]') as HTMLElement;
+        expect(tasksBtn.className).not.toContain('text-[#0078d4]');
+        expect(tasksBtn.className).toContain('text-[#616161]');
     });
 
     it('sets aria-current="page" on active pinned tab', () => {
-        renderBar({ activeTab: 'activity' });
+        renderBar({ activeTab: 'chats' });
         const nav = screen.getByTestId('mobile-tab-bar');
-        const activityBtn = nav.querySelector('[data-tab="activity"]') as HTMLElement;
-        expect(activityBtn.getAttribute('aria-current')).toBe('page');
+        const chatsBtn = nav.querySelector('[data-tab="chats"]') as HTMLElement;
+        expect(chatsBtn.getAttribute('aria-current')).toBe('page');
     });
 
     it('does not set aria-current on inactive tabs', () => {
-        renderBar({ activeTab: 'tasks' });
+        renderBar({ activeTab: 'chats' });
         const nav = screen.getByTestId('mobile-tab-bar');
-        const activityBtn = nav.querySelector('[data-tab="activity"]') as HTMLElement;
-        expect(activityBtn.getAttribute('aria-current')).toBeNull();
+        const tasksBtn = nav.querySelector('[data-tab="tasks"]') as HTMLElement;
+        expect(tasksBtn.getAttribute('aria-current')).toBeNull();
     });
 
     it('More button is highlighted when active tab is a "more" tab', () => {
@@ -127,7 +127,7 @@ describe('MobileTabBar: active tab highlighting', () => {
     });
 
     it('More button is gray when active tab is a pinned tab', () => {
-        renderBar({ activeTab: 'activity' });
+        renderBar({ activeTab: 'chats' });
         const moreBtn = screen.getByTestId('mobile-tab-more-btn');
         expect(moreBtn.className).not.toContain('text-[#0078d4]');
     });
@@ -136,10 +136,10 @@ describe('MobileTabBar: active tab highlighting', () => {
 describe('MobileTabBar: tab switching', () => {
     it('calls onTabChange when a pinned tab is clicked', () => {
         const onTabChange = vi.fn();
-        renderBar({ onTabChange, activeTab: 'tasks' });
-        const activityBtn = screen.getByTestId('mobile-tab-bar').querySelector('[data-tab="activity"]') as HTMLElement;
-        fireEvent.click(activityBtn);
-        expect(onTabChange).toHaveBeenCalledWith('activity');
+        renderBar({ onTabChange, activeTab: 'chats' });
+        const tasksBtn = screen.getByTestId('mobile-tab-bar').querySelector('[data-tab="tasks"]') as HTMLElement;
+        fireEvent.click(tasksBtn);
+        expect(onTabChange).toHaveBeenCalledWith('tasks');
     });
 
     it('calls onTabChange for git tab', () => {
@@ -180,8 +180,8 @@ describe('MobileTabBar: More sheet', () => {
     it('pinned tabs are NOT in the more sheet', () => {
         renderBar();
         fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
+        expect(screen.queryByTestId('mobile-tab-more-item-chats')).toBeNull();
         expect(screen.queryByTestId('mobile-tab-more-item-tasks')).toBeNull();
-        expect(screen.queryByTestId('mobile-tab-more-item-activity')).toBeNull();
         expect(screen.queryByTestId('mobile-tab-more-item-git')).toBeNull();
     });
 
@@ -249,21 +249,21 @@ describe('MobileTabBar: badge display', () => {
         expect(screen.queryByTestId('mobile-tab-badge-tasks')).toBeNull();
     });
 
-    it('shows activity badge when activityCount > 0', () => {
+    it('shows chats badge when activityCount > 0', () => {
         renderBar({ activityCount: 5 });
-        expect(screen.getByTestId('mobile-tab-badge-activity')).toBeTruthy();
-        expect(screen.getByTestId('mobile-tab-badge-activity').textContent).toBe('5');
+        expect(screen.getByTestId('mobile-tab-badge-chats')).toBeTruthy();
+        expect(screen.getByTestId('mobile-tab-badge-chats').textContent).toBe('5');
     });
 
-    it('hides activity badge when activityCount is 0', () => {
+    it('hides chats badge when activityCount is 0', () => {
         renderBar({ activityCount: 0 });
-        expect(screen.queryByTestId('mobile-tab-badge-activity')).toBeNull();
+        expect(screen.queryByTestId('mobile-tab-badge-chats')).toBeNull();
     });
 
     it('multiple badges can appear simultaneously', () => {
         renderBar({ taskCount: 5, activityCount: 3 });
         expect(screen.getByTestId('mobile-tab-badge-tasks').textContent).toBe('5');
-        expect(screen.getByTestId('mobile-tab-badge-activity').textContent).toBe('3');
+        expect(screen.getByTestId('mobile-tab-badge-chats').textContent).toBe('3');
     });
 
     it('shows git badge when gitPendingCount > 0', () => {
@@ -285,13 +285,13 @@ describe('MobileTabBar: custom pinned tabs', () => {
         expect(nav.querySelector('[data-tab="info"]')).toBeTruthy();
         expect(nav.querySelector('[data-tab="git"]')).toBeTruthy();
         expect(nav.querySelector('[data-tab="tasks"]')).toBeTruthy();
-        expect(nav.querySelector('[data-tab="activity"]')).toBeNull();
+        expect(nav.querySelector('[data-tab="chats"]')).toBeNull();
     });
 
     it('more sheet shows non-pinned tabs when custom pinnedTabs provided', () => {
         renderBar({ pinnedTabs: ['info', 'git', 'tasks'], activeTab: 'info' });
         fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
-        expect(screen.getByTestId('mobile-tab-more-item-activity')).toBeTruthy();
+        expect(screen.getByTestId('mobile-tab-more-item-chats')).toBeTruthy();
         expect(screen.queryByTestId('mobile-tab-more-item-info')).toBeNull();
     });
 });

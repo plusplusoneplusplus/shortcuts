@@ -545,8 +545,11 @@ describe('RepoDetail: wires RepoActivityTab for activity sub-tab', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { RepoActivityTab } from './RepoActivityTab'");
     });
 
-    it('renders RepoActivityTab for activity sub-tab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity' && <RepoActivityTab");
+    it('renders RepoActivityTab for chats and tasks sub-tabs', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chats'");
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'tasks'");
+        expect(REPO_DETAIL_SOURCE).toContain('mode="chats"');
+        expect(REPO_DETAIL_SOURCE).toContain('mode="tasks"');
     });
 
     it('does not render RepoQueueTab (removed in Activity migration)', () => {
@@ -578,7 +581,7 @@ describe('RepoActivityTab: mobile layout', () => {
     });
 
     it('passes onBack to ActivityDetailPane on mobile', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain('onBack={() => setMobileShowDetail(false)}');
+        expect(ACTIVITY_TAB_SOURCE).toContain('onBack={() => { setMobileShowDetail(false); }}');
     });
 
     it('resets mobileShowDetail when selection is cleared', () => {

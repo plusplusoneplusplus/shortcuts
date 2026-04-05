@@ -249,7 +249,7 @@ describe('RepoDetail mobile: MobileTabBar integration', () => {
     });
 
     it('passes badge counts to MobileTabBar', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('taskCount={taskCount}');
+        expect(REPO_DETAIL_SOURCE).toContain('taskCount={tasksRunning + tasksQueued}');
         expect(REPO_DETAIL_SOURCE).toContain('activityCount={');
     });
 

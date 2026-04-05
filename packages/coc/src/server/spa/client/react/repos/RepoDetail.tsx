@@ -11,7 +11,7 @@ import { BottomSheet } from '../shared/BottomSheet';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { WorkflowsTab } from './WorkflowsTab';
-import { TasksPanel } from '../tasks/TasksPanel';
+
 import { RepoActivityTab } from './RepoActivityTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { RepoGitTab } from './RepoGitTab';
@@ -40,14 +40,15 @@ interface RepoDetailProps {
 }
 
 export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
-    { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
+    { key: 'chats', label: 'Chats', shortcut: 'Alt+A' },
+    { key: 'tasks', label: 'Tasks', shortcut: 'Alt+T' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
-    { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
-    { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
+    { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
+    { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
     { key: 'wiki', label: 'Wiki', shortcut: 'Alt+I' },
 ];
 
@@ -85,8 +86,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
-    const taskCount = repo.taskCount || 0;
-    const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(ws.id);
+    const { chatsRunning, chatsQueued, tasksRunning, tasksQueued } = useRepoQueueStats(ws.id);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
 
     const repoWikis = useMemo(() =>
@@ -235,7 +235,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         </div>
                         {/* Action buttons */}
                         <div className="flex items-center gap-2 flex-shrink-0">
-                            {activeSubTab === 'activity' && isRepoPaused && (
+                            {(activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused && (
                                 <Button
                                     variant="secondary"
                                     size="sm"
@@ -349,14 +349,17 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                             {gitBehind > 0 && <span data-testid="git-behind-count">↓{gitBehind}</span>}
                                         </span>
                                     )}
-                                    {t.key === 'tasks' && taskCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
+                                    {t.key === 'chats' && chatsRunning > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="chats-running-badge" title="Running">{chatsRunning}</span>
                                     )}
-                                    {t.key === 'activity' && queueRunningCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
+                                    {t.key === 'chats' && chatsQueued > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="chats-queued-badge" title="Queued">{chatsQueued}</span>
                                     )}
-                                    {t.key === 'activity' && queueQueuedCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
+                                    {t.key === 'tasks' && tasksRunning > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="tasks-running-badge" title="Running">{tasksRunning}</span>
+                                    )}
+                                    {t.key === 'tasks' && tasksQueued > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="tasks-queued-badge" title="Queued">{tasksQueued}</span>
                                     )}
                                     {t.key === 'wiki' && wikiGeneratingCount > 0 && (
                                         <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
@@ -379,7 +382,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-2 my-1 flex-shrink-0" data-testid="repo-header-splitter" />
                         {/* Action buttons */}
                         <div className="flex items-center gap-2 flex-shrink-0">
-                            {activeSubTab === 'activity' && isRepoPaused && (
+                            {(activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused && (
                                 <Button
                                     variant="secondary"
                                     size="sm"
@@ -445,29 +448,21 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     activeTab={activeSubTab}
                     onTabChange={switchSubTab}
                     tabs={VISIBLE_SUB_TABS}
-                    taskCount={taskCount}
-                    activityCount={queueRunningCount + queueQueuedCount}
+                    taskCount={tasksRunning + tasksQueued}
+                    activityCount={chatsRunning + chatsQueued + tasksRunning + tasksQueued}
                 />
             )}
 
             {/* Sub-tab content */}
-            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'tasks' && activeSubTab !== 'work-items' && "pb-12")}>
-                {activeSubTab === 'tasks' ? (
-                    <TasksPanel
-                        key={ws.id}
-                        wsId={ws.id}
-                        repos={repos}
-                        onOpenGenerateDialog={handleOpenGenerateDialog}
-                        initialNavState={state.repoSubTabNavState[`${ws.id}::tasks`]}
-                        onNavStateChange={(navState) => dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState })}
-                    />
-                ) : activeSubTab === 'work-items' ? (
+            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'work-items' && "pb-12")}>
+                {activeSubTab === 'work-items' ? (
                     <WorkItemsTab key={ws.id} workspaceId={ws.id} />
                 ) : (
-                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'chats' || activeSubTab === 'tasks' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <WorkflowsTab key={ws.id} repo={repo} />}
-                        {activeSubTab === 'activity' && <RepoActivityTab key={ws.id} workspaceId={ws.id} />}
+                        {activeSubTab === 'chats' && <RepoActivityTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />}
+                        {activeSubTab === 'tasks' && <RepoActivityTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
