@@ -2,6 +2,16 @@
 
 A standalone Node.js CLI for executing YAML-based AI pipelines outside VS Code.
 
+## Prerequisites
+
+- Node.js ≥ 24
+- [GitHub Copilot](https://github.com/features/copilot) subscription
+
+CoC depends on `@github/copilot-sdk` → `@github/copilot` for AI features. Both
+are installed automatically as npm dependencies. You must authenticate with the
+Copilot CLI (`copilot` → `/login`) before using AI features — see the
+[root README](../../README.md#prerequisites--setup) for setup instructions.
+
 ## Installation
 
 ```bash

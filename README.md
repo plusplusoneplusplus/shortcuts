@@ -85,17 +85,42 @@ Multiple repositories and multiple clones of a single remote — without Git wor
 
 Zero dependency on an editor. CoC runs as a standalone server with a mobile-responsive dashboard. Monitor queues, review diffs, and orchestrate agents from anywhere.
 
-## Getting Started
+## Prerequisites & Setup
 
-```bash
-# Install CoC CLI
-npm install -g @plusplusoneplusplus/coc
+### Requirements
 
-# Start the dashboard
-coc serve
-```
+- **Node.js ≥ 24** — [download](https://nodejs.org/)
+- **GitHub Copilot subscription** — [sign up](https://github.com/features/copilot)
+
+### How it works
+
+CoC uses `@github/copilot-sdk` (which wraps the `@github/copilot` CLI package)
+for all AI features. When you `npm install -g @plusplusoneplusplus/coc`, the SDK
+and CLI are pulled as transitive npm dependencies — no separate binary install is
+needed.
+
+### Quick setup
+
+1. Install CoC:
+   ```bash
+   npm install -g @plusplusoneplusplus/coc
+   ```
+
+2. Authenticate with the Copilot CLI:
+   ```bash
+   copilot        # launches the Copilot CLI REPL
+   /login         # type this inside the REPL, then follow the prompts
+   ```
+
+3. Start the dashboard:
+   ```bash
+   coc serve
+   ```
 
 **Configuration:** `~/.coc/config.yaml` — CLI flags override config file values.
+
+> **Troubleshooting:** If you see exit code 3 ("AI unavailable"), run `copilot`
+> and use `/login` to verify your authentication.
 
 ## Monorepo Packages
 
@@ -104,11 +129,6 @@ coc serve
 | [`coc`](packages/coc/) | CLI + dashboard for YAML AI workflows | [`@plusplusoneplusplus/coc`](https://www.npmjs.com/package/@plusplusoneplusplus/coc) |
 | [`forge`](packages/forge/) | Core AI engine: SDK wrapper, DAG workflow engine, task queue, process store, git CLI, utilities | [`@plusplusoneplusplus/forge`](https://www.npmjs.com/package/@plusplusoneplusplus/forge) |
 | [`deep-wiki`](packages/deep-wiki/) | Auto-generates comprehensive wikis for any codebase | [`@plusplusoneplusplus/deep-wiki`](https://www.npmjs.com/package/@plusplusoneplusplus/deep-wiki) |
-
-## Requirements
-
-- Node.js ≥ 24
-- [GitHub Copilot](https://github.com/features/copilot) subscription (for AI features via `copilot-sdk`)
 
 ## Links
 
