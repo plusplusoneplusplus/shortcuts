@@ -6,7 +6,8 @@
  * transitions the work item to 'executing', and tracks the result.
  */
 
-import type { WorkItemStore, WorkItem, WorkItemExecution } from './types';
+import * as crypto from 'crypto';
+import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange } from './types';
 import { isValidTransition } from './types';
 
 export interface ExecuteWorkItemOptions {
@@ -14,6 +15,8 @@ export interface ExecuteWorkItemOptions {
     model?: string;
     /** Chat mode for execution (default: 'autopilot'). */
     mode?: 'ask' | 'plan' | 'autopilot';
+    /** Git HEAD SHA captured immediately before execution enqueued. */
+    headBefore?: string;
 }
 
 export interface EnqueueFunction {
@@ -102,6 +105,30 @@ export async function executeWorkItem(
     };
     await store.addExecution(workItemId, execution);
 
+    // Open or reuse a Change entry for this execution cycle
+    const existingChanges = await store.getChanges(workItemId);
+    const openChange = existingChanges.find(
+        c => c.planVersion === (item.plan?.version ?? 0) && c.status === 'open' && !c.taskId,
+    );
+    if (openChange) {
+        await store.updateChange(workItemId, openChange.id, {
+            taskId,
+            startedAt: execution.startedAt,
+            ...(options?.headBefore !== undefined ? { headBefore: options.headBefore } : {}),
+        });
+    } else {
+        const change: WorkItemChange = {
+            id: crypto.randomUUID(),
+            planVersion: item.plan?.version ?? 0,
+            commits: [],
+            startedAt: execution.startedAt,
+            status: 'open',
+            taskId,
+            ...(options?.headBefore !== undefined ? { headBefore: options.headBefore } : {}),
+        };
+        await store.addChange(workItemId, change);
+    }
+
     // Transition to executing
     await store.updateWorkItem(workItemId, { status: 'executing' });
 
@@ -145,4 +172,16 @@ export async function handleWorkItemTaskComplete(
         ...(completedAt ? { completedAt } : {}),
         processId: result.processId,
     });
+
+    // Close the open Change for this taskId
+    try {
+        const changes = await store.getChanges(workItemId);
+        const openChange = changes.find(c => c.taskId === taskId && c.status === 'open');
+        if (openChange) {
+            await store.updateChange(workItemId, openChange.id, {
+                completedAt: new Date().toISOString(),
+                status: 'closed',
+            });
+        }
+    } catch { /* non-fatal */ }
 }

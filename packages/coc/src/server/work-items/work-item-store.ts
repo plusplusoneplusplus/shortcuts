@@ -21,6 +21,7 @@ import type {
     WorkItemFilter,
     WorkItemPlanVersion,
     WorkItemExecution,
+    WorkItemChange,
     WorkItemStore,
     WorkItemStatus,
 } from './types';
@@ -307,6 +308,41 @@ export class FileWorkItemStore implements WorkItemStore {
 
             await this.writeItem(repoId, item);
         });
+    }
+
+    // ── Change tracking ─────────────────────────────────────────────
+
+    async addChange(workItemId: string, change: WorkItemChange): Promise<void> {
+        return this.enqueueWrite(async () => {
+            const repoId = await this.findRepoForItem(workItemId);
+            if (!repoId) return;
+            const item = await this.readItem(repoId, workItemId);
+            if (!item) return;
+            item.changes = [...(item.changes ?? []), change];
+            item.updatedAt = new Date().toISOString();
+            await this.writeItem(repoId, item);
+        });
+    }
+
+    async updateChange(workItemId: string, changeId: string, updates: Partial<WorkItemChange>): Promise<void> {
+        return this.enqueueWrite(async () => {
+            const repoId = await this.findRepoForItem(workItemId);
+            if (!repoId) return;
+            const item = await this.readItem(repoId, workItemId);
+            if (!item?.changes) return;
+            const idx = item.changes.findIndex(c => c.id === changeId);
+            if (idx === -1) return;
+            item.changes[idx] = { ...item.changes[idx], ...updates };
+            item.updatedAt = new Date().toISOString();
+            await this.writeItem(repoId, item);
+        });
+    }
+
+    async getChanges(workItemId: string): Promise<WorkItemChange[]> {
+        const repoId = await this.findRepoForItem(workItemId);
+        if (!repoId) return [];
+        const item = await this.readItem(repoId, workItemId);
+        return item?.changes ?? [];
     }
 
     // ── Internal helpers ────────────────────────────────────────
