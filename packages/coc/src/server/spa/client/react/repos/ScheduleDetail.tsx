@@ -4,6 +4,7 @@ import { StatusBadge, failureLabel } from './ScheduleStatusBadge';
 import { RunHistoryList } from './RunHistoryList';
 import type { Schedule, RunRecord } from './scheduleTypes';
 import { CreateScheduleForm } from './CreateScheduleForm';
+import { useState, useCallback } from 'react';
 
 export interface ScheduleDetailProps {
     schedule: Schedule;
@@ -22,6 +23,14 @@ export interface ScheduleDetailProps {
 export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved }: ScheduleDetailProps) {
     const targetBasename = schedule.target.split(/[/\\]/).pop() ?? schedule.target;
     const paramEntries = Object.entries(schedule.params ?? {});
+    const [showCommitReminder, setShowCommitReminder] = useState(false);
+
+    const handleSaved = useCallback(() => {
+        if (schedule.source === 'repo') {
+            setShowCommitReminder(true);
+        }
+        onSaved();
+    }, [schedule.source, onSaved]);
 
     return (
         <div className="flex flex-col gap-0" data-testid="schedule-detail">
@@ -41,7 +50,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                         model: schedule.model,
                         chatMode: schedule.mode ?? 'autopilot',
                     }}
-                    onCreated={onSaved}
+                    onCreated={handleSaved}
                     onCancel={onCancelEdit}
                 />
             ) : (
@@ -100,38 +109,55 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                         >
                             {schedule.status === 'active' ? '⏸ Pause' : '▶ Resume'}
                         </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={schedule.isRunning}
+                            onClick={() => onEdit(schedule.id)}
+                            aria-label="Edit schedule"
+                            data-testid="edit-btn"
+                        >
+                            ✏ Edit
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onDuplicate(schedule)}
+                            aria-label="Duplicate schedule"
+                            data-testid="duplicate-btn"
+                        >
+                            ⧉ Duplicate
+                        </Button>
                         {schedule.source !== 'repo' && (
-                            <>
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    disabled={schedule.isRunning}
-                                    onClick={() => onEdit(schedule.id)}
-                                    aria-label="Edit schedule"
-                                    data-testid="edit-btn"
-                                >
-                                    ✏ Edit
-                                </Button>
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => onDuplicate(schedule)}
-                                    aria-label="Duplicate schedule"
-                                    data-testid="duplicate-btn"
-                                >
-                                    ⧉ Duplicate
-                                </Button>
-                                <Button
-                                    variant="danger"
-                                    size="sm"
-                                    onClick={() => onDelete(schedule.id)}
-                                    aria-label="Delete schedule"
-                                >
-                                    🗑 Delete
-                                </Button>
-                            </>
+                            <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => onDelete(schedule.id)}
+                                aria-label="Delete schedule"
+                            >
+                                🗑 Delete
+                            </Button>
                         )}
                     </div>
+
+                    {/* ── Commit reminder for repo schedule edits ──────────── */}
+                    {showCommitReminder && (
+                        <div
+                            className="mx-3 mt-2 px-3 py-2 rounded text-xs bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 flex items-start gap-2"
+                            data-testid="commit-reminder"
+                        >
+                            <span className="flex-1">
+                                Schedule updated. Changes saved to <code className="font-mono">.github/schedules/</code> — commit to share with your team.
+                            </span>
+                            <button
+                                className="text-teal-500 hover:text-teal-700 dark:hover:text-teal-200 font-bold leading-none flex-shrink-0"
+                                onClick={() => setShowCommitReminder(false)}
+                                aria-label="Dismiss reminder"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    )}
 
                     {/* ── Info section ────────────────────────────────────── */}
                     <div className="px-3 py-2.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="schedule-info">

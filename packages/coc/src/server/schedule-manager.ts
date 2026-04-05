@@ -218,27 +218,43 @@ export class ScheduleManager extends EventEmitter {
 
     /**
      * Update an existing schedule.
-     * For repo-sourced schedules, only the status (active/paused) may be changed.
+     * For repo-sourced schedules, field changes are written back to the YAML file.
      */
-    updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder' | 'model'>>): ScheduleEntry | undefined {
+    updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder' | 'model' | 'mode'>>): ScheduleEntry | undefined {
         // Check repo schedules first
         const repoSchedule = this.repoSchedules.get(repoId)?.get(scheduleId);
         if (repoSchedule) {
-            // Only allow status changes for repo schedules
+            // Handle status changes via override store
             if (updates.status && updates.status !== repoSchedule.status) {
                 repoSchedule.status = updates.status;
                 this.overrideStore?.setStatus(repoId, scheduleId, updates.status);
-                this.cancelTimer(scheduleId);
-                if (repoSchedule.status === 'active') {
-                    this.scheduleNextRun(repoId, repoSchedule);
-                }
-                this.emit('change', {
-                    type: 'schedule-updated',
-                    repoId,
-                    scheduleId,
-                    schedule: repoSchedule,
-                } as ScheduleChangeEvent);
             }
+
+            // Apply non-status field updates and write back to YAML
+            const { status, ...fieldUpdates } = updates;
+            if (Object.keys(fieldUpdates).length > 0) {
+                Object.assign(repoSchedule, fieldUpdates);
+                const rootPath = this.workspacePaths.get(repoId);
+                if (!rootPath) {
+                    throw new Error(`No workspace path registered for repo ${repoId}`);
+                }
+                const stem = scheduleId.replace(/^repo:/, '');
+                this.writeRepoScheduleYaml(rootPath, stem, repoSchedule, repoId);
+            }
+
+            // Reschedule timer
+            this.cancelTimer(scheduleId);
+            if (repoSchedule.status === 'active') {
+                this.scheduleNextRun(repoId, repoSchedule);
+            }
+
+            this.emit('change', {
+                type: 'schedule-updated',
+                repoId,
+                scheduleId,
+                schedule: repoSchedule,
+            } as ScheduleChangeEvent);
+
             return repoSchedule;
         }
 
@@ -386,20 +402,11 @@ export class ScheduleManager extends EventEmitter {
         }
     }
 
-    private moveUserToRepo(repoId: string, entry: ScheduleEntry, rootPath: string): ScheduleEntry {
-        const slug = slugifyName(entry.name);
+    /** Write a schedule entry to `.github/schedules/<stem>.yaml`. */
+    private writeRepoScheduleYaml(rootPath: string, stem: string, entry: ScheduleEntry, repoId: string): void {
         const scheduleDir = getRepoScheduleDir(rootPath);
         fs.mkdirSync(scheduleDir, { recursive: true });
 
-        // De-duplicate filename if it already exists
-        let finalSlug = slug;
-        let counter = 1;
-        while (fs.existsSync(path.join(scheduleDir, `${finalSlug}.yaml`))) {
-            finalSlug = `${slug}-${counter}`;
-            counter++;
-        }
-
-        // Build YAML content (strip internal fields)
         const yamlObj: Record<string, unknown> = {
             name: entry.name,
             cron: entry.cron,
@@ -414,7 +421,22 @@ export class ScheduleManager extends EventEmitter {
         if (entry.mode && entry.mode !== 'autopilot') yamlObj.mode = entry.mode;
 
         const yamlContent = yaml.dump(yamlObj, { lineWidth: 120 });
-        fs.writeFileSync(path.join(scheduleDir, `${finalSlug}.yaml`), yamlContent, 'utf-8');
+        fs.writeFileSync(path.join(scheduleDir, `${stem}.yaml`), yamlContent, 'utf-8');
+    }
+
+    private moveUserToRepo(repoId: string, entry: ScheduleEntry, rootPath: string): ScheduleEntry {
+        const slug = slugifyName(entry.name);
+        const scheduleDir = getRepoScheduleDir(rootPath);
+
+        // De-duplicate filename if it already exists
+        let finalSlug = slug;
+        let counter = 1;
+        while (fs.existsSync(path.join(scheduleDir, `${finalSlug}.yaml`))) {
+            finalSlug = `${slug}-${counter}`;
+            counter++;
+        }
+
+        this.writeRepoScheduleYaml(rootPath, finalSlug, entry, repoId);
 
         // Remove from user schedules
         this.cancelTimer(entry.id);

@@ -128,16 +128,24 @@ describe('Schedule Handler — repo schedule enforcement', () => {
         expect(res.body).toContain('cannot be deleted');
     });
 
-    it('PATCH repo schedule with non-status fields returns 403', async () => {
-        writeRepoSchedule('daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
+    it('PATCH repo schedule with non-status fields writes to YAML and returns 200', async () => {
+        writeRepoSchedule('daily.yaml', 'name: Daily\ncron: "0 0 * * *"\ntarget: old.yaml');
         await startServer();
 
         // Ensure schedules are loaded
         await request(schedulesUrl());
 
-        const res = await patchJSON(scheduleUrl('repo:daily'), { name: 'New Name' });
-        expect(res.status).toBe(403);
-        expect(res.body).toContain('read-only');
+        const res = await patchJSON(scheduleUrl('repo:daily'), { name: 'New Name', target: 'new.yaml' });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.schedule.name).toBe('New Name');
+        expect(body.schedule.target).toBe('new.yaml');
+
+        // Verify YAML file was updated
+        const yamlPath = path.join(workspaceRoot, '.github', 'schedules', 'daily.yaml');
+        const content = fs.readFileSync(yamlPath, 'utf-8');
+        expect(content).toContain('New Name');
+        expect(content).toContain('new.yaml');
     });
 
     it('PATCH repo schedule status-only returns 200', async () => {
@@ -151,6 +159,37 @@ describe('Schedule Handler — repo schedule enforcement', () => {
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.schedule.status).toBe('paused');
+    });
+
+    it('PATCH repo schedule cron writes updated cron to YAML', async () => {
+        writeRepoSchedule('daily.yaml', 'name: Daily\ncron: "0 0 * * *"\ntarget: t.yaml');
+        await startServer();
+        await request(schedulesUrl());
+
+        const res = await patchJSON(scheduleUrl('repo:daily'), { cron: '30 6 * * *' });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.schedule.cron).toBe('30 6 * * *');
+
+        const yamlPath = path.join(workspaceRoot, '.github', 'schedules', 'daily.yaml');
+        const content = fs.readFileSync(yamlPath, 'utf-8');
+        expect(content).toContain('30 6 * * *');
+    });
+
+    it('PATCH repo schedule with status and fields updates both', async () => {
+        writeRepoSchedule('daily.yaml', 'name: Daily\ncron: "0 0 * * *"\ntarget: t.yaml');
+        await startServer();
+        await request(schedulesUrl());
+
+        const res = await patchJSON(scheduleUrl('repo:daily'), { status: 'paused', name: 'Nightly' });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.schedule.status).toBe('paused');
+        expect(body.schedule.name).toBe('Nightly');
+
+        const yamlPath = path.join(workspaceRoot, '.github', 'schedules', 'daily.yaml');
+        const content = fs.readFileSync(yamlPath, 'utf-8');
+        expect(content).toContain('Nightly');
     });
 
     it('user schedules still work normally when repo schedules exist', async () => {

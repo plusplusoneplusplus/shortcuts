@@ -165,16 +165,6 @@ export function registerScheduleRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            // Repo schedules are read-only except for status (pause/resume)
-            const existing = manager.getSchedule(repoId, scheduleId);
-            if (existing?.source === 'repo') {
-                const editableKeys = new Set(['status']);
-                const hasDisallowedKeys = Object.keys(body).some(k => !editableKeys.has(k));
-                if (hasDisallowedKeys) {
-                    return sendError(res, 403, 'Repo schedules are read-only. Only status (pause/resume) can be changed via the API.');
-                }
-            }
-
             if (body.cron) {
                 try {
                     parseCron(body.cron);
