@@ -1,118 +1,124 @@
-# Markdown Review & Workspace Shortcuts - VSCode Extension
+<p align="center">
+  <img src="packages/coc/assets/icons/coc-icon-256x256.png" alt="CoC Logo" width="128" />
+</p>
 
-[![Version](https://img.shields.io/visual-studio-marketplace/v/yihengtao.workspace-shortcuts.svg)](https://marketplace.visualstudio.com/items?itemName=yihengtao.workspace-shortcuts)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/yihengtao.workspace-shortcuts.svg)](https://marketplace.visualstudio.com/items?itemName=yihengtao.workspace-shortcuts)
-[![Rating](https://img.shields.io/visual-studio-marketplace/r/yihengtao.workspace-shortcuts.svg)](https://marketplace.visualstudio.com/items?itemName=yihengtao.workspace-shortcuts)
+<h1 align="center">CoC (Copilot of Copilot)</h1>
 
-Add inline comments to markdown files with a powerful review editor. Also organize your workspace with customizable shortcuts and groups.
+<p align="center">
+  A cockpit built for AI — asynchronous multi-tasking, task orchestration, and collaborative code review for AI-assisted engineering.
+</p>
 
-## Features
+<p align="center">
+  <a href="https://www.npmjs.com/package/@plusplusoneplusplus/coc"><img src="https://img.shields.io/npm/v/@plusplusoneplusplus/coc.svg" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@plusplusoneplusplus/forge"><img src="https://img.shields.io/npm/v/@plusplusoneplusplus/forge.svg?label=forge" alt="forge version" /></a>
+  <a href="https://www.npmjs.com/package/@plusplusoneplusplus/deep-wiki"><img src="https://img.shields.io/npm/v/@plusplusoneplusplus/deep-wiki.svg?label=deep-wiki" alt="deep-wiki version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
+</p>
 
-### Markdown Review Editor
+---
 
-Add inline comments and annotations to any markdown file directly in VSCode.
+## Why CoC?
 
-**How to use:**
-1. Right-click any `.md` file and select "Open with Markdown Review Editor"
-2. Select text in the rendered markdown
-3. Press `Ctrl+Shift+M` (or `Cmd+Shift+M` on Mac) to add a comment
-4. View all comments in the **Markdown Comments** panel
+Traditional AI coding interfaces trap you in a linear, back-and-forth loop — one conversation, one thread, one task at a time. CoC throws that model out and is built around **true asynchronous multi-tasking** that matches how engineers actually think and work.
 
-**Features:**
-- Visual highlighting of commented text
-- Comment resolution workflow (open/resolved states)
-- Generate AI prompts from your comments
-- Comments persist across sessions
-- Mermaid diagram and code syntax highlighting support
+> Read the full story: [From Cursor to Claude Code to CoC](https://plusplusoneplusplus.github.io/website/from-cursor-to-claude-code-to-coc.html)
 
-### Git Diff Review
+The only truly limited resource in software engineering is **human attention**. CoC is designed around three principles:
 
-Review git changes with inline comments:
-- Open any changed file with "Open with Diff Review"
-- Add comments to specific lines in the diff
-- Organize comments by category (bug, suggestion, question, etc.)
-- Generate prompts from comments for AI-assisted code review
-- Review commits against custom coding rules
+- **Minimize context switching** — structured task queues and compact per-task summaries so switching tasks feels like glancing at a dashboard, not excavating a conversation thread.
+- **Alignment through code review, not chat** — instead of reading long chat logs, the AI submits proposals as Git diffs or Markdown specs, and you review them with inline comments, just like a standard code review.
+- **Maximize execution time** — separate the "thinking" from the "doing." Queue up plans during working hours, hand them off to the AI to execute asynchronously, and come back to results ready for review.
 
-### Code Review Against Rules
+## Key Features
 
-Define custom coding rules and review commits or pending changes:
-1. Create rule files in `.github/cr-rules/*.md`
-2. Right-click a commit or use "Review Pending Changes Against Rules"
-3. Get AI-powered feedback on rule violations
+### Task Orchestration & Queues
 
-### Shortcut Groups
+Tasks run in Ask or Plan mode (read-only) or Autopilot and Script mode (read-write). Read-only tasks run in parallel with configurable concurrency; read-write tasks run sequentially to prevent conflicts. Queue up a batch of work, step away, and come back to results.
 
-Organize files and folders into custom groups for quick access:
-- Create logical groups to organize related files
-- Supports nested subgroups and drag-and-drop
-- Add VSCode commands and tasks to groups
-- Split-view navigation with keyboard shortcuts
+<p align="center">
+  <img src="https://plusplusoneplusplus.github.io/website/assets/coc/coc-001.png" alt="Task dashboard" width="700" />
+  <br/>
+  <em>Task dashboard with running and queued tasks, each in its own isolated conversation.</em>
+</p>
 
-### Global Notes
+### Asynchronous Alignment
 
-Quick notes accessible from any workspace:
-- Auto-saved markdown notes
-- Available everywhere without group assignment
-- Perfect for quick ideas and reminders
+The AI submits proposals as Git diffs or Markdown specs; you review them with inline comments. A single "Resolve All with AI" button batches all comments and sends them back in one shot — one focused review replaces a dozen interruptions.
 
-### Cloud Sync
+<p align="center">
+  <img src="https://plusplusoneplusplus.github.io/website/assets/coc/coc-002.png" alt="Spec review" width="700" />
+  <br/>
+  <em>Spec review with root cause analysis and proposed fix, reviewed via inline comments.</em>
+</p>
 
-Sync your configuration across devices via VSCode Settings Sync.
+<p align="center">
+  <img src="https://plusplusoneplusplus.github.io/website/assets/coc/coc-005.png" alt="Diff review" width="700" />
+  <br/>
+  <em>Diff review with inline comment thread for asynchronous code feedback.</em>
+</p>
 
-## Keyboard Shortcuts
+### Scheduling
 
-| Key | Action |
-|-----|--------|
-| Ctrl+Shift+M | Add comment (in Review Editor) |
-| Enter | Open item |
-| Space | Open in split view |
-| F2 | Rename |
-| Delete | Remove |
-| Ctrl+Z | Undo move |
+Jobs can trigger on a recurring schedule — nightly, weekly, or at any specific time — enabling automated code health checks, periodic syncs, or any recurring workflow.
 
-## Quick Start
+<p align="center">
+  <img src="https://plusplusoneplusplus.github.io/website/assets/coc/coc-004.png" alt="Schedules view" width="700" />
+  <br/>
+  <em>Schedules view with recurring jobs configured to run automatically.</em>
+</p>
 
-1. Click the Shortcuts icon in the Activity Bar
-2. Views available: **Git**, **Global Notes**, **Groups**, **Markdown Comments**, **AI Processes**
-3. Right-click any `.md` file → "Open with Markdown Review Editor"
-4. Select text and press `Ctrl+Shift+M` to add comments
+### Skills as a First-Class Feature
 
-## Configuration
+Skills are natively supported by the copilot-sdk. The platform handles orchestration, context, and execution; skills define what the AI knows how to do. As your skill library grows across projects, so does the AI's capability.
 
-### Settings
+<p align="center">
+  <img src="https://plusplusoneplusplus.github.io/website/assets/coc/coc-006.png" alt="Agent Skills" width="700" />
+  <br/>
+  <em>Agent Skills management, showing global and repo-scoped skills available across projects.</em>
+</p>
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `workspaceShortcuts.alwaysOpenMarkdownInReviewEditor` | `false` | Always open markdown in Review Editor |
-| `workspaceShortcuts.markdownComments.panelEnabled` | `false` | Enable the Markdown Comments panel |
-| `workspaceShortcuts.markdownComments.showResolved` | `true` | Show resolved comments |
-| `workspaceShortcuts.markdownComments.highlightColor` | `rgba(255, 235, 59, 0.3)` | Comment highlight color |
-| `workspaceShortcuts.aiService.enabled` | `false` | Enable AI features |
-| `workspaceShortcuts.codeReview.rulesFolder` | `.github/cr-rules` | Code review rules folder |
-| `workspaceShortcuts.sync.enabled` | `false` | Enable cloud sync |
+### Multi-Repository Support
 
-### Shortcuts Configuration
+Multiple repositories and multiple clones of a single remote — without Git worktrees. Everything stays on the main branch with fixes committed as fixups.
 
-Stored in `.vscode/shortcuts.yaml` (workspace) or `~/.vscode-shortcuts/.vscode/shortcuts.yaml` (global).
+### Decoupled Architecture
+
+Zero dependency on an editor. CoC runs as a standalone server with a mobile-responsive dashboard. Monitor queues, review diffs, and orchestrate agents from anywhere.
+
+## Getting Started
+
+```bash
+# Install CoC CLI
+npm install -g @plusplusoneplusplus/coc
+
+# Start the dashboard
+coc serve
+
+# Run a YAML workflow
+coc run path/to/workflow.yaml
+
+# Validate a workflow
+coc validate path/to/workflow.yaml
+```
+
+**Configuration:** `~/.coc/config.yaml` — CLI flags override config file values.
+
+## Monorepo Packages
+
+| Package | Description | npm |
+|---------|-------------|-----|
+| [`coc`](packages/coc/) | CLI + dashboard for YAML AI workflows | [`@plusplusoneplusplus/coc`](https://www.npmjs.com/package/@plusplusoneplusplus/coc) |
+| [`forge`](packages/forge/) | Core AI engine: SDK wrapper, DAG workflow engine, task queue, process store, git CLI, utilities | [`@plusplusoneplusplus/forge`](https://www.npmjs.com/package/@plusplusoneplusplus/forge) |
+| [`deep-wiki`](packages/deep-wiki/) | Auto-generates comprehensive wikis for any codebase | [`@plusplusoneplusplus/deep-wiki`](https://www.npmjs.com/package/@plusplusoneplusplus/deep-wiki) |
 
 ## Requirements
 
-- VSCode 1.95.0+
-
-## Release Notes
-
-See [CHANGELOG.md](CHANGELOG.md) for details.
-
-- **2.14.0**: Auto AI Discovery for enhanced documentation retrieval
-- **2.12.0**: Code review with custom rules
-- **2.11.0**: Git diff review with inline comments
-- **2.8.0**: Markdown Review Editor with inline comments
-- **2.7.0**: Global Notes and nested groups
-- **2.0.0**: Unified interface with logical groups
+- Node.js ≥ 24
+- [GitHub Copilot](https://github.com/features/copilot) subscription (for AI features via `copilot-sdk`)
 
 ## Links
 
+- [Blog: From Cursor to Claude Code to CoC](https://plusplusoneplusplus.github.io/website/from-cursor-to-claude-code-to-coc.html)
 - [GitHub Repository](https://github.com/plusplusoneplusplus/shortcuts)
 - [Report Issues](https://github.com/plusplusoneplusplus/shortcuts/issues)
 - [MIT License](LICENSE)
