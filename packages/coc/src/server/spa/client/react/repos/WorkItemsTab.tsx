@@ -9,6 +9,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { WorkItemSection } from './WorkItemSection';
 import { WorkItemDetail } from './WorkItemDetail';
+import { WorkItemExecutionSession } from './WorkItemExecutionSession';
 import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import { useWorkItems } from '../context/WorkItemContext';
 
@@ -18,6 +19,7 @@ export interface WorkItemsTabProps {
 
 export function WorkItemsTab({ workspaceId }: WorkItemsTabProps) {
     const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
+    const [selectedSessionTaskId, setSelectedSessionTaskId] = useState<string | null>(null);
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
     const { isMobile, isTablet } = useBreakpoint();
@@ -31,17 +33,28 @@ export function WorkItemsTab({ workspaceId }: WorkItemsTabProps) {
 
     const handleSelectWorkItem = useCallback((id: string) => {
         setSelectedWorkItemId(id);
+        setSelectedSessionTaskId(null);
         if (isMobile) setMobileShowDetail(true);
     }, [isMobile]);
 
     const handleBack = useCallback(() => {
         setSelectedWorkItemId(null);
+        setSelectedSessionTaskId(null);
         setMobileShowDetail(false);
+    }, []);
+
+    const handleBackFromSession = useCallback(() => {
+        setSelectedSessionTaskId(null);
+    }, []);
+
+    const handleViewTask = useCallback((taskId: string) => {
+        setSelectedSessionTaskId(taskId);
     }, []);
 
     const handleCreated = useCallback((item: any) => {
         dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
         setSelectedWorkItemId(item.id);
+        setSelectedSessionTaskId(null);
         if (isMobile) setMobileShowDetail(true);
     }, [dispatch, workspaceId, isMobile]);
 
@@ -67,12 +80,21 @@ export function WorkItemsTab({ workspaceId }: WorkItemsTabProps) {
     );
 
     const detailPane = selectedWorkItemId ? (
-        <WorkItemDetail
-            workItemId={selectedWorkItemId}
-            workspaceId={workspaceId}
-            onBack={handleBack}
-            onExecuted={handleExecuted}
-        />
+        selectedSessionTaskId ? (
+            <WorkItemExecutionSession
+                taskId={selectedSessionTaskId}
+                workspaceId={workspaceId}
+                onBack={handleBackFromSession}
+            />
+        ) : (
+            <WorkItemDetail
+                workItemId={selectedWorkItemId}
+                workspaceId={workspaceId}
+                onBack={handleBack}
+                onExecuted={handleExecuted}
+                onViewTask={handleViewTask}
+            />
+        )
     ) : (
         <div className="flex items-center justify-center h-full text-sm text-[#848484]">
             <div className="text-center space-y-2">
