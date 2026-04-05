@@ -1,155 +1,246 @@
 /**
- * Tests for ActivityChatDetail pop-out button and ActivityDetailPane pop-out placeholder.
+ * Render tests for pop-out button visibility (ChatHeader), pop-out placeholder
+ * (ActivityDetailPane), and the handlePopOut hook (useChatWindowActions).
+ *
+ * Dropped from the previous source-level tests:
+ * - PopOutContext structure tests (TypeScript compiler covers exports/interfaces)
+ * - BroadcastChannel internals (popout-closed listener, popout-restore message)
+ * - URL encoding details (workspace= query param, window name) — covered by E2E
  */
+/* @vitest-environment jsdom */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
+import React, { type ReactNode } from 'react';
 
-import { describe, it, expect } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
+// ── Hoisted mock state (available to vi.mock factories) ───────────────────────
 
-const REPOS_DIR = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos'
-);
-const CONTEXT_DIR = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context'
-);
+const {
+    mockBreakpoint,
+    mockMarkPoppedOut, mockMarkRestored, mockPoppedOutTasks,
+    mockFloatChat, mockUnfloatChat, mockFloatingChats,
+    mockAddToast,
+} = vi.hoisted(() => ({
+    mockBreakpoint: { isMobile: false, isTablet: false, isDesktop: true },
+    mockMarkPoppedOut: vi.fn(),
+    mockMarkRestored: vi.fn(),
+    mockPoppedOutTasks: new Set<string>(),
+    mockFloatChat: vi.fn(),
+    mockUnfloatChat: vi.fn(),
+    mockFloatingChats: new Map<string, any>(),
+    mockAddToast: vi.fn(),
+}));
 
-const CHAT_DETAIL_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityChatDetail.tsx'), 'utf-8');
-const DETAIL_PANE_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityDetailPane.tsx'), 'utf-8');
-const POPOUT_CONTEXT_SOURCE = fs.readFileSync(path.join(CONTEXT_DIR, 'PopOutContext.tsx'), 'utf-8');
-const CHAT_HEADER_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ChatHeader.tsx'), 'utf-8');
+// ── Mocks ─────────────────────────────────────────────────────────────────────
 
-const HOOKS_DIR = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks'
-);
-const CHAT_WINDOW_ACTIONS_SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'useChatWindowActions.ts'), 'utf-8');
+vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => mockBreakpoint,
+}));
 
-// ── ActivityChatDetail pop-out button ─────────────────────────────────────────
+vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => ({
+    usePopOut: () => ({
+        poppedOutTasks: mockPoppedOutTasks,
+        markPoppedOut: mockMarkPoppedOut,
+        markRestored: mockMarkRestored,
+        postMessage: vi.fn(),
+    }),
+}));
 
-describe('ActivityChatDetail: pop-out button', () => {
-    it('accepts isPopOut prop', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('isPopOut');
-    });
+vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+    useFloatingChats: () => ({
+        floatingChats: mockFloatingChats,
+        floatChat: mockFloatChat,
+        unfloatChat: mockUnfloatChat,
+        isFloating: (id: string) => mockFloatingChats.has(id),
+    }),
+}));
 
-    it('renders a pop-out button with correct data-testid', () => {
-        expect(CHAT_HEADER_SOURCE).toContain('data-testid="activity-chat-popout-btn"');
+vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
+    ToastContext: React.createContext({ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }),
+    ToastProvider: ({ children }: any) => children,
+}));
+
+// Mock child components for ActivityDetailPane
+vi.mock('../../../../src/server/spa/client/react/repos/ActivityChatDetail', () => ({
+    ActivityChatDetail: (props: any) =>
+        React.createElement('div', { 'data-testid': 'activity-chat-detail' }, `task=${props.taskId}`),
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/NewChatArea', () => ({
+    NewChatArea: () => React.createElement('div', { 'data-testid': 'new-chat-area' }),
+}));
+
+// Mock heavy ChatHeader dependencies
+vi.mock('../../../../src/server/spa/client/react/shared', () => ({
+    Badge: ({ children }: any) => React.createElement('span', null, children),
+    Button: ({ children, onClick }: any) => React.createElement('button', { onClick }, children),
+}));
+vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
+    ReferencesDropdown: () => null,
+}));
+vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
+    ConversationMetadataPopover: () => null,
+}));
+vi.mock('../../../../src/server/spa/client/react/components/ContextWindowIndicator', () => ({
+    ContextWindowIndicator: () => null,
+}));
+vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
+    copyToClipboard: vi.fn().mockResolvedValue(undefined),
+    copyHtmlToClipboard: vi.fn().mockResolvedValue(undefined),
+    formatConversationAsText: vi.fn().mockReturnValue(''),
+    formatConversationAsHtml: vi.fn().mockReturnValue(''),
+    formatDuration: vi.fn().mockReturnValue('0s'),
+    statusIcon: vi.fn().mockReturnValue(''),
+    statusLabel: vi.fn().mockReturnValue(''),
+}));
+vi.mock('../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+    chatMarkdownToHtml: vi.fn().mockReturnValue(''),
+}));
+vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
+    cn: (...args: any[]) => args.filter(Boolean).join(' '),
+}));
+
+// Imports (after mocks)
+import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/repos/ChatHeader';
+import { ActivityDetailPane } from '../../../../src/server/spa/client/react/repos/ActivityDetailPane';
+import { useChatWindowActions } from '../../../../src/server/spa/client/react/hooks/useChatWindowActions';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function defaultHeaderProps(overrides: Partial<ChatHeaderProps> = {}): ChatHeaderProps {
+    return {
+        task: { status: 'completed' },
+        metadataProcess: null,
+        planPath: '',
+        createdFiles: [],
+        pinnedFile: undefined,
+        variant: 'inline',
+        isPopOut: false,
+        loading: false,
+        turns: [],
+        resumeLaunching: false,
+        resumeSessionId: null,
+        isPending: false,
+        sessionTokenLimit: undefined,
+        sessionCurrentTokens: undefined,
+        sessionModel: undefined,
+        copied: false,
+        setCopied: vi.fn(),
+        taskId: 'task-1',
+        onLaunchInteractiveResume: vi.fn(),
+        onPopOut: vi.fn(),
+        onFloat: vi.fn(),
+        ...overrides,
+    };
+}
+
+beforeEach(() => {
+    vi.clearAllMocks();
+    mockPoppedOutTasks.clear();
+    mockFloatingChats.clear();
+    mockBreakpoint.isMobile = false;
+    mockBreakpoint.isDesktop = true;
+});
+
+// ── ChatHeader: pop-out button visibility ─────────────────────────────────────
+
+describe('ChatHeader: pop-out button', () => {
+    it('renders pop-out button with data-testid', () => {
+        render(<ChatHeader {...defaultHeaderProps()} />);
+        expect(screen.getByTestId('activity-chat-popout-btn')).toBeTruthy();
     });
 
     it('hides pop-out button when isPopOut is true', () => {
-        expect(CHAT_HEADER_SOURCE).toContain('!isPopOut');
+        render(<ChatHeader {...defaultHeaderProps({ isPopOut: true })} />);
+        expect(screen.queryByTestId('activity-chat-popout-btn')).toBeNull();
     });
 
     it('hides pop-out button on mobile', () => {
-        expect(CHAT_HEADER_SOURCE).toContain('!isMobile');
+        mockBreakpoint.isMobile = true;
+        render(<ChatHeader {...defaultHeaderProps()} />);
+        expect(screen.queryByTestId('activity-chat-popout-btn')).toBeNull();
     });
 
     it('hides pop-out button when variant is floating', () => {
-        // The pop-out guard must include variant !== 'floating'
-        const popoutBtnIdx = CHAT_HEADER_SOURCE.indexOf('activity-chat-popout-btn');
-        // Find the render guard preceding the popout button
-        const guardRegion = CHAT_HEADER_SOURCE.slice(Math.max(0, popoutBtnIdx - 200), popoutBtnIdx);
-        expect(guardRegion).toContain("variant !== 'floating'");
+        render(<ChatHeader {...defaultHeaderProps({ variant: 'floating' })} />);
+        expect(screen.queryByTestId('activity-chat-popout-btn')).toBeNull();
     });
 
-    it('uses usePopOut context', () => {
-        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('usePopOut');
-    });
-
-    it('uses useGlobalToast for popup-blocked notification', () => {
-        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('ToastContext');
-    });
-
-    it('calls window.open with popout route', () => {
-        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('window.open');
-        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('#popout/activity/');
-    });
-
-    it('marks task as popped out after successful window.open', () => {
-        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('markPoppedOut(taskId)');
-    });
-
-    it('shows a toast when popup is blocked', () => {
-        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('addToast');
-        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('blocked');
-    });
-
-    it('uses window name based on taskId to avoid duplicate popups', () => {
-        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('coc-popout-');
-    });
-
-    it('encodes workspaceId in query param', () => {
-        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('workspace=');
+    it('calls onPopOut callback when clicked', () => {
+        const onPopOut = vi.fn();
+        render(<ChatHeader {...defaultHeaderProps({ onPopOut })} />);
+        fireEvent.click(screen.getByTestId('activity-chat-popout-btn'));
+        expect(onPopOut).toHaveBeenCalledOnce();
     });
 });
 
-// ── ActivityDetailPane pop-out placeholder ────────────────────────────────────
+// ── ActivityDetailPane: pop-out placeholder ───────────────────────────────────
 
 describe('ActivityDetailPane: pop-out placeholder', () => {
-    it('imports usePopOut context', () => {
-        expect(DETAIL_PANE_SOURCE).toContain("import { usePopOut }");
-    });
-
-    it('uses poppedOutTasks from PopOut context', () => {
-        expect(DETAIL_PANE_SOURCE).toContain('poppedOutTasks');
-    });
-
-    it('checks if selected task is popped out', () => {
-        expect(DETAIL_PANE_SOURCE).toContain('poppedOutTasks.has(selectedTaskId)');
-    });
-
-    it('renders pop-out placeholder with data-testid', () => {
-        expect(DETAIL_PANE_SOURCE).toContain('data-testid="activity-popped-out-placeholder"');
-    });
-
-    it('renders restore button with data-testid', () => {
-        expect(DETAIL_PANE_SOURCE).toContain('data-testid="activity-chat-restore-btn"');
-    });
-
-    it('calls markRestored on restore button click', () => {
-        expect(DETAIL_PANE_SOURCE).toContain('markRestored(selectedTaskId)');
+    it('renders placeholder when task is popped out', () => {
+        mockPoppedOutTasks.add('task-1');
+        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        expect(screen.getByTestId('activity-popped-out-placeholder')).toBeTruthy();
     });
 
     it('shows "Chat is open in a separate window" message', () => {
-        expect(DETAIL_PANE_SOURCE).toContain('Chat is open in a separate window');
+        mockPoppedOutTasks.add('task-1');
+        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        expect(screen.getByText('Chat is open in a separate window')).toBeTruthy();
+    });
+
+    it('renders restore button with correct data-testid', () => {
+        mockPoppedOutTasks.add('task-1');
+        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        expect(screen.getByTestId('activity-chat-restore-btn')).toBeTruthy();
+    });
+
+    it('calls markRestored when restore button is clicked', () => {
+        mockPoppedOutTasks.add('task-1');
+        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('activity-chat-restore-btn'));
+        expect(mockMarkRestored).toHaveBeenCalledWith('task-1');
     });
 
     it('renders ActivityChatDetail when task is not popped out', () => {
-        expect(DETAIL_PANE_SOURCE).toContain('<ActivityChatDetail');
+        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+        expect(screen.queryByTestId('activity-popped-out-placeholder')).toBeNull();
     });
 });
 
-// ── PopOutContext structure ────────────────────────────────────────────────────
+// ── useChatWindowActions: handlePopOut ─────────────────────────────────────────
 
-describe('PopOutContext: structure', () => {
-    it('exports PopOutProvider component', () => {
-        expect(POPOUT_CONTEXT_SOURCE).toContain('export function PopOutProvider');
+describe('useChatWindowActions: handlePopOut', () => {
+    it('calls window.open with popout URL containing task ID', () => {
+        const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+        const { result } = renderHook(() =>
+            useChatWindowActions({ task: {}, taskId: 'task-42', workspaceId: 'ws-1' }),
+        );
+        act(() => result.current.handlePopOut());
+        expect(openSpy).toHaveBeenCalledOnce();
+        const url = openSpy.mock.calls[0][0] as string;
+        expect(url).toContain('#popout/activity/task-42');
+        openSpy.mockRestore();
     });
 
-    it('exports usePopOut hook', () => {
-        expect(POPOUT_CONTEXT_SOURCE).toContain('export function usePopOut');
+    it('marks task as popped out after successful window.open', () => {
+        const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+        const { result } = renderHook(() =>
+            useChatWindowActions({ task: {}, taskId: 'task-42', workspaceId: 'ws-1' }),
+        );
+        act(() => result.current.handlePopOut());
+        expect(mockMarkPoppedOut).toHaveBeenCalledWith('task-42');
+        openSpy.mockRestore();
     });
 
-    it('exports PopOutContextValue interface', () => {
-        expect(POPOUT_CONTEXT_SOURCE).toContain('export interface PopOutContextValue');
-    });
-
-    it('tracks poppedOutTasks as a Set', () => {
-        expect(POPOUT_CONTEXT_SOURCE).toContain('poppedOutTasks: Set<string>');
-    });
-
-    it('exposes markPoppedOut method', () => {
-        expect(POPOUT_CONTEXT_SOURCE).toContain('markPoppedOut');
-    });
-
-    it('exposes markRestored method', () => {
-        expect(POPOUT_CONTEXT_SOURCE).toContain('markRestored');
-    });
-
-    it('listens for popout-closed to auto-restore', () => {
-        expect(POPOUT_CONTEXT_SOURCE).toContain("msg.type === 'popout-closed'");
-        expect(POPOUT_CONTEXT_SOURCE).toContain("MARK_RESTORED");
-    });
-
-    it('sends popout-restore when markRestored is called', () => {
-        expect(POPOUT_CONTEXT_SOURCE).toContain("'popout-restore'");
+    it('shows toast when popup is blocked', () => {
+        const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+        const { result } = renderHook(() =>
+            useChatWindowActions({ task: {}, taskId: 'task-42', workspaceId: 'ws-1' }),
+        );
+        act(() => result.current.handlePopOut());
+        expect(mockAddToast).toHaveBeenCalledWith(expect.stringContaining('blocked'), 'error');
+        expect(mockMarkPoppedOut).not.toHaveBeenCalled();
+        openSpy.mockRestore();
     });
 });
