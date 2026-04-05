@@ -143,6 +143,37 @@ describe('useChatSSE', () => {
         expect(refreshConversation).toHaveBeenCalledWith('proc-1');
     });
 
+    it('calls onSendComplete on error so sending state and Stop button reset', () => {
+        const onSendComplete = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ onSendComplete })));
+        act(() => { MockEventSource.latest().triggerError(); });
+        expect(onSendComplete).toHaveBeenCalled();
+    });
+
+    it('fetches queue task and calls setTask on error to clear running status', async () => {
+        const setTask = vi.fn();
+        const fetchedTask = { id: 'task-1', status: 'completed' };
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ task: fetchedTask }),
+        }));
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        act(() => { MockEventSource.latest().triggerError(); });
+        // Wait for the fetch to resolve
+        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+        const taskUpdater = setTask.mock.calls.find(call => typeof call[0] === 'function')?.[0];
+        const prev = { id: 'task-1', status: 'running' };
+        expect(taskUpdater?.(prev)).toMatchObject({ status: 'completed' });
+        vi.unstubAllGlobals();
+    });
+
+    it('calls onSendComplete on "done" event', () => {
+        const onSendComplete = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ onSendComplete })));
+        act(() => { MockEventSource.latest().emit('done', {}); });
+        expect(onSendComplete).toHaveBeenCalled();
+    });
+
     it('stopStreaming() closes the EventSource and sets isStreaming false', () => {
         const setIsStreaming = vi.fn();
         const { result } = renderHook(() => useChatSSE(makeOptions({ setIsStreaming })));

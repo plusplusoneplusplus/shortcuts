@@ -94,19 +94,20 @@ export function useSendMessage({
             return refreshConversation(pid);
         }
         return new Promise<void>(resolve => {
-            resolveCurrentSendRef.current = resolve;
-            // Safety timeout in case 'done' never fires
-            const timeout = setTimeout(() => {
-                if (resolveCurrentSendRef.current === resolve) {
+            let timeoutId: ReturnType<typeof setTimeout>;
+            // Wrap resolve so both the timeout and onSendComplete share the same function
+            // reference stored in the ref — avoids the stale-closure comparison bug where
+            // the timeout checked `ref === resolve` after the ref was already overwritten.
+            const wrappedResolve = () => {
+                clearTimeout(timeoutId);
+                if (resolveCurrentSendRef.current === wrappedResolve) {
                     resolveCurrentSendRef.current = null;
-                    resolve();
                 }
-            }, 90_000);
-            const origResolve = resolve;
-            resolveCurrentSendRef.current = () => {
-                clearTimeout(timeout);
-                origResolve();
+                resolve();
             };
+            resolveCurrentSendRef.current = wrappedResolve;
+            // Safety timeout in case 'done' never fires (e.g. SSE connection dropped).
+            timeoutId = setTimeout(wrappedResolve, 90_000);
         });
     }, [refreshConversation]);
 

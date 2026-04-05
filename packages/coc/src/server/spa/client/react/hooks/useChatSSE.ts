@@ -172,7 +172,19 @@ export function useChatSSE({
             } catch { /* ignore */ }
         });
 
-        es.onerror = () => { closeSSE(); void refreshConversation(processId); };
+        es.onerror = () => {
+            closeSSE();
+            // Unblock any sendFollowUp awaiting completion so sending/Stop-button resets.
+            onSendComplete();
+            // Refresh task status from queue so task.status doesn't remain 'running'.
+            fetch(`${getApiBase()}/queue/${encodeURIComponent(taskId)}`)
+                .then(r => r.ok ? r.json() : null)
+                .then((data: any) => {
+                    if (data?.task) setTask((prev: any) => prev ? { ...prev, ...data.task } : data.task);
+                })
+                .catch(() => {});
+            void refreshConversation(processId);
+        };
 
         es.addEventListener('suggestions', (event: Event) => {
             try {
