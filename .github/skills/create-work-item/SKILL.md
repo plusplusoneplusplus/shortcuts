@@ -76,11 +76,33 @@ Guide the user through creating a well-structured work item and persisting it to
      description: "<confirmed description>",
      priority:    "<confirmed priority>",
      tags:        ["<tag1>", "<tag2>"],   // omit if none
-     plan:        "<confirmed plan markdown>"
+     plan:        { content: "<confirmed plan markdown>", resolvedBy: "ai" }
    })
    ```
 
    The tool persists the work item to the Work Items page and broadcasts a live update to any connected dashboard.
+
+   If the `create_work_item` tool is unavailable, fall back to the REST API:
+
+   ```powershell
+   $workspaceId = (Invoke-RestMethod -Uri "http://localhost:4000/api/workspaces").workspaces |
+       Where-Object { $_.rootPath -eq (git rev-parse --show-toplevel) } |
+       Select-Object -ExpandProperty id
+
+   $body = @{
+     title       = "<confirmed title>"
+     description = "<confirmed description>"
+     priority    = "<confirmed priority>"
+     tags        = @("<tag1>", "<tag2>")
+     plan        = @{ content = "<confirmed plan markdown>"; resolvedBy = "ai" }
+   } | ConvertTo-Json -Depth 5
+
+   Invoke-RestMethod `
+       -Method Post `
+       -Uri "http://localhost:4000/api/workspaces/$workspaceId/work-items" `
+       -ContentType "application/json" `
+       -Body $body
+   ```
 
 7. On success, report to the user:
 
