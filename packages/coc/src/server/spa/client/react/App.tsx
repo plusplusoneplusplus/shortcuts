@@ -240,14 +240,11 @@ function AppInner() {
     useEffect(() => {
         async function bootstrap() {
             try {
-                const [wsRes, pRes, qRes, prefRes] = await Promise.all([
-                    fetchApi('/workspaces').catch(() => null),
+                const [pRes, qRes, prefRes] = await Promise.all([
                     fetchApi('/processes/summaries').catch(() => null),
                     fetchApi('/queue').catch(() => null),
                     fetchApi('/preferences').catch(() => null),
                 ]);
-                if (wsRes?.workspaces) appDispatch({ type: 'WORKSPACES_LOADED', workspaces: wsRes.workspaces });
-                else if (Array.isArray(wsRes)) appDispatch({ type: 'WORKSPACES_LOADED', workspaces: wsRes });
 
                 if (pRes?.summaries && Array.isArray(pRes.summaries)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.summaries });
                 else if (pRes?.processes && Array.isArray(pRes.processes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.processes });
