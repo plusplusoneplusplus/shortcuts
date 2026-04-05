@@ -65,12 +65,10 @@ describe('App.tsx — bootstrap does not fetch queue', () => {
         source = fs.readFileSync(path.join(CLIENT_DIR, 'App.tsx'), 'utf-8');
     });
 
-    it('does not fetch /queue in the bootstrap Promise.all', () => {
+    it('does not fetch /queue in bootstrap', () => {
         const bootstrapBlock = source.match(/async\s+function\s+bootstrap[\s\S]*?connect\(\)/);
         expect(bootstrapBlock).not.toBeNull();
-        const promiseAllBlock = bootstrapBlock![0].match(/Promise\.all\(\[[\s\S]*?\]\)/);
-        expect(promiseAllBlock).not.toBeNull();
-        expect(promiseAllBlock![0]).not.toContain("fetchApi('/queue')");
+        expect(bootstrapBlock![0]).not.toContain("fetchApi('/queue')");
     });
 
     it('does not dispatch SEED_QUEUE', () => {
@@ -79,13 +77,11 @@ describe('App.tsx — bootstrap does not fetch queue', () => {
         expect(bootstrapBlock![0]).not.toContain('SEED_QUEUE');
     });
 
-    it('bootstrap Promise.all fetches processes/summaries and preferences only', () => {
+    it('bootstrap fetches only preferences (processes moved to ReposContext)', () => {
         const bootstrapBlock = source.match(/async\s+function\s+bootstrap[\s\S]*?connect\(\)/);
         expect(bootstrapBlock).not.toBeNull();
-        const promiseAllBlock = bootstrapBlock![0].match(/Promise\.all\(\[[\s\S]*?\]\)/);
-        expect(promiseAllBlock).not.toBeNull();
-        expect(promiseAllBlock![0]).toContain("fetchApi('/processes/summaries')");
-        expect(promiseAllBlock![0]).toContain("fetchApi('/preferences')");
+        expect(bootstrapBlock![0]).toContain("fetchApi('/preferences')");
+        expect(bootstrapBlock![0]).not.toContain("fetchApi('/processes/summaries')");
     });
 });
 

@@ -236,18 +236,12 @@ function AppInner() {
         }
     }, [wsStatus, addToast]);
 
-    // Bootstrap: fetch initial data and connect WebSocket
+    // Bootstrap: fetch preferences and connect WebSocket.
+    // Process summaries are fetched by ReposContext.fetchRepos (single global call).
     useEffect(() => {
         async function bootstrap() {
             try {
-                const [pRes, prefRes] = await Promise.all([
-                    fetchApi('/processes/summaries').catch(() => null),
-                    fetchApi('/preferences').catch(() => null),
-                ]);
-
-                if (pRes?.summaries && Array.isArray(pRes.summaries)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.summaries });
-                else if (pRes?.processes && Array.isArray(pRes.processes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.processes });
-                else if (Array.isArray(pRes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes });
+                const prefRes = await fetchApi('/preferences').catch(() => null);
 
                 // Populate welcome/onboarding state from server preferences
                 if (prefRes) {

@@ -98,7 +98,11 @@ export function ReposProvider({ children }: { children: ReactNode }) {
 
     const fetchRepos = useCallback(async () => {
         try {
-            const wsRes = await fetchApi('/workspaces');
+            // Fetch workspaces and all process summaries in parallel
+            const [wsRes, processRes] = await Promise.all([
+                fetchApi('/workspaces'),
+                fetchApi('/processes/summaries?limit=5000').catch(() => null),
+            ]);
             const workspaces = wsRes?.workspaces || wsRes || [];
             if (!Array.isArray(workspaces)) {
                 setRepos([]);
@@ -106,21 +110,25 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 return;
             }
 
+            // Extract all summaries and seed AppContext (replaces App.tsx bootstrap responsibility)
+            const allSummaries: any[] = processRes?.summaries || processRes?.processes || (Array.isArray(processRes) ? processRes : []);
+            dispatch({ type: 'SET_PROCESSES', processes: allSummaries });
+
             // Hide virtual workspaces (e.g. global workspace) from repos grid
             const visibleWorkspaces = workspaces.filter((ws: any) => !ws.virtual);
 
             // Update global workspace list
             dispatch({ type: 'WORKSPACES_LOADED', workspaces });
 
-            // Phase 1: Fetch summary + processes (fast) in parallel — skip git-info
+            // Per-workspace: fetch summary only; derive process stats from global data
             const enriched: RepoData[] = await Promise.all(
                 visibleWorkspaces.map(async (ws: any) => {
                     const summaryRes = await fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/summary`).catch(() => null);
 
-                    const processRes = await fetchApi(`/processes/summaries?workspace=${encodeURIComponent(ws.id)}&limit=200`).catch(() => null);
-                    const processes = processRes?.summaries || [];
+                    // Derive process stats by filtering global summaries
+                    const wsProcesses = allSummaries.filter((p: any) => p.workspaceId === ws.id);
                     const stats = { success: 0, failed: 0, running: 0 };
-                    for (const p of processes) {
+                    for (const p of wsProcesses) {
                         if (p.status === 'completed') stats.success++;
                         else if (p.status === 'failed') stats.failed++;
                         else if (p.status === 'running') stats.running++;
