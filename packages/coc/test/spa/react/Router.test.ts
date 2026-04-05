@@ -1331,6 +1331,108 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
         const dispatches = simulateAltKeyHandler({ key: 'z', code: 'KeyZ', altKey: true }, repoState);
         expect(dispatches).toHaveLength(0);
     });
+
+    it('Alt+Q does NOT dispatch SET_REPO_SUB_TAB (reserved for queue dialog)', () => {
+        const dispatches = simulateAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+});
+
+// ─── Alt+Q queue dialog keyboard shortcut ──────────────────────────
+
+describe('Alt+Q queue dialog keyboard shortcut', () => {
+    type MockEvent = {
+        key: string;
+        code?: string;
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+        altKey?: boolean;
+        target?: { tagName?: string; isContentEditable?: boolean };
+    };
+    type MockState = { activeTab: string; selectedRepoId: string | null };
+
+    /**
+     * Simulates the full Alt+key handler from Router.tsx, including the Alt+Q
+     * branch that dispatches OPEN_DIALOG to the queue reducer.
+     */
+    function simulateFullAltKeyHandler(
+        e: MockEvent,
+        state: MockState,
+    ): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const target = e.target ?? { tagName: 'BODY', isContentEditable: false };
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return dispatches;
+        if (state.activeTab !== 'repos' || !state.selectedRepoId) return dispatches;
+        if (e.altKey && !e.ctrlKey && !e.metaKey) {
+            const letter = e.code?.replace('Key', '').toLowerCase() ?? '';
+            if (letter === 'q') {
+                dispatches.push({ type: 'OPEN_DIALOG', workspaceId: state.selectedRepoId });
+                return dispatches;
+            }
+            const tab = REPO_TAB_SHORTCUTS[letter];
+            if (tab) {
+                dispatches.push({ type: 'SET_REPO_SUB_TAB', tab });
+            }
+        }
+        return dispatches;
+    }
+
+    const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
+
+    it('Alt+Q dispatches OPEN_DIALOG with workspaceId', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true }, repoState);
+        expect(dispatches).toEqual([{ type: 'OPEN_DIALOG', workspaceId: 'my-repo' }]);
+    });
+
+    it('macOS Option+Q (Unicode e.key) dispatches OPEN_DIALOG via e.code', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'œ', code: 'KeyQ', altKey: true }, repoState);
+        expect(dispatches).toEqual([{ type: 'OPEN_DIALOG', workspaceId: 'my-repo' }]);
+    });
+
+    it('does not dispatch when activeTab is not repos', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true }, { activeTab: 'wiki', selectedRepoId: 'my-repo' });
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when selectedRepoId is null', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true }, { activeTab: 'repos', selectedRepoId: null });
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when target is INPUT', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true, target: { tagName: 'INPUT' } }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when target is TEXTAREA', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true, target: { tagName: 'TEXTAREA' } }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when target is contentEditable', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true, target: { tagName: 'DIV', isContentEditable: true } }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when ctrlKey is also pressed', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true, ctrlKey: true }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when metaKey is also pressed', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true, metaKey: true }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch without alt modifier', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ' }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('Alt+A still dispatches SET_REPO_SUB_TAB (not broken by Q handler)', () => {
+        const dispatches = simulateFullAltKeyHandler({ key: 'a', code: 'KeyA', altKey: true }, repoState);
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+    });
 });
 
 // ─── handleHash wiki deep-link in repos context ──────────────────
@@ -1700,6 +1802,19 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
 
     it('no longer has a C-key handler for chat', () => {
         expect(ROUTER_SOURCE).not.toContain("tab: 'chat'");
+    });
+
+    it('Alt+Q handler dispatches OPEN_DIALOG to queueDispatch', () => {
+        expect(ROUTER_SOURCE).toContain("letter === 'q'");
+        expect(ROUTER_SOURCE).toContain("type: 'OPEN_DIALOG'");
+    });
+
+    it('Alt+Q handler passes workspaceId from selectedRepoId', () => {
+        expect(ROUTER_SOURCE).toContain('workspaceId: state.selectedRepoId');
+    });
+
+    it('queueDispatch is included in useEffect dependency array', () => {
+        expect(ROUTER_SOURCE).toContain('queueDispatch, state.activeTab, state.selectedRepoId');
     });
 
     it('activity route is in VALID_REPO_SUB_TABS', () => {

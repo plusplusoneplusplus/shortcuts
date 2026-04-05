@@ -272,7 +272,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                                 data-testid="repo-more-queue-task"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }); }}
                                             >
-                                                🤖 Queue Task
+                                                🤖 Queue Task (Alt+Q)
                                             </button>
                                             <button
                                                 className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
@@ -403,7 +403,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 variant="primary"
                                 size="sm"
                                 onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
-                                title="Queue a new task"
+                                title="Queue a new task (Alt+Q)"
                                 data-testid="repo-queue-task-btn"
                             >
                                 🤖 Queue Task

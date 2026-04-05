@@ -450,6 +450,7 @@ export function Router() {
 
     // Keyboard shortcuts for repo sub-tabs:
     //   Alt+<letter> → switches to the corresponding sub-tab (see REPO_TAB_SHORTCUTS)
+    //   Alt+Q → opens the Queue Task dialog for the selected repo
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement;
@@ -457,7 +458,13 @@ export function Router() {
             if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
 
             if (e.altKey && !e.ctrlKey && !e.metaKey) {
-                const tab = REPO_TAB_SHORTCUTS[e.code.replace('Key', '').toLowerCase()];
+                const letter = e.code.replace('Key', '').toLowerCase();
+                if (letter === 'q') {
+                    e.preventDefault();
+                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId: state.selectedRepoId });
+                    return;
+                }
+                const tab = REPO_TAB_SHORTCUTS[letter];
                 if (tab) {
                     e.preventDefault();
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab });
@@ -467,7 +474,7 @@ export function Router() {
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [dispatch, state.activeTab, state.selectedRepoId]);
+    }, [dispatch, queueDispatch, state.activeTab, state.selectedRepoId]);
 
     switch (state.activeTab) {
         case 'processes':

@@ -254,6 +254,14 @@ describe('RepoDetail Activity badge wiring', () => {
     it('does not render chat-pending-badge', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="chat-pending-badge"');
     });
+
+    it('Queue Task button tooltip includes Alt+Q hint', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('title="Queue a new task (Alt+Q)"');
+    });
+
+    it('mobile menu Queue Task label includes Alt+Q hint', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('Queue Task (Alt+Q)');
+    });
 });
 
 describe('RepoDetail Resume Queue button in header', () => {
