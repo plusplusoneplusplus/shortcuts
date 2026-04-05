@@ -866,3 +866,20 @@ describe('RepoActivityTab: ChatPreferencesProvider wrapping', () => {
         expect(ACTIVITY_TAB_SOURCE).not.toContain('onPinChat={');
     });
 });
+
+// ── New Chat deselects task instead of opening dialog ──────────────────
+
+describe('RepoActivityTab: New Chat deselects task (regression)', () => {
+    it('passes onNewChat prop to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('onNewChat=');
+    });
+
+    it('onNewChat dispatches SELECT_QUEUE_TASK with null id', () => {
+        // Ensure clicking "New Chat" deselects the current task to show NewChatArea
+        expect(ACTIVITY_TAB_SOURCE).toContain("onNewChat={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId })");
+    });
+
+    it('still passes onOpenDialog for the Queue Task button', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG'");
+    });
+});

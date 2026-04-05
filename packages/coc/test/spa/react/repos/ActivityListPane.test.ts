@@ -1123,3 +1123,38 @@ describe('ActivityListPane mobile long-press context menu', () => {
         });
     });
 });
+
+// ── New Chat button uses onNewChat (regression: must not open EnqueueDialog) ──
+
+describe('ActivityListPane: New Chat button uses onNewChat', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(ACTIVITY_LIST_PATH, 'utf-8');
+    });
+
+    it('accepts onNewChat optional prop', () => {
+        expect(source).toContain('onNewChat');
+    });
+
+    it('new-chat-btn uses onNewChat callback (not onOpenDialog)', () => {
+        // The New Chat button should prefer onNewChat over onOpenDialog
+        expect(source).toContain('onNewChat ?? onOpenDialog');
+    });
+
+    it('new-chat-btn has data-testid', () => {
+        expect(source).toContain('data-testid="new-chat-btn"');
+    });
+
+    it('empty-state Queue Task button still uses onOpenDialog', () => {
+        // The empty-state "Queue Task" button should continue to use onOpenDialog
+        expect(source).toContain('data-testid="repo-queue-task-btn-empty"');
+        // Find the queue-task button line — it should reference onOpenDialog directly
+        const lines = source.split('\n');
+        const queueBtnLine = lines.findIndex(l => l.includes('repo-queue-task-btn-empty'));
+        // The nearby onClick should reference onOpenDialog (not onNewChat)
+        const nearbyBlock = lines.slice(Math.max(0, queueBtnLine - 5), queueBtnLine + 1).join('\n');
+        expect(nearbyBlock).toContain('onOpenDialog');
+        expect(nearbyBlock).not.toContain('onNewChat');
+    });
+});
