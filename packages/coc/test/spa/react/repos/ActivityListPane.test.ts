@@ -1170,3 +1170,30 @@ describe('ActivityListPane mobile long-press context menu', () => {
         });
     });
 });
+
+describe('ActivityListPane dark mode text contrast', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(ACTIVITY_LIST_PATH, 'utf-8');
+    });
+
+    it('completed task titles have explicit dark text color', () => {
+        // Completed/pinned/archived task title containers must specify dark:text-[#cccccc]
+        // to ensure readability against dark Card backgrounds (dark:bg-[#2d2d30])
+        const completedTitleDivs = source.match(/flex items-center justify-between gap-1\.5 text-xs[^"]*dark:text-\[#cccccc\]/g);
+        expect(completedTitleDivs).toBeTruthy();
+        expect(completedTitleDivs!.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('timestamps use readable dark color (not #999)', () => {
+        // Timestamps should use dark:text-[#bbb] or brighter, not dark:text-[#999]
+        const timestampSpans = source.match(/text-\[10px\].*?dark:text-\[#999\].*?tabular-nums/g);
+        expect(timestampSpans).toBeNull();
+    });
+
+    it('archived items use opacity-70 (not opacity-60)', () => {
+        expect(source).toContain('opacity-70');
+        expect(source).not.toMatch(/cursor-pointer opacity-60/);
+    });
+});

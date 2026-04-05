@@ -881,7 +881,7 @@ export function ActivityListPane({
                                             data-unseen={isUnseen || undefined}
                                             data-selected={isHistorySelected || undefined}
                                         >
-                                            <div className="flex items-center justify-between gap-1.5 text-xs">
+                                            <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                                                 <span className="flex items-center gap-1 min-w-0 truncate">
                                                     {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
                                                     {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
@@ -891,13 +891,13 @@ export function ActivityListPane({
                                                     <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
                                                         {task.displayName || task.type || 'Task'}
                                                     </span>
-                                                    {hasPinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                                                    {hasPinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                                                 </span>
-                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                                 </span>
                                             </div>
-                                            {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
+                                            {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
                                             {!isDense && task.error && (
                                                 <div className="text-[10px] text-red-500 mt-0.5 truncate">
                                                     {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
@@ -971,7 +971,7 @@ export function ActivityListPane({
                                             data-unseen={isUnseen || undefined}
                                             data-selected={isHistorySelected || undefined}
                                         >
-                                            <div className="flex items-center justify-between gap-1.5 text-xs">
+                                            <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                                                 <span className="flex items-center gap-1 min-w-0 truncate">
                                                     {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
                                                     {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
@@ -981,13 +981,13 @@ export function ActivityListPane({
                                                     <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
                                                         {task.displayName || task.type || 'Task'}
                                                     </span>
-                                                    {hasUnpinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                                                    {hasUnpinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                                                 </span>
-                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                                 </span>
                                             </div>
-                                            {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
+                                            {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
                                             {!isDense && task.error && (
                                                 <div className="text-[10px] text-red-500 mt-0.5 truncate">
                                                     {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
@@ -1018,7 +1018,7 @@ export function ActivityListPane({
                                     <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
                                     <Card
                                         className={cn(
-                                            isDense ? "px-2 py-1 cursor-pointer opacity-60" : "p-2 cursor-pointer opacity-60",
+                                            isDense ? "px-2 py-1 cursor-pointer opacity-70" : "p-2 cursor-pointer opacity-70",
                                             selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                         )}
                                         onClick={() => {
@@ -1032,7 +1032,7 @@ export function ActivityListPane({
                                         data-task-id={task.id}
                                         data-archived="true"
                                     >
-                                        <div className="flex items-center justify-between gap-1.5 text-xs">
+                                        <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                                             <span className="flex items-center gap-1 min-w-0 truncate">
                                                 <span className="shrink-0">
                                                     {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
@@ -1041,11 +1041,11 @@ export function ActivityListPane({
                                                     {task.displayName || task.type || 'Task'}
                                                 </span>
                                             </span>
-                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                            <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
                                                 {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                             </span>
                                         </div>
-                                        {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
+                                        {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb]" title={p}>{p}</div> : null; })()}
                                     </Card>
                                     </SwipeableHistoryItem>
                                 );
@@ -1163,16 +1163,16 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
                             [scheduled]
                         </span>
                     )}
-                    {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                    {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                 </div>
                 {elapsed && (
-                    <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                    <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
                         {elapsed}
                     </span>
                 )}
             </div>
             {!dense && promptPreview && (
-                <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5 truncate" title={promptPreview}>{promptPreview}</div>
+                <div className="text-[10px] text-[#848484] dark:text-[#bbb] mt-0.5 truncate" title={promptPreview}>{promptPreview}</div>
             )}
             {!dense && showProgress && progress && progress.total > 0 && (
                 <div className="mt-1" data-testid="workflow-progress-indicator">
