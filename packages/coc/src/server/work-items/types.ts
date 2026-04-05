@@ -175,7 +175,7 @@ export interface WorkItemFilter {
 export interface WorkItemStore {
     // CRUD
     addWorkItem(item: WorkItem): Promise<void>;
-    getWorkItem(id: string): Promise<WorkItem | undefined>;
+    getWorkItem(id: string, repoId?: string): Promise<WorkItem | undefined>;
     updateWorkItem(id: string, updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>): Promise<WorkItem | undefined>;
     removeWorkItem(id: string): Promise<boolean>;
     listWorkItems(filter?: WorkItemFilter): Promise<WorkItemIndexEntry[]>;
