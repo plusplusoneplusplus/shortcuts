@@ -115,7 +115,6 @@ export type QueueAction =
     | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; history?: any[]; stats: any } }
     | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; history?: any[]; stats?: any } }
     | { type: 'REPO_QUEUE_STATS_UPDATED'; repoId: string; stats: Partial<QueueStats> }
-    | { type: 'SEED_QUEUE'; queue: { queued: any[]; running: any[]; stats?: any } }
     | { type: 'SET_HISTORY'; history: any[] }
     | { type: 'DRAIN_START'; queued: number; running: number }
     | { type: 'DRAIN_PROGRESS'; queued: number; running: number }
@@ -181,17 +180,6 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             return {
                 ...state,
                 repoQueueMap: { ...state.repoQueueMap, [action.repoId]: repoData },
-            };
-        }
-        case 'SEED_QUEUE': {
-            if (state.queueInitialized) return state;
-            return {
-                ...state,
-                queued: action.queue.queued || [],
-                running: action.queue.running || [],
-                stats: action.queue.stats
-                    ? { ...state.stats, ...action.queue.stats }
-                    : state.stats,
             };
         }
         case 'SET_HISTORY':

@@ -240,19 +240,14 @@ function AppInner() {
     useEffect(() => {
         async function bootstrap() {
             try {
-                const [pRes, qRes, prefRes] = await Promise.all([
+                const [pRes, prefRes] = await Promise.all([
                     fetchApi('/processes/summaries').catch(() => null),
-                    fetchApi('/queue').catch(() => null),
                     fetchApi('/preferences').catch(() => null),
                 ]);
 
                 if (pRes?.summaries && Array.isArray(pRes.summaries)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.summaries });
                 else if (pRes?.processes && Array.isArray(pRes.processes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.processes });
                 else if (Array.isArray(pRes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes });
-
-                if (qRes && Array.isArray(qRes.queued) && Array.isArray(qRes.running)) {
-                    queueDispatch({ type: 'SEED_QUEUE', queue: qRes });
-                }
 
                 // Populate welcome/onboarding state from server preferences
                 if (prefRes) {
@@ -276,7 +271,7 @@ function AppInner() {
             connect();
         }
         bootstrap();
-    }, [connect, appDispatch, queueDispatch]);
+    }, [connect, appDispatch]);
 
     // Admin and Logs are now full-page routes handled by Router.tsx via #admin and #logs hashes.
     // handleAdminOpen and handleLogsOpen just navigate to the respective hash.

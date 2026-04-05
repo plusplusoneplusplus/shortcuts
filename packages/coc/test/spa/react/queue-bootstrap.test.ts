@@ -3,9 +3,9 @@
  *
  * Verifies that:
  * - useWebSocket exposes onConnect callback
- * - App.tsx fetches /queue during bootstrap and dispatches SEED_QUEUE
+ * - App.tsx does NOT fetch /queue during bootstrap (handled solely by handleConnect)
  * - App.tsx passes onConnect to useWebSocket for reconnect recovery
- * - QueueContext includes queueInitialized flag and SEED_QUEUE action
+ * - QueueContext no longer includes the SEED_QUEUE action
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -55,35 +55,37 @@ describe('useWebSocket — onConnect callback', () => {
 });
 
 // ============================================================================
-// App.tsx — bootstrap /queue fetch
+// App.tsx — bootstrap does NOT fetch /queue (handled by handleConnect)
 // ============================================================================
 
-describe('App.tsx — bootstrap queue fetch', () => {
+describe('App.tsx — bootstrap does not fetch queue', () => {
     let source: string;
 
     beforeAll(() => {
         source = fs.readFileSync(path.join(CLIENT_DIR, 'App.tsx'), 'utf-8');
     });
 
-    it('fetches /queue in the bootstrap Promise.all', () => {
-        expect(source).toContain("fetchApi('/queue')");
-        expect(source).toMatch(/Promise\.all\(\[[\s\S]*?fetchApi\('\/queue'\)/);
+    it('does not fetch /queue in the bootstrap Promise.all', () => {
+        const bootstrapBlock = source.match(/async\s+function\s+bootstrap[\s\S]*?connect\(\)/);
+        expect(bootstrapBlock).not.toBeNull();
+        const promiseAllBlock = bootstrapBlock![0].match(/Promise\.all\(\[[\s\S]*?\]\)/);
+        expect(promiseAllBlock).not.toBeNull();
+        expect(promiseAllBlock![0]).not.toContain("fetchApi('/queue')");
     });
 
-    it('dispatches SEED_QUEUE with the queue response', () => {
-        expect(source).toContain("type: 'SEED_QUEUE'");
-        expect(source).toContain('SEED_QUEUE');
+    it('does not dispatch SEED_QUEUE', () => {
+        const bootstrapBlock = source.match(/async\s+function\s+bootstrap[\s\S]*?connect\(\)/);
+        expect(bootstrapBlock).not.toBeNull();
+        expect(bootstrapBlock![0]).not.toContain('SEED_QUEUE');
     });
 
-    it('guards SEED_QUEUE dispatch with Array.isArray checks', () => {
-        const seedBlock = source.match(/if\s*\(qRes[\s\S]*?SEED_QUEUE[\s\S]*?\}/);
-        expect(seedBlock).not.toBeNull();
-        expect(seedBlock![0]).toContain('Array.isArray(qRes.queued)');
-        expect(seedBlock![0]).toContain('Array.isArray(qRes.running)');
-    });
-
-    it('catches /queue fetch errors gracefully', () => {
-        expect(source).toMatch(/fetchApi\('\/queue'\)\.catch\(\(\)\s*=>\s*null\)/);
+    it('bootstrap Promise.all fetches processes/summaries and preferences only', () => {
+        const bootstrapBlock = source.match(/async\s+function\s+bootstrap[\s\S]*?connect\(\)/);
+        expect(bootstrapBlock).not.toBeNull();
+        const promiseAllBlock = bootstrapBlock![0].match(/Promise\.all\(\[[\s\S]*?\]\)/);
+        expect(promiseAllBlock).not.toBeNull();
+        expect(promiseAllBlock![0]).toContain("fetchApi('/processes/summaries')");
+        expect(promiseAllBlock![0]).toContain("fetchApi('/preferences')");
     });
 });
 
@@ -155,10 +157,10 @@ describe('App.tsx — per-repo queue update aliasing', () => {
 });
 
 // ============================================================================
-// QueueContext — queueInitialized flag and SEED_QUEUE action
+// QueueContext — SEED_QUEUE action removed
 // ============================================================================
 
-describe('QueueContext — queueInitialized and SEED_QUEUE', () => {
+describe('QueueContext — SEED_QUEUE removed', () => {
     let source: string;
 
     beforeAll(() => {
@@ -173,8 +175,8 @@ describe('QueueContext — queueInitialized and SEED_QUEUE', () => {
         expect(source).toMatch(/queueInitialized:\s*false/);
     });
 
-    it('QueueAction union includes SEED_QUEUE', () => {
-        expect(source).toContain("type: 'SEED_QUEUE'");
+    it('QueueAction union does not include SEED_QUEUE', () => {
+        expect(source).not.toContain("type: 'SEED_QUEUE'");
     });
 
     it('QUEUE_UPDATED case sets queueInitialized to true', () => {
@@ -183,10 +185,7 @@ describe('QueueContext — queueInitialized and SEED_QUEUE', () => {
         expect(queueUpdatedCase![0]).toContain('queueInitialized: true');
     });
 
-    it('SEED_QUEUE case checks queueInitialized before applying', () => {
-        const seedCase = source.match(/case\s+'SEED_QUEUE'[\s\S]*?(?=case\s+'|default:)/);
-        expect(seedCase).not.toBeNull();
-        expect(seedCase![0]).toContain('state.queueInitialized');
-        expect(seedCase![0]).toContain('return state');
+    it('reducer does not have a SEED_QUEUE case', () => {
+        expect(source).not.toContain("case 'SEED_QUEUE'");
     });
 });
