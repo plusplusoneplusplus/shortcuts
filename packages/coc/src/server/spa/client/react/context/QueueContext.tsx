@@ -161,8 +161,9 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
                 ...state,
                 queued: action.queue.queued || [],
                 running: action.queue.running || [],
-                stats: action.queue.stats || state.stats,
-                history: state.history.filter((t: any) => !activeIds.has(t.id)),
+                history: action.queue.history?.length ? action.queue.history : state.history,
+                stats: newStats,
+                showHistory: autoShowHistory,
                 queueInitialized: true,
             };
         }
@@ -171,6 +172,7 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             const repoData = {
                 queued: action.queue.queued ?? existingRepo?.queued ?? [],
                 running: action.queue.running ?? existingRepo?.running ?? [],
+                history: action.queue.history?.length ? action.queue.history : (existingRepo?.history ?? []),
                 stats: mergeQueueStats(action.queue.stats, existingRepo?.stats),
             };
             return {

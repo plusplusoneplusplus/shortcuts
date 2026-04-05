@@ -28,9 +28,11 @@ import { isQueueProcessId, toQueueProcessId, toTaskId } from '../utils/queue-pro
 export interface RepoActivityTabProps {
     workspaceId: string;
     mode?: 'chats' | 'tasks';
+    /** Opens the Generate Plan dialog in the parent. */
+    onGeneratePlan?: () => void;
 }
 
-export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
+export function RepoActivityTab({ workspaceId, mode, onGeneratePlan }: RepoActivityTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
     const [history, setHistory] = useState<ProcessHistoryItem[]>([]);
@@ -122,7 +124,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             queueDispatch({
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: workspaceId,
-                queue: { queued: nextQueued, running: nextRunning, stats: nextStats },
+                queue: { queued: nextQueued, running: nextRunning, history: nextHistory.length > 0 ? nextHistory : undefined, stats: nextStats },
             });
         } catch {
             setRunning([]);
@@ -154,31 +156,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         if (!repoQueue) return;
         setRunning(repoQueue.running);
         setQueued(repoQueue.queued);
-
-        const activeProcessIds = [
-            ...getActiveProcessIds(repoQueue.running),
-            ...getActiveProcessIds(repoQueue.queued),
-        ];
-        const activeProcessIdSet = new Set(activeProcessIds);
-        setHistory(prev => {
-            const next = prev.filter((task: any) => !activeProcessIdSet.has(task.id));
-            return next.length === prev.length ? prev : next;
-        });
-
-        // Detect task departures or arrivals and refetch history.
-        // Departure: a previously-active process disappeared (task completed/failed).
-        // Arrival: a process already in local history became active again (follow-up re-queue).
-        const currIds = activeProcessIds;
-        const prevIds = prevActiveIdsRef.current;
-        const hasDeparture = prevIds.some(id => !activeProcessIdSet.has(id));
-        const historyIds = new Set(history.map((t: any) => t.id));
-        const hasArrivalFromHistory = currIds.some(id => !prevIds.includes(id) && historyIds.has(id));
-        prevActiveIdsRef.current = currIds;
-
-        if (hasDeparture || hasArrivalFromHistory) {
-            fetchHistory();
-        }
-
+        setHistory(prev => repoQueue.history.length > 0 ? repoQueue.history : prev);
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
             setPauseReason(repoQueue.stats.pauseReason);
@@ -429,6 +407,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                                 onBack={() => { setMobileShowDetail(false); }}
                                 workspaceId={workspaceId}
                                 readOnly={activeTab === 'tasks'}
+                                onGeneratePlan={onGeneratePlan}
                             />
                         </div>
                     ) : (
@@ -473,6 +452,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                     selectedTask={selectedTask}
                     workspaceId={workspaceId}
                     readOnly={activeTab === 'tasks'}
+                    onGeneratePlan={onGeneratePlan}
                 />
             </div>
         </div>

@@ -67,7 +67,7 @@ export function ProcessesView() {
             // Sync global queue context
             queueDispatch({
                 type: 'QUEUE_UPDATED',
-                queue: { queued: nextQueued, running: nextRunning, history: nextHistory, stats: nextStats },
+                queue: { queued: nextQueued, running: nextRunning, history: nextHistory.length > 0 ? nextHistory : undefined, stats: nextStats },
             });
         } catch {
             setRunning([]);
