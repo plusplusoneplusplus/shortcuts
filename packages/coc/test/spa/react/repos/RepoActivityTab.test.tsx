@@ -144,8 +144,10 @@ describe('RepoActivityTab: selectTask keeps chat inline', () => {
         expect(selectTaskBlock).toContain('SELECT_QUEUE_TASK');
     });
 
-    it('updates hash to activity path', () => {
-        expect(selectTaskBlock).toContain('/activity/');
+    it('updates hash using the active tab segment (tasks → tasks, chats → activity)', () => {
+        expect(selectTaskBlock).toContain("activeTab === 'tasks'");
+        expect(selectTaskBlock).toContain("'tasks'");
+        expect(selectTaskBlock).toContain("'activity'");
     });
 
     it('still navigates run-workflow tasks to workflow detail', () => {

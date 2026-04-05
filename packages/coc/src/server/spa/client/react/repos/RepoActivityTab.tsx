@@ -125,9 +125,10 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                 queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
                 setSelectedTask(null);
                 selectedTaskRef.current = null;
-                const activityBase = '#repos/' + encodeURIComponent(workspaceId) + '/activity';
-                if (location.hash.startsWith(activityBase + '/')) {
-                    location.hash = activityBase;
+                const tabSegment = activeTab === 'tasks' ? 'tasks' : 'activity';
+                const base = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment;
+                if (location.hash.startsWith(base + '/')) {
+                    location.hash = base;
                 }
             });
         return () => { cancelled = true; };
@@ -171,7 +172,8 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id, repoId: workspaceId });
         setSelectedTask(task || null);
         selectedTaskRef.current = task || null;
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(id);
+        const tabSegment = activeTab === 'tasks' ? 'tasks' : 'activity';
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment + '/' + encodeURIComponent(id);
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId]);
 
@@ -283,6 +285,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                                 selectedTask={selectedTask}
                                 onBack={() => { setMobileShowDetail(false); }}
                                 workspaceId={workspaceId}
+                                readOnly={activeTab === 'tasks'}
                             />
                         </div>
                     ) : (
@@ -325,6 +328,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                     selectedTaskId={selectedTaskId}
                     selectedTask={selectedTask}
                     workspaceId={workspaceId}
+                    readOnly={activeTab === 'tasks'}
                 />
             </div>
         </div>
