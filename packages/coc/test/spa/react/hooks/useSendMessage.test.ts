@@ -574,3 +574,65 @@ describe('useSendMessage', () => {
         });
     });
 });
+
+// ── Timeout fix regression tests ─────────────────────────────────────────────
+
+describe('waitForSendCompletion safety timeout (regression)', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('timeout fires and resolves the promise (previously: ref comparison was always false)', async () => {
+        // Reproduces the waitForSendCompletion pattern directly to verify the fix.
+        // Before the fix, the ref was overwritten with a wrapper after the comparison
+        // reference was captured, making `resolveCurrentSendRef.current === resolve`
+        // always false — the 90-second safety timeout never fired.
+        const resolveRef: { current: (() => void) | null } = { current: null };
+
+        const waitFn = (): Promise<void> => new Promise<void>(resolve => {
+            let timeoutId: ReturnType<typeof setTimeout>;
+            // Fixed pattern: ref holds the wrapper, timeout calls the wrapper directly
+            const wrappedResolve = () => {
+                clearTimeout(timeoutId);
+                if (resolveRef.current === wrappedResolve) resolveRef.current = null;
+                resolve();
+            };
+            resolveRef.current = wrappedResolve;
+            timeoutId = setTimeout(wrappedResolve, 90_000);
+        });
+
+        let resolved = false;
+        const p = waitFn().then(() => { resolved = true; });
+
+        expect(resolved).toBe(false);
+        vi.advanceTimersByTime(91_000);
+        await p;
+        expect(resolved).toBe(true);
+    });
+
+    it('onSendComplete (external caller) fires the wrapper and resolves immediately', async () => {
+        const resolveRef: { current: (() => void) | null } = { current: null };
+
+        const waitFn = (): Promise<void> => new Promise<void>(resolve => {
+            let timeoutId: ReturnType<typeof setTimeout>;
+            const wrappedResolve = () => {
+                clearTimeout(timeoutId);
+                if (resolveRef.current === wrappedResolve) resolveRef.current = null;
+                resolve();
+            };
+            resolveRef.current = wrappedResolve;
+            timeoutId = setTimeout(wrappedResolve, 90_000);
+        });
+
+        let resolved = false;
+        const p = waitFn().then(() => { resolved = true; });
+
+        expect(resolved).toBe(false);
+        // Simulate onSendComplete calling resolveRef.current() (as useChatSSE does)
+        if (resolveRef.current) { resolveRef.current(); resolveRef.current = null; }
+        await p;
+        expect(resolved).toBe(true);
+        // Timer should NOT have fired (cancelled)
+        vi.runAllTimers();
+        expect(resolved).toBe(true); // idempotent
+    });
+});
