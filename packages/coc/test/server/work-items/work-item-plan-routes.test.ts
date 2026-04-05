@@ -14,7 +14,7 @@ let store: FileWorkItemStore;
 let server: http.Server;
 let baseUrl: string;
 
-function makeServer(refineWithAI?: (plan: string, desc: string, title: string) => Promise<string>): http.Server {
+function makeServer(refineWithAI?: (plan: string, desc: string, title: string, instructions?: string) => Promise<string>): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({ routes, workItemStore: store });
     registerWorkItemPlanRoutes({ routes, workItemStore: store, refineWithAI });
@@ -228,6 +228,27 @@ describe('Work Item Plan Routes', () => {
             expect(res.body.plan.resolvedBy).toBe('ai');
             expect(res.body.plan.content).toContain('Refined Plan');
             expect(res.body.plan.content).toContain('AI Additions');
+        });
+
+        it('forwards instructions to refineWithAI callback', async () => {
+            await stopServer();
+            const received: string[] = [];
+            server = makeServer(async (plan, desc, title, instructions) => {
+                received.push(instructions ?? '');
+                return `# Plan\n${plan}\nInstructions used: ${instructions}`;
+            });
+            await startServer();
+            const item = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Instr test' });
+            await request('PUT', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan`, { content: 'Base plan' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${item.body.id}/plan/refine`, {
+                instructions: 'Add error handling',
+            });
+
+            expect(res.status).toBe(200);
+            expect(received[0]).toBe('Add error handling');
+            expect(res.body.plan.content).toContain('Instructions used: Add error handling');
+            expect(res.body.plan.summary).toContain('Add error handling');
         });
 
         it('returns 400 when no plan exists', async () => {

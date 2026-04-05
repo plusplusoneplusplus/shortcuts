@@ -23,7 +23,7 @@ export interface WorkItemPlanRouteContext {
     workItemStore: WorkItemStore;
     getWsServer?: () => ProcessWebSocketServer;
     /** Optional AI invoker for plan refinement. If not provided, refinement is unavailable. */
-    refineWithAI?: (currentPlan: string, description: string, title: string) => Promise<string>;
+    refineWithAI?: (currentPlan: string, description: string, title: string, instructions?: string) => Promise<string>;
 }
 
 export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void {
@@ -186,6 +186,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 item.plan.content,
                 item.description,
                 item.title,
+                body.instructions || undefined,
             );
 
             const now = new Date().toISOString();
@@ -196,7 +197,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 content: refinedContent,
                 createdAt: now,
                 resolvedBy: 'ai',
-                summary: body.summary || 'AI-refined plan',
+                summary: body.summary || (body.instructions ? `AI resolved: ${String(body.instructions).slice(0, 80)}` : 'AI-refined plan'),
             };
 
             await workItemStore.savePlanVersion(workItemId, planVersion);

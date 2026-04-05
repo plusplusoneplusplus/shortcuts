@@ -1,21 +1,23 @@
 /**
  * WorkItemDetail — right-pane detail view for a selected work item.
- * Shows description, plan, execution history, and action buttons.
+ * Shows title, description, status, plan (with version tabs + comments),
+ * execution history, and action buttons.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button, Badge, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
+import { WorkItemPlanSection } from './WorkItemPlanSection';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
-    created: { label: 'Created', badgeStatus: 'queued' },
-    planning: { label: 'Planning', badgeStatus: 'warning' },
-    readyToExecute: { label: 'Ready', badgeStatus: 'completed' },
-    executing: { label: 'Executing', badgeStatus: 'running' },
-    aiDone: { label: 'AI Done', badgeStatus: 'warning' },
-    done: { label: 'Done', badgeStatus: 'completed' },
-    failed: { label: 'Failed', badgeStatus: 'failed' },
+    created:          { label: 'Created',          badgeStatus: 'queued' },
+    planning:         { label: 'Planning',          badgeStatus: 'warning' },
+    readyToExecute:   { label: 'Ready to Execute',  badgeStatus: 'completed' },
+    executing:        { label: 'Executing',         badgeStatus: 'running' },
+    aiDone:           { label: 'AI Done',           badgeStatus: 'warning' },
+    done:             { label: 'Done',              badgeStatus: 'completed' },
+    failed:           { label: 'Failed',            badgeStatus: 'failed' },
 };
 
 interface WorkItemDetailProps {
@@ -37,27 +39,11 @@ interface WorkItemFull {
     reviewComments?: Array<{ id: string; text: string; createdAt: string; resolved?: boolean }>;
 }
 
-interface PlanVersion {
-    version: number;
-    createdAt: string;
-    resolvedBy?: string;
-    summary?: string;
-}
-
 export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: WorkItemDetailProps) {
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [executing, setExecuting] = useState(false);
-    const [planVersions, setPlanVersions] = useState<PlanVersion[]>([]);
-    const [showPlanVersions, setShowPlanVersions] = useState(false);
-    const [editingPlan, setEditingPlan] = useState(false);
-    const [planDraft, setPlanDraft] = useState('');
-    const [savingPlan, setSavingPlan] = useState(false);
-    const [refineMode, setRefineMode] = useState(false);
-    const [refineInstructions, setRefineInstructions] = useState('');
-    const [refining, setRefining] = useState(false);
-    const [refinedContent, setRefinedContent] = useState<string | null>(null);
     const [reviewComment, setReviewComment] = useState('');
     const [requestingChanges, setRequestingChanges] = useState(false);
     const [acceptingDone, setAcceptingDone] = useState(false);
@@ -103,59 +89,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
         } catch (err: any) {
             setError(err.message || 'Failed to update status');
         }
-    };
-
-    const handleSavePlan = async () => {
-        setSavingPlan(true);
-        try {
-            await fetchApi(basePath + '/plan', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: planDraft }),
-            });
-            setEditingPlan(false);
-            await fetchItem();
-        } catch (err: any) {
-            setError(err.message || 'Failed to save plan');
-        } finally {
-            setSavingPlan(false);
-        }
-    };
-
-    const handleRefine = async () => {
-        setRefining(true);
-        try {
-            const data = await fetchApi(basePath + '/plan/refine', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ instructions: refineInstructions.trim() || undefined }),
-            });
-            setRefinedContent(data.content ?? data.plan?.content ?? '');
-            setRefineMode(false);
-        } catch (err: any) {
-            setError(err.message || 'Failed to refine plan');
-        } finally {
-            setRefining(false);
-        }
-    };
-
-    const handleAcceptRefine = async () => {
-        setRefinedContent(null);
-        setRefineInstructions('');
-        await fetchItem();
-    };
-
-    const handleRejectRefine = () => {
-        setRefinedContent(null);
-        setRefineInstructions('');
-    };
-
-    const loadPlanVersions = async () => {
-        try {
-            const data = await fetchApi(basePath + '/plan/versions');
-            setPlanVersions(data || []);
-            setShowPlanVersions(true);
-        } catch { /* ignore */ }
     };
 
     const handleAcceptDone = async () => {
@@ -220,159 +153,105 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
 
     return (
         <div className="flex flex-col h-full" data-testid="work-item-detail">
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#474749] flex items-center gap-2">
+            {/* ── Header ── */}
+            <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#474749] flex items-start gap-2">
                 {onBack && (
-                    <button onClick={onBack} className="text-sm text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]" data-testid="work-item-back-btn">
+                    <button onClick={onBack} className="text-sm text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] mt-0.5 shrink-0" data-testid="work-item-back-btn">
                         ←
                     </button>
                 )}
                 <div className="flex-1 min-w-0">
-                    <h2 className="text-sm font-medium truncate" title={item.title}>{item.title}</h2>
-                    <div className="flex items-center gap-2 text-[10px] text-[#848484] dark:text-[#999] mt-0.5">
+                    <h2 className="text-sm font-semibold truncate" title={item.title}>{item.title}</h2>
+                    <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-[#848484] dark:text-[#999] mt-1">
                         <Badge status={statusCfg.badgeStatus}>{statusCfg.label}</Badge>
                         {item.priority && item.priority !== 'normal' && (
                             <span className={cn('px-1.5 py-0.5 rounded text-[10px]',
                                 item.priority === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                             )}>{item.priority}</span>
                         )}
-                        {item.plan && <span>v{item.plan.version} plan</span>}
+                        {item.plan && <span className="text-[#848484]">plan v{item.plan.version}</span>}
                         <span>·</span>
                         <span>{formatRelativeTime(item.updatedAt)}</span>
                     </div>
                 </div>
-                {canExecute && (
-                    <Button variant="primary" size="sm" onClick={handleExecute} disabled={executing} loading={executing} data-testid="work-item-execute-btn">
+                {/* Execute + Auto in header */}
+                <div className="flex items-center gap-2 shrink-0">
+                    <label className="flex items-center gap-1 text-[10px] cursor-pointer" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
+                        <input
+                            type="checkbox"
+                            checked={item.autoExecute ?? false}
+                            onChange={async (e) => {
+                                try {
+                                    await fetchApi(basePath, {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ autoExecute: e.target.checked }),
+                                    });
+                                    await fetchItem();
+                                } catch (err: any) {
+                                    setError(err.message || 'Failed to update');
+                                }
+                            }}
+                            className="rounded"
+                        />
+                        Auto
+                    </label>
+                    <Button
+                        variant="primary" size="sm"
+                        onClick={handleExecute}
+                        disabled={!canExecute || executing}
+                        loading={executing}
+                        data-testid="work-item-execute-btn"
+                    >
                         ▶ Execute
                     </Button>
-                )}
+                </div>
             </div>
 
-            {/* Body */}
+            {/* ── Body ── */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {error && (
-                    <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2">{error}</div>
+                    <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2 flex items-start justify-between gap-2">
+                        <span>{error}</span>
+                        <button className="text-[10px] shrink-0" onClick={() => setError(null)}>✕</button>
+                    </div>
                 )}
 
                 {/* Description */}
                 <section>
                     <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Description</h3>
-                    <div className="text-sm whitespace-pre-wrap">{item.description || 'No description'}</div>
-                </section>
-
-                {/* Source info */}
-                <section>
-                    <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Source</h3>
-                    <div className="text-xs text-[#606060] dark:text-[#aaa]">
-                        {item.source === 'manual' ? '✍️ Created manually' :
-                         item.source === 'chat' ? `💬 From chat session${item.sourceId ? ` (${item.sourceId.slice(0, 8)}…)` : ''}` :
-                         item.source === 'schedule' ? `📅 From schedule${item.sourceId ? ` (${item.sourceId})` : ''}` :
-                         item.source}
+                    <div className="text-sm whitespace-pre-wrap text-[#3c3c3c] dark:text-[#cccccc]">
+                        {item.description || <span className="italic text-[#848484]">No description</span>}
                     </div>
                 </section>
 
-                {/* Plan section */}
+                {/* Plan */}
                 <section>
-                    <div className="flex items-center justify-between mb-1">
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase">
-                            Plan {item.plan ? `(v${item.plan.version})` : ''}
-                        </h3>
-                        <div className="flex gap-1">
-                            {item.plan && (
-                                <Button variant="ghost" size="sm" onClick={loadPlanVersions} data-testid="work-item-plan-versions-btn">
-                                    📜 History
-                                </Button>
-                            )}
-                            {canEditPlan && !editingPlan && !refinedContent && (
-                                <Button variant="ghost" size="sm" onClick={() => { setPlanDraft(item.plan?.content || ''); setEditingPlan(true); }} data-testid="work-item-plan-edit-btn">
-                                    ✏️ {item.plan ? 'Edit' : 'Add Plan'}
-                                </Button>
-                            )}
-                            {canEditPlan && !editingPlan && !refinedContent && (
-                                <Button variant="ghost" size="sm" onClick={() => setRefineMode(!refineMode)} disabled={refining} loading={refining} data-testid="work-item-plan-refine-btn">
-                                    🤖 Refine
-                                </Button>
-                            )}
-                        </div>
-                    </div>
-                    {refineMode && !refinedContent && (
-                        <div className="space-y-2 mb-2" data-testid="work-item-refine-input">
-                            <input
-                                type="text"
-                                className="w-full text-xs p-2 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e]"
-                                placeholder="Optional instructions (e.g., &quot;make it more detailed&quot;)…"
-                                value={refineInstructions}
-                                onChange={e => setRefineInstructions(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleRefine(); } }}
-                            />
-                            <div className="flex gap-1">
-                                <Button variant="primary" size="sm" onClick={handleRefine} disabled={refining} loading={refining}>Refine</Button>
-                                <Button variant="ghost" size="sm" onClick={() => { setRefineMode(false); setRefineInstructions(''); }}>Cancel</Button>
-                            </div>
-                        </div>
-                    )}
-                    {refinedContent !== null && (
-                        <div className="space-y-2 mb-2" data-testid="work-item-refine-result">
-                            <div className="text-[10px] font-medium text-[#848484] uppercase">Refined Plan (preview)</div>
-                            <div className="text-xs whitespace-pre-wrap font-mono bg-green-50 dark:bg-green-900/20 rounded p-2 border border-green-300 dark:border-green-700 max-h-64 overflow-y-auto">
-                                {refinedContent}
-                            </div>
-                            <div className="flex gap-1">
-                                <Button variant="primary" size="sm" onClick={handleAcceptRefine} data-testid="work-item-refine-accept">✅ Accept</Button>
-                                <Button variant="ghost" size="sm" onClick={handleRejectRefine} data-testid="work-item-refine-reject">✕ Reject</Button>
-                            </div>
-                        </div>
-                    )}
-                    {editingPlan ? (
-                        <div className="space-y-2">
-                            <textarea
-                                className="w-full h-48 text-xs p-2 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] resize-y font-mono"
-                                value={planDraft}
-                                onChange={e => setPlanDraft(e.target.value)}
-                                data-testid="work-item-plan-editor"
-                            />
-                            <div className="flex gap-1">
-                                <Button variant="primary" size="sm" onClick={handleSavePlan} disabled={savingPlan} loading={savingPlan}>Save</Button>
-                                <Button variant="ghost" size="sm" onClick={() => setEditingPlan(false)}>Cancel</Button>
-                            </div>
-                        </div>
-                    ) : item.plan ? (
-                        <div className="text-xs whitespace-pre-wrap font-mono bg-[#fafafa] dark:bg-[#1e1e1e] rounded p-2 border border-[#e0e0e0] dark:border-[#474749] max-h-64 overflow-y-auto" data-testid="work-item-plan-content">
-                            {item.plan.content}
-                        </div>
-                    ) : (
-                        <div className="text-xs text-[#848484] italic">No plan yet</div>
-                    )}
-
-                    {/* Plan version history */}
-                    {showPlanVersions && planVersions.length > 0 && (
-                        <div className="mt-2 border border-[#e0e0e0] dark:border-[#474749] rounded p-2">
-                            <div className="flex items-center justify-between mb-1">
-                                <span className="text-[10px] font-medium text-[#848484] uppercase">Version History</span>
-                                <button className="text-[10px] text-[#848484] hover:text-[#333]" onClick={() => setShowPlanVersions(false)}>✕</button>
-                            </div>
-                            {planVersions.map(v => (
-                                <div key={v.version} className="flex items-center gap-2 text-[10px] py-0.5">
-                                    <span className={cn('font-medium', v.version === item.plan?.version && 'text-[#0078d4]')}>
-                                        v{v.version}
-                                    </span>
-                                    <span className="text-[#848484]">{formatRelativeTime(v.createdAt)}</span>
-                                    {v.resolvedBy && <span className="text-[#848484]">by {v.resolvedBy}</span>}
-                                    {v.summary && <span className="text-[#606060] truncate">{v.summary}</span>}
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-2">
+                        Detail Plan {item.plan ? <span className="text-[#848484] normal-case">(v{item.plan.version})</span> : ''}
+                    </h3>
+                    <WorkItemPlanSection
+                        workspaceId={workspaceId}
+                        workItemId={workItemId}
+                        plan={item.plan}
+                        canEdit={canEditPlan}
+                        onUpdated={fetchItem}
+                        onError={setError}
+                    />
                 </section>
 
-                {/* AI Review section (shown only when status is aiDone) */}
+                {/* AI Review section (aiDone only) */}
                 {isAiDone && (
                     <section className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg p-3" data-testid="work-item-review-section">
-                        <h3 className="text-xs font-medium text-purple-700 dark:text-purple-400 uppercase mb-2">🔄 AI Review</h3>
+                        <h3 className="text-xs font-medium text-purple-700 dark:text-purple-400 uppercase mb-2">🔄 AI Done — Review Required</h3>
                         {item.executionHistory && item.executionHistory.length > 0 && (
                             <div className="text-xs text-[#606060] dark:text-[#aaa] mb-2">
-                                Last execution: Run #{item.executionHistory.length}
-                                {item.processId && <span> — <a href={`#process/${item.processId}`} className="text-[#0078d4] hover:underline">View Session →</a></span>}
+                                Run #{item.executionHistory.length}
+                                {item.processId && (
+                                    <a href={`#process/${item.processId}`} className="ml-2 text-[#0078d4] hover:underline">
+                                        View session →
+                                    </a>
+                                )}
                             </div>
                         )}
                         <div className="space-y-2">
@@ -385,27 +264,15 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                                 data-testid="work-item-review-comment"
                             />
                             <div className="flex gap-2">
-                                <Button
-                                    variant="primary" size="sm"
-                                    onClick={handleAcceptDone}
-                                    disabled={acceptingDone}
-                                    loading={acceptingDone}
-                                    data-testid="work-item-accept-done-btn"
-                                >
+                                <Button variant="primary" size="sm" onClick={handleAcceptDone} disabled={acceptingDone} loading={acceptingDone} data-testid="work-item-accept-done-btn">
                                     ✅ Accept &amp; Done
                                 </Button>
-                                <Button
-                                    variant="ghost" size="sm"
-                                    onClick={handleRequestChanges}
-                                    disabled={requestingChanges}
-                                    loading={requestingChanges}
-                                    data-testid="work-item-request-changes-btn"
-                                >
+                                <Button variant="ghost" size="sm" onClick={handleRequestChanges} disabled={requestingChanges} loading={requestingChanges} data-testid="work-item-request-changes-btn">
                                     🔄 Request Changes
                                 </Button>
                             </div>
                             <div className="text-[10px] text-[#848484] italic">
-                                "Request Changes" incorporates your comments into the plan and moves back to Ready.
+                                "Request Changes" incorporates your comments into the plan and moves back to Ready to Execute.
                             </div>
                         </div>
                     </section>
@@ -427,33 +294,16 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                         {(item.status === 'done' || item.status === 'failed') && (
                             <Button variant="ghost" size="sm" onClick={() => handleStatusChange('created')}>🔄 Reopen</Button>
                         )}
-                        <Button variant="ghost" size="sm" className="text-red-500" onClick={async () => {
-                            if (confirm('Delete this work item?')) {
-                                await fetchApi(basePath, { method: 'DELETE' });
-                                onBack?.();
-                            }
-                        }} data-testid="work-item-delete-btn">🗑 Delete</Button>
-                    </div>
-                    <label className="flex items-center gap-1.5 text-xs cursor-pointer mt-2" data-testid="work-item-auto-execute-toggle">
-                        <input
-                            type="checkbox"
-                            checked={item.autoExecute ?? false}
-                            onChange={async (e) => {
-                                try {
-                                    await fetchApi(basePath, {
-                                        method: 'PATCH',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ autoExecute: e.target.checked }),
-                                    });
-                                    await fetchItem();
-                                } catch (err: any) {
-                                    setError(err.message || 'Failed to update auto-execute');
+                        <Button variant="ghost" size="sm" className="text-red-500" data-testid="work-item-delete-btn"
+                            onClick={async () => {
+                                if (confirm('Delete this work item?')) {
+                                    await fetchApi(basePath, { method: 'DELETE' });
+                                    onBack?.();
                                 }
-                            }}
-                            className="rounded"
-                        />
-                        Auto-execute when ready
-                    </label>
+                            }}>
+                            🗑 Delete
+                        </Button>
+                    </div>
                 </section>
 
                 {/* Execution history */}
@@ -465,6 +315,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                                 <div key={i} className="flex items-center gap-2 text-[10px]">
                                     <span>{exec.status === 'running' ? '🔵' : exec.status === 'completed' ? '🟢' : exec.status === 'failed' ? '🔴' : '⚪'}</span>
                                     <span className="text-[#606060] dark:text-[#aaa]">Run #{i + 1}</span>
+                                    {exec.processId && (
+                                        <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline">→</a>
+                                    )}
                                     <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
                                     {exec.error && <span className="text-red-500 truncate">{exec.error}</span>}
                                 </div>
@@ -473,18 +326,26 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                     </section>
                 )}
 
-                {/* Tags */}
-                {item.tags && item.tags.length > 0 && (
-                    <section>
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Tags</h3>
-                        <div className="flex flex-wrap gap-1">
-                            {item.tags.map(tag => (
-                                <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#606060] dark:text-[#aaa]">{tag}</span>
-                            ))}
-                        </div>
-                    </section>
-                )}
+                {/* Source + Tags */}
+                <section>
+                    <div className="flex flex-wrap gap-3 text-[10px] text-[#848484]">
+                        <span>
+                            {item.source === 'manual' ? '✍️ Manual' :
+                             item.source === 'chat' ? '💬 From chat' :
+                             '📅 From schedule'}
+                        </span>
+                        {item.tags && item.tags.length > 0 && (
+                            <div className="flex gap-1 flex-wrap">
+                                {item.tags.map(tag => (
+                                    <span key={tag} className="px-1.5 py-0.5 rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#606060] dark:text-[#aaa]">{tag}</span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </section>
             </div>
         </div>
     );
 }
+
+
