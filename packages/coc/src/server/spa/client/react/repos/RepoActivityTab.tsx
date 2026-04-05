@@ -28,11 +28,9 @@ import { isQueueProcessId, toQueueProcessId, toTaskId } from '../utils/queue-pro
 export interface RepoActivityTabProps {
     workspaceId: string;
     mode?: 'chats' | 'tasks';
-    /** Opens the Generate Plan dialog in the parent. */
-    onGeneratePlan?: () => void;
 }
 
-export function RepoActivityTab({ workspaceId, mode, onGeneratePlan }: RepoActivityTabProps) {
+export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
     const [history, setHistory] = useState<ProcessHistoryItem[]>([]);
@@ -407,7 +405,6 @@ export function RepoActivityTab({ workspaceId, mode, onGeneratePlan }: RepoActiv
                                 onBack={() => { setMobileShowDetail(false); }}
                                 workspaceId={workspaceId}
                                 readOnly={activeTab === 'tasks'}
-                                onGeneratePlan={onGeneratePlan}
                             />
                         </div>
                     ) : (
@@ -452,7 +449,6 @@ export function RepoActivityTab({ workspaceId, mode, onGeneratePlan }: RepoActiv
                     selectedTask={selectedTask}
                     workspaceId={workspaceId}
                     readOnly={activeTab === 'tasks'}
-                    onGeneratePlan={onGeneratePlan}
                 />
             </div>
         </div>

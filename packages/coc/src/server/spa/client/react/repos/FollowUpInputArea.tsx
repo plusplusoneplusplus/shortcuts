@@ -26,6 +26,7 @@ export interface FollowUpInputAreaProps {
     setSelectedMode: (mode: 'ask' | 'plan' | 'autopilot') => void;
     onSend: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     onRetry: () => void;
+    onStop?: () => void;
     skills: SkillItem[];
     images: string[];
     onImagePaste: (e: React.ClipboardEvent) => void;
@@ -71,6 +72,7 @@ export function FollowUpInputArea({
     setSelectedMode,
     onSend,
     onRetry,
+    onStop,
     skills,
     images,
     onImagePaste,
@@ -102,6 +104,12 @@ export function FollowUpInputArea({
 
     return (
         <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
+            {(sending || task?.status === 'running') && (
+                <div className="flex items-center gap-2 text-xs text-[#848484] dark:text-[#999]" data-testid="agent-responding-indicator">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />
+                    Agent is responding...
+                </div>
+            )}
             {resumeFeedback && (
                 <div className={`text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
                     {resumeFeedback.message}
@@ -234,11 +242,26 @@ export function FollowUpInputArea({
                         highlightIndex={slashCommands.highlightIndex}
                     />
                 </div>
-                <SendButton
-                    disabled={inputDisabled}
-                    ctrlHeld={modHeld}
-                    onSend={(dm) => { void onSend(undefined, dm); }}
-                />
+                {(sending || task?.status === 'running') ? (
+                    <button
+                        type="button"
+                        className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
+                        onClick={() => onStop?.()}
+                        data-testid="activity-chat-stop-btn"
+                    >
+                        Stop
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        disabled={inputDisabled}
+                        className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => { void onSend(); }}
+                        data-testid="activity-chat-send-btn"
+                    >
+                        Send
+                    </button>
+                )}
             </div>
         </div>
     );
