@@ -74,9 +74,11 @@ describe('QueueTaskItem frozen visual', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain("task.frozen && \"task-frozen\"");
     });
 
-    it('shows ❄️ icon instead of regular icon when frozen', () => {
+    it('shows ❄️ icon when frozen, no type icon otherwise', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain("task.frozen ? '❄️'");
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain(": icon");
+        // Type icons removed — falls through to empty string
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("isHeld ? '🤖⏸' : ''");
+        expect(ACTIVITY_LIST_PANE_SOURCE).not.toContain(': icon');
     });
 
     it('does not use opacity-60 italic for frozen tasks', () => {
