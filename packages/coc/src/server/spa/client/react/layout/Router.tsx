@@ -172,7 +172,7 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'workflows', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'workflows', 'tasks', 'work-items', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests']);
 
 export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions', 'memory', 'run-script-template', 'tasks']);
 /** @deprecated Use VALID_SETTINGS_SECTIONS */
@@ -201,7 +201,7 @@ const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     w: 'workflows',
     s: 'schedules',
     c: 'settings',
-    i: 'wiki',
+    i: 'work-items',
 };
 
 export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB

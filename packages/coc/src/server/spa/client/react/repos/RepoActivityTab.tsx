@@ -49,7 +49,6 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         storageKey: 'activity-left-panel-width',
     });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
-    const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
 
     const repoQueue = queueState.repoQueueMap[workspaceId];
 
@@ -156,7 +155,6 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const { markReadByProcessId } = useNotifications();
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
-        setSelectedWorkItemId(null);
         if (task?.type === 'run-workflow') {
             const processId = task.processId || task.id;
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflow/' + encodeURIComponent(processId);
@@ -175,14 +173,6 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(id);
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId]);
-
-    const handleSelectWorkItem = useCallback((id: string) => {
-        setSelectedWorkItemId(id);
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
-        setSelectedTask(null);
-        selectedTaskRef.current = null;
-        if (isMobile) setMobileShowDetail(true);
-    }, [queueDispatch, workspaceId, isMobile]);
 
     // Auto-dismiss notification when a deep-linked task is viewed via hash URL
     useEffect(() => {
@@ -277,8 +267,6 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
             fetchQueue={fetchQueue}
             pauseReason={pauseReason}
-            onSelectWorkItem={handleSelectWorkItem}
-            selectedWorkItemId={selectedWorkItemId}
         />
     );
 
@@ -286,15 +274,13 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
                 <div className="flex flex-col h-full overflow-hidden" data-testid="activity-split-panel">
-                    {mobileShowDetail && (selectedTaskId || selectedWorkItemId) ? (
+                    {mobileShowDetail && selectedTaskId ? (
                         <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel" data-pane="detail">
                             <ActivityDetailPane
                                 selectedTaskId={selectedTaskId}
                                 selectedTask={selectedTask}
-                                onBack={() => { setMobileShowDetail(false); setSelectedWorkItemId(null); }}
+                                onBack={() => { setMobileShowDetail(false); }}
                                 workspaceId={workspaceId}
-                                selectedWorkItemId={selectedWorkItemId}
-                                onWorkItemBack={() => { setSelectedWorkItemId(null); setMobileShowDetail(false); }}
                             />
                         </div>
                     ) : (
@@ -337,8 +323,6 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
                     selectedTaskId={selectedTaskId}
                     selectedTask={selectedTask}
                     workspaceId={workspaceId}
-                    selectedWorkItemId={selectedWorkItemId}
-                    onWorkItemBack={() => setSelectedWorkItemId(null)}
                 />
             </div>
         </div>

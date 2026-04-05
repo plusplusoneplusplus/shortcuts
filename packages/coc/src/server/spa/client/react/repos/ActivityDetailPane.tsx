@@ -15,7 +15,6 @@
 
 import { ActivityChatDetail } from './ActivityChatDetail';
 import { NewChatArea } from './NewChatArea';
-import { WorkItemDetail } from './WorkItemDetail';
 import { usePopOut } from '../context/PopOutContext';
 import { useFloatingChats } from '../context/FloatingChatsContext';
 
@@ -24,17 +23,11 @@ export interface ActivityDetailPaneProps {
     selectedTask: any | null;
     onBack?: () => void;
     workspaceId?: string;
-    selectedWorkItemId?: string | null;
-    onWorkItemBack?: () => void;
 }
 
-export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId, selectedWorkItemId, onWorkItemBack }: ActivityDetailPaneProps) {
+export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId }: ActivityDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
-
-    if (selectedWorkItemId) {
-        return <WorkItemDetail workItemId={selectedWorkItemId} workspaceId={workspaceId || ''} onBack={onWorkItemBack} />;
-    }
 
     if (!selectedTaskId) {
         return <NewChatArea workspaceId={workspaceId} />;

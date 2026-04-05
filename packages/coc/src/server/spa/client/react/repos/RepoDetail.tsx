@@ -19,6 +19,7 @@ import { RepoWikiTab } from './RepoWikiTab';
 import { RepoSettingsTab } from './RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { PullRequestsTab } from './pull-requests/PullRequestsTab';
+import { WorkItemsTab } from './WorkItemsTab';
 import { WorkflowDetailView } from '../processes/dag';
 import { AddRepoDialog } from './AddRepoDialog';
 
@@ -41,7 +42,7 @@ interface RepoDetailProps {
 export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
     { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
-    { key: 'tasks', label: 'Plans', shortcut: 'Alt+P' },
+    { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
@@ -450,7 +451,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}
 
             {/* Sub-tab content */}
-            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'tasks' && "pb-12")}>
+            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'tasks' && activeSubTab !== 'work-items' && "pb-12")}>
                 {activeSubTab === 'tasks' ? (
                     <TasksPanel
                         key={ws.id}
@@ -460,6 +461,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         initialNavState={state.repoSubTabNavState[`${ws.id}::tasks`]}
                         onNavStateChange={(navState) => dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState })}
                     />
+                ) : activeSubTab === 'work-items' ? (
+                    <WorkItemsTab key={ws.id} workspaceId={ws.id} />
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
