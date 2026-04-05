@@ -19,7 +19,7 @@ const mockQueueDispatch = vi.fn();
 let mockAppState: Record<string, any> = {
     selectedRepoId: null,
     reposSidebarCollapsed: false,
-    activeRepoSubTab: 'settings',
+    activeRepoSubTab: 'chats',
     workspaces: [],
 };
 
@@ -79,13 +79,15 @@ vi.mock('../../../../src/server/spa/client/react/repos/MiniReposSidebar', () => 
 vi.mock('../../../../src/server/spa/client/react/repos/RepoDetail', () => ({
     RepoDetail: () => <div data-testid="repo-detail">RepoDetail</div>,
     SUB_TABS: [
-        { key: 'info', label: 'Info' },
+        { key: 'chats', label: 'Chats' },
+        { key: 'tasks', label: 'Tasks' },
         { key: 'git', label: 'Git' },
-        { key: 'tasks', label: 'Plans' },
-        { key: 'activity', label: 'Activity' },
-        { key: 'templates', label: 'Templates' },
+        { key: 'work-items', label: 'Work Items' },
+        { key: 'pull-requests', label: 'Pull Requests' },
+        { key: 'workflows', label: 'Workflows' },
         { key: 'schedules', label: 'Schedules' },
-        { key: 'copilot', label: 'Copilot' },
+        { key: 'explorer', label: 'Explorer' },
+        { key: 'settings', label: 'Settings' },
     ],
 }));
 
@@ -189,7 +191,7 @@ describe('ReposView — responsive layout', () => {
         mockAppState = {
             selectedRepoId: null,
             reposSidebarCollapsed: false,
-            activeRepoSubTab: 'settings',
+            activeRepoSubTab: 'chats',
             workspaces: [],
         };
         location.hash = '';
@@ -388,7 +390,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
-        expect(tabs.length).toBe(8);
+        expect(tabs.length).toBe(9);
         tabs.forEach(tab => {
             expect(tab.className).toContain('whitespace-nowrap');
             expect(tab.className).toContain('shrink-0');
@@ -400,7 +402,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         Element.prototype.scrollIntoView = scrollIntoViewMock;
 
         const repo = makeRepo();
-        mockAppState.activeRepoSubTab = 'activity';
+        mockAppState.activeRepoSubTab = 'chats';
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         expect(scrollIntoViewMock).toHaveBeenCalledWith({

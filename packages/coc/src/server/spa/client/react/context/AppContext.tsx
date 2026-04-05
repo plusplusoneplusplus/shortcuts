@@ -105,7 +105,7 @@ const initialState: AppContextState = {
     activeTab: 'repos',
     workspaces: [],
     selectedRepoId: null,
-    activeRepoSubTab: 'settings',
+    activeRepoSubTab: 'chats',
     reposSidebarCollapsed: getInitialSidebarCollapsed(),
     selectedWikiId: null,
     selectedWikiComponentId: null,
@@ -293,7 +293,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             const savedTabState = state.selectedRepoId
                 ? { ...state.repoTabState, [state.selectedRepoId]: state.activeRepoSubTab }
                 : state.repoTabState;
-            const restoredTab = action.id ? (savedTabState[action.id] ?? 'settings') : state.activeRepoSubTab;
+            const restoredTab = action.id ? (savedTabState[action.id] ?? 'chats') : state.activeRepoSubTab;
             return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab, selectedWorkflowName: null, selectedWorkflowProcessId: null };
         }
         case 'SET_REPO_SUB_TAB': {

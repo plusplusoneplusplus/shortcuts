@@ -181,7 +181,25 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'workflows', 'tasks', 'work-items', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests']);
+export function parseChatsDeepLink(hash: string): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'chats' && parts[3]) {
+        return decodeURIComponent(parts[3]);
+    }
+    return null;
+}
+
+export function parseTasksDeepLink(hash: string): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'tasks' && parts[3]) {
+        return decodeURIComponent(parts[3]);
+    }
+    return null;
+}
+
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['chats', 'settings', 'git', 'workflows', 'tasks', 'work-items', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests']);
 
 /**
  * Build a hash string for a note deep-link.
@@ -217,10 +235,10 @@ const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     t: 'terminal',
     n: 'notes',
     e: 'explorer',
-    p: 'tasks',
+    t: 'tasks',
     r: 'pull-requests',
-    a: 'activity',
-    w: 'templates',
+    a: 'chats',
+    w: 'workflows',
     s: 'schedules',
     c: 'settings',
     i: 'work-items',
@@ -368,14 +386,27 @@ export function Router() {
                     } else if (parts[2] === 'schedules') {
                         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
                     }
-                    // Activity deep-link handling — select task when ID present
-                    // The rawId may be a processId (e.g. queue_abc123) or a bare
-                    // taskId. Store it as-is; ActivityChatDetail routes correctly
-                    // based on isQueueProcessId().
-                    if (parts[2] === 'activity' && parts[3]) {
+                    // Backward compat: redirect old #repos/{id}/activity → chats
+                    if (parts[2] === 'activity') {
+                        const suffix = parts[3] ? '/' + parts[3] : '';
+                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+                        location.replace('#repos/' + parts[1] + '/chats' + suffix);
+                        return;
+                    }
+                    // Chats deep-link handling — select queue task when task ID present
+                    if (parts[2] === 'chats' && parts[3]) {
                         const rawId = decodeURIComponent(parts[3]);
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
-                    } else if (parts[2] === 'activity') {
+                        const taskId = rawId.startsWith('queue_') ? rawId.substring('queue_'.length) : rawId;
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId });
+                    } else if (parts[2] === 'chats') {
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
+                    }
+                    // Tasks deep-link handling
+                    if (parts[2] === 'tasks' && parts[3]) {
+                        const rawId = decodeURIComponent(parts[3]);
+                        const taskId = rawId.startsWith('queue_') ? rawId.substring('queue_'.length) : rawId;
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId });
+                    } else if (parts[2] === 'tasks') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
                     }
                     // Git commit deep-link handling

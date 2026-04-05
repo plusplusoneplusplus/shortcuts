@@ -656,33 +656,6 @@ export function ActivityListPane({
     return (
         <>
             <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
-                {/* Tab switcher */}
-                <div className="flex items-center gap-0 rounded-lg border border-[#e0e0e0] dark:border-[#474749] p-0.5 bg-[#f5f5f5] dark:bg-[#252526]" data-testid="activity-tab-switcher">
-                    <button
-                        className={cn(
-                            'flex-1 px-3 py-1 text-xs font-medium rounded-md transition-colors',
-                            activeTab === 'chats'
-                                ? 'bg-white dark:bg-[#1e1e1e] text-[#0078d4] shadow-sm'
-                                : 'text-[#606060] dark:text-[#9d9d9d] hover:text-[#333] dark:hover:text-[#ccc]'
-                        )}
-                        onClick={() => onTabChange('chats')}
-                        data-testid="activity-tab-chats"
-                    >
-                        💬 Chats
-                    </button>
-                    <button
-                        className={cn(
-                            'flex-1 px-3 py-1 text-xs font-medium rounded-md transition-colors',
-                            activeTab === 'tasks'
-                                ? 'bg-white dark:bg-[#1e1e1e] text-[#0078d4] shadow-sm'
-                                : 'text-[#606060] dark:text-[#9d9d9d] hover:text-[#333] dark:hover:text-[#ccc]'
-                        )}
-                        onClick={() => onTabChange('tasks')}
-                        data-testid="activity-tab-tasks"
-                    >
-                        📋 Tasks
-                    </button>
-                </div>
                 {activeTab === 'chats' && (
                     <Button variant="ghost" size="sm" onClick={onOpenDialog} className="self-start" data-testid="new-chat-btn">
                         💬 New Chat
