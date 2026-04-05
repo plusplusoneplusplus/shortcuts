@@ -383,6 +383,11 @@
     font-style: italic;
 }
 
+.dark .markdown-body .md-strike {
+    color: #d4d4d4;
+    opacity: 0.85;
+}
+
 .dark .markdown-body .md-blockquote {
     border-left-color: #3794ff;
     color: #a8a8a8;
@@ -1141,7 +1146,7 @@
 .dark .source-mode-body .src-hash   { color: #9a9a9a; }
 .dark .source-mode-body .src-marker { color: #9a9a9a; }
 
-.dark .source-mode-body .src-strike { color: #9a9a9a; }
+.dark .source-mode-body .src-strike { color: #d4d4d4; }
 
 .dark .source-mode-body .src-inline-code {
     background: #2d2d2d;
