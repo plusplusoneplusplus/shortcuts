@@ -205,7 +205,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -249,6 +249,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     errors.push('toolCompactness must be 0, 1, 2, or 3');
                 }
             }
+            if ('taskCardDensity' in body) {
+                if (body.taskCardDensity !== 'compact' && body.taskCardDensity !== 'dense') {
+                    errors.push('taskCardDensity must be "compact" or "dense"');
+                }
+            }
             if ('groupSingleLineMessages' in body) {
                 if (typeof body.groupSingleLineMessages !== 'boolean') {
                     errors.push('groupSingleLineMessages must be a boolean');
@@ -288,6 +293,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('output' in body) { existing.output = body.output as CLIConfig['output']; }
             if ('showReportIntent' in body) { existing.showReportIntent = body.showReportIntent as boolean; }
             if ('toolCompactness' in body) { existing.toolCompactness = body.toolCompactness as CLIConfig['toolCompactness']; }
+            if ('taskCardDensity' in body) { existing.taskCardDensity = body.taskCardDensity as CLIConfig['taskCardDensity']; }
             if ('groupSingleLineMessages' in body) { existing.groupSingleLineMessages = body.groupSingleLineMessages as boolean; }
 
             // Handle nested chat.followUpSuggestions fields

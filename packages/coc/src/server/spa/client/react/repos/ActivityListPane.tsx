@@ -19,6 +19,7 @@ import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 import { getDraft } from '../hooks/useDraftStore';
 import { useLongPress } from '../hooks/useLongPress';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
+import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
 
@@ -153,6 +154,8 @@ export function ActivityListPane({
     const [summarizeDialogIds, setSummarizeDialogIds] = useState<string[]>([]);
 
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
+    const { taskCardDensity } = useDisplaySettings();
+    const isDense = taskCardDensity === 'dense';
 
     useEffect(() => {
         setExcludedTypes(new Set());
@@ -739,7 +742,7 @@ export function ActivityListPane({
                             {showRunning ? '▼' : '▶'} Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
                         </button>
                         {showRunning && (
-                            <div className="flex flex-col gap-1">
+                            <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                                 {filteredRunning.map(task => (
                                     <QueueTaskItem
                                         key={task.id}
@@ -749,6 +752,7 @@ export function ActivityListPane({
                                         selected={selectedTaskId === task.id}
                                         isPinned={pinnedChatIds?.has(task.id) ?? false}
                                         isAutopilotPaused={isAutopilotPaused}
+                                        dense={isDense}
                                         onClick={() => onSelectTask(task.id, task)}
                                         onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
                                         onLongPress={(x, y) => handleTaskContextMenu({ clientX: x, clientY: y, preventDefault: () => {}, stopPropagation: () => {}, shiftKey: false } as any, task.id, 'running')}
@@ -769,7 +773,7 @@ export function ActivityListPane({
                             {showQueued ? '▼' : '▶'} Queued Tasks <span className="text-[10px]">({filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
                         </button>
                         {showQueued && (
-                            <div className="flex flex-col gap-1">
+                            <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                                 {!isMobile && (
                                     <PauseInsertZone
                                         index={-1}
@@ -815,6 +819,7 @@ export function ActivityListPane({
                                                     now={now}
                                                     selected={selectedTaskId === item.id}
                                                     isAutopilotPaused={isAutopilotPaused}
+                                                    dense={isDense}
                                                     onClick={() => onSelectTask(item.id, item)}
                                                     onContextMenu={e => handleTaskContextMenu(e, item.id, 'queued')}
                                                     onLongPress={(x, y) => handleTaskContextMenu({ clientX: x, clientY: y, preventDefault: () => {}, stopPropagation: () => {}, shiftKey: false } as any, item.id, 'queued')}
@@ -848,7 +853,7 @@ export function ActivityListPane({
                             {showPinned ? '▼' : '▶'} 📌 Pinned ({filteredPinned.length + pinnedRunningCount})
                         </button>
                         {showPinned && (
-                            <div className="flex flex-col gap-1">
+                            <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                                 {filteredPinned.map(task => {
                                     const isUnseen = unseenTaskIds?.has(task.id) ?? false;
                                     const hasPinnedDraft = !!getDraft(task.id);
@@ -857,7 +862,7 @@ export function ActivityListPane({
                                         <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
                                         <Card
                                             className={cn(
-                                                "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
+                                                isDense ? "px-2 py-1 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500" : "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
                                                 isHistorySelected
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
                                                     : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
@@ -892,8 +897,8 @@ export function ActivityListPane({
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                                 </span>
                                             </div>
-                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
-                                            {task.error && (
+                                            {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
+                                            {!isDense && task.error && (
                                                 <div className="text-[10px] text-red-500 mt-0.5 truncate">
                                                     {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
                                                 </div>
@@ -939,7 +944,7 @@ export function ActivityListPane({
                             )}
                         </div>
                         {showHistory && (
-                            <div className="flex flex-col gap-1 mt-1">
+                            <div className={cn("flex flex-col mt-1", isDense ? "gap-0.5" : "gap-1")}>
                                 {filteredUnpinned.map(task => {
                                     const isUnseen = unseenTaskIds?.has(task.id) ?? false;
                                     const hasUnpinnedDraft = !!getDraft(task.id);
@@ -948,7 +953,7 @@ export function ActivityListPane({
                                         <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
                                         <Card
                                             className={cn(
-                                                "p-2 cursor-pointer",
+                                                isDense ? "px-2 py-1 cursor-pointer" : "p-2 cursor-pointer",
                                                 isHistorySelected
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
                                                     : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
@@ -982,8 +987,8 @@ export function ActivityListPane({
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                                 </span>
                                             </div>
-                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
-                                            {task.error && (
+                                            {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
+                                            {!isDense && task.error && (
                                                 <div className="text-[10px] text-red-500 mt-0.5 truncate">
                                                     {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
                                                 </div>
@@ -1006,14 +1011,14 @@ export function ActivityListPane({
                         {showArchived ? '▼' : '▶'} 📦 Archived ({filteredArchived.length})
                     </button>
                     {showArchived && (
-                        <div className="flex flex-col gap-1">
+                        <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                             {filteredArchived.map(task => {
                                 const isUnseen = unseenTaskIds?.has(task.id) ?? false;
                                 return (
                                     <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
                                     <Card
                                         className={cn(
-                                            "p-2 cursor-pointer opacity-60",
+                                            isDense ? "px-2 py-1 cursor-pointer opacity-60" : "p-2 cursor-pointer opacity-60",
                                             selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                         )}
                                         onClick={() => {
@@ -1040,7 +1045,7 @@ export function ActivityListPane({
                                                 {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                             </span>
                                         </div>
-                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
+                                        {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
                                     </Card>
                                     </SwipeableHistoryItem>
                                 );
@@ -1083,13 +1088,14 @@ export function ActivityListPane({
     );
 }
 
-export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopilotPaused, onClick, onContextMenu, onLongPress, cancelLongPress }: {
+export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopilotPaused, dense, onClick, onContextMenu, onLongPress, cancelLongPress }: {
     task: any;
     status: 'running' | 'queued';
     now: number;
     selected?: boolean;
     isPinned?: boolean;
     isAutopilotPaused?: boolean;
+    dense?: boolean;
     onClick?: () => void;
     onContextMenu?: (e: React.MouseEvent) => void;
     onLongPress?: (x: number, y: number) => void;
@@ -1128,7 +1134,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
 
     return (
         <Card
-            className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60", isAdmitted && !isPinned && "border-l-2 border-l-green-500 dark:border-l-green-400")}
+            className={cn(dense ? "px-2 py-1 cursor-pointer" : "p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60", isAdmitted && !isPinned && "border-l-2 border-l-green-500 dark:border-l-green-400")}
             onClick={handleClick}
             onContextMenu={onContextMenu}
             onTouchStart={longPress.onTouchStart}
@@ -1165,10 +1171,10 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
                     </span>
                 )}
             </div>
-            {promptPreview && (
+            {!dense && promptPreview && (
                 <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5 truncate" title={promptPreview}>{promptPreview}</div>
             )}
-            {showProgress && progress && progress.total > 0 && (
+            {!dense && showProgress && progress && progress.total > 0 && (
                 <div className="mt-1" data-testid="workflow-progress-indicator">
                     <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff]">
                         ▶ Map: {progress.completed}/{progress.total}

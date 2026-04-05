@@ -62,6 +62,7 @@ export function AdminPanel() {
     // Display settings
     const [showReportIntent, setShowReportIntent] = useState(false);
     const [toolCompactness, setToolCompactness] = useState<0 | 1 | 2 | 3>(0);
+    const [taskCardDensity, setTaskCardDensity] = useState<'compact' | 'dense'>('compact');
     const [displaySaving, setDisplaySaving] = useState(false);
 
     // Chat settings
@@ -125,6 +126,7 @@ export function AdminPanel() {
             });
             setShowReportIntent(resolved.showReportIntent ?? false);
             setToolCompactness((resolved.toolCompactness ?? 1) as 0 | 1 | 2 | 3);
+            setTaskCardDensity((resolved.taskCardDensity === 'dense' ? 'dense' : 'compact') as 'compact' | 'dense');
             setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
             setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
         } catch (err: any) {
@@ -239,6 +241,30 @@ export function AdminPanel() {
             setDisplaySaving(false);
         }
     }, [toolCompactness, addToast]);
+
+    const handleChangeTaskCardDensity = useCallback(async (newValue: 'compact' | 'dense') => {
+        const prevValue = taskCardDensity;
+        setTaskCardDensity(newValue);
+        setDisplaySaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ taskCardDensity: newValue }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Settings saved', 'success');
+            invalidateDisplaySettings();
+        } catch (err: any) {
+            setTaskCardDensity(prevValue);
+            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+        } finally {
+            setDisplaySaving(false);
+        }
+    }, [taskCardDensity, addToast]);
 
     const handleExport= useCallback(async () => {
         setExportStatus('Exporting…');
@@ -646,6 +672,42 @@ export function AdminPanel() {
                                                                 : 'bg-transparent text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
                                                         ].join(' ')}
                                                         aria-pressed={toolCompactness === level}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Density of task cards in the activity tab">
+                                            Task card density
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['taskCardDensity']} />
+                                            <div
+                                                className="flex rounded-md overflow-hidden border border-[#e0e0e0] dark:border-[#3c3c3c]"
+                                                role="group"
+                                                aria-label="Task card density"
+                                            >
+                                                {([
+                                                    ['compact', 'Compact'],
+                                                    ['dense', 'Dense'],
+                                                ] as const).map(([value, label]) => (
+                                                    <button
+                                                        key={value}
+                                                        type="button"
+                                                        disabled={displaySaving}
+                                                        onClick={() => void handleChangeTaskCardDensity(value)}
+                                                        data-testid={`task-card-density-${label.toLowerCase()}`}
+                                                        className={[
+                                                            'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] disabled:opacity-50 disabled:cursor-not-allowed',
+                                                            'border-r last:border-r-0 border-[#e0e0e0] dark:border-[#3c3c3c]',
+                                                            taskCardDensity === value
+                                                                ? 'bg-[#0078d4] text-white'
+                                                                : 'bg-transparent text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                                        ].join(' ')}
+                                                        aria-pressed={taskCardDensity === value}
                                                     >
                                                         {label}
                                                     </button>

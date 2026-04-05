@@ -1122,4 +1122,51 @@ describe('ActivityListPane mobile long-press context menu', () => {
             expect(source).toContain('Refreshing\u2026');
         });
     });
+
+    describe('task card density (dense mode)', () => {
+        it('imports useDisplaySettings hook', () => {
+            expect(source).toContain("import { useDisplaySettings } from '../hooks/useDisplaySettings'");
+        });
+
+        it('reads taskCardDensity from useDisplaySettings', () => {
+            expect(source).toContain('taskCardDensity');
+            expect(source).toContain('useDisplaySettings()');
+        });
+
+        it('derives isDense boolean from taskCardDensity', () => {
+            expect(source).toContain("isDense = taskCardDensity === 'dense'");
+        });
+
+        it('QueueTaskItem accepts dense prop', () => {
+            expect(source).toContain('dense?: boolean');
+        });
+
+        it('passes dense={isDense} to QueueTaskItem', () => {
+            expect(source).toContain('dense={isDense}');
+        });
+
+        it('uses tighter padding (px-2 py-1) when dense in QueueTaskItem', () => {
+            expect(source).toContain('dense ? "px-2 py-1 cursor-pointer" : "p-2 cursor-pointer"');
+        });
+
+        it('hides prompt preview when dense in QueueTaskItem', () => {
+            expect(source).toContain('!dense && promptPreview');
+        });
+
+        it('hides workflow progress when dense in QueueTaskItem', () => {
+            expect(source).toContain('!dense && showProgress');
+        });
+
+        it('hides prompt preview when isDense in history cards', () => {
+            expect(source).toContain('!isDense && (() => { const p = getTaskPromptPreview(task)');
+        });
+
+        it('hides error text when isDense in pinned/history cards', () => {
+            expect(source).toContain('!isDense && task.error');
+        });
+
+        it('uses reduced gap (gap-0.5) when dense for section containers', () => {
+            expect(source).toContain('isDense ? "gap-0.5" : "gap-1"');
+        });
+    });
 });

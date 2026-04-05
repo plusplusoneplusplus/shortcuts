@@ -920,6 +920,73 @@ describe('Admin Handler', () => {
     });
 
     // ========================================================================
+    // taskCardDensity validation
+    // ========================================================================
+
+    describe('taskCardDensity', () => {
+        it('should accept taskCardDensity "compact"', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ taskCardDensity: 'compact' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.taskCardDensity).toBe('compact');
+            expect(body.sources.taskCardDensity).toBe('file');
+        });
+
+        it('should accept taskCardDensity "dense"', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ taskCardDensity: 'dense' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.taskCardDensity).toBe('dense');
+        });
+
+        it('should reject invalid taskCardDensity value', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ taskCardDensity: 'ultra' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('taskCardDensity');
+        });
+
+        it('should reject numeric taskCardDensity', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ taskCardDensity: 1 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('taskCardDensity');
+        });
+    });
+
+    // ========================================================================
     // Integration: GET → PUT → GET round-trip
     // ========================================================================
 

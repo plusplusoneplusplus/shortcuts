@@ -496,6 +496,7 @@ timeout: 300
                 'persist: false',
                 'showReportIntent: true',
                 'toolCompactness: 1',
+                'taskCardDensity: dense',
                 'groupSingleLineMessages: false',
                 'chat:',
                 '  followUpSuggestions:',

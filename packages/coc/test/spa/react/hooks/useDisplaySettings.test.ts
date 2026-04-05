@@ -40,4 +40,20 @@ describe('useDisplaySettings', () => {
     it('falls back to 1 when toolCompactness is absent', () => {
         expect(source).toContain('data?.resolved?.toolCompactness ?? 1');
     });
+
+    it('includes taskCardDensity in DisplaySettings interface', () => {
+        expect(source).toContain("taskCardDensity: 'compact' | 'dense'");
+    });
+
+    it('includes taskCardDensity default of compact in DEFAULT_SETTINGS', () => {
+        expect(source).toContain("taskCardDensity: 'compact'");
+    });
+
+    it('maps taskCardDensity from resolved in fetchDisplaySettings', () => {
+        expect(source).toContain('data?.resolved?.taskCardDensity');
+    });
+
+    it('falls back to compact when taskCardDensity is absent', () => {
+        expect(source).toContain("taskCardDensity === 'dense' ? 'dense' : 'compact'");
+    });
 });

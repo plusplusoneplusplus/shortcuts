@@ -40,6 +40,8 @@ export const CLIConfigSchema = z.object({
     showReportIntent: z.boolean().optional(),
     /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal, 3=whisper (default: 0) */
     toolCompactness: z.number().int().min(0).max(3).optional(),
+    /** Density of task cards in the activity tab: 'compact' (default) or 'dense' (single-line) */
+    taskCardDensity: z.enum(['compact', 'dense']).optional(),
     /** Absorb single-line messages between same-category tool groups (default: true) */
     groupSingleLineMessages: z.boolean().optional(),
     chat: z.object({

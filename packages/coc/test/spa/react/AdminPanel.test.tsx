@@ -487,6 +487,111 @@ describe('AdminPanel', () => {
         });
     });
 
+    describe('task card density segmented control', () => {
+        function mockConfigWithDensity(taskCardDensity: string, sources: Record<string, string> = {}) {
+            mockFetch.mockImplementation((url: string) => {
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: { taskCardDensity },
+                            sources,
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+        }
+
+        it('defaults to Compact when server returns no taskCardDensity', async () => {
+            mockFetch.mockImplementation((url: string) => {
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {},
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => {
+                expect(screen.getByTestId('task-card-density-compact')).toBeDefined();
+            });
+            const compact = screen.getByTestId('task-card-density-compact') as HTMLButtonElement;
+            const dense = screen.getByTestId('task-card-density-dense') as HTMLButtonElement;
+            expect(compact.getAttribute('aria-pressed')).toBe('true');
+            expect(dense.getAttribute('aria-pressed')).toBe('false');
+        });
+
+        it('renders Dense button with aria-pressed true when taskCardDensity is dense', async () => {
+            mockConfigWithDensity('dense');
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => {
+                expect(screen.getByTestId('task-card-density-dense')).toBeDefined();
+            });
+            const dense = screen.getByTestId('task-card-density-dense') as HTMLButtonElement;
+            expect(dense.getAttribute('aria-pressed')).toBe('true');
+        });
+
+        it('clicking Dense fires PUT with taskCardDensity dense', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (options?.method === 'PUT' && url.includes('/admin/config')) {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ resolved: { taskCardDensity: 'compact' }, sources: {} }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('task-card-density-dense')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('task-card-density-dense'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody.taskCardDensity).toBe('dense');
+            expect((screen.getByTestId('task-card-density-dense') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+        });
+
+        it('reverts to previous value on server error', async () => {
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'Save failed' }) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ resolved: { taskCardDensity: 'compact' }, sources: {} }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('task-card-density-compact')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('task-card-density-dense'));
+            });
+
+            await waitFor(() => {
+                expect((screen.getByTestId('task-card-density-compact') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+                expect((screen.getByTestId('task-card-density-dense') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('false');
+            });
+        });
+    });
+
     describe('Relaunch Welcome Tour', () => {
         it('renders the relaunch welcome button in Settings tab', async () => {
             mockFetch.mockResolvedValue({

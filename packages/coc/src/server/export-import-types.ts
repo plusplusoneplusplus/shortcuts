@@ -31,6 +31,7 @@ export interface CLIConfig {
     persist?: boolean;
     showReportIntent?: boolean;
     toolCompactness?: 0 | 1 | 2 | 3;
+    taskCardDensity?: 'compact' | 'dense';
     groupSingleLineMessages?: boolean;
     chat?: {
         followUpSuggestions?: {

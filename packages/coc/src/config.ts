@@ -39,6 +39,8 @@ export interface CLIConfig {
     showReportIntent?: boolean;
     /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal, 3=whisper */
     toolCompactness?: 0 | 1 | 2 | 3;
+    /** Density of task cards in the activity tab: 'compact' (default) or 'dense' (single-line) */
+    taskCardDensity?: 'compact' | 'dense';
     /** Absorb single-line messages between same-category tool groups (default: true) */
     groupSingleLineMessages?: boolean;
     /** Chat settings */
@@ -118,6 +120,7 @@ export interface ResolvedCLIConfig {
     persist: boolean;
     showReportIntent: boolean;
     toolCompactness: 0 | 1 | 2 | 3;
+    taskCardDensity: 'compact' | 'dense';
     groupSingleLineMessages: boolean;
     chat: {
         followUpSuggestions: {
@@ -162,6 +165,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     persist: true,
     showReportIntent: false,
     toolCompactness: 0,
+    taskCardDensity: 'compact',
     groupSingleLineMessages: true,
     chat: {
         followUpSuggestions: {
@@ -187,7 +191,7 @@ export type ConfigFieldSource = 'default' | 'file';
  */
 export const CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
-    'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'groupSingleLineMessages',
+    'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
     'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
     'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme',
 ] as const;
@@ -300,6 +304,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         persist: override.persist ?? base.persist,
         showReportIntent: override.showReportIntent ?? base.showReportIntent,
         toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2 | 3,
+        taskCardDensity: (override.taskCardDensity ?? base.taskCardDensity) as 'compact' | 'dense',
         groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,
         chat: {
             followUpSuggestions: {
