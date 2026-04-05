@@ -382,7 +382,8 @@ describe('RepoCard', () => {
 describe('ReposGrid', () => {
     it('shows empty state when no repos', () => {
         render(<Wrap><ReposGrid repos={[]} onRefresh={() => {}} /></Wrap>);
-        expect(screen.getByText(/No repositories registered/)).toBeDefined();
+        // With SHOW_WELCOME_TUTORIAL=true, the FirstStepsCard replaces the plain empty text
+        expect(screen.getByTestId('first-steps-card')).toBeDefined();
     });
 
     it('renders add button', () => {
@@ -509,20 +510,15 @@ describe('AddRepoDialog', () => {
         fireEvent.change(screen.getByTestId('repo-path'), { target: { value: 'D:\\projects\\my-repo' } });
         fireEvent.click(screen.getByText('Add Repo'));
 
-        // AppProvider fetches /preferences on mount (+1), then the form submit (+1) = 2 total.
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-        const [, init] = fetchMock.mock.calls[1];
+        // AppProvider no longer fetches /preferences; only the form submit fetch happens.
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        const [, init] = fetchMock.mock.calls[0];
         const requestBody = JSON.parse(String(init?.body ?? '{}'));
         expect(requestBody.name).toBe('my-repo');
     });
 
     it('joins Windows paths correctly when navigating browser entries', async () => {
         const fetchMock = vi.fn()
-            // AppProvider fetches /preferences on mount first.
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({}),
-            })
             .mockResolvedValueOnce({
                 ok: true,
                 json: () => Promise.resolve({
@@ -551,8 +547,8 @@ describe('AddRepoDialog', () => {
         const entry = await screen.findByTestId('path-browser-entry');
         fireEvent.click(entry);
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-        const [secondUrl] = fetchMock.mock.calls[2];
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        const [secondUrl] = fetchMock.mock.calls[1];
         expect(String(secondUrl)).toContain(encodeURIComponent('D:\\projects\\my-repo'));
     });
 });

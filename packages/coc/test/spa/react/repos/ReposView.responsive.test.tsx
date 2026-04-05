@@ -358,6 +358,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
             activeRepoSubTab: 'settings',
             workspaces: [],
             wikis: [],
+            repoSubTabNavState: {},
         };
         const mod = await vi.importActual<any>(
             '../../../../src/server/spa/client/react/repos/RepoDetail'

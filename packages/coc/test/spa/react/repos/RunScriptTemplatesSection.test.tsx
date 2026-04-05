@@ -1,34 +1,71 @@
 /**
- * Tests for the Run Script Templates section in RepoSettingsTab.
+ * Tests for the Run Script Templates section now located in TemplatesTab.
+ * (Moved from RepoSettingsTab in commit fad6d11a.)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
+import type { ReactNode } from 'react';
+import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
+import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
+import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
-
-const mockFetchApi = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
-}));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
 }));
 
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
-
-vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
-    useGlobalToast: () => ({ addToast: vi.fn() }),
+vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
+    formatRelativeTime: (d: string) => d || 'unknown',
 }));
+
+const mockFetchApi = vi.fn().mockResolvedValue({ templates: [] });
+vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
+    fetchApi: (...args: any[]) => mockFetchApi(...args),
+}));
+
+const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+vi.stubGlobal('fetch', mockFetch);
 
 vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
     useRepos: () => ({ repos: [] }),
 }));
 
+const mockDeleteScriptTemplate = vi.fn();
+const mockUseScriptTemplates = vi.fn().mockReturnValue({
+    templates: [],
+    saveTemplate: vi.fn(),
+    deleteTemplate: mockDeleteScriptTemplate,
+    loaded: true,
+});
+vi.mock('../../../../src/server/spa/client/react/hooks/useScriptTemplates', () => ({
+    useScriptTemplates: (...args: any[]) => mockUseScriptTemplates(...args),
+}));
+
+const mockUseSkillTemplates = vi.fn().mockReturnValue({
+    templates: [],
+    deleteTemplate: vi.fn(),
+    loaded: true,
+});
+vi.mock('../../../../src/server/spa/client/react/hooks/useSkillTemplates', () => ({
+    useSkillTemplates: (...args: any[]) => mockUseSkillTemplates(...args),
+}));
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+function Wrap({ children }: { children: ReactNode }) {
+    return (
+        <AppProvider>
+            <QueueProvider>
+                <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                    {children}
+                </ToastProvider>
+            </QueueProvider>
+        </AppProvider>
+    );
+}
 
 const baseRepo = {
     workspace: { id: 'ws-1', rootPath: '/repo', color: '#ccc', description: '' },
@@ -38,89 +75,68 @@ const baseRepo = {
     taskCount: 0,
 };
 
-const defaultMcpResponse = { availableServers: [], enabledMcpServers: null };
-const defaultSkillsConfig = { disabledSkills: [], extraSkillFolders: [] };
-const defaultPreferences = {};
-const defaultProcesses = { processes: [] };
-const defaultTasksSettings = {};
-const defaultInstructions = { base: null, ask: null, plan: null, autopilot: null };
-
-function setupMocks(opts: { scriptTemplates?: any[] } = {}) {
-    mockFetchApi.mockImplementation((url: string) => {
-        if (url.includes('/mcp-config')) return Promise.resolve(defaultMcpResponse);
-        if (url.includes('/skills-config')) return Promise.resolve(defaultSkillsConfig);
-        if (url.includes('/preferences')) return Promise.resolve({ ...defaultPreferences, scriptTemplates: opts.scriptTemplates ?? [] });
-        if (url.includes('/processes')) return Promise.resolve(defaultProcesses);
-        if (url.includes('/tasks/settings')) return Promise.resolve(defaultTasksSettings);
-        if (url.includes('/instructions')) return Promise.resolve(defaultInstructions);
-        return Promise.resolve({});
+async function renderTemplatesTab(scriptTemplates: any[] = []) {
+    mockUseScriptTemplates.mockReturnValue({
+        templates: scriptTemplates,
+        saveTemplate: vi.fn(),
+        deleteTemplate: mockDeleteScriptTemplate,
+        loaded: true,
     });
-    // global fetch for skills list and preferences (useScriptTemplates uses global fetch)
-    mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
-        if (url.includes('/preferences')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ scriptTemplates: opts.scriptTemplates ?? [] }) });
-        if (url.includes('/instructions')) return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultInstructions) });
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
-}
-
-async function renderSettings(opts: { scriptTemplates?: any[] } = {}) {
-    setupMocks(opts);
-    const { RepoSettingsTab } = await import(
-        '../../../../src/server/spa/client/react/repos/RepoSettingsTab'
+    const { TemplatesTab } = await import(
+        '../../../../src/server/spa/client/react/repos/TemplatesTab'
     );
-    const { AppProvider } = await import(
-        '../../../../src/server/spa/client/react/context/AppContext'
+    return render(
+        <Wrap>
+            <TemplatesTab repo={baseRepo as any} />
+        </Wrap>
     );
-    const result = render(
-        <AppProvider>
-            <RepoSettingsTab workspaceId="ws-1" repo={baseRepo as any} />
-        </AppProvider>
-    );
-    // Navigate to the run-script-template section
-    await waitFor(() => expect(screen.getByTestId('nav-item-run-script-template')).toBeTruthy());
-    await act(async () => {
-        fireEvent.click(screen.getByTestId('nav-item-run-script-template'));
-    });
-    return result;
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-    vi.resetAllMocks();
-    location.hash = '#repos/ws-1/settings/run-script-template';
+    vi.clearAllMocks();
+    mockFetchApi.mockResolvedValue({ templates: [] });
+    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+    mockUseSkillTemplates.mockReturnValue({ templates: [], deleteTemplate: vi.fn(), loaded: true });
+    mockUseScriptTemplates.mockReturnValue({
+        templates: [],
+        saveTemplate: vi.fn(),
+        deleteTemplate: mockDeleteScriptTemplate,
+        loaded: true,
+    });
 });
 
 describe('RunScriptTemplatesSection', () => {
-    it('renders the nav item for run-script-template', async () => {
-        await renderSettings();
-        const navItem = screen.getByTestId('nav-item-run-script-template');
-        expect(navItem).toBeTruthy();
-        expect(navItem.textContent).toContain('Run Script Templates');
+    it('renders the Run Script Templates collapsible section in TemplatesTab', async () => {
+        await renderTemplatesTab();
+        await waitFor(() => {
+            expect(screen.getByTestId('script-templates-section')).toBeTruthy();
+        });
+        expect(screen.getByTestId('script-templates-section').textContent).toContain('Run Script Templates');
     });
 
     it('shows empty state when no templates', async () => {
-        await renderSettings({ scriptTemplates: [] });
+        await renderTemplatesTab([]);
         await waitFor(() => {
-            expect(screen.getByTestId('templates-empty')).toBeTruthy();
+            expect(screen.getByTestId('script-templates-empty')).toBeTruthy();
         });
-        expect(screen.getByTestId('templates-empty').textContent).toBe('No run script templates saved yet.');
+        expect(screen.getByTestId('script-templates-empty').textContent).toContain('No run script templates');
     });
 
-    it('renders template cards with name and scriptPath', async () => {
+    it('renders template items with name and scriptPath', async () => {
         const templates = [
             { id: 't1', name: 'Build', scriptPath: './build.sh' },
             { id: 't2', name: 'Test', scriptPath: './test.sh' },
         ];
-        await renderSettings({ scriptTemplates: templates });
+        await renderTemplatesTab(templates);
         await waitFor(() => {
-            const cards = screen.getAllByTestId('template-card');
-            expect(cards.length).toBe(2);
+            const items = screen.getAllByTestId('script-template-item');
+            expect(items.length).toBe(2);
         });
-        expect(screen.getByText('Build')).toBeTruthy();
+        expect(screen.getByText(/Build/)).toBeTruthy();
         expect(screen.getByText('./build.sh')).toBeTruthy();
-        expect(screen.getByText('Test')).toBeTruthy();
+        expect(screen.getByText(/Test/)).toBeTruthy();
         expect(screen.getByText('./test.sh')).toBeTruthy();
     });
 
@@ -128,27 +144,28 @@ describe('RunScriptTemplatesSection', () => {
         const templates = [
             { id: 't1', name: 'Deploy', scriptPath: './deploy.sh', args: '--prod --verbose' },
         ];
-        await renderSettings({ scriptTemplates: templates });
+        await renderTemplatesTab(templates);
         await waitFor(() => {
             expect(screen.getByText('--prod --verbose')).toBeTruthy();
         });
     });
 
-    it('renders workingDirectory when present', async () => {
+    it('does not render workingDirectory (not shown in TemplatesTab)', async () => {
         const templates = [
             { id: 't1', name: 'Lint', scriptPath: './lint.sh', workingDirectory: '/workspace/src' },
         ];
-        await renderSettings({ scriptTemplates: templates });
+        await renderTemplatesTab(templates);
         await waitFor(() => {
-            expect(screen.getByText('cwd: /workspace/src')).toBeTruthy();
+            expect(screen.getByTestId('script-template-item')).toBeTruthy();
         });
+        expect(screen.queryByText('cwd: /workspace/src')).toBeNull();
     });
 
     it('renders model badge when present', async () => {
         const templates = [
             { id: 't1', name: 'Analyze', scriptPath: './analyze.sh', model: 'gpt-4' },
         ];
-        await renderSettings({ scriptTemplates: templates });
+        await renderTemplatesTab(templates);
         await waitFor(() => {
             expect(screen.getByText('gpt-4')).toBeTruthy();
         });
@@ -158,7 +175,7 @@ describe('RunScriptTemplatesSection', () => {
         const templates = [
             { id: 't1', name: 'Run', scriptPath: './run.sh', pauseOnFailure: true },
         ];
-        await renderSettings({ scriptTemplates: templates });
+        await renderTemplatesTab(templates);
         await waitFor(() => {
             expect(screen.getByText('pause on failure')).toBeTruthy();
         });
@@ -168,9 +185,9 @@ describe('RunScriptTemplatesSection', () => {
         const templates = [
             { id: 't1', name: 'Run', scriptPath: './run.sh', pauseOnFailure: false },
         ];
-        await renderSettings({ scriptTemplates: templates });
+        await renderTemplatesTab(templates);
         await waitFor(() => {
-            expect(screen.getByTestId('template-card')).toBeTruthy();
+            expect(screen.getByTestId('script-template-item')).toBeTruthy();
         });
         expect(screen.queryByText('pause on failure')).toBeNull();
     });
@@ -187,14 +204,14 @@ describe('RunScriptTemplatesSection', () => {
                 pauseOnFailure: true,
             },
         ];
-        await renderSettings({ scriptTemplates: templates });
+        await renderTemplatesTab(templates);
         await waitFor(() => {
-            expect(screen.getByText('Full Template')).toBeTruthy();
+            expect(screen.getByText(/Full Template/)).toBeTruthy();
         });
         expect(screen.getByText('./full.sh')).toBeTruthy();
         expect(screen.getByText('--all')).toBeTruthy();
-        expect(screen.getByText('cwd: /src')).toBeTruthy();
         expect(screen.getByText('claude-sonnet')).toBeTruthy();
         expect(screen.getByText('pause on failure')).toBeTruthy();
     });
 });
+

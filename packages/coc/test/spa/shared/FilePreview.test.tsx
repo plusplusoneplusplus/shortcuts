@@ -23,7 +23,7 @@ const mockFetch = vi.fn();
 beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
-    // Provide a default response so AppProvider's /preferences fetch doesn't crash.
+    // Default fallback for any unexpected fetch calls.
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
     global.fetch = mockFetch;
 });
@@ -53,8 +53,6 @@ function mockPreviewResponse(overrides?: Partial<{
     truncated: boolean;
     language: string;
 }>) {
-    // AppProvider fetches /preferences on mount — consume it first.
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
     mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
@@ -70,8 +68,6 @@ function mockPreviewResponse(overrides?: Partial<{
 }
 
 function mockMarkdownPreviewResponse() {
-    // AppProvider fetches /preferences on mount — consume it first.
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
     mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
@@ -238,8 +234,6 @@ describe('FilePreview', () => {
         });
 
         it('detects markdown files by file extension', async () => {
-            // AppProvider fetches /preferences on mount — consume it first.
-            mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 json: () => Promise.resolve({
@@ -322,8 +316,6 @@ describe('FilePreview', () => {
 
     describe('error handling', () => {
         it('shows error message on fetch failure', async () => {
-            // AppProvider fetches /preferences on mount — consume it first.
-            mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
             mockFetch.mockResolvedValueOnce({
                 ok: false,
                 status: 404,
@@ -387,7 +379,7 @@ describe('FilePreview', () => {
                 });
 
                 await new Promise(r => setTimeout(r, 50));
-                // Only the AppProvider preferences fetch should have been called, not the preview fetch
+                // No preview fetch should have been triggered on mobile
                 const previewCalls = mockFetch.mock.calls.filter((c: any[]) =>
                     String(c[0]).includes('/files/preview')
                 );
@@ -441,7 +433,6 @@ describe('FilePreview', () => {
             truncated: boolean;
             language: string;
         }>) {
-            mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 json: () => Promise.resolve({
