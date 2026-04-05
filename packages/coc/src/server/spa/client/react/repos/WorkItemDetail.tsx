@@ -37,6 +37,8 @@ interface WorkItemDetailProps {
     workspaceId: string;
     onBack?: () => void;
     onExecuted?: () => void;
+    /** Called when the user clicks the execution session entry for a task. */
+    onViewTask?: (taskId: string) => void;
 }
 
 interface WorkItemFull {
@@ -51,7 +53,7 @@ interface WorkItemFull {
     reviewComments?: Array<{ id: string; text: string; createdAt: string; resolved?: boolean }>;
 }
 
-export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: WorkItemDetailProps) {
+export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask }: WorkItemDetailProps) {
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -251,6 +253,36 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                         <span>{error}</span>
                         <button className="text-[10px] shrink-0" onClick={() => setError(null)}>✕</button>
                     </div>
+                )}
+
+                {/* Execution session entry — shown when a task has been queued/run */}
+                {item.taskId && onViewTask && ['executing', 'aiDone', 'aiFailed'].includes(item.status) && (
+                    <section>
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution Session</h3>
+                        <button
+                            onClick={() => onViewTask(item.taskId!)}
+                            className={cn(
+                                'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md border text-left transition-colors',
+                                'border-[#e0e0e0] dark:border-[#3c3c3c]',
+                                'bg-[#fafafa] dark:bg-[#252526]',
+                                'hover:bg-[#f0f0f0] dark:hover:bg-[#2d2d2d]',
+                            )}
+                            data-testid="view-execution-session-btn"
+                        >
+                            <span className="text-base select-none" aria-hidden="true">
+                                {item.status === 'executing' ? '⚡' : item.status === 'aiDone' ? '✅' : '❌'}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">
+                                    {item.status === 'executing' ? 'Executing…' : item.status === 'aiDone' ? 'AI Completed' : 'AI Failed'}
+                                </div>
+                                <div className="text-[10px] text-[#848484] truncate" title={item.taskId}>
+                                    Task: {item.taskId}
+                                </div>
+                            </div>
+                            <span className="text-xs text-[#0078d4] shrink-0">View Session →</span>
+                        </button>
+                    </section>
                 )}
 
                 {/* Description */}
