@@ -121,11 +121,21 @@ describe('Work Item Types', () => {
             expect(isValidTransition('executing', 'readyToExecute')).toBe(true);
         });
 
+        it('allows created → done (manual close)', () => {
+            expect(isValidTransition('created', 'done')).toBe(true);
+        });
+
+        it('allows planning → done (manual close)', () => {
+            expect(isValidTransition('planning', 'done')).toBe(true);
+        });
+
+        it('allows readyToExecute → done (manual close)', () => {
+            expect(isValidTransition('readyToExecute', 'done')).toBe(true);
+        });
+
         it('rejects invalid transitions', () => {
-            expect(isValidTransition('created', 'done')).toBe(false);
             expect(isValidTransition('created', 'executing')).toBe(false);
             expect(isValidTransition('planning', 'executing')).toBe(false);
-            expect(isValidTransition('planning', 'done')).toBe(false);
             expect(isValidTransition('done', 'executing')).toBe(false);
             expect(isValidTransition('failed', 'executing')).toBe(false);
             expect(isValidTransition('created', 'aiDone')).toBe(false);

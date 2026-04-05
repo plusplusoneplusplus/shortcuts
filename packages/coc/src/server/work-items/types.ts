@@ -221,13 +221,13 @@ export function isTerminalStatus(status: WorkItemStatus): boolean {
 
 /** Valid status transitions. */
 export const VALID_TRANSITIONS: Record<WorkItemStatus, readonly WorkItemStatus[]> = {
-    created: ['planning', 'readyToExecute', 'failed'],
-    planning: ['readyToExecute', 'created', 'failed'],
-    readyToExecute: ['executing', 'planning', 'failed'],
-    executing: ['aiDone', 'failed', 'readyToExecute'],
-    aiDone: ['readyToExecute', 'done', 'failed'],
-    done: ['created'],      // Allow re-opening
-    failed: ['created'],    // Allow re-opening
+    created:        ['planning', 'readyToExecute', 'done', 'failed'],
+    planning:       ['readyToExecute', 'created', 'done', 'failed'],
+    readyToExecute: ['executing', 'planning', 'done', 'failed'],
+    executing:      ['aiDone', 'failed', 'readyToExecute'],
+    aiDone:         ['readyToExecute', 'done', 'failed'],
+    done:           ['created'],      // Allow re-opening
+    failed:         ['created'],      // Allow re-opening
 };
 
 /** Check if a status transition is valid. */
