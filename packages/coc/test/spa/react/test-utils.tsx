@@ -65,8 +65,15 @@ function defaultQueueState(): QueueContextState {
         history: [],
         stats: defaultQueueStats(),
         repoQueueMap: {},
+        streamingChatWorkspaces: {},
         showDialog: false,
         dialogInitialFolderPath: null,
+        dialogInitialWorkspaceId: null,
+        dialogInitialPrompt: null,
+        dialogMode: 'task',
+        dialogLaunchMode: 'default',
+        showScriptDialog: false,
+        scriptDialogWorkspaceId: null,
         showHistory: false,
         isFollowUpStreaming: false,
         currentStreamingTurnIndex: null,
@@ -74,7 +81,10 @@ function defaultQueueState(): QueueContextState {
         drainQueued: 0,
         drainRunning: 0,
         selectedTaskId: null,
+        selectedTaskIdByRepo: {},
+        refreshVersion: 0,
         queueInitialized: false,
+        isTaskSubmitting: false,
     };
 }
 
