@@ -16,6 +16,7 @@ const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     readyToExecute:   { label: 'Ready to Execute',  badgeStatus: 'completed' },
     executing:        { label: 'Executing',         badgeStatus: 'running' },
     aiDone:           { label: 'AI Done',           badgeStatus: 'warning' },
+    aiFailed:         { label: 'AI Failed',         badgeStatus: 'failed' },
     done:             { label: 'Done',              badgeStatus: 'completed' },
     failed:           { label: 'Failed',            badgeStatus: 'failed' },
 };
@@ -24,8 +25,9 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     created:        ['planning', 'readyToExecute', 'done', 'failed'],
     planning:       ['readyToExecute', 'created', 'done', 'failed'],
     readyToExecute: ['executing', 'planning', 'done', 'failed'],
-    executing:      ['aiDone', 'failed', 'readyToExecute'],
+    executing:      ['aiDone', 'aiFailed', 'failed', 'readyToExecute'],
     aiDone:         ['readyToExecute', 'done', 'failed'],
+    aiFailed:       ['readyToExecute', 'created', 'failed'],
     done:           ['created'],
     failed:         ['created'],
 };

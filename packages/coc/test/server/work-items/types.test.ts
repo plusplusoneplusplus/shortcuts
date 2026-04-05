@@ -31,7 +31,7 @@ describe('Work Item Types', () => {
     describe('WORK_ITEM_STATUSES', () => {
         it('contains all expected statuses', () => {
             expect(WORK_ITEM_STATUSES).toEqual([
-                'created', 'planning', 'readyToExecute', 'executing', 'aiDone', 'done', 'failed',
+                'created', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'done', 'failed',
             ]);
         });
 
@@ -54,6 +54,7 @@ describe('Work Item Types', () => {
             expect(TERMINAL_WORK_ITEM_STATUSES.has('readyToExecute')).toBe(false);
             expect(TERMINAL_WORK_ITEM_STATUSES.has('executing')).toBe(false);
             expect(TERMINAL_WORK_ITEM_STATUSES.has('aiDone')).toBe(false);
+            expect(TERMINAL_WORK_ITEM_STATUSES.has('aiFailed')).toBe(false);
         });
     });
 
@@ -69,6 +70,7 @@ describe('Work Item Types', () => {
             expect(isTerminalStatus('readyToExecute')).toBe(false);
             expect(isTerminalStatus('executing')).toBe(false);
             expect(isTerminalStatus('aiDone')).toBe(false);
+            expect(isTerminalStatus('aiFailed')).toBe(false);
         });
     });
 
@@ -119,6 +121,22 @@ describe('Work Item Types', () => {
 
         it('allows executing → readyToExecute (retry)', () => {
             expect(isValidTransition('executing', 'readyToExecute')).toBe(true);
+        });
+
+        it('allows executing → aiFailed (AI execution failure)', () => {
+            expect(isValidTransition('executing', 'aiFailed')).toBe(true);
+        });
+
+        it('allows aiFailed → readyToExecute (retry after AI failure)', () => {
+            expect(isValidTransition('aiFailed', 'readyToExecute')).toBe(true);
+        });
+
+        it('allows aiFailed → created (reset after AI failure)', () => {
+            expect(isValidTransition('aiFailed', 'created')).toBe(true);
+        });
+
+        it('allows aiFailed → failed (give up after AI failure)', () => {
+            expect(isValidTransition('aiFailed', 'failed')).toBe(true);
         });
 
         it('allows created → done (manual close)', () => {

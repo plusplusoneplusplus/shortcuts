@@ -231,8 +231,10 @@ export function ActivityListPane({
     );
     const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [history, excludedTypes, searchQuery]);
 
-    // Tab-aware filtering: chats = type === 'chat', tasks = everything else
-    const isChat = (task: any) => task.type === 'chat';
+    // Tab-aware filtering:
+    //   chats = type === 'chat' (interactive sessions), excluding work item executions
+    //   tasks = everything else, including work item execution tasks (identified by payload.workItemId)
+    const isChat = (task: any) => task.type === 'chat' && !task.payload?.workItemId;
     const tabFilteredRunning = useMemo(() =>
         activeTab === 'chats' ? filteredRunning.filter(isChat) : filteredRunning.filter(t => !isChat(t)),
         [filteredRunning, activeTab]

@@ -44,6 +44,7 @@ import { registerWorkItemRoutes } from './work-item-routes';
 import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
+import { handleWorkItemTaskComplete } from '../work-items/work-item-executor';
 import type { WorkItem } from '../work-items/types';
 import { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile } from '../../config';
 
@@ -97,6 +98,40 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         await workItemStore.addWorkItem(item);
         getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-added', workspaceId: repoId, item });
     };
+
+    // Wire queue task completion → work item status update
+    // When a task that was created for a work item (payload.workItemId) finishes,
+    // update the work item status and notify connected clients.
+    bridge.on('queueChange', (event: { type: string; task?: any }) => {
+        if (event.type !== 'updated' || !event.task) return;
+        const task = event.task;
+        const workItemId = task.payload?.workItemId as string | undefined;
+        if (!workItemId) return;
+        const taskStatus: string = task.status;
+        if (taskStatus !== 'completed' && taskStatus !== 'failed' && taskStatus !== 'cancelled') return;
+
+        handleWorkItemTaskComplete(
+            workItemId,
+            task.id,
+            {
+                status: taskStatus as 'completed' | 'failed' | 'cancelled',
+                error: task.error,
+                processId: task.processId,
+            },
+            workItemStore,
+        ).then(async () => {
+            const updatedItem = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
+            if (updatedItem) {
+                getWsServer?.()?.broadcastProcessEvent({
+                    type: 'work-item-updated',
+                    workspaceId: updatedItem.repoId,
+                    item: updatedItem,
+                });
+            }
+        }).catch(() => {
+            // Non-fatal: don't crash the server on work item update failure
+        });
+    });
 
     const repoTreeService = new RepoTreeService(dataDir);
     registerRepoRoutes(routes, dataDir, repoTreeService);

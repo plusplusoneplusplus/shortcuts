@@ -111,6 +111,11 @@ export async function executeWorkItem(
 /**
  * Handle task completion for a work item.
  * Called when a queue task linked to a work item finishes.
+ *
+ * Status mapping:
+ *   completed  → aiDone (AI finished successfully; awaiting user review)
+ *   failed     → aiFailed (AI execution failed; user can retry)
+ *   cancelled  → readyToExecute (execution was cancelled; user can retry)
  */
 export async function handleWorkItemTaskComplete(
     workItemId: string,
@@ -125,8 +130,16 @@ export async function handleWorkItemTaskComplete(
         processId: result.processId,
     });
 
-    const newStatus = result.status === 'completed' ? 'aiDone' : 'failed';
-    const completedAt = newStatus === 'failed' ? new Date().toISOString() : undefined;
+    let newStatus: import('./types').WorkItemStatus;
+    if (result.status === 'completed') {
+        newStatus = 'aiDone';
+    } else if (result.status === 'cancelled') {
+        newStatus = 'readyToExecute';
+    } else {
+        newStatus = 'aiFailed';
+    }
+
+    const completedAt = newStatus === 'aiFailed' ? new Date().toISOString() : undefined;
     await store.updateWorkItem(workItemId, {
         status: newStatus,
         ...(completedAt ? { completedAt } : {}),
