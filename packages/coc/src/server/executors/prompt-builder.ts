@@ -395,7 +395,10 @@ export function buildCreateWorkItemAddon(
     const { tool } = createWorkItemTool(dataDir, repoId, broadcastFn);
     const suffix =
         '\n\nYou have access to the `create_work_item` tool. ' +
-        'Call it when the user explicitly asks to create a work item, track a task, or save something for later execution.';
+        'When the user asks to create a work item, track a feature, file a bug, or save a task for later execution, ' +
+        'follow the `create-work-item` skill instructions: draft the work item summary first, ' +
+        'let the user refine it with feedback, and only call `create_work_item` once the user confirms. ' +
+        'Never execute the work item steps inside this chat session — use the tool to persist it, then stop.';
 
     return { tools: [tool], suffix };
 }
