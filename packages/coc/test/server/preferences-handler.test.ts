@@ -1454,6 +1454,35 @@ describe('Per-Repo Preferences REST API', () => {
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4' });
     });
 
+    // -- filesViewMode --
+
+    it('filesViewMode round-trips through PUT and GET', async () => {
+        await putJSON(repoUrl(repoId), { filesViewMode: 'flat' });
+        const res = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(res.body).filesViewMode).toBe('flat');
+    });
+
+    it('filesViewMode round-trips through PATCH and GET', async () => {
+        await patchJSON(repoUrl(repoId), { filesViewMode: 'tree' });
+        const res = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(res.body).filesViewMode).toBe('tree');
+    });
+
+    it('PATCH filesViewMode merges with existing prefs', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4' });
+        const res = await patchJSON(repoUrl(repoId), { filesViewMode: 'flat' });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModel).toBe('gpt-4');
+        expect(body.filesViewMode).toBe('flat');
+    });
+
+    it('validates filesViewMode rejects invalid values', async () => {
+        const res = await putJSON(repoUrl(repoId), { filesViewMode: 'grid' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).filesViewMode).toBeUndefined();
+    });
+
     // -- Isolation --
 
     it('two repos have independent preferences', async () => {

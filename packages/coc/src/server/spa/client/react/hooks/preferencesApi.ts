@@ -10,6 +10,8 @@ export interface PerRepoPrefsClient {
   pinnedChats?: Record<string, string[]>;
   /** Archived chat task IDs per workspace key. */
   archivedChats?: Record<string, string[]>;
+  /** Preferred file-list display mode across all git views. */
+  filesViewMode?: 'flat' | 'tree';
 }
 
 /**

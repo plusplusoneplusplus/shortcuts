@@ -125,6 +125,8 @@ export interface PerRepoPreferences {
     scriptTemplates?: ScriptTemplateEntry[];
     /** Saved skill/model templates from the Run Skill dialog. */
     skillTemplates?: SkillTemplateEntry[];
+    /** Preferred file-list display mode across all git views (commits, branch changes, working tree). */
+    filesViewMode?: 'flat' | 'tree';
 }
 
 /** backward-compat alias */
@@ -383,6 +385,10 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         }
         // Keep empty array as explicit "delete all"
         result.skillTemplates = validated;
+    }
+
+    if (obj.filesViewMode === 'flat' || obj.filesViewMode === 'tree') {
+        result.filesViewMode = obj.filesViewMode;
     }
 
     return result;

@@ -12,6 +12,7 @@ import { copyToClipboard } from '../utils/format';
 import type { DiffComment } from '../../diff-comment-types';
 import { FlatFileList, FileTreeView, FilesViewToggle, buildFileTree, compactFolders, STATUS_COLORS, STATUS_LABELS, normalizeStatus } from './FileTree';
 import type { FileChange, FileNode, FilesViewMode } from './FileTree';
+import { useFilesViewMode } from '../hooks/useFilesViewMode';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -58,15 +59,6 @@ function toFileChanges(changes: WorkingTreeChange[]): FileChange[] {
         status: c.status,
         oldPath: c.oldPath ?? c.originalPath,
     }));
-}
-
-const WORKING_TREE_VIEW_MODE_KEY = 'coc-working-tree-view-mode';
-function readWorkingTreeViewMode(): FilesViewMode {
-    try {
-        const v = localStorage.getItem(WORKING_TREE_VIEW_MODE_KEY);
-        if (v === 'flat' || v === 'tree') return v;
-    } catch { /* ignore */ }
-    return 'flat';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -408,12 +400,8 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     const untracked = changes.filter(c => c.stage === 'untracked');
     const totalCount = staged.length + unstaged.length + untracked.length;
 
-    // Flat/tree toggle for working-tree file lists
-    const [wtViewMode, setWtViewModeState] = useState<FilesViewMode>(readWorkingTreeViewMode);
-    const setWtViewMode = useCallback((m: FilesViewMode) => {
-        try { localStorage.setItem(WORKING_TREE_VIEW_MODE_KEY, m); } catch { /* ignore */ }
-        setWtViewModeState(m);
-    }, []);
+    // Flat/tree toggle for working-tree file lists (shared repo preference)
+    const { mode: wtViewMode, setMode: setWtViewMode } = useFilesViewMode(workspaceId);
 
     /** Build a changeLookup map for quick filePath → WorkingTreeChange access */
     const changeLookup = new Map(changes.map(c => [c.filePath, c]));

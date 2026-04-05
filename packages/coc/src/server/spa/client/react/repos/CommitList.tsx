@@ -17,6 +17,7 @@ import type { FileChange, FilesViewMode } from './FileTree';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { useCommitCommentTotals } from '../hooks/useCommitCommentTotals';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
+import { useFilesViewMode } from '../hooks/useFilesViewMode';
 
 export interface GitCommitItem {
     hash: string;
@@ -33,15 +34,6 @@ export interface GitCommitItem {
 // Uses CSS `(hover: none)` which matches devices with no fine pointer (mouse/trackpad).
 const isTouchOnly = (): boolean =>
     typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
-
-const COMMIT_VIEW_MODE_KEY = 'coc-commit-files-view-mode';
-function readCommitViewMode(): FilesViewMode {
-    try {
-        const v = localStorage.getItem(COMMIT_VIEW_MODE_KEY);
-        if (v === 'flat' || v === 'tree') return v;
-    } catch { /* ignore */ }
-    return 'tree';
-}
 
 interface CommitListProps {
     title: string;
@@ -90,12 +82,8 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-    // Flat/tree toggle for commit file lists
-    const [commitViewMode, setCommitViewModeState] = useState<FilesViewMode>(readCommitViewMode);
-    const setCommitViewMode = useCallback((m: FilesViewMode) => {
-        try { localStorage.setItem(COMMIT_VIEW_MODE_KEY, m); } catch { /* ignore */ }
-        setCommitViewModeState(m);
-    }, []);
+    // Flat/tree toggle for commit file lists (shared repo preference)
+    const { mode: commitViewMode, setMode: setCommitViewMode } = useFilesViewMode(workspaceId);
 
     // Fetch active comment countsfor the currently expanded commit
     const commentCounts = useFileCommentCounts(

@@ -8,7 +8,7 @@
  * - Inline diff expansion works in tree mode.
  * - Renamed files show tooltip in tree mode.
  * - Switching between flat and tree modes.
- * - localStorage persistence of view mode.
+ * - View mode persistence via server preferences (useFilesViewMode).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -28,6 +28,24 @@ const mockUseFileCommentCounts = vi.fn<[], Map<string, number>>();
 vi.mock('../../../../src/server/spa/client/react/hooks/useFileCommentCounts', () => ({
     useFileCommentCounts: () => mockUseFileCommentCounts(),
 }));
+
+const mockSetFilesViewMode = vi.fn();
+let mockFilesViewModeInitial: 'flat' | 'tree' = 'tree';
+
+// Use a stateful mock that triggers React re-renders
+vi.mock('../../../../src/server/spa/client/react/hooks/useFilesViewMode', () => {
+    const { useState, useCallback } = require('react');
+    return {
+        useFilesViewMode: () => {
+            const [mode, setModeState] = useState<'flat' | 'tree'>(mockFilesViewModeInitial);
+            const setMode = useCallback((m: 'flat' | 'tree') => {
+                mockSetFilesViewMode(m);
+                setModeState(m);
+            }, []);
+            return { mode, setMode };
+        },
+    };
+});
 
 const mockFetchApi = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -69,6 +87,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     restoreViewport = mockViewport(1280);
     localStorage.clear();
+    mockFilesViewModeInitial = 'tree';
     mockUseFileCommentCounts.mockReturnValue(new Map());
 });
 
@@ -199,7 +218,7 @@ describe('BranchChanges — flat/tree toggle', () => {
         expect(screen.getByTestId('branch-files-view-toggle-tree').getAttribute('aria-pressed')).toBe('false');
     });
 
-    it('persists view mode to localStorage', async () => {
+    it('persists view mode via server preferences', async () => {
         const user = userEvent.setup();
         render(
             <BranchChanges
@@ -215,11 +234,11 @@ describe('BranchChanges — flat/tree toggle', () => {
             await user.click(screen.getByTestId('branch-files-view-toggle-flat'));
         });
 
-        expect(localStorage.getItem('coc-branch-files-view-mode')).toBe('flat');
+        expect(mockSetFilesViewMode).toHaveBeenCalledWith('flat');
     });
 
-    it('restores view mode from localStorage', async () => {
-        localStorage.setItem('coc-branch-files-view-mode', 'flat');
+    it('restores view mode from server preferences', async () => {
+        mockFilesViewModeInitial = 'flat';
         render(
             <BranchChanges
                 workspaceId="ws-test"

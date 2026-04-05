@@ -16,6 +16,7 @@ import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
 import { buildFileTree, compactFolders, FileTreeView, FlatFileList, FilesViewToggle } from './FileTree';
 import type { FileChange, FilesViewMode } from './FileTree';
+import { useFilesViewMode } from '../hooks/useFilesViewMode';
 
 export interface BranchRangeInfo {
     baseRef: string;
@@ -45,16 +46,6 @@ interface BranchRangeFile extends FileChange {}
 
 const DIFF_LINE_LIMIT = 500;
 
-const VIEW_MODE_KEY = 'coc-branch-files-view-mode';
-
-function readViewMode(): FilesViewMode {
-    try {
-        const v = localStorage.getItem(VIEW_MODE_KEY);
-        if (v === 'flat' || v === 'tree') return v;
-    } catch { /* ignore */ }
-    return 'tree';
-}
-
 export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDefaultBranch, onFileSelect, selectedFile, onBranchContextMenu, onBranchRangeSelect }: BranchChangesProps) {
     const rangeInfo = branchRangeData ?? null;
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
@@ -66,12 +57,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
     const [fileDiffLoading, setFileDiffLoading] = useState(false);
     const [fileDiffError, setFileDiffError] = useState<string | null>(null);
     const [showFullDiff, setShowFullDiff] = useState(false);
-    const [viewMode, setViewModeState] = useState<FilesViewMode>(readViewMode);
-
-    const setViewMode = useCallback((m: FilesViewMode) => {
-        try { localStorage.setItem(VIEW_MODE_KEY, m); } catch { /* ignore */ }
-        setViewModeState(m);
-    }, []);
+    const { mode: viewMode, setMode: setViewMode } = useFilesViewMode(workspaceId);
 
     // Fetch active comment counts for all files in this branch range
     const commentCounts = useFileCommentCounts(workspaceId, 'branch-base', 'branch-head');

@@ -233,7 +233,7 @@ describe('CommitList', () => {
         it('has flat/tree view toggle for commit file lists', () => {
             expect(source).toContain('FilesViewToggle');
             expect(source).toContain('commitViewMode');
-            expect(source).toContain('coc-commit-files-view-mode');
+            expect(source).toContain('useFilesViewMode');
         });
 
         it('renders FlatFileList in flat mode', () => {
