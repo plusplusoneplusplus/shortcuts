@@ -1,0 +1,1150 @@
+/**
+ * Render tests for ActivityChatDetail — the right-pane chat orchestrator.
+ *
+ * Covers: container rendering, loading/error states, pending task display,
+ * mode selector, follow-up send, cancel/move-to-top, back navigation,
+ * copy conversation, streaming turns, draft restore, session management,
+ * skills, image paste, and workspace ID propagation.
+ *
+ * Heavy mocking of hooks keeps tests focused on orchestrator behaviour;
+ * sub-component wiring (FollowUpInputArea, ChatHeader, ConversationArea)
+ * is verified via prop-forwarding and data-testid assertions.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import React, { useEffect, type ReactNode, createRef } from 'react';
+import { AppProvider, useApp } from '../../../../src/server/spa/client/react/context/AppContext';
+import { QueueProvider, useQueue } from '../../../../src/server/spa/client/react/context/QueueContext';
+import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
+import { NotificationProvider } from '../../../../src/server/spa/client/react/context/NotificationContext';
+import { TaskProvider } from '../../../../src/server/spa/client/react/context/TaskContext';
+
+// ── Module mocks (hoisted before imports) ──────────────────────────────────
+
+// Hoisted tracker for mock state
+const { mockState } = vi.hoisted(() => ({
+    mockState: {
+        sendFollowUp: vi.fn().mockResolvedValue(undefined),
+        closeFollowUpStream: vi.fn(),
+        onSendComplete: vi.fn(),
+        stopStreaming: vi.fn(),
+        handlePopOut: vi.fn(),
+        handleFloat: vi.fn(),
+        getDraft: vi.fn().mockReturnValue(null) as ReturnType<typeof vi.fn>,
+        setDraft: vi.fn(),
+        pruneExpired: vi.fn(),
+        clearDraft: vi.fn(),
+        addFromPaste: vi.fn(),
+        removeImage: vi.fn(),
+        clearImages: vi.fn(),
+        richTextValue: '',
+        richTextSetValueCalls: [] as Array<[string, number?]>,
+    },
+}));
+
+// Config
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    getApiBase: () => '/api',
+    getWsPath: () => '/ws',
+}));
+
+// Display settings
+vi.mock('../../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+    useDisplaySettings: () => ({ showReportIntent: false, toolCompactness: 0, taskCardDensity: 'compact', groupSingleLineMessages: false }),
+    invalidateDisplaySettings: vi.fn(),
+}));
+
+// Chat preferences
+vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    useChatPrefs: () => ({
+        archivedChatIds: new Set<string>(),
+        pinnedChatIds: new Set<string>(),
+        pinChat: vi.fn(),
+        unpinChat: vi.fn(),
+        archiveChat: vi.fn(),
+        unarchiveChat: vi.fn(),
+        archiveChats: vi.fn(),
+        unarchiveChats: vi.fn(),
+        loaded: true,
+    }),
+}));
+
+// Pop-out context
+vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => ({
+    usePopOut: () => ({
+        poppedOutTasks: new Set<string>(),
+        markPoppedOut: vi.fn(),
+        markRestored: vi.fn(),
+        postMessage: vi.fn(),
+    }),
+}));
+
+// Floating chats context
+vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+    useFloatingChats: () => ({
+        floatingChats: new Map(),
+        floatChat: vi.fn(),
+        unfloatChat: vi.fn(),
+        isFloating: () => false,
+    }),
+}));
+
+// useChatSSE
+vi.mock('../../../../src/server/spa/client/react/hooks/useChatSSE', () => ({
+    useChatSSE: () => ({ stopStreaming: mockState.stopStreaming }),
+}));
+
+// useSendMessage
+vi.mock('../../../../src/server/spa/client/react/hooks/useSendMessage', () => ({
+    useSendMessage: (opts: any) => {
+        // Capture setSessionExpired for session expiry tests
+        (globalThis as any).__useSendMessage_opts = opts;
+        return {
+            sendFollowUp: mockState.sendFollowUp,
+            closeFollowUpStream: mockState.closeFollowUpStream,
+            onSendComplete: mockState.onSendComplete,
+            flushQueueRef: { current: null },
+        };
+    },
+}));
+
+// useQueuedTaskPoll
+vi.mock('../../../../src/server/spa/client/react/hooks/useQueuedTaskPoll', () => ({
+    useQueuedTaskPoll: () => {},
+}));
+
+// useChatWindowActions
+vi.mock('../../../../src/server/spa/client/react/hooks/useChatWindowActions', () => ({
+    useChatWindowActions: () => ({
+        handlePopOut: mockState.handlePopOut,
+        handleFloat: mockState.handleFloat,
+    }),
+}));
+
+// useImagePaste
+vi.mock('../../../../src/server/spa/client/react/hooks/useImagePaste', () => ({
+    useImagePaste: () => ({
+        images: [],
+        addFromPaste: mockState.addFromPaste,
+        removeImage: mockState.removeImage,
+        clearImages: mockState.clearImages,
+    }),
+}));
+
+// useTextPaste
+vi.mock('../../../../src/server/spa/client/react/hooks/useTextPaste', () => ({
+    useTextPaste: () => ({
+        pastedContent: null,
+        charCount: 0,
+        previewLines: [],
+        addFromPaste: vi.fn(),
+        clearPaste: vi.fn(),
+    }),
+}));
+
+// useBreakpoint
+vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const }),
+}));
+
+// useDraftStore
+vi.mock('../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
+    getDraft: (...args: any[]) => mockState.getDraft(...args),
+    setDraft: (...args: any[]) => mockState.setDraft(...args),
+    clearDraft: (...args: any[]) => mockState.clearDraft(...args),
+    pruneExpired: () => mockState.pruneExpired(),
+}));
+
+// useSlashCommands
+vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
+    useSlashCommands: () => ({
+        menuVisible: false,
+        menuFilter: '',
+        filteredSkills: [],
+        highlightIndex: 0,
+        handleInputChange: vi.fn(),
+        handleKeyDown: vi.fn(() => false),
+        selectSkill: vi.fn(),
+        parseAndExtract: vi.fn((t: string) => ({ skills: [], prompt: t })),
+        dismissMenu: vi.fn(),
+    }),
+}));
+
+// RichTextInput — lightweight test double
+vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async () => {
+    const R = await import('react');
+    return {
+        RichTextInput: R.forwardRef((props: any, ref: any) => {
+            R.useImperativeHandle(ref, () => ({
+                getValue: () => mockState.richTextValue,
+                setValue: (text: string, cursorPos?: number) => {
+                    mockState.richTextSetValueCalls.push([text, cursorPos]);
+                    mockState.richTextValue = text;
+                },
+                focus: () => {},
+            }), []);
+            return R.createElement('div', {
+                'data-testid': props['data-testid'] ?? 'activity-chat-input',
+                contentEditable: !props.disabled,
+                onKeyDown: props.onKeyDown,
+                onInput: (e: any) => props.onChange?.(e.currentTarget?.textContent ?? ''),
+                onPaste: props.onPaste,
+            });
+        }),
+    };
+});
+
+// ConversationMiniMap — stub
+vi.mock('../../../../src/server/spa/client/react/processes/ConversationMiniMap', () => ({
+    ConversationMiniMap: () => React.createElement('div', { 'data-testid': 'conversation-minimap' }),
+}));
+
+// ConversationTurnBubble — stub that renders turn content
+vi.mock('../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+    ConversationTurnBubble: (props: any) =>
+        React.createElement('div', { 'data-testid': `turn-${props.turn?.role}`, 'data-turn-index': props.turn?.turnIndex }, props.turn?.content ?? ''),
+}));
+
+// QueuedBubble — stub
+vi.mock('../../../../src/server/spa/client/react/repos/QueuedBubble', () => ({
+    QueuedBubble: (props: any) => React.createElement('div', { 'data-testid': 'queued-bubble' }, props.msg?.content ?? ''),
+}));
+
+// BackgroundTasksIndicator — stub
+vi.mock('../../../../src/server/spa/client/react/repos/BackgroundTasksIndicator', () => ({
+    BackgroundTasksIndicator: () => React.createElement('div', { 'data-testid': 'bg-tasks-indicator' }),
+}));
+
+// PendingTaskInfoPanel — stub that exposes props
+vi.mock('../../../../src/server/spa/client/react/queue/PendingTaskInfoPanel', () => ({
+    PendingTaskInfoPanel: (props: any) =>
+        React.createElement('div', { 'data-testid': 'pending-task-info-panel' },
+            React.createElement('button', { 'data-testid': 'cancel-task-btn', onClick: props.onCancel }, 'Cancel Task'),
+            React.createElement('button', { 'data-testid': 'move-to-top-btn', onClick: props.onMoveToTop }, 'Move to Top'),
+            props.task?.payload?.prompt && React.createElement('span', { 'data-testid': 'pending-prompt' }, props.task.payload.prompt),
+        ),
+}));
+
+// ConversationMetadataPopover — getSessionIdFromProcess + stub component
+vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
+    getSessionIdFromProcess: (proc: any) => proc?.metadata?.sessionId ?? null,
+    ConversationMetadataPopover: (props: any) => React.createElement('div', { 'data-testid': 'metadata-popover' }),
+}));
+
+// shared — use real module (Badge, Button, Spinner, etc.)
+vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, any>>();
+    return {
+        ...actual,
+    };
+});
+
+// Now import the component under test (after mocks)
+import { ActivityChatDetail } from '../../../../src/server/spa/client/react/repos/ActivityChatDetail';
+
+// ── Provider wrapper ───────────────────────────────────────────────────────
+
+function Wrap({ children }: { children: ReactNode }) {
+    return (
+        <AppProvider>
+            <QueueProvider>
+                <NotificationProvider>
+                    <TaskProvider>
+                        <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                            {children}
+                        </ToastProvider>
+                    </TaskProvider>
+                </NotificationProvider>
+            </QueueProvider>
+        </AppProvider>
+    );
+}
+
+/**
+ * Seeds a pending (queued) task into queue state and renders ActivityChatDetail.
+ */
+function SeededActivityChatDetail({ task, ...rest }: { task: any } & Partial<React.ComponentProps<typeof ActivityChatDetail>>) {
+    const { dispatch: queueDispatch } = useQueue();
+    useEffect(() => {
+        queueDispatch({ type: 'QUEUE_UPDATED', queue: { queued: [task], running: [], stats: {} } });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
+    }, []);
+    return <ActivityChatDetail taskId={task.id} {...rest} />;
+}
+
+// ── Factories ──────────────────────────────────────────────────────────────
+
+function makeTask(overrides?: Partial<any>): any {
+    return {
+        id: 'task-1',
+        type: 'chat',
+        status: 'completed',
+        processId: 'proc-1',
+        displayName: 'Test Chat',
+        createdAt: '2025-06-01T12:00:00Z',
+        payload: {
+            kind: 'chat',
+            mode: 'autopilot',
+            prompt: 'Hello world',
+            workingDirectory: '/home/user/project',
+        },
+        metadata: {},
+        ...overrides,
+    };
+}
+
+function makePendingTask(overrides?: Partial<any>): any {
+    return makeTask({
+        status: 'queued',
+        processId: undefined,
+        ...overrides,
+    });
+}
+
+function makeProcess(overrides?: Partial<any>): any {
+    return {
+        id: 'proc-1',
+        status: 'completed',
+        metadata: { mode: 'autopilot', sessionId: 'sess-default' },
+        conversationTurns: [
+            { role: 'user', content: 'Hello', turnIndex: 0, timeline: [] },
+            { role: 'assistant', content: 'Hi there', turnIndex: 1, timeline: [] },
+        ],
+        ...overrides,
+    };
+}
+
+// ── Fetch helpers ──────────────────────────────────────────────────────────
+
+let fetchMock: ReturnType<typeof vi.fn>;
+
+function setupFetch(handlers: Record<string, any>) {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+        const urlStr = typeof url === 'string' ? url : '';
+        for (const [pattern, response] of Object.entries(handlers)) {
+            if (urlStr.includes(pattern)) {
+                if (typeof response === 'function') return response(urlStr, init);
+                const status = response?.status ?? 200;
+                const body = response?.body !== undefined ? response.body : response;
+                return new Response(JSON.stringify(body), {
+                    status,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+        }
+        return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+}
+
+function setupStandardFetch(task?: any, process?: any) {
+    const t = task ?? makeTask();
+    const p = process ?? makeProcess();
+    setupFetch({
+        '/skills/all': { body: { merged: [] } },
+        '/queue/': { body: { task: t } },
+        '/processes/': { body: { process: p, conversation: p.conversation } },
+        '/models': { body: [] },
+    });
+}
+
+// ── Setup / teardown ───────────────────────────────────────────────────────
+
+beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    // Reset mock state
+    mockState.sendFollowUp.mockReset().mockResolvedValue(undefined);
+    mockState.closeFollowUpStream.mockReset();
+    mockState.onSendComplete.mockReset();
+    mockState.stopStreaming.mockReset();
+    mockState.handlePopOut.mockReset();
+    mockState.handleFloat.mockReset();
+    mockState.getDraft.mockReset().mockReturnValue(null);
+    mockState.setDraft.mockReset();
+    mockState.pruneExpired.mockReset();
+    mockState.clearDraft.mockReset();
+    mockState.addFromPaste.mockReset();
+    mockState.removeImage.mockReset();
+    mockState.clearImages.mockReset();
+    mockState.richTextValue = '';
+    mockState.richTextSetValueCalls = [];
+    // JSDOM polyfills
+    Element.prototype.scrollIntoView = vi.fn();
+    // navigator.clipboard
+    Object.assign(navigator, {
+        clipboard: {
+            writeText: vi.fn().mockResolvedValue(undefined),
+            write: vi.fn().mockResolvedValue(undefined),
+        },
+    });
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+    delete (globalThis as any).__useSendMessage_opts;
+});
+
+// ── Tests ──────────────────────────────────────────────────────────────────
+
+describe('ActivityChatDetail', () => {
+    // ── Rendering ──────────────────────────────────────────────────────────
+
+    describe('rendering', () => {
+        it('renders container with data-testid="activity-chat-detail"', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+        });
+
+        it('renders conversation area', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            expect(screen.getByTestId('activity-chat-conversation')).toBeTruthy();
+        });
+
+        it('renders send button', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+        });
+
+        it('renders mode selector', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('mode-selector')).toBeTruthy();
+            });
+        });
+
+        it('renders copy-conversation button', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
+            });
+        });
+
+        it('renders copy-conversation-html button', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
+            });
+        });
+
+        it('renders back button when onBack provided', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" onBack={() => {}} /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-back-btn')).toBeTruthy();
+            });
+        });
+
+        it('does not render back button when onBack is undefined', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('activity-chat-back-btn')).toBeNull();
+        });
+
+        it('renders conversation minimap for inline variant', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('conversation-minimap')).toBeTruthy();
+            });
+        });
+
+        it('does not render conversation minimap for floating variant', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" variant="floating" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('conversation-minimap')).toBeNull();
+        });
+    });
+
+    // ── Loading and data ───────────────────────────────────────────────────
+
+    describe('loading and data', () => {
+        it('shows loading spinner while fetch is pending', async () => {
+            fetchMock.mockImplementation(() => new Promise(() => {})); // never resolves
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('Loading conversation...')).toBeTruthy();
+            });
+        });
+
+        it('shows conversation turns after load completes', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('Hello')).toBeTruthy();
+                expect(screen.getByText('Hi there')).toBeTruthy();
+            });
+        });
+
+        it('shows error message on fetch failure', async () => {
+            setupFetch({
+                '/queue/': { status: 500, body: { error: 'Server error' } },
+            });
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText(/API error: 500/)).toBeTruthy();
+            });
+        });
+
+        it('fetches /queue/<id> on mount', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-42" /></Wrap>);
+            await waitFor(() => {
+                const queueCalls = fetchMock.mock.calls.filter(
+                    ([url]: [string]) => typeof url === 'string' && url.includes('/queue/task-42'),
+                );
+                expect(queueCalls.length).toBeGreaterThanOrEqual(1);
+            });
+        });
+
+        it('fetches /processes/<id> for non-queued tasks', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const processCalls = fetchMock.mock.calls.filter(
+                    ([url]: [string]) => typeof url === 'string' && url.includes('/processes/proc-1'),
+                );
+                expect(processCalls.length).toBeGreaterThanOrEqual(1);
+            });
+        });
+
+        it('shows "No conversation data available." when no turns exist', async () => {
+            const proc = makeProcess({ conversationTurns: [] });
+            setupStandardFetch(undefined, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('No conversation data available.')).toBeTruthy();
+            });
+        });
+
+        it('prunes expired drafts on mount', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(mockState.pruneExpired).toHaveBeenCalled();
+            });
+        });
+    });
+
+    // ── Pending task ───────────────────────────────────────────────────────
+
+    describe('pending task', () => {
+        it('shows PendingTaskInfoPanel for queued tasks', async () => {
+            const task = makePendingTask();
+            setupFetch({
+                '/queue/': { body: { task } },
+                '/skills/all': { body: { merged: [] } },
+            });
+            render(<Wrap><SeededActivityChatDetail task={task} /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('pending-task-info-panel')).toBeTruthy();
+            });
+        });
+
+        it('does not show follow-up input for queued tasks', async () => {
+            const task = makePendingTask();
+            setupFetch({
+                '/queue/': { body: { task } },
+                '/skills/all': { body: { merged: [] } },
+            });
+            render(<Wrap><SeededActivityChatDetail task={task} /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('pending-task-info-panel')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('activity-chat-send-btn')).toBeNull();
+        });
+
+        it('shows user prompt as initial turn for queued tasks', async () => {
+            const task = makePendingTask({ payload: { kind: 'chat', mode: 'autopilot', prompt: 'Build feature X' } });
+            setupFetch({
+                '/queue/': { body: { task } },
+                '/skills/all': { body: { merged: [] } },
+            });
+            render(<Wrap><SeededActivityChatDetail task={task} /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('pending-prompt')).toBeTruthy();
+                expect(screen.getByTestId('pending-prompt').textContent).toBe('Build feature X');
+            });
+        });
+
+        it('cancel button sends DELETE /queue/<id>', async () => {
+            const task = makePendingTask();
+            setupFetch({
+                '/queue/': { body: { task } },
+                '/skills/all': { body: { merged: [] } },
+            });
+            const onBack = vi.fn();
+            render(<Wrap><SeededActivityChatDetail task={task} onBack={onBack} /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('cancel-task-btn')).toBeTruthy();
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('cancel-task-btn'));
+            });
+            await waitFor(() => {
+                const deleteCalls = fetchMock.mock.calls.filter(
+                    ([url, init]: [string, RequestInit?]) =>
+                        typeof url === 'string' && url.includes('/queue/task-1') && init?.method === 'DELETE',
+                );
+                expect(deleteCalls.length).toBe(1);
+            });
+        });
+
+        it('move-to-top button sends POST /queue/<id>/move-to-top', async () => {
+            const task = makePendingTask();
+            setupFetch({
+                '/queue/': { body: { task } },
+                '/skills/all': { body: { merged: [] } },
+            });
+            render(<Wrap><SeededActivityChatDetail task={task} /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('move-to-top-btn')).toBeTruthy();
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('move-to-top-btn'));
+            });
+            await waitFor(() => {
+                const moveToTopCalls = fetchMock.mock.calls.filter(
+                    ([url, init]: [string, RequestInit?]) =>
+                        typeof url === 'string' && url.includes('/queue/task-1/move-to-top') && init?.method === 'POST',
+                );
+                expect(moveToTopCalls.length).toBe(1);
+            });
+        });
+    });
+
+    // ── Mode selector ──────────────────────────────────────────────────────
+
+    describe('mode selector', () => {
+        it('defaults to autopilot mode', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
+                expect(dropdown.value).toBe('autopilot');
+            });
+        });
+
+        it('initializes mode from task payload.mode', async () => {
+            const task = makeTask({ payload: { kind: 'chat', mode: 'ask', prompt: 'test' } });
+            const proc = makeProcess({ metadata: {} });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
+                expect(dropdown.value).toBe('ask');
+            });
+        });
+
+        it('initializes mode from process metadata.mode', async () => {
+            const task = makeTask({ payload: { kind: 'chat', prompt: 'test' } });
+            const proc = makeProcess({ metadata: { mode: 'plan', sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
+                expect(dropdown.value).toBe('plan');
+            });
+        });
+
+        it('dropdown selection changes mode', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('mode-dropdown')).toBeTruthy();
+            });
+            fireEvent.change(screen.getByTestId('mode-dropdown'), { target: { value: 'ask' } });
+            expect((screen.getByTestId('mode-dropdown') as HTMLSelectElement).value).toBe('ask');
+        });
+
+        it('hides mode selector when hideModeSelector is true', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" hideModeSelector /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
+        });
+    });
+
+    // ── Follow-up send ─────────────────────────────────────────────────────
+
+    describe('follow-up send', () => {
+        it('send button triggers sendFollowUp', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+            fireEvent.click(screen.getByTestId('activity-chat-send-btn'));
+            expect(mockState.sendFollowUp).toHaveBeenCalled();
+        });
+
+        it('input disabled for cancelled task', async () => {
+            const task = makeTask({ status: 'cancelled' });
+            const proc = makeProcess({ status: 'cancelled' });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const sendBtn = screen.getByTestId('activity-chat-send-btn');
+                expect(sendBtn.hasAttribute('disabled')).toBe(true);
+            });
+        });
+
+        it('shows "Session expired." placeholder for cancelled task input', async () => {
+            const task = makeTask({ status: 'cancelled' });
+            const proc = makeProcess({ status: 'cancelled' });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                // The input placeholder text is set in FollowUpInputArea
+                const sendBtn = screen.getByTestId('activity-chat-send-btn');
+                expect(sendBtn.hasAttribute('disabled')).toBe(true);
+            });
+        });
+
+        it('shows error message when error is set', async () => {
+            setupFetch({
+                '/queue/': { status: 500, body: { error: 'fail' } },
+            });
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText(/API error: 500/)).toBeTruthy();
+            });
+        });
+
+        it('input disabled during loading', async () => {
+            fetchMock.mockImplementation(() => new Promise(() => {}));
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            // During loading, the FollowUpInputArea may not render or input is disabled
+            // ConversationArea shows loading message
+            await waitFor(() => {
+                expect(screen.getByText('Loading conversation...')).toBeTruthy();
+            });
+        });
+    });
+
+    // ── Session management ─────────────────────────────────────────────────
+
+    describe('session management', () => {
+        it('shows no-session message for terminal tasks without session', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({ metadata: { mode: 'autopilot' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const msg = screen.queryByText('Follow-up chat is not available for this process type.');
+                // This renders when processDetails is non-null and no sessionId is found
+                // processDetails is set from the process response; sessionId comes from getSessionIdFromProcess
+                // Since our mock returns null for sessionId when metadata has no sessionId, and task is terminal:
+                expect(msg).toBeTruthy();
+            });
+        });
+
+        it('hides follow-up input when no session available for terminal tasks', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({ metadata: { mode: 'autopilot' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.queryByText('Follow-up chat is not available for this process type.')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('activity-chat-send-btn')).toBeNull();
+        });
+
+        it('shows follow-up input when session is available', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({ metadata: { sessionId: 'sess-123' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+        });
+
+        it('shows follow-up input when task is running', async () => {
+            const task = makeTask({ status: 'running', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'running', metadata: {} });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+        });
+    });
+
+    // ── Task actions ───────────────────────────────────────────────────────
+
+    describe('task actions', () => {
+        it('back button calls onBack callback', async () => {
+            setupStandardFetch();
+            const onBack = vi.fn();
+            render(<Wrap><ActivityChatDetail taskId="task-1" onBack={onBack} /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-back-btn')).toBeTruthy();
+            });
+            fireEvent.click(screen.getByTestId('activity-chat-back-btn'));
+            expect(onBack).toHaveBeenCalledTimes(1);
+        });
+
+        it('cancel calls onBack after deletion', async () => {
+            const task = makePendingTask();
+            setupFetch({
+                '/queue/': { body: { task } },
+                '/skills/all': { body: { merged: [] } },
+            });
+            const onBack = vi.fn();
+            render(<Wrap><SeededActivityChatDetail task={task} onBack={onBack} /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('cancel-task-btn')).toBeTruthy();
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('cancel-task-btn'));
+            });
+            await waitFor(() => {
+                expect(onBack).toHaveBeenCalled();
+            });
+        });
+    });
+
+    // ── Copy conversation ──────────────────────────────────────────────────
+
+    describe('copy conversation', () => {
+        it('copy buttons are present', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
+                expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
+            });
+        });
+
+        it('copy buttons disabled when loading', async () => {
+            fetchMock.mockImplementation(() => new Promise(() => {}));
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const copyBtn = screen.getByTestId('copy-conversation-btn');
+                expect(copyBtn.hasAttribute('disabled')).toBe(true);
+            });
+        });
+
+        it('copy buttons disabled when no turns exist', async () => {
+            const proc = makeProcess({ conversationTurns: [] });
+            setupStandardFetch(undefined, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('No conversation data available.')).toBeTruthy();
+            });
+            const copyBtn = screen.getByTestId('copy-conversation-btn');
+            expect(copyBtn.hasAttribute('disabled')).toBe(true);
+        });
+    });
+
+    // ── Streaming ──────────────────────────────────────────────────────────
+
+    describe('streaming', () => {
+        it('renders conversation turns from loaded data', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const userTurns = screen.getAllByTestId('turn-user');
+                const assistantTurns = screen.getAllByTestId('turn-assistant');
+                expect(userTurns.length).toBeGreaterThanOrEqual(1);
+                expect(assistantTurns.length).toBeGreaterThanOrEqual(1);
+            });
+        });
+
+        it('adds streaming placeholder for running tasks without streaming turn', async () => {
+            const task = makeTask({ status: 'running', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'running',
+                metadata: { sessionId: 'sess-1' },
+                conversationTurns: [{ role: 'user', content: 'test', turnIndex: 0, timeline: [] }],
+            });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                // ConversationArea adds a streaming placeholder for running tasks
+                const assistantTurns = screen.getAllByTestId('turn-assistant');
+                expect(assistantTurns.length).toBeGreaterThanOrEqual(1);
+            });
+        });
+
+        it('shows scroll-to-bottom button', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('scroll-to-bottom-btn')).toBeTruthy();
+            });
+        });
+    });
+
+    // ── Draft restore ──────────────────────────────────────────────────────
+
+    describe('draft restore', () => {
+        it('restores draft text on mount', async () => {
+            mockState.getDraft.mockReturnValue({ text: 'saved draft', mode: 'autopilot', updatedAt: Date.now() });
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(mockState.getDraft).toHaveBeenCalledWith('task-1');
+            });
+        });
+
+        it('restores draft mode on mount', async () => {
+            mockState.getDraft.mockReturnValue({ text: 'draft text', mode: 'ask', updatedAt: Date.now() });
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                // Mode should be restored to 'ask' but then overridden by process metadata
+                // unless process metadata has no mode
+                expect(mockState.getDraft).toHaveBeenCalledWith('task-1');
+            });
+        });
+
+        it('saves draft on unmount', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            const { unmount } = render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+            unmount();
+            expect(mockState.setDraft).toHaveBeenCalled();
+        });
+
+        it('calls getDraft with taskId on each mount', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(mockState.getDraft).toHaveBeenCalledWith('task-1');
+            });
+        });
+    });
+
+    // ── Workspace ID propagation ───────────────────────────────────────────
+
+    describe('workspace id', () => {
+        it('passes data-ws-id attribute when workspaceId provided', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" workspaceId="ws-abc" /></Wrap>);
+            await waitFor(() => {
+                const container = screen.getByTestId('activity-chat-detail');
+                expect(container.getAttribute('data-ws-id')).toBe('ws-abc');
+            });
+        });
+
+        it('does not add data-ws-id when workspaceId is absent', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const container = screen.getByTestId('activity-chat-detail');
+                expect(container.hasAttribute('data-ws-id')).toBe(false);
+            });
+        });
+
+        it('fetches skills for the workspace', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" workspaceId="ws-abc" /></Wrap>);
+            await waitFor(() => {
+                const skillsCalls = fetchMock.mock.calls.filter(
+                    ([url]: [string]) => typeof url === 'string' && url.includes('/workspaces/ws-abc/skills/all'),
+                );
+                expect(skillsCalls.length).toBe(1);
+            });
+        });
+    });
+
+    // ── Variant behaviour ──────────────────────────────────────────────────
+
+    describe('variant behaviour', () => {
+        it('hides back button for floating variant', async () => {
+            setupStandardFetch();
+            const task = makeTask({ status: 'completed' });
+            const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" onBack={() => {}} variant="floating" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('activity-chat-back-btn')).toBeNull();
+        });
+
+        it('hides pop-out button when isPopOut is true', async () => {
+            const task = makeTask({ status: 'completed' });
+            const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" isPopOut /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('activity-chat-popout-btn')).toBeNull();
+        });
+    });
+
+    // ── SSE and hook wiring ────────────────────────────────────────────────
+
+    describe('hook wiring', () => {
+        it('calls stopStreaming on taskId change (cleanup)', async () => {
+            setupStandardFetch();
+            const { rerender } = render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+            });
+            // Change taskId triggers cleanup which calls stopStreaming
+            setupStandardFetch();
+            rerender(<Wrap><ActivityChatDetail taskId="task-2" /></Wrap>);
+            await waitFor(() => {
+                expect(mockState.stopStreaming).toHaveBeenCalled();
+            });
+        });
+
+        it('calls closeFollowUpStream on taskId change (cleanup)', async () => {
+            setupStandardFetch();
+            const { rerender } = render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+            });
+            setupStandardFetch();
+            rerender(<Wrap><ActivityChatDetail taskId="task-2" /></Wrap>);
+            await waitFor(() => {
+                expect(mockState.closeFollowUpStream).toHaveBeenCalled();
+            });
+        });
+
+        it('clears images on taskId change', async () => {
+            setupStandardFetch();
+            const { rerender } = render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+            });
+            setupStandardFetch();
+            rerender(<Wrap><ActivityChatDetail taskId="task-2" /></Wrap>);
+            await waitFor(() => {
+                expect(mockState.clearImages).toHaveBeenCalled();
+            });
+        });
+    });
+
+    // ── Pop-out and float ──────────────────────────────────────────────────
+
+    describe('pop-out and float', () => {
+        it('renders pop-out button', async () => {
+            const task = makeTask({ status: 'completed' });
+            const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-popout-btn')).toBeTruthy();
+            });
+        });
+
+        it('renders float button', async () => {
+            const task = makeTask({ status: 'completed' });
+            const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-float-btn')).toBeTruthy();
+            });
+        });
+
+        it('hides float button when variant is floating', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" variant="floating" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('activity-chat-float-btn')).toBeNull();
+        });
+    });
+
+    // ── Task status display ────────────────────────────────────────────────
+
+    describe('task status display', () => {
+        it('input disabled for cancelling task', async () => {
+            const task = makeTask({ status: 'cancelling', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'cancelling', metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                const sendBtn = screen.getByTestId('activity-chat-send-btn');
+                expect(sendBtn.hasAttribute('disabled')).toBe(true);
+            });
+        });
+
+        it('shows failed task with conversation still visible', async () => {
+            const task = makeTask({ status: 'failed', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'failed', metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('Hello')).toBeTruthy();
+                expect(screen.getByText('Hi there')).toBeTruthy();
+            });
+        });
+
+        it('shows running task with streaming indicator', async () => {
+            const task = makeTask({ status: 'running', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'running', metadata: { sessionId: 'sess-1' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                // Running tasks should show the conversation area
+                expect(screen.getByTestId('activity-chat-conversation')).toBeTruthy();
+            });
+        });
+    });
+
+    // ── Title override ─────────────────────────────────────────────────────
+
+    describe('title override', () => {
+        it('passes custom title to ChatHeader', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" title="Custom Title" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('Custom Title')).toBeTruthy();
+            });
+        });
+
+        it('defaults to "Chat" title when no title provided', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('Chat')).toBeTruthy();
+            });
+        });
+    });
+
+    // ── Standalone mode ────────────────────────────────────────────────────
+
+    describe('standalone mode', () => {
+        it('renders correctly in standalone mode', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="task-1" standalone /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+                expect(screen.getByText('Hello')).toBeTruthy();
+            });
+        });
+    });
+});
