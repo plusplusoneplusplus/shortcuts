@@ -103,12 +103,13 @@ describe('ActivityChatDetail', () => {
             expect(scrollEffect).toContain('isInitialLoadRef.current = false');
         });
 
-        it('only scrolls incrementally (near-bottom guard) for subsequent turns', () => {
+        it('uses isScrolledUp state for subsequent-turn scroll guard instead of distance check', () => {
             const scrollEffect = source.substring(
                 source.indexOf('Scroll to bottom on new turns'),
                 source.indexOf('Scroll to bottom on new turns') + 700,
             );
-            expect(scrollEffect).toContain('dist < 100');
+            expect(scrollEffect).toContain('isScrolledUp');
+            expect(scrollEffect).not.toContain('dist < 100');
         });
     });
 
@@ -1096,6 +1097,89 @@ describe('ActivityChatDetail', () => {
         it('send button is always inline with shrink-0', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('shrink-0');
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).not.toContain('w-full sm:w-auto');
+        });
+    });
+
+    describe('stop/cancel running response', () => {
+        it('defines handleStop function', () => {
+            expect(source).toContain('handleStop');
+        });
+
+        it('handleStop calls POST to /cancel endpoint', () => {
+            const stopBlock = source.substring(
+                source.indexOf('handleStop'),
+                source.indexOf('handleStop') + 400,
+            );
+            expect(stopBlock).toContain('/cancel');
+            expect(stopBlock).toContain("method: 'POST'");
+        });
+
+        it('handleStop clears sending state immediately', () => {
+            const stopBlock = source.substring(
+                source.indexOf('handleStop'),
+                source.indexOf('handleStop') + 400,
+            );
+            expect(stopBlock).toContain('setSending(false)');
+        });
+
+        it('passes onStop={handleStop} to FollowUpInputArea', () => {
+            expect(source).toContain('onStop={handleStop}');
+        });
+    });
+
+    describe('ongoing-state indicator', () => {
+        it('FollowUpInputArea renders agent-responding-indicator element', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="agent-responding-indicator"');
+        });
+
+        it('indicator shows "Agent is responding..." text', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('Agent is responding...');
+        });
+
+        it('indicator has animate-pulse for visual feedback', () => {
+            const indicatorBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('agent-responding-indicator'),
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('agent-responding-indicator') + 300,
+            );
+            expect(indicatorBlock).toContain('animate-pulse');
+        });
+
+        it('indicator is shown when sending or task is running', () => {
+            const indicatorBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('agent-responding-indicator') - 200,
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('agent-responding-indicator') + 50,
+            );
+            expect(indicatorBlock).toContain('sending');
+            expect(indicatorBlock).toContain("'running'");
+        });
+    });
+
+    describe('send/stop toggle in FollowUpInputArea', () => {
+        it('renders stop button with testid when sending or running', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="activity-chat-stop-btn"');
+        });
+
+        it('stop button uses red background color', () => {
+            const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
+            const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 300, stopBtnIdx + 50);
+            expect(stopBtnBlock).toContain('f14c4c');
+        });
+
+        it('stop button invokes onStop on click', () => {
+            const stopBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-stop-btn');
+            const stopBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(stopBtnIdx - 300, stopBtnIdx + 50);
+            expect(stopBtnBlock).toContain('onStop');
+        });
+
+        it('FollowUpInputArea interface declares optional onStop prop', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('onStop?:');
+        });
+
+        it('send button text is "Send" (no longer shows "...")', () => {
+            const sendBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('activity-chat-send-btn');
+            const sendBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(sendBtnIdx - 10, sendBtnIdx + 100);
+            expect(sendBtnBlock).toContain('Send');
+            expect(sendBtnBlock).not.toContain('...');
         });
     });
 });

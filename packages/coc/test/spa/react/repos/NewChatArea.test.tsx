@@ -55,6 +55,10 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
     };
 });
 
+vi.mock('../../../../src/server/spa/client/react/repos/CreateWorkItemDialog', () => ({
+    CreateWorkItemDialog: () => null,
+}));
+
 import { NewChatArea } from '../../../../src/server/spa/client/react/repos/NewChatArea';
 
 beforeEach(() => {
@@ -202,7 +206,7 @@ describe('NewChatArea', () => {
         expect(body.payload.mode).toBe('plan');
     });
 
-    it('shows spinner text while sending', async () => {
+    it('shows stop button while sending', async () => {
         let resolvePost: (v: any) => void;
         mockFetch.mockReturnValueOnce(new Promise(r => { resolvePost = r; }));
 
@@ -216,7 +220,8 @@ describe('NewChatArea', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId('new-chat-send-btn').textContent).toBe('...');
+            expect(screen.getByTestId('new-chat-stop-btn')).toBeTruthy();
+            expect(screen.getByTestId('new-chat-stop-btn').textContent).toBe('Stop');
         });
 
         // Resolve the fetch
@@ -225,6 +230,31 @@ describe('NewChatArea', () => {
         });
 
         expect(screen.getByTestId('new-chat-send-btn').textContent).toBe('Send');
+    });
+
+    it('stop button cancels the send and reverts to send state', async () => {
+        let rejectPost: (err: any) => void;
+        mockFetch.mockReturnValueOnce(new Promise((_, r) => { rejectPost = r; }));
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Hello' } });
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('new-chat-stop-btn')).toBeTruthy();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-stop-btn'));
+            rejectPost!(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+        });
+
+        expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
+        expect(screen.queryByTestId('new-chat-error')).toBeNull();
     });
 
     it('Enter key triggers send', async () => {

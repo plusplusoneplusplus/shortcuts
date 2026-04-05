@@ -12,6 +12,7 @@ import type { ChatMode } from './modeConfig';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
+import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -22,7 +23,9 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
     const [selectedMode, setSelectedMode] = useState<ChatMode>('autopilot');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showCreateWorkItem, setShowCreateWorkItem] = useState(false);
     const richTextRef = useRef<RichTextInputHandle>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const { dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
@@ -33,12 +36,14 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
 
         setError(null);
         setSending(true);
+        abortControllerRef.current = new AbortController();
 
         try {
             const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
             const res = await fetch(getApiBase() + '/queue/tasks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                signal: abortControllerRef.current.signal,
                 body: JSON.stringify({
                     type: 'chat',
                     priority: 'normal',
@@ -62,10 +67,18 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
             setInput('');
             richTextRef.current?.setValue('');
         } catch (err: any) {
-            setError(err.message || 'Failed to create task');
+            if (err?.name !== 'AbortError') {
+                setError(err.message || 'Failed to create task');
+            }
         } finally {
             setSending(false);
+            abortControllerRef.current = null;
         }
+    }
+
+    function handleStop() {
+        abortControllerRef.current?.abort();
+        setSending(false);
     }
 
     return (
@@ -76,6 +89,30 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
                     <div className="text-3xl mb-2">💬</div>
                     <div className="text-sm font-medium mb-1">Start a new conversation</div>
                     <div className="text-xs">Type a message below to begin</div>
+                    {/* Quick-action shortcuts */}
+                    <div className="flex flex-wrap justify-center gap-2 mt-4">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSelectedMode('ask');
+                                richTextRef.current?.focus();
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:border-[#0078d4] hover:text-[#0078d4] dark:hover:border-[#3794ff] dark:hover:text-[#3794ff] transition-colors"
+                            data-testid="quick-ask-btn"
+                        >
+                            💡 Ask
+                        </button>
+                        {workspaceId && (
+                            <button
+                                type="button"
+                                onClick={() => setShowCreateWorkItem(true)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:border-[#0078d4] hover:text-[#0078d4] dark:hover:border-[#3794ff] dark:hover:text-[#3794ff] transition-colors"
+                                data-testid="quick-create-work-item-btn"
+                            >
+                                📌 Create Work Item
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -131,17 +168,35 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
                             data-testid="new-chat-input"
                         />
                     </div>
-                    <button
-                        type="button"
-                        disabled={sending || !input.trim()}
-                        className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={() => { void handleSend(); }}
-                        data-testid="new-chat-send-btn"
-                    >
-                        {sending ? '...' : 'Send'}
-                    </button>
+                    {sending ? (
+                        <button
+                            type="button"
+                            className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
+                            onClick={handleStop}
+                            data-testid="new-chat-stop-btn"
+                        >
+                            Stop
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            disabled={!input.trim()}
+                            className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => { void handleSend(); }}
+                            data-testid="new-chat-send-btn"
+                        >
+                            Send
+                        </button>
+                    )}
                 </div>
             </div>
+            {workspaceId && (
+                <CreateWorkItemDialog
+                    open={showCreateWorkItem}
+                    onClose={() => setShowCreateWorkItem(false)}
+                    workspaceId={workspaceId}
+                />
+            )}
         </div>
     );
 }

@@ -417,12 +417,11 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 // Force scroll to bottom when a task is first selected
                 isInitialLoadRef.current = false;
                 requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
-            } else {
-                const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-                if (dist < 100) el.scrollTop = el.scrollHeight;
+            } else if (!isScrolledUp) {
+                el.scrollTop = el.scrollHeight;
             }
         }
-    }, [turns, loading]);
+    }, [turns, loading, isScrolledUp]);
 
     // Track scroll position
     useEffect(() => {
@@ -443,6 +442,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId), { method: 'DELETE' });
         if (!standalone) queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
         onBack?.();
+    };
+
+    const handleStop = async () => {
+        if (!processId) return;
+        setSending(false);
+        try {
+            await fetchApi(`/processes/${encodeURIComponent(processId)}/cancel`, { method: 'POST' });
+        } catch { /* best-effort */ }
     };
 
     const handleMoveToTop = async () => {
@@ -561,6 +568,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     setSelectedMode={setSelectedMode}
                     onSend={sendFollowUp}
                     onRetry={retryLastMessage}
+                    onStop={handleStop}
                     skills={skills}
                     images={images}
                     onImagePaste={addFromPaste}
