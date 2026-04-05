@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Button, Badge, cn } from '../shared';
+import { Button, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';
@@ -20,7 +20,6 @@ const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     failed:           { label: 'Failed',            badgeStatus: 'failed' },
 };
 
-/** Mirror of server-side VALID_TRANSITIONS so the UI can render the right buttons. */
 const VALID_TRANSITIONS: Record<string, string[]> = {
     created:        ['planning', 'readyToExecute', 'done', 'failed'],
     planning:       ['readyToExecute', 'created', 'done', 'failed'],
@@ -29,16 +28,6 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     aiDone:         ['readyToExecute', 'done', 'failed'],
     done:           ['created'],
     failed:         ['created'],
-};
-
-const TRANSITION_LABELS: Record<string, string> = {
-    planning:       '🔍 Start Planning',
-    readyToExecute: '✅ Mark Ready to Execute',
-    executing:      '▶ Start Executing',
-    aiDone:         '🤖 Mark AI Done',
-    done:           '✅ Mark Done',
-    failed:         '❌ Mark Failed',
-    created:        '🔄 Reopen',
 };
 
 interface WorkItemDetailProps {
@@ -171,6 +160,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
     const canExecute = item.status === 'readyToExecute';
     const canEditPlan = ['created', 'planning', 'readyToExecute'].includes(item.status);
     const isAiDone = item.status === 'aiDone';
+    const validNextStatuses = VALID_TRANSITIONS[item.status] ?? [];
 
     return (
         <div className="flex flex-col h-full" data-testid="work-item-detail">
@@ -184,7 +174,30 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                 <div className="flex-1 min-w-0">
                     <h2 className="text-sm font-semibold truncate" title={item.title}>{item.title}</h2>
                     <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-[#848484] dark:text-[#999] mt-1">
-                        <Badge status={statusCfg.badgeStatus}>{statusCfg.label}</Badge>
+                        {/* Status dropdown */}
+                        <select
+                            value={item.status}
+                            onChange={e => handleStatusChange(e.target.value)}
+                            className={cn(
+                                'text-[10px] px-1.5 py-0.5 rounded border cursor-pointer appearance-none',
+                                'bg-[#fafafa] dark:bg-[#2d2d2d]',
+                                'border-[#d0d0d0] dark:border-[#555]',
+                                'text-[#3c3c3c] dark:text-[#ccc]',
+                                item.status === 'done'          && '!border-green-500 !text-green-700 dark:!text-green-400',
+                                item.status === 'failed'        && '!border-red-400 !text-red-600 dark:!text-red-400',
+                                item.status === 'executing'     && '!border-blue-400 !text-blue-600 dark:!text-blue-400',
+                                item.status === 'aiDone'        && '!border-purple-400 !text-purple-700 dark:!text-purple-400',
+                                item.status === 'readyToExecute' && '!border-emerald-500 !text-emerald-700 dark:!text-emerald-400',
+                            )}
+                            data-testid="work-item-status-select"
+                        >
+                            {/* Show current status (always) */}
+                            <option value={item.status}>{statusCfg.label}</option>
+                            {/* Show valid next statuses */}
+                            {validNextStatuses.map(s => (
+                                <option key={s} value={s}>{STATUS_LABELS[s]?.label ?? s}</option>
+                            ))}
+                        </select>
                         {item.priority && item.priority !== 'normal' && (
                             <span className={cn('px-1.5 py-0.5 rounded text-[10px]',
                                 item.priority === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
@@ -299,26 +312,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                     </section>
                 )}
 
-                {/* Status transitions */}
+                {/* Actions */}
                 <section>
-                    <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-2">Change Status</h3>
-                    <div className="flex flex-wrap gap-1.5">
-                        {(VALID_TRANSITIONS[item.status] ?? []).map(nextStatus => (
-                            <Button
-                                key={nextStatus}
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleStatusChange(nextStatus)}
-                                className={cn(
-                                    nextStatus === 'failed' && 'text-red-500 hover:text-red-600',
-                                    nextStatus === 'done' && 'text-green-600 dark:text-green-400',
-                                )}
-                                data-testid={`work-item-transition-${nextStatus}`}
-                            >
-                                {TRANSITION_LABELS[nextStatus] ?? nextStatus}
-                            </Button>
-                        ))}
-                        <Button variant="ghost" size="sm" className="text-red-500 ml-auto" data-testid="work-item-delete-btn"
+                    <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" className="text-red-500" data-testid="work-item-delete-btn"
                             onClick={async () => {
                                 if (confirm('Delete this work item?')) {
                                     await fetchApi(basePath, { method: 'DELETE' });
