@@ -95,12 +95,12 @@ describe('FileWorkItemStore', () => {
             const item = makeWorkItem({ id: 'wi-idx' });
             await store.addWorkItem(item);
 
-            await store.updateWorkItem('wi-idx', { status: 'ready', priority: 'low' });
+            await store.updateWorkItem('wi-idx', { status: 'readyToExecute', priority: 'low' });
 
             const entries = await store.listWorkItems({ repoId: 'test-repo' });
             const entry = entries.find(e => e.id === 'wi-idx');
             expect(entry).toBeDefined();
-            expect(entry!.status).toBe('ready');
+            expect(entry!.status).toBe('readyToExecute');
             expect(entry!.priority).toBe('low');
         });
     });
@@ -144,22 +144,22 @@ describe('FileWorkItemStore', () => {
 
         it('filters by status', async () => {
             await store.addWorkItem(makeWorkItem({ id: 'wi-1', status: 'created' }));
-            await store.addWorkItem(makeWorkItem({ id: 'wi-2', status: 'ready' }));
+            await store.addWorkItem(makeWorkItem({ id: 'wi-2', status: 'readyToExecute' }));
             await store.addWorkItem(makeWorkItem({ id: 'wi-3', status: 'done' }));
 
-            const ready = await store.listWorkItems({ repoId: 'test-repo', status: 'ready' });
+            const ready = await store.listWorkItems({ repoId: 'test-repo', status: 'readyToExecute' });
             expect(ready).toHaveLength(1);
             expect(ready[0].id).toBe('wi-2');
         });
 
         it('filters by multiple statuses', async () => {
             await store.addWorkItem(makeWorkItem({ id: 'wi-1', status: 'created' }));
-            await store.addWorkItem(makeWorkItem({ id: 'wi-2', status: 'ready' }));
+            await store.addWorkItem(makeWorkItem({ id: 'wi-2', status: 'readyToExecute' }));
             await store.addWorkItem(makeWorkItem({ id: 'wi-3', status: 'done' }));
 
             const active = await store.listWorkItems({
                 repoId: 'test-repo',
-                status: ['created', 'ready'],
+                status: ['created', 'readyToExecute'],
             });
             expect(active).toHaveLength(2);
         });
@@ -354,6 +354,38 @@ describe('FileWorkItemStore', () => {
 
             const entries = await store.listWorkItems({ repoId: 'test-repo' });
             expect(entries).toHaveLength(10);
+        });
+    });
+
+    describe('reviewComments field', () => {
+        it('stores and retrieves reviewComments', async () => {
+            const item = makeWorkItem({ id: 'wi-review' });
+            await store.addWorkItem(item);
+
+            const updated = await store.updateWorkItem('wi-review', {
+                reviewComments: [
+                    { id: 'rc-1', text: 'Fix the auth flow', createdAt: '2026-01-01T00:00:00.000Z' },
+                    { id: 'rc-2', text: 'Add tests', createdAt: '2026-01-01T01:00:00.000Z', resolved: true },
+                ],
+            });
+
+            expect(updated!.reviewComments).toHaveLength(2);
+            expect(updated!.reviewComments![0].text).toBe('Fix the auth flow');
+            expect(updated!.reviewComments![1].resolved).toBe(true);
+        });
+
+        it('clears reviewComments by setting to empty array', async () => {
+            const item = makeWorkItem({
+                id: 'wi-clear-review',
+                reviewComments: [{ id: 'rc-1', text: 'Old comment', createdAt: '2026-01-01T00:00:00.000Z' }],
+            });
+            await store.addWorkItem(item);
+
+            const updated = await store.updateWorkItem('wi-clear-review', {
+                reviewComments: [],
+            });
+
+            expect(updated!.reviewComments).toEqual([]);
         });
     });
 

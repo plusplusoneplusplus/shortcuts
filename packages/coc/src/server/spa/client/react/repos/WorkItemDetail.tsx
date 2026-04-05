@@ -11,8 +11,9 @@ import { formatRelativeTime } from '../utils/format';
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created: { label: 'Created', badgeStatus: 'queued' },
     planning: { label: 'Planning', badgeStatus: 'warning' },
-    ready: { label: 'Ready', badgeStatus: 'completed' },
+    readyToExecute: { label: 'Ready', badgeStatus: 'completed' },
     executing: { label: 'Executing', badgeStatus: 'running' },
+    aiDone: { label: 'AI Done', badgeStatus: 'warning' },
     done: { label: 'Done', badgeStatus: 'completed' },
     failed: { label: 'Failed', badgeStatus: 'failed' },
 };
@@ -33,6 +34,7 @@ interface WorkItemFull {
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string }>;
     tags?: string[];
     autoExecute?: boolean;
+    reviewComments?: Array<{ id: string; text: string; createdAt: string; resolved?: boolean }>;
 }
 
 interface PlanVersion {
@@ -56,6 +58,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
     const [refineInstructions, setRefineInstructions] = useState('');
     const [refining, setRefining] = useState(false);
     const [refinedContent, setRefinedContent] = useState<string | null>(null);
+    const [reviewComment, setReviewComment] = useState('');
+    const [requestingChanges, setRequestingChanges] = useState(false);
+    const [acceptingDone, setAcceptingDone] = useState(false);
 
     const basePath = `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}`;
 
@@ -153,6 +158,44 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
         } catch { /* ignore */ }
     };
 
+    const handleAcceptDone = async () => {
+        setAcceptingDone(true);
+        try {
+            await fetchApi(basePath, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'done', completedAt: new Date().toISOString() }),
+            });
+            await fetchItem();
+        } catch (err: any) {
+            setError(err.message || 'Failed to accept');
+        } finally {
+            setAcceptingDone(false);
+        }
+    };
+
+    const handleRequestChanges = async () => {
+        const comments = reviewComment.trim() ? [reviewComment.trim()] : [];
+        if (comments.length === 0) {
+            setError('Add a comment to describe the needed changes');
+            return;
+        }
+        setRequestingChanges(true);
+        try {
+            await fetchApi(basePath + '/request-changes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ comments }),
+            });
+            setReviewComment('');
+            await fetchItem();
+        } catch (err: any) {
+            setError(err.message || 'Failed to request changes');
+        } finally {
+            setRequestingChanges(false);
+        }
+    };
+
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
     }
@@ -171,8 +214,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
     if (!item) return null;
 
     const statusCfg = STATUS_LABELS[item.status] || STATUS_LABELS.created;
-    const canExecute = item.status === 'ready';
-    const canEditPlan = ['created', 'planning', 'ready'].includes(item.status);
+    const canExecute = item.status === 'readyToExecute';
+    const canEditPlan = ['created', 'planning', 'readyToExecute'].includes(item.status);
+    const isAiDone = item.status === 'aiDone';
 
     return (
         <div className="flex flex-col h-full" data-testid="work-item-detail">
@@ -321,6 +365,52 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                     )}
                 </section>
 
+                {/* AI Review section (shown only when status is aiDone) */}
+                {isAiDone && (
+                    <section className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg p-3" data-testid="work-item-review-section">
+                        <h3 className="text-xs font-medium text-purple-700 dark:text-purple-400 uppercase mb-2">🔄 AI Review</h3>
+                        {item.executionHistory && item.executionHistory.length > 0 && (
+                            <div className="text-xs text-[#606060] dark:text-[#aaa] mb-2">
+                                Last execution: Run #{item.executionHistory.length}
+                                {item.processId && <span> — <a href={`#process/${item.processId}`} className="text-[#0078d4] hover:underline">View Session →</a></span>}
+                            </div>
+                        )}
+                        <div className="space-y-2">
+                            <label className="text-xs text-[#606060] dark:text-[#aaa]">📝 Leave a comment on the result:</label>
+                            <textarea
+                                className="w-full h-20 text-xs p-2 rounded border border-purple-200 dark:border-purple-700 bg-white dark:bg-[#1e1e1e] resize-y"
+                                placeholder="Describe what needs to change…"
+                                value={reviewComment}
+                                onChange={e => setReviewComment(e.target.value)}
+                                data-testid="work-item-review-comment"
+                            />
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="primary" size="sm"
+                                    onClick={handleAcceptDone}
+                                    disabled={acceptingDone}
+                                    loading={acceptingDone}
+                                    data-testid="work-item-accept-done-btn"
+                                >
+                                    ✅ Accept &amp; Done
+                                </Button>
+                                <Button
+                                    variant="ghost" size="sm"
+                                    onClick={handleRequestChanges}
+                                    disabled={requestingChanges}
+                                    loading={requestingChanges}
+                                    data-testid="work-item-request-changes-btn"
+                                >
+                                    🔄 Request Changes
+                                </Button>
+                            </div>
+                            <div className="text-[10px] text-[#848484] italic">
+                                "Request Changes" incorporates your comments into the plan and moves back to Ready.
+                            </div>
+                        </div>
+                    </section>
+                )}
+
                 {/* Status transitions */}
                 <section>
                     <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Actions</h3>
@@ -329,7 +419,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted }: 
                             <Button variant="ghost" size="sm" onClick={() => handleStatusChange('planning')}>🔍 Start Planning</Button>
                         )}
                         {item.status === 'planning' && (
-                            <Button variant="ghost" size="sm" onClick={() => handleStatusChange('ready')}>✅ Mark Ready</Button>
+                            <Button variant="ghost" size="sm" onClick={() => handleStatusChange('readyToExecute')}>✅ Mark Ready</Button>
+                        )}
+                        {item.status === 'readyToExecute' && (
+                            <Button variant="ghost" size="sm" onClick={() => handleStatusChange('planning')}>🔍 Back to Planning</Button>
                         )}
                         {(item.status === 'done' || item.status === 'failed') && (
                             <Button variant="ghost" size="sm" onClick={() => handleStatusChange('created')}>🔄 Reopen</Button>

@@ -11,8 +11,9 @@ import { useWorkItems } from '../context/WorkItemContext';
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
     created: { label: 'Created', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', icon: '📝' },
     planning: { label: 'Planning', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', icon: '🔍' },
-    ready: { label: 'Ready', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', icon: '✅' },
+    readyToExecute: { label: 'Ready', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', icon: '✅' },
     executing: { label: 'Executing', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', icon: '⚡' },
+    aiDone: { label: 'AI Done', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', icon: '🔄' },
     done: { label: 'Done', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', icon: '🎉' },
     failed: { label: 'Failed', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', icon: '❌' },
 };

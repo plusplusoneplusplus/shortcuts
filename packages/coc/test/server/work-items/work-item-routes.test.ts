@@ -237,7 +237,7 @@ describe('Work Item Routes', () => {
             expect(res.status).toBe(200);
             expect(res.body.status).toBe('planning');
 
-            // planning → executing is INVALID (must go through ready)
+            // planning → executing is INVALID (must go through readyToExecute)
             res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
                 status: 'executing',
             });
@@ -277,6 +277,69 @@ describe('Work Item Routes', () => {
 
         it('returns 404 for non-existent item', async () => {
             const res = await request('DELETE', `/api/workspaces/${REPO_ID}/work-items/nonexistent`);
+            expect(res.status).toBe(404);
+        });
+    });
+
+    describe('POST /api/workspaces/:id/work-items/:workItemId/request-changes', () => {
+        let itemId: string;
+
+        beforeEach(async () => {
+            // Create an item and move it to aiDone state
+            const created = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Review me',
+                plan: { content: '# Original plan\n\n1. Do something' },
+            });
+            itemId = created.body.id;
+            // created → planning → readyToExecute → executing → aiDone
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, { status: 'planning' });
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, { status: 'readyToExecute' });
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, { status: 'executing' });
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, { status: 'aiDone' });
+        });
+
+        it('incorporates comments into plan and transitions to readyToExecute', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${itemId}/request-changes`, {
+                comments: ['Add error handling', 'Fix the auth flow'],
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.newVersion).toBe(2);
+            expect(res.body.plan.content).toContain('Review Comments');
+            expect(res.body.plan.content).toContain('Add error handling');
+            expect(res.body.plan.content).toContain('Fix the auth flow');
+
+            // Verify status transitioned
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${itemId}`);
+            expect(detail.body.status).toBe('readyToExecute');
+            expect(detail.body.plan.version).toBe(2);
+        });
+
+        it('rejects empty comments array', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${itemId}/request-changes`, {
+                comments: [],
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('comment');
+        });
+
+        it('rejects request-changes from non-aiDone status', async () => {
+            // Create a fresh item in created status
+            const created = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Not ready for review',
+            });
+            const id = created.body.id;
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/request-changes`, {
+                comments: ['Something'],
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 404 for non-existent work item', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/nonexistent/request-changes`, {
+                comments: ['Something'],
+            });
             expect(res.status).toBe(404);
         });
     });
