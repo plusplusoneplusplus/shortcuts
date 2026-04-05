@@ -68,45 +68,21 @@ Guide the user through creating a well-structured work item and persisting it to
 
 ### Phase 3 — Create
 
-6. Find the current workspace ID:
+6. Call the `create_work_item` tool with the confirmed details:
 
-   ```powershell
-   # Get the current git repo root
-   $repoRoot = git rev-parse --show-toplevel
-
-   # List all registered workspaces
-   $workspaces = (Invoke-RestMethod -Uri "http://localhost:4000/api/workspaces").workspaces
-
-   # Match workspace whose rootPath equals the repo root (normalize separators)
-   $ws = $workspaces | Where-Object {
-       ($_.rootPath -replace '\\', '/') -eq ($repoRoot -replace '\\', '/')
-   } | Select-Object -First 1
-   $workspaceId = $ws.id
+   ```
+   create_work_item({
+     title:       "<confirmed title>",
+     description: "<confirmed description>",
+     priority:    "<confirmed priority>",
+     tags:        ["<tag1>", "<tag2>"],   // omit if none
+     plan:        "<confirmed plan markdown>"
+   })
    ```
 
-7. Create the work item:
+   The tool persists the work item to the Work Items page and broadcasts a live update to any connected dashboard.
 
-   ```powershell
-   $body = @{
-       title       = "<title>"
-       description = "<description>"
-       priority    = "<priority>"
-       tags        = @("<tag1>", "<tag2>")   # omit if empty
-       source      = "chat"
-       plan        = @{
-           content    = "<plan markdown>"
-           resolvedBy = "ai"
-       }
-   } | ConvertTo-Json -Depth 5
-
-   $result = Invoke-RestMethod `
-       -Method Post `
-       -Uri "http://localhost:4000/api/workspaces/$workspaceId/work-items" `
-       -ContentType "application/json" `
-       -Body $body
-   ```
-
-8. On success (HTTP 201), report to the user:
+7. On success, report to the user:
 
    ```
    ✅ Work item created!
@@ -114,33 +90,33 @@ Guide the user through creating a well-structured work item and persisting it to
    Title:  <title>
    Status: created
 
-   View it in the Work Items tab of the CoC dashboard (http://localhost:4000).
+   View it in the Work Items tab of the CoC dashboard.
    ```
 
 ### Phase 4 — Execution (only if explicitly requested later)
 
 9. **Never execute the work item's steps in the current chat session.**
 
-   If the user asks to execute the work item:
-   - Do **not** run the steps yourself.
-   - Queue it as a separate background AI task:
+   If the user asks to execute the work item after it has been created, queue it as a background AI task via the REST API. Do **not** run the steps yourself.
 
    ```powershell
    Invoke-RestMethod `
        -Method Post `
-       -Uri "http://localhost:4000/api/workspaces/$workspaceId/work-items/$workItemId/execute" `
+       -Uri "http://localhost:4000/api/workspaces/<workspaceId>/work-items/<workItemId>/execute" `
        -ContentType "application/json" `
        -Body "{}"
    ```
 
-   - Confirm to the user: "✅ Work item queued for execution. Track progress in the Work Items tab."
+   Obtain `workspaceId` by calling `GET http://localhost:4000/api/workspaces` and matching the workspace whose `rootPath` equals the current git repo root. Use the `id` returned from the create step as `workItemId`.
+
+   Confirm to the user: "✅ Work item queued for execution. Track progress in the Work Items tab."
 
 ## Edge Cases
 
-- **Server not running**: If `localhost:4000` is unreachable, tell the user: "The CoC server doesn't appear to be running. Start it with `coc serve` then try again."
-- **Multiple workspaces**: Match the workspace whose `rootPath` most closely matches the current working directory (exact match preferred, then closest ancestor).
-- **No workspace registered**: If no workspace matches, ask the user to open the CoC dashboard and register the current repository first.
+- **Multiple workspaces**: For the execution step, match the workspace whose `rootPath` most closely matches the current working directory (exact match preferred, then closest ancestor).
+- **No workspace registered**: If no workspace matches for execution, tell the user to open the CoC dashboard and register the current repository first.
 - **Execute before create**: If the user asks to execute before the work item is created, complete the creation flow first, then queue execution.
+- **Server not running (execution only)**: If `localhost:4000` is unreachable when trying to queue execution, tell the user: "Start the CoC server with `coc serve` then try again."
 
 ## References
 
