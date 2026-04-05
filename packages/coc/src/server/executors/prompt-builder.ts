@@ -36,6 +36,7 @@ import {
 } from '../task-types';
 import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
 import { createUpdateTaskStatusTool } from '../update-task-status-tool';
+import { createWorkItemTool, type BroadcastWorkItemFn } from '../create-work-item-tool';
 
 // ============================================================================
 // System Message Builders
@@ -278,6 +279,35 @@ export function buildUpdateTaskStatusAddon(
         '\n\nYou have access to the `update_task_status` tool. ' +
         'Provide the absolute file path and new status. ' +
         'Call it when you begin work (set in-progress) and when complete (set done).';
+
+    return { tools: [tool], suffix };
+}
+
+// ============================================================================
+// Create Work Item
+// ============================================================================
+
+/**
+ * Builds the tools array and prompt suffix for the `create_work_item` tool.
+ * The tool is only injected when a valid dataDir and repoId are available.
+ *
+ * @param dataDir     - Base data directory (e.g. `~/.coc`).
+ * @param repoId      - Workspace / repo ID the item should be created in.
+ * @param broadcastFn - Optional function to broadcast a WebSocket event after creation.
+ */
+export function buildCreateWorkItemAddon(
+    dataDir: string | undefined,
+    repoId: string | undefined,
+    broadcastFn?: BroadcastWorkItemFn,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!dataDir || !repoId) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { tool } = createWorkItemTool(dataDir, repoId, broadcastFn);
+    const suffix =
+        '\n\nYou have access to the `create_work_item` tool. ' +
+        'Call it when the user explicitly asks to create a work item, track a task, or save something for later execution.';
 
     return { tools: [tool], suffix };
 }

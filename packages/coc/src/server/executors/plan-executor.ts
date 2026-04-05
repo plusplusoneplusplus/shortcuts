@@ -25,6 +25,7 @@ import {
     withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
+    buildCreateWorkItemAddon,
 } from './prompt-builder';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
@@ -70,12 +71,19 @@ export class PlanExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.count,
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
+        const createWorkItem = buildCreateWorkItemAddon(
+            this.dataDir,
+            payload.workspaceId,
+            this.getWsServerFn
+                ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
+                : undefined,
+        );
 
         return {
             agentMode: 'plan' as AgentMode,
             systemMessage,
-            tools: [...followUp.tools, ...updateStatus.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix,
+            tools: [...followUp.tools, ...updateStatus.tools, ...createWorkItem.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + createWorkItem.suffix,
         };
     }
 }

@@ -68,6 +68,7 @@ export class ExecutorRegistry {
             toolCallCacheStore: options.toolCallCacheStore,
             resolveSkillConfig: options.resolveSkillConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
+            getWsServer: options.getWsServer,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();
