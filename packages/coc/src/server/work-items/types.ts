@@ -16,11 +16,11 @@
 // ============================================================================
 
 /** Work item lifecycle status. */
-export type WorkItemStatus = 'created' | 'planning' | 'readyToExecute' | 'executing' | 'aiDone' | 'done' | 'failed';
+export type WorkItemStatus = 'created' | 'planning' | 'readyToExecute' | 'executing' | 'aiDone' | 'aiFailed' | 'done' | 'failed';
 
 /** All valid work item statuses (useful for validation). */
 export const WORK_ITEM_STATUSES: readonly WorkItemStatus[] = Object.freeze([
-    'created', 'planning', 'readyToExecute', 'executing', 'aiDone', 'done', 'failed',
+    'created', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'done', 'failed',
 ]);
 
 /** Terminal statuses that cannot transition further. */
@@ -224,8 +224,9 @@ export const VALID_TRANSITIONS: Record<WorkItemStatus, readonly WorkItemStatus[]
     created:        ['planning', 'readyToExecute', 'done', 'failed'],
     planning:       ['readyToExecute', 'created', 'done', 'failed'],
     readyToExecute: ['executing', 'planning', 'done', 'failed'],
-    executing:      ['aiDone', 'failed', 'readyToExecute'],
+    executing:      ['aiDone', 'aiFailed', 'failed', 'readyToExecute'],
     aiDone:         ['readyToExecute', 'done', 'failed'],
+    aiFailed:       ['readyToExecute', 'created', 'failed'],  // Retry or give up
     done:           ['created'],      // Allow re-opening
     failed:         ['created'],      // Allow re-opening
 };

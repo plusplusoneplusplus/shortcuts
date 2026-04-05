@@ -142,7 +142,7 @@ describe('handleWorkItemTaskComplete', () => {
         expect(updated!.executionHistory![0].status).toBe('completed');
     });
 
-    it('marks work item failed on failure', async () => {
+    it('marks work item aiFailed on failure', async () => {
         const item = makeWorkItem({ id: 'wi-fail', status: 'executing' });
         await store.addWorkItem(item);
         await store.addExecution('wi-fail', {
@@ -157,10 +157,29 @@ describe('handleWorkItemTaskComplete', () => {
         }, store);
 
         const updated = await store.getWorkItem('wi-fail', 'test-repo');
-        expect(updated!.status).toBe('failed');
+        expect(updated!.status).toBe('aiFailed');
         expect(updated!.completedAt).toBeDefined();
         expect(updated!.executionHistory![0].status).toBe('failed');
         expect(updated!.executionHistory![0].error).toBe('Timeout exceeded');
+    });
+
+    it('transitions to readyToExecute on cancellation', async () => {
+        const item = makeWorkItem({ id: 'wi-cancel', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-cancel', {
+            taskId: 'task-cancel',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+        });
+
+        await handleWorkItemTaskComplete('wi-cancel', 'task-cancel', {
+            status: 'cancelled',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-cancel', 'test-repo');
+        expect(updated!.status).toBe('readyToExecute');
+        expect(updated!.completedAt).toBeUndefined();
+        expect(updated!.executionHistory![0].status).toBe('cancelled');
     });
 
     it('does not set completedAt when transitioning to aiDone', async () => {
