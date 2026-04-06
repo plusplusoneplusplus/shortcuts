@@ -21,6 +21,8 @@ export { ImageGallery } from './ImageGallery';
 export type { ImageGalleryProps } from './ImageGallery';
 export { ImageLightbox } from './ImageLightbox';
 export type { ImageLightboxProps } from './ImageLightbox';
+export { AttachmentPreviews } from './AttachmentPreviews';
+export type { AttachmentPreviewsProps } from './AttachmentPreviews';
 export { SuggestionChips } from './SuggestionChips';
 export type { SuggestionChipsProps } from './SuggestionChips';
 export { ResponsiveSidebar } from './ResponsiveSidebar';

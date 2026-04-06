@@ -10,9 +10,9 @@ import { Dialog, FloatingDialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/usePreferences';
-import { useImagePaste } from '../hooks/useImagePaste';
+import { useFileAttachments } from '../hooks/useFileAttachments';
 import { useBreakpoint } from '../hooks/useBreakpoint';
-import { ImagePreviews } from '../shared/ImagePreviews';
+import { AttachmentPreviews } from '../shared/AttachmentPreviews';
 import { filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
@@ -66,7 +66,7 @@ export function EnqueueDialog() {
     const [minimized, setMinimized] = useState(false);
     const [beforeScript, setBeforeScript] = useState('');
     const [afterScript, setAfterScript] = useState('');
-    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const richTextRef = useRef<RichTextInputHandle>(null);
     const slashCommands = useSlashCommands(skills);
 
@@ -198,6 +198,7 @@ export function EnqueueDialog() {
                         ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
                     },
                     images: images.length > 0 ? images : undefined,
+                    attachments: toPayload().length > 0 ? toPayload() : undefined,
                 };
                 if (model) body.config = { model };
             } else if (effectiveSkills.length > 0) {
@@ -221,6 +222,7 @@ export function EnqueueDialog() {
                         },
                     },
                     images: images.length > 0 ? images : undefined,
+                    attachments: toPayload().length > 0 ? toPayload() : undefined,
                 };
                 if (model) body.config = { model };
             } else {
@@ -236,6 +238,7 @@ export function EnqueueDialog() {
                         workingDirectory: ws?.rootPath || folderPath || undefined,
                     },
                     images: images.length > 0 ? images : undefined,
+                    attachments: toPayload().length > 0 ? toPayload() : undefined,
                 };
                 if (model) body.config = { model };
             }
@@ -275,11 +278,11 @@ export function EnqueueDialog() {
                     }).catch(() => { /* ignore */ });
                 }
             }
-            clearImages();
+            clearAttachments();
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, toPayload, appState.workspaces, queueDispatch, clearAttachments, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
@@ -378,7 +381,8 @@ export function EnqueueDialog() {
                         highlightIndex={slashCommands.highlightIndex}
                     />
                 </div>
-                <ImagePreviews images={images} onRemove={removeImage} showHint />
+                <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
+                {attachmentError && <div className="text-xs text-[#f14c4c] mt-1">{attachmentError}</div>}
             </div>
 
             {/* Lower section tab bar: Templates | Advanced */}

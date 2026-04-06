@@ -34,6 +34,8 @@ export interface UseSendMessageOptions {
     selectedModeRef: React.MutableRefObject<'ask' | 'plan' | 'autopilot'>;
     images: string[];
     clearImages: () => void;
+    /** Convert current attachments to wire format (includes non-image files) */
+    toPayload?: () => Array<{ name: string; mimeType: string; size: number; dataUrl: string }>;
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
 }
@@ -60,6 +62,7 @@ export function useSendMessage({
     selectedModeRef,
     images,
     clearImages,
+    toPayload,
     lastFailedMessageRef,
     setTask,
 }: UseSendMessageOptions): {
@@ -180,6 +183,7 @@ export function useSendMessage({
                     body: JSON.stringify({
                         content: rawContent,
                         images: images.length > 0 ? images : undefined,
+                        attachments: toPayload && toPayload().length > 0 ? toPayload() : undefined,
                         mode: selectedMode,
                         deliveryMode,
                         optimisticId: qm.id,
@@ -214,6 +218,7 @@ export function useSendMessage({
                 body: JSON.stringify({
                     content: rawContent,
                     images: images.length > 0 ? images : undefined,
+                    attachments: toPayload && toPayload().length > 0 ? toPayload() : undefined,
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
@@ -250,7 +255,7 @@ export function useSendMessage({
             void refreshConversation(processId);
             setTimeout(() => { flushQueueRef.current?.(); }, 0);
         }
-    }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, selectedMode, images, toPayload, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, flushQueueRef, closeFollowUpStream, onSendComplete };
 }

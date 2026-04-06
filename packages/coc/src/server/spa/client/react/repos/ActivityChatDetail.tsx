@@ -14,7 +14,7 @@ import { getConversationTurns } from '../chat/chatConversationUtils';
 import { getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
-import { useImagePaste } from '../hooks/useImagePaste';
+import { useFileAttachments } from '../hooks/useFileAttachments';
 import { useSlashCommands } from './useSlashCommands';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
@@ -108,7 +108,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const lastRefreshVersionRef = useRef(0);
     const isInitialLoadRef = useRef(true);
 
-    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const { isMobile } = useBreakpoint();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
@@ -226,7 +226,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         selectedMode,
         selectedModeRef,
         images,
-        clearImages,
+        clearImages: clearAttachments,
+        toPayload,
         lastFailedMessageRef,
         setTask,
     });
@@ -572,9 +573,11 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     onRetry={retryLastMessage}
                     onStop={handleStop}
                     skills={skills}
-                    images={images}
-                    onImagePaste={addFromPaste}
-                    onImageRemove={removeImage}
+                    attachments={attachments}
+                    onAttachmentPaste={addFromPaste}
+                    onAttachmentRemove={removeAttachment}
+                    onAttachmentFiles={addFromFileInput}
+                    attachmentError={attachmentError}
                     task={task}
                     slashCommands={slashCommands}
                     hideModeSelector={hideModeSelector}
