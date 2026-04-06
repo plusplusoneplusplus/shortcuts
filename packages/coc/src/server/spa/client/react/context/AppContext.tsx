@@ -242,8 +242,19 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, statusFilter: action.value };
         case 'SET_SEARCH_QUERY':
             return { ...state, searchQuery: action.value };
-        case 'SET_ACTIVE_TAB':
-            return { ...state, activeTab: action.tab };
+        case 'SET_ACTIVE_TAB': {
+            const newState = { ...state, activeTab: action.tab };
+            if (action.tab === 'wiki' && !state.onboardingProgress.hasOpenedWiki) {
+                const merged = { ...state.onboardingProgress, hasOpenedWiki: true };
+                fetch(getApiBase() + '/preferences', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ onboardingProgress: merged }),
+                }).catch(() => {});
+                return { ...newState, onboardingProgress: merged };
+            }
+            return newState;
+        }
         case 'SET_SELECTED_REPO': {
             // Save current repo's active sub-tab before switching
             const savedTabState = state.selectedRepoId

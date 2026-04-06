@@ -132,6 +132,51 @@ describe('AppContext reducer', () => {
             const result = appReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'processes' });
             expect(result.activeTab).toBe('processes');
         });
+
+        it('sets hasOpenedWiki and fires PATCH when switching to wiki tab', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState({
+                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+            });
+            const result = appReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'wiki' });
+            expect(result.activeTab).toBe('wiki');
+            expect(result.onboardingProgress.hasOpenedWiki).toBe(true);
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: false } }),
+                }),
+            );
+            vi.unstubAllGlobals();
+        });
+
+        it('does not fire PATCH when hasOpenedWiki is already true', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState({
+                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: false },
+            });
+            const result = appReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'wiki' });
+            expect(result.activeTab).toBe('wiki');
+            expect(result.onboardingProgress.hasOpenedWiki).toBe(true);
+            expect(fetchSpy).not.toHaveBeenCalled();
+            vi.unstubAllGlobals();
+        });
+
+        it('does not change hasOpenedWiki when switching to a non-wiki tab', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState({
+                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+            });
+            const result = appReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'repos' });
+            expect(result.activeTab).toBe('repos');
+            expect(result.onboardingProgress.hasOpenedWiki).toBe(false);
+            expect(fetchSpy).not.toHaveBeenCalled();
+            vi.unstubAllGlobals();
+        });
     });
 
     describe('WORKSPACES_LOADED', () => {
