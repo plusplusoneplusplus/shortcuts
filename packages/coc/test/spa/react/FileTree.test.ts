@@ -263,7 +263,6 @@ describe('FileTree shared components', () => {
             const commitListSource = fs.readFileSync(commitListPath, 'utf-8');
             expect(commitListSource).toContain("from './FileTree'");
             expect(commitListSource).toContain('FlatFileList');
-            expect(commitListSource).toContain('FilesViewToggle');
         });
 
         it('BranchChanges imports shared components from FileTree', () => {
@@ -273,7 +272,6 @@ describe('FileTree shared components', () => {
             const branchChangesSource = fs.readFileSync(branchChangesPath, 'utf-8');
             expect(branchChangesSource).toContain("from './FileTree'");
             expect(branchChangesSource).toContain('FlatFileList');
-            expect(branchChangesSource).toContain('FilesViewToggle');
         });
 
         it('WorkingTree imports shared components from FileTree', () => {
@@ -284,7 +282,6 @@ describe('FileTree shared components', () => {
             expect(workingTreeSource).toContain("from './FileTree'");
             expect(workingTreeSource).toContain('FlatFileList');
             expect(workingTreeSource).toContain('FileTreeView');
-            expect(workingTreeSource).toContain('FilesViewToggle');
             expect(workingTreeSource).toContain('renderActions');
         });
 

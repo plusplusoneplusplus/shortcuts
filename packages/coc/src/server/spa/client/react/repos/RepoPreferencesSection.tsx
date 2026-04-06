@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePreferences, type SkillMode } from '../hooks/usePreferences';
 import { useModels, type ModelInfo } from '../hooks/useModels';
+import { useFilesViewMode } from '../hooks/useFilesViewMode';
 import { useGlobalToast } from '../context/ToastContext';
 import { useRepos } from '../context/ReposContext';
 import { getApiBase } from '../utils/config';
@@ -25,6 +26,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     const { addToast } = useGlobalToast();
     const prefs = usePreferences(workspaceId);
     const { models: availableModels, loading: modelsLoading } = useModels();
+    const { mode: filesViewMode, setMode: setFilesViewMode } = useFilesViewMode(workspaceId);
     const { repos } = useRepos();
 
     // Available skills
@@ -172,6 +174,18 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                         <option value="low">low</option>
                         <option value="medium">medium</option>
                         <option value="high">high</option>
+                    </select>
+                </div>
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                    <label className={labelClass}>File List View</label>
+                    <select
+                        className={selectClass}
+                        value={filesViewMode}
+                        onChange={e => setFilesViewMode(e.target.value as 'flat' | 'tree')}
+                        data-testid="pref-files-view-mode"
+                    >
+                        <option value="tree">tree</option>
+                        <option value="flat">flat</option>
                     </select>
                 </div>
             </div>

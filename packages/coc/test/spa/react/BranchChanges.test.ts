@@ -190,7 +190,6 @@ describe('BranchChanges', () => {
         it('imports shared status infrastructure from FileTree', () => {
             expect(source).toContain("from './FileTree'");
             expect(source).toContain('FlatFileList');
-            expect(source).toContain('FilesViewToggle');
         });
 
         it('FileTree has char-keyed STATUS_COLORS for all statuses', () => {

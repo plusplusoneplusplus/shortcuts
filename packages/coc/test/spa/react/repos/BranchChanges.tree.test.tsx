@@ -166,10 +166,10 @@ describe('buildFileTree — branch-change data', () => {
     });
 });
 
-// ── Flat/tree toggle ──────────────────────────────────────────────────
+// ── View mode driven by preferences ───────────────────────────────────
 
-describe('BranchChanges — flat/tree toggle', () => {
-    it('renders the view toggle when files are shown', async () => {
+describe('BranchChanges — view mode from preferences', () => {
+    it('defaults to tree mode (renders FileTreeView)', async () => {
         render(
             <BranchChanges
                 workspaceId="ws-test"
@@ -179,65 +179,13 @@ describe('BranchChanges — flat/tree toggle', () => {
         );
         await expandFiles();
         await waitFor(() => {
-            expect(screen.getByTestId('branch-files-view-toggle')).toBeTruthy();
+            expect(screen.getByTestId('branch-changes-files')).toBeTruthy();
+            // Tree mode renders folder nodes
+            expect(screen.getByTestId('file-tree-dir-packages/coc/src')).toBeTruthy();
         });
     });
 
-    it('defaults to tree mode', async () => {
-        render(
-            <BranchChanges
-                workspaceId="ws-test"
-                branchRangeData={RANGE_INFO}
-                initialFiles={FILES}
-            />
-        );
-        await expandFiles();
-        await waitFor(() => {
-            const treeBtn = screen.getByTestId('branch-files-view-toggle-tree');
-            expect(treeBtn.getAttribute('aria-pressed')).toBe('true');
-        });
-    });
-
-    it('switches to flat mode when flat button is clicked', async () => {
-        const user = userEvent.setup();
-        render(
-            <BranchChanges
-                workspaceId="ws-test"
-                branchRangeData={RANGE_INFO}
-                initialFiles={FILES}
-            />
-        );
-        await expandFiles();
-        await waitFor(() => screen.getByTestId('branch-files-view-toggle-flat'));
-
-        await act(async () => {
-            await user.click(screen.getByTestId('branch-files-view-toggle-flat'));
-        });
-
-        expect(screen.getByTestId('branch-files-view-toggle-flat').getAttribute('aria-pressed')).toBe('true');
-        expect(screen.getByTestId('branch-files-view-toggle-tree').getAttribute('aria-pressed')).toBe('false');
-    });
-
-    it('persists view mode via server preferences', async () => {
-        const user = userEvent.setup();
-        render(
-            <BranchChanges
-                workspaceId="ws-test"
-                branchRangeData={RANGE_INFO}
-                initialFiles={FILES}
-            />
-        );
-        await expandFiles();
-        await waitFor(() => screen.getByTestId('branch-files-view-toggle-flat'));
-
-        await act(async () => {
-            await user.click(screen.getByTestId('branch-files-view-toggle-flat'));
-        });
-
-        expect(mockSetFilesViewMode).toHaveBeenCalledWith('flat');
-    });
-
-    it('restores view mode from server preferences', async () => {
+    it('renders flat file list when preference is flat', async () => {
         mockFilesViewModeInitial = 'flat';
         render(
             <BranchChanges
@@ -248,8 +196,8 @@ describe('BranchChanges — flat/tree toggle', () => {
         );
         await expandFiles();
         await waitFor(() => {
-            const flatBtn = screen.getByTestId('branch-files-view-toggle-flat');
-            expect(flatBtn.getAttribute('aria-pressed')).toBe('true');
+            // Flat mode renders full paths without folder grouping
+            expect(screen.getByTestId('branch-file-row-packages/coc/src/a.ts')).toBeTruthy();
         });
     });
 });

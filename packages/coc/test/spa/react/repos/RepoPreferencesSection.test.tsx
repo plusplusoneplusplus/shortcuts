@@ -24,6 +24,23 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
 }));
 
+const mockSetFilesViewMode = vi.fn();
+let mockFilesViewModeValue: 'flat' | 'tree' = 'tree';
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useFilesViewMode', () => {
+    const { useState, useCallback } = require('react');
+    return {
+        useFilesViewMode: () => {
+            const [mode, setModeState] = useState<'flat' | 'tree'>(mockFilesViewModeValue);
+            const setMode = useCallback((m: 'flat' | 'tree') => {
+                mockSetFilesViewMode(m);
+                setModeState(m);
+            }, []);
+            return { mode, setMode };
+        },
+    };
+});
+
 import { RepoPreferencesSection } from '../../../../src/server/spa/client/react/repos/RepoPreferencesSection';
 
 const mockFetch = vi.fn();
@@ -32,6 +49,8 @@ beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
     mockAddToast.mockReset();
+    mockSetFilesViewMode.mockReset();
+    mockFilesViewModeValue = 'tree';
     global.fetch = mockFetch;
 });
 
@@ -464,6 +483,53 @@ describe('RepoPreferencesSection', () => {
             });
 
             expect(screen.queryByTestId('add-linked-repo')).toBeNull();
+        });
+    });
+
+    describe('file list view mode', () => {
+        it('renders File List View dropdown in Execution section', async () => {
+            mockDefaultFetches();
+            await act(async () => { renderSection(); });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('pref-files-view-mode')).toBeDefined();
+            });
+        });
+
+        it('defaults to tree', async () => {
+            mockDefaultFetches();
+            await act(async () => { renderSection(); });
+
+            await waitFor(() => {
+                const select = screen.getByTestId('pref-files-view-mode') as HTMLSelectElement;
+                expect(select.value).toBe('tree');
+            });
+        });
+
+        it('shows flat when preference is flat', async () => {
+            mockFilesViewModeValue = 'flat';
+            mockDefaultFetches();
+            await act(async () => { renderSection(); });
+
+            await waitFor(() => {
+                const select = screen.getByTestId('pref-files-view-mode') as HTMLSelectElement;
+                expect(select.value).toBe('flat');
+            });
+        });
+
+        it('calls setFilesViewMode when changed to flat', async () => {
+            mockDefaultFetches();
+            await act(async () => { renderSection(); });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('pref-files-view-mode')).toBeDefined();
+            });
+
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('pref-files-view-mode'), { target: { value: 'flat' } });
+            });
+
+            expect(mockSetFilesViewMode).toHaveBeenCalledWith('flat');
         });
     });
 });

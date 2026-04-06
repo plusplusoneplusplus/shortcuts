@@ -12,8 +12,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
 import { CommitTooltip } from './CommitTooltip';
-import { buildFileTree, compactFolders, FileTreeView, FlatFileList, FilesViewToggle } from './FileTree';
-import type { FileChange, FilesViewMode } from './FileTree';
+import { buildFileTree, compactFolders, FileTreeView, FlatFileList } from './FileTree';
+import type { FileChange } from './FileTree';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { useCommitCommentTotals } from '../hooks/useCommitCommentTotals';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
@@ -433,9 +433,6 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                             <div className="text-[11px] text-[#848484] py-1" data-testid="commit-files-loading">Loading files...</div>
                                         ) : files && files.length > 0 ? (
                                             <>
-                                                <div className="flex justify-end mb-1">
-                                                    <FilesViewToggle mode={commitViewMode} onChange={setCommitViewMode} testIdPrefix="commit-files-view-toggle" />
-                                                </div>
                                                 {commitViewMode === 'tree' ? (
                                                     <FileTreeView
                                                         nodes={compactFolders(buildFileTree(files))}

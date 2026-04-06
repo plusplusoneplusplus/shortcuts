@@ -10,8 +10,8 @@ import { fetchApi } from '../hooks/useApi';
 import { Spinner } from '../shared';
 import { copyToClipboard } from '../utils/format';
 import type { DiffComment } from '../../diff-comment-types';
-import { FlatFileList, FileTreeView, FilesViewToggle, buildFileTree, compactFolders, STATUS_COLORS, STATUS_LABELS, normalizeStatus } from './FileTree';
-import type { FileChange, FileNode, FilesViewMode } from './FileTree';
+import { FlatFileList, FileTreeView, buildFileTree, compactFolders, STATUS_COLORS, STATUS_LABELS, normalizeStatus } from './FileTree';
+import type { FileChange, FileNode } from './FileTree';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -499,9 +499,6 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                 </button>
                 {workingChangesExpanded && (
                     <div data-testid="working-changes-content">
-                        <div className="flex justify-end px-4 py-1">
-                            <FilesViewToggle mode={wtViewMode} onChange={setWtViewMode} testIdPrefix="working-tree-view-toggle" />
-                        </div>
                         <Section
                             title="Staged"
                             count={staged.length}

@@ -14,8 +14,8 @@ import { fetchApi } from '../hooks/useApi';
 import { Spinner } from '../shared';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
-import { buildFileTree, compactFolders, FileTreeView, FlatFileList, FilesViewToggle } from './FileTree';
-import type { FileChange, FilesViewMode } from './FileTree';
+import { buildFileTree, compactFolders, FileTreeView, FlatFileList } from './FileTree';
+import type { FileChange } from './FileTree';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';
 
 export interface BranchRangeInfo {
@@ -221,9 +221,6 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                         </div>
                     ) : (
                         <>
-                            <div className="flex justify-end mb-1">
-                                <FilesViewToggle mode={viewMode} onChange={setViewMode} testIdPrefix="branch-files-view-toggle" />
-                            </div>
                             {viewMode === 'tree' ? (
                                 <FileTreeView
                                     nodes={compactFolders(buildFileTree(files))}
