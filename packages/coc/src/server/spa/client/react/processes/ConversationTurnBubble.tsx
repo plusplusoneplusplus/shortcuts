@@ -805,7 +805,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                         &lt;/&gt;
                     </button>
                     <button
-                        className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                        className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-[10px]"
                         title="Copy to clipboard"
                         onClick={async () => {
                             const text = showRaw ? buildRawContent(turn) : (turn.content || '');
@@ -822,7 +822,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     </button>
                     {!showRaw && (
                         <button
-                            className="bubble-copy-html-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                            className="bubble-copy-html-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-[10px]"
                             title="Copy as HTML"
                             onClick={async () => {
                                 try {
