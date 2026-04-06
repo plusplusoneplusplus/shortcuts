@@ -4,7 +4,10 @@
  * Helpers to populate processes and workspaces via the REST API.
  */
 
+import * as fs from 'fs';
 import * as http from 'http';
+import * as os from 'os';
+import * as path from 'path';
 
 /** Make an HTTP request and return { status, body }. */
 export function request(
@@ -221,6 +224,28 @@ export async function seedWiki(
 }
 
 /** Seed a workspace via POST /api/workspaces. */
+export function normalizeTestWorkspacePath(rootPath: string): string {
+    if (process.platform !== 'win32') {
+        return rootPath;
+    }
+
+    const normalized = rootPath.replace(/\\/g, '/');
+    if (normalized === '/tmp') {
+        return os.tmpdir();
+    }
+    if (normalized.startsWith('/tmp/')) {
+        return path.join(os.tmpdir(), ...normalized.split('/').slice(2));
+    }
+    if (normalized === '/ws') {
+        return path.join(os.tmpdir(), 'ws');
+    }
+    if (normalized.startsWith('/ws/')) {
+        return path.join(os.tmpdir(), 'ws', ...normalized.split('/').slice(2));
+    }
+
+    return rootPath;
+}
+
 export async function seedWorkspace(
     baseURL: string,
     id: string,
@@ -228,10 +253,13 @@ export async function seedWorkspace(
     rootPath?: string,
     color?: string,
 ): Promise<Record<string, unknown>> {
+    const normalizedRootPath = normalizeTestWorkspacePath(rootPath ?? `/ws/${name}`);
+    fs.mkdirSync(normalizedRootPath, { recursive: true });
+
     const payload: Record<string, string> = {
         id,
         name,
-        rootPath: rootPath ?? `/ws/${name}`,
+        rootPath: normalizedRootPath,
     };
     if (color) payload.color = color;
     const body = JSON.stringify(payload);

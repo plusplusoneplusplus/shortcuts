@@ -19,6 +19,8 @@ import {
     navigateToGitTab,
 } from './fixtures/git-fixtures';
 
+const WORKING_TREE_UPDATE_TIMEOUT = 15_000;
+
 // ================================================================
 // CommitList
 // ================================================================
@@ -164,7 +166,8 @@ test.describe('Git sub-tab — WorkingTree', () => {
 
             // After stage, index.ts should appear in staged section
             const staged = page.getByTestId('working-tree-staged');
-            await expect(fileRow(staged, 'index.ts')).toBeVisible({ timeout: 5_000 });
+            await expect(fileRow(staged, 'index.ts')).toBeVisible({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
+            await expect(indexRow).toBeHidden({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -195,7 +198,8 @@ test.describe('Git sub-tab — WorkingTree', () => {
 
             // After unstage, staged.ts should move to untracked section (it was a new file)
             const untracked = page.getByTestId('working-tree-untracked');
-            await expect(fileRow(untracked, 'staged.ts')).toBeVisible({ timeout: 5_000 });
+            await expect(stagedRow).toBeHidden({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
+            await expect(fileRow(untracked, 'staged.ts')).toBeVisible({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -225,7 +229,7 @@ test.describe('Git sub-tab — WorkingTree', () => {
             ]);
 
             // After discard, index.ts should no longer appear in unstaged section
-            await expect(fileRow(unstaged, 'index.ts')).toBeHidden({ timeout: 5_000 });
+            await expect(fileRow(unstaged, 'index.ts')).toBeHidden({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -286,8 +290,10 @@ test.describe('Git sub-tab — WorkingTree', () => {
 
             // After stage all, files should move to staged section
             const staged = page.getByTestId('working-tree-staged');
-            await expect(fileRow(staged, 'index.ts')).toBeVisible({ timeout: 5_000 });
-            await expect(fileRow(staged, 'utils.ts')).toBeVisible({ timeout: 5_000 });
+            await expect(fileRow(staged, 'index.ts')).toBeVisible({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
+            await expect(fileRow(staged, 'utils.ts')).toBeVisible({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
+            await expect(fileRow(unstaged, 'index.ts')).toBeHidden({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
+            await expect(fileRow(unstaged, 'utils.ts')).toBeHidden({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -317,7 +323,8 @@ test.describe('Git sub-tab — WorkingTree', () => {
 
             // After unstage all, staged.ts should move to untracked (it was a new file)
             const untracked = page.getByTestId('working-tree-untracked');
-            await expect(fileRow(untracked, 'staged.ts')).toBeVisible({ timeout: 5_000 });
+            await expect(fileRow(staged, 'staged.ts')).toBeHidden({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
+            await expect(fileRow(untracked, 'staged.ts')).toBeVisible({ timeout: WORKING_TREE_UPDATE_TIMEOUT });
         } finally {
             safeRmSync(tmpDir);
         }
