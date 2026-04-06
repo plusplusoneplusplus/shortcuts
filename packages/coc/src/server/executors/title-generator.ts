@@ -23,14 +23,15 @@ export function generateTitleIfNeeded(
     const firstUserContent = (turns ?? []).find(t => t?.role === 'user')?.content ?? '';
     if (!firstUserContent) return;
 
+    // Also grab the assistant's first response for context
+    const firstAssistantContent = (turns ?? []).find(t => t?.role === 'assistant')?.content ?? '';
+
     void (async () => {
         try {
             const existing = await store.getProcess(processId);
             if (existing?.title) {
                 // Re-sync the persisted AI title back to the task's displayName.
                 // requeueForFollowUp (and the api-handler fallback path) both overwrite
-                // displayName with the follow-up message text, so we restore it here
-                // on every turn to keep the two in sync.
                 // displayName with the follow-up message text, so we restore it here
                 // on every turn to keep the two in sync.
                 if (processId.startsWith('queue_') && queueManager) {
@@ -40,9 +41,24 @@ export function generateTitleIfNeeded(
                 return;
             }
 
-            const truncated = firstUserContent.substring(0, 400);
+            const truncatedUser = firstUserContent.substring(0, 400);
+            const truncatedAssistant = firstAssistantContent.substring(0, 400);
+
+            let prompt: string;
+            if (truncatedAssistant) {
+                prompt = [
+                    'Summarise the following conversation as a short title (max 8 words, no punctuation).',
+                    'Focus on what was actually done or discussed, not on the instruction itself.',
+                    '',
+                    `User: "${truncatedUser}"`,
+                    `Assistant: "${truncatedAssistant}"`,
+                ].join('\n');
+            } else {
+                prompt = `Summarise the following user message as a short title (max 8 words, no punctuation):\n\n"${truncatedUser}"`;
+            }
+
             const title: string = await (aiService as any).transform(
-                `Summarise the following user message as a short title (max 8 words, no punctuation):\n\n"${truncated}"`,
+                prompt,
                 (raw: string) => raw.trim().replace(/[".]/g, ''),
                 { model: 'gpt-4.1', cwd: defaultWorkingDirectory },
             );

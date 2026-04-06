@@ -127,8 +127,15 @@ describe('CLITaskExecutor — Title Generation', () => {
         await delay(50);
 
         expect(mockTransform).toHaveBeenCalledOnce();
+        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        // Should include user message
+        expect(promptArg).toContain('How do I fix this bug');
+        // Should include assistant response (mockSendMessage returns 'AI response text')
+        expect(promptArg).toContain('AI response text');
+        // Should use conversation-style prompt when assistant content is present
+        expect(promptArg).toContain('Focus on what was actually done or discussed');
         expect(mockTransform).toHaveBeenCalledWith(
-            expect.stringContaining('How do I fix this bug'),
+            expect.any(String),
             expect.any(Function),
             expect.objectContaining({ model: 'gpt-4.1' }),
         );
@@ -191,9 +198,32 @@ describe('CLITaskExecutor — Title Generation', () => {
         await delay(50);
 
         const promptArg = mockTransform.mock.calls[0]?.[0] as string;
-        // The prompt should contain a truncated version (400 chars max from user content)
+        // User content should be truncated to 400 chars
         expect(promptArg).not.toContain('A'.repeat(500));
         expect(promptArg).toContain('A'.repeat(400));
+        // Assistant content ('AI response text') is short, so no truncation needed for it
+        expect(promptArg).toContain('AI response text');
+    });
+
+    it('should truncate long assistant response to 400 characters', async () => {
+        const longResponse = 'B'.repeat(500);
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: longResponse,
+            sessionId: 'session-123',
+        });
+        mockTransform.mockResolvedValue('Short Title');
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+
+        const task = makeChatTask('title-4b', 'Some prompt');
+        await executor.execute(task);
+
+        await delay(50);
+
+        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        // Assistant content should be truncated to 400 chars
+        expect(promptArg).not.toContain('B'.repeat(500));
+        expect(promptArg).toContain('B'.repeat(400));
     });
 
     it('should skip title generation when no user content', async () => {
@@ -283,6 +313,59 @@ describe('CLITaskExecutor — Title Generation', () => {
             'queue_title-noqm-1',
             expect.objectContaining({ title: 'Some Title' }),
         );
+    });
+
+    it('should generate outcome-based title for delegation prompts', async () => {
+        // Simulate a delegation-style prompt where the user just says "Follow plan X"
+        // and the assistant describes what was actually done
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'I moved the flat/tree toggle from the inline git tab to repo-level preferences and updated the settings UI.',
+            sessionId: 'session-123',
+        });
+        mockTransform.mockResolvedValue('Move files view toggle to preferences');
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+
+        const task = makeChatTask('title-delegation-1', 'Follow the instruction C:\\Users\\User\\.copilot\\plan.md');
+        await executor.execute(task);
+
+        await delay(50);
+
+        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        // Should include both user delegation and assistant outcome
+        expect(promptArg).toContain('Follow the instruction');
+        expect(promptArg).toContain('moved the flat/tree toggle');
+        // Should instruct AI to focus on outcome, not the instruction
+        expect(promptArg).toContain('Focus on what was actually done or discussed');
+    });
+
+    it('should fall back to user-only prompt when no assistant response', async () => {
+        // Directly test generateTitleIfNeeded with turns that have no assistant content
+        mockTransform.mockResolvedValue('Fix Auth Bug');
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+
+        // Create a process first so the store has it
+        const processId = 'queue_title-fallback-1';
+        store.processes.set(processId, {
+            id: processId,
+            status: 'completed',
+            startedAt: new Date().toISOString(),
+            turns: [],
+        } as any);
+
+        // Call generateTitleIfNeeded directly with only user turns (no assistant)
+        (executor as any).generateTitleIfNeeded(processId, [
+            { role: 'user', content: 'Fix the authentication bug', timestamp: new Date(), turnIndex: 0, timeline: [] },
+        ]);
+
+        await delay(50);
+
+        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        // Should use the old user-only prompt format
+        expect(promptArg).toContain('Summarise the following user message');
+        expect(promptArg).toContain('Fix the authentication bug');
+        // Should NOT contain conversation-style instructions
+        expect(promptArg).not.toContain('Focus on what was actually done');
     });
 
     it('should re-sync persisted AI title to displayName on follow-up turns', async () => {
