@@ -296,7 +296,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setResumeFeedback(null);
         setSessionTokenLimit(undefined);
         setSessionCurrentTokens(undefined);
-        clearImages();
+        clearAttachments();
         stopStreaming();
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
