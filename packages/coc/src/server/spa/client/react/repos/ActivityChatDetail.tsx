@@ -14,9 +14,7 @@ import { getConversationTurns } from '../chat/chatConversationUtils';
 import { getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
-import { useImagePaste } from '../hooks/useImagePaste';
-import { useTextPaste } from '../hooks/useTextPaste';
-import { useAttachedContext } from '../hooks/useAttachedContext';
+import { useFileAttachments } from '../hooks/useFileAttachments';
 import { useSlashCommands } from './useSlashCommands';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
@@ -113,9 +111,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const turnsContainerRef = useRef<HTMLDivElement>(null);
     const isInitialLoadRef = useRef(true);
 
-    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
-    const textPaste = useTextPaste();
-    const attachedContext = useAttachedContext();
+    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const { isMobile } = useBreakpoint();
     const selection = useConversationSelection();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
@@ -268,9 +264,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         selectedMode,
         selectedModeRef,
         images,
-        clearImages,
-        clearPaste: textPaste.clearPaste,
-        getPastedContent: () => textPaste.pastedContent,
+        clearImages: clearAttachments,
+        toPayload,
         lastFailedMessageRef,
         setTask,
         getAttachedContext: attachedContext.getItems,
@@ -716,17 +711,11 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     onRetry={retryLastMessage}
                     onStop={handleStop}
                     skills={skills}
-                    images={images}
-                    onImagePaste={addFromPaste}
-                    onImageRemove={removeImage}
-                    pastePreview={{
-                        charCount: textPaste.charCount,
-                        previewLines: textPaste.previewLines,
-                        onTextPaste: textPaste.addFromPaste,
-                        clearPaste: textPaste.clearPaste,
-                    }}
-                    attachedContext={attachedContext.items}
-                    onRemoveAttachedContext={attachedContext.remove}
+                    attachments={attachments}
+                    onAttachmentPaste={addFromPaste}
+                    onAttachmentRemove={removeAttachment}
+                    onAttachmentFiles={addFromFileInput}
+                    attachmentError={attachmentError}
                     task={task}
                     slashCommands={slashCommands}
                     hideModeSelector={hideModeSelector}

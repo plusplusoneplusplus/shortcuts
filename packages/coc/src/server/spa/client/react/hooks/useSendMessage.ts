@@ -33,9 +33,8 @@ export interface UseSendMessageOptions {
     selectedModeRef: React.MutableRefObject<'ask' | 'plan' | 'autopilot'>;
     images: string[];
     clearImages: () => void;
-    clearPaste: () => void;
-    /** Returns the raw pasted content held by useTextPaste, or null if no large paste is active. */
-    getPastedContent?: () => string | null;
+    /** Convert current attachments to wire format (includes non-image files) */
+    toPayload?: () => Array<{ name: string; mimeType: string; size: number; dataUrl: string }>;
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
     /** Returns the currently attached context items. */
@@ -64,8 +63,7 @@ export function useSendMessage({
     selectedModeRef,
     images,
     clearImages,
-    clearPaste,
-    getPastedContent,
+    toPayload,
     lastFailedMessageRef,
     setTask,
     getAttachedContext,
@@ -143,19 +141,20 @@ export function useSendMessage({
         // ── While AI is running: route through /message, let server decide ──
         if (sending) {
             if (deliveryMode === 'immediate') {
-                // Immediate steer: add optimistic user turn so it appears in
-                // the conversation right away. The server will attempt to inject
-                // into the live session; if steering fails, the message is
-                // buffered as a pending message and the SSE event will surface it
-                // in the queued section.
-                const timestamp = new Date().toISOString();
-                setTurnsAndRef(prev => {
-                    const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
-                    return [
-                        ...prev,
-                        { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx },
-                    ];
-                });
+                // Steering messages must reach the server immediately to inject into the running session
+                await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: rawContent,
+                        images: images.length > 0 ? images : undefined,
+                        attachments: toPayload && toPayload().length > 0 ? toPayload() : undefined,
+                        mode: selectedMode,
+                        deliveryMode,
+                        optimisticId: qm.id,
+                        ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
+                    }),
+                }).catch(() => {});
             }
             // Both immediate and enqueue: fire POST to /message and let the
             // server steer, buffer, or enqueue as appropriate.  No local
@@ -200,6 +199,7 @@ export function useSendMessage({
                 body: JSON.stringify({
                     content: rawContent,
                     images: images.length > 0 ? images : undefined,
+                    attachments: toPayload && toPayload().length > 0 ? toPayload() : undefined,
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
@@ -236,7 +236,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, selectedMode, images, toPayload, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

@@ -1,8 +1,6 @@
-import { useEffect, useRef, type RefObject } from 'react';
-import { Button, SuggestionChips, SendButton } from '../shared';
-import { ImagePreviews } from '../shared/ImagePreviews';
-import { PastePreview } from '../shared/PastePreview';
-import { AttachedContextPreviews } from '../shared/AttachedContextPreviews';
+import { useEffect, useRef } from 'react';
+import { Button, SuggestionChips } from '../shared';
+import { AttachmentPreviews } from '../shared/AttachmentPreviews';
 import { cn } from '../shared/cn';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
@@ -11,7 +9,7 @@ import { useModifierKey } from '../hooks/useModifierKey';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
-import type { AttachedContextItem } from '../hooks/useAttachedContext';
+import type { ChatAttachment } from '../types/attachments';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -28,17 +26,19 @@ export interface FollowUpInputAreaProps {
     onRetry: () => void;
     onStop?: () => void;
     skills: SkillItem[];
-    images: string[];
-    onImagePaste: (e: React.ClipboardEvent) => void;
-    onImageRemove: (index: number) => void;
-    pastePreview: {
-        charCount: number;
-        previewLines: string[];
-        onTextPaste: (e: React.ClipboardEvent) => void;
-        clearPaste: () => void;
-    } | null;
-    attachedContext?: AttachedContextItem[];
-    onRemoveAttachedContext?: (id: string) => void;
+    /** Unified file attachments (replaces images) */
+    attachments: ChatAttachment[];
+    onAttachmentPaste: (e: React.ClipboardEvent) => void;
+    onAttachmentRemove: (id: string) => void;
+    onAttachmentFiles: (files: FileList | File[]) => void;
+    /** Attachment validation error */
+    attachmentError: string | null;
+    /** @deprecated Use attachments/onAttachmentPaste/onAttachmentRemove instead */
+    images?: string[];
+    /** @deprecated */
+    onImagePaste?: (e: React.ClipboardEvent) => void;
+    /** @deprecated */
+    onImageRemove?: (index: number) => void;
     task: any;
     slashCommands: {
         handleInputChange: (val: string, cursor: number) => void;
@@ -74,20 +74,18 @@ export function FollowUpInputArea({
     onRetry,
     onStop,
     skills,
-    images,
-    onImagePaste,
-    onImageRemove,
-    pastePreview,
-    attachedContext,
-    onRemoveAttachedContext,
+    attachments,
+    onAttachmentPaste,
+    onAttachmentRemove,
+    onAttachmentFiles,
+    attachmentError,
     task,
     slashCommands,
     hideModeSelector = false,
 }: FollowUpInputAreaProps) {
-    const inputWrapperRef = useRef<HTMLDivElement>(null);
-    const modHeld = useModifierKey(inputWrapperRef as RefObject<HTMLElement>);
-
-    // Sync programmatic followUpInput changes(draft restore, clear after send) to the editor.
+    // Hidden file input for the + button
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    // Sync programmatic followUpInput changes (draft restore, clear after send) to the editor.
     // Guard prevents re-setting when the change originated from the user typing.
     // skipNextSyncRef is set by selectSkill callers so the effect does not overwrite the cursor
     // position that selectSkill already placed synchronously via ref.current.setValue(text, cursor).
@@ -148,18 +146,25 @@ export function FollowUpInputArea({
                     disabled={inputDisabled}
                 />
             )}
-            {attachedContext && onRemoveAttachedContext && (
-                <AttachedContextPreviews items={attachedContext} onRemove={onRemoveAttachedContext} />
-            )}
-            <ImagePreviews images={images} onRemove={onImageRemove} />
-            {pastePreview && pastePreview.charCount > 0 && (
-                <PastePreview
-                    charCount={pastePreview.charCount}
-                    previewLines={pastePreview.previewLines}
-                    onDismiss={pastePreview.clearPaste}
-                />
+            <AttachmentPreviews attachments={attachments} onRemove={onAttachmentRemove} />
+            {attachmentError && (
+                <div className="text-xs text-[#f14c4c]" data-testid="attachment-error">{attachmentError}</div>
             )}
             <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
+                {/* Hidden file input for the + button */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    data-testid="file-input-hidden"
+                    onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                            onAttachmentFiles(e.target.files);
+                        }
+                        e.target.value = '';
+                    }}
+                />
                 {!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">
                     {/* Mobile: icon-only button that cycles modes on tap */}
                     <button
@@ -183,7 +188,19 @@ export function FollowUpInputArea({
                         ))}
                     </select>
                 </div>}
-                <div ref={inputWrapperRef} className="relative flex-1 min-w-0">
+                {/* Attach file button */}
+                <button
+                    type="button"
+                    disabled={inputDisabled}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="shrink-0 h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="attach-file-btn"
+                    aria-label="Attach file"
+                    title="Attach files"
+                >
+                    +
+                </button>
+                <div className="relative flex-1 min-w-0">
                     <RichTextInput
                         ref={richTextRef}
                         disabled={inputDisabled}
@@ -223,10 +240,7 @@ export function FollowUpInputArea({
                                 }
                             }
                         }}
-                        onPaste={(e: React.ClipboardEvent) => {
-                            onImagePaste(e);
-                            pastePreview?.onTextPaste(e);
-                        }}
+                        onPaste={onAttachmentPaste}
                         data-testid="activity-chat-input"
                     />
                     <SlashCommandMenu

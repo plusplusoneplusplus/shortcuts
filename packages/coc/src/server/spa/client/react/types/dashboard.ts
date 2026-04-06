@@ -68,6 +68,8 @@ export interface ClientConversationTurn {
     imagesCount?: number;
     /** Whether this turn has externalized images */
     hasImages?: boolean;
+    /** Non-image file attachments (name, mimeType, size, category) */
+    fileAttachments?: Array<{ name: string; mimeType: string; size: number; category: string }>;
     /** True for turns prepended from a prior session during cold resume */
     historical?: boolean;
     /** Skills invoked via /slash commands in this turn */
