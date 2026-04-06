@@ -800,38 +800,31 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setContextMenu({ x: e.clientX, y: e.clientY, type: 'branch-range' });
     }, []);
 
-    const MAX_BRANCH_DIFF_CHARS = 50_000;
-
-    const buildBranchContextPrompt = useCallback((diff?: string): string => {
+    const buildBranchReferencePrompt = useCallback((): string => {
         const branchLabel = branchRangeData?.branchName || branchRangeData?.headRef || branchName || 'current branch';
         const baseShort = (branchRangeData?.baseRef ?? 'main').replace(/^origin\//, '');
         const headShort = branchRangeData?.headRef ?? 'HEAD';
         const commitCount = branchRangeData?.commitCount ?? 0;
         const additions = branchRangeData?.additions ?? 0;
         const deletions = branchRangeData?.deletions ?? 0;
+        const fileCount = branchRangeData?.fileCount ?? 0;
 
-        let prompt = `Branch: ${branchLabel} (${baseShort}..${headShort})\nCommits: ${commitCount}  +${additions} -${deletions}`;
+        let prompt = `Branch: ${branchLabel} (${baseShort}..${headShort})\nCommits: ${commitCount}  +${additions} -${deletions}\nFiles: ${fileCount}`;
 
-        if (diff !== undefined) {
-            if (diff.length > MAX_BRANCH_DIFF_CHARS) {
-                prompt += '\n\n(Full diff omitted — exceeds size limit. Stat summary above.)';
-            } else {
-                prompt += `\n\n<diff>\n${diff}\n</diff>`;
-            }
+        if (commits.length > 0) {
+            const commitList = commits
+                .map(c => `- ${c.shortHash} — ${c.subject}`)
+                .join('\n');
+            prompt += `\n\nCommit list:\n${commitList}`;
         }
 
         return prompt;
-    }, [branchRangeData, branchName]);
+    }, [branchRangeData, branchName, commits]);
 
-    const handleBranchAskAI = useCallback(async (mode: 'ask' | 'task') => {
-        let diff: string | undefined;
-        try {
-            const diffData = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/diff`);
-            diff = diffData.diff || '';
-        } catch { /* fall back to stat-only prompt */ }
-        const initialPrompt = buildBranchContextPrompt(diff);
+    const handleBranchAskAI = useCallback((mode: 'ask' | 'task') => {
+        const initialPrompt = buildBranchReferencePrompt();
         queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode, initialPrompt, launchMode: 'floating-chat' });
-    }, [workspaceId, buildBranchContextPrompt, queueDispatch]);
+    }, [workspaceId, buildBranchReferencePrompt, queueDispatch]);
 
     const handleEnqueueSkill = useCallback(async (skillName: string) => {
         if (!contextMenu) return;

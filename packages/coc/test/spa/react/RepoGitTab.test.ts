@@ -916,45 +916,55 @@ describe('RepoGitTab', () => {
     });
 
     describe('branch-range Ask AI / Queue Task context menu', () => {
-        it('defines buildBranchContextPrompt helper', () => {
-            expect(source).toContain('const buildBranchContextPrompt = useCallback');
+        it('defines buildBranchReferencePrompt helper', () => {
+            expect(source).toContain('const buildBranchReferencePrompt = useCallback');
         });
 
-        it('buildBranchContextPrompt includes branch name, base..head, commit count and stat', () => {
-            // Verify the prompt builder references all needed fields
-            expect(source).toContain('const buildBranchContextPrompt = useCallback');
+        it('buildBranchReferencePrompt includes branch name, base..head, commit count, stat, and file count', () => {
+            expect(source).toContain('const buildBranchReferencePrompt = useCallback');
             expect(source).toContain('branchLabel');
             expect(source).toContain('baseShort');
             expect(source).toContain('headShort');
             expect(source).toContain('commitCount');
             expect(source).toContain('additions');
             expect(source).toContain('deletions');
+            expect(source).toContain('fileCount');
         });
 
-        it('buildBranchContextPrompt has size guard at MAX_BRANCH_DIFF_CHARS', () => {
-            expect(source).toContain('MAX_BRANCH_DIFF_CHARS = 50_000');
-            expect(source).toContain('diff.length > MAX_BRANCH_DIFF_CHARS');
+        it('buildBranchReferencePrompt includes commit list from commits array', () => {
+            expect(source).toContain('Commit list:');
+            expect(source).toContain('c.shortHash');
+            expect(source).toContain('c.subject');
         });
 
-        it('buildBranchContextPrompt omits diff when exceeding size limit', () => {
-            expect(source).toContain('Full diff omitted');
+        it('does not fetch branch-range diff for Ask AI', () => {
+            // The old implementation fetched /git/branch-range/diff before opening the dialog.
+            // The new reference-based prompt does not inline any diff content.
+            // Extract the handleBranchAskAI function body (until the next top-level const)
+            const handleBlock = source.match(/const handleBranchAskAI = useCallback\(([\s\S]*?)const handleEnqueueSkill/);
+            expect(handleBlock).toBeTruthy();
+            expect(handleBlock![1]).not.toContain('/git/branch-range/diff');
+            expect(handleBlock![1]).not.toContain('fetchApi');
         });
 
-        it('buildBranchContextPrompt wraps diff in <diff> block when under limit', () => {
-            expect(source).toContain('<diff>');
-            expect(source).toContain('</diff>');
+        it('does not inline diff content in the prompt', () => {
+            expect(source).not.toContain('MAX_BRANCH_DIFF_CHARS');
+            expect(source).not.toContain('<diff>');
+            expect(source).not.toContain('Full diff omitted');
+        });
+
+        it('handleBranchAskAI is synchronous (no async/fetch)', () => {
+            const match = source.match(/const handleBranchAskAI = useCallback\(([^)]*)\)/);
+            expect(match).toBeTruthy();
+            expect(match![1]).not.toContain('async');
         });
 
         it('defines handleBranchAskAI callback', () => {
             expect(source).toContain('const handleBranchAskAI = useCallback');
         });
 
-        it('handleBranchAskAI fetches branch-range diff', () => {
-            expect(source).toContain('/git/branch-range/diff');
-        });
-
         it('handleBranchAskAI dispatches OPEN_DIALOG with floating-chat', () => {
-            expect(source).toContain('buildBranchContextPrompt(diff)');
+            expect(source).toContain('buildBranchReferencePrompt()');
             expect(source).toContain("launchMode: 'floating-chat'");
         });
 
