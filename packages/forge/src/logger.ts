@@ -77,10 +77,10 @@ export function formatTimestamp(date: Date = new Date()): string {
  * Outputs to stdout/stderr with timestamps and categories.
  */
 export const consoleLogger: Logger = {
-    debug: (cat, msg) => console.debug(`${formatTimestamp()} [DEBUG] [${cat}] ${msg}`),
-    info: (cat, msg) => console.log(`${formatTimestamp()} [INFO] [${cat}] ${msg}`),
-    warn: (cat, msg) => console.warn(`${formatTimestamp()} [WARN] [${cat}] ${msg}`),
-    error: (cat, msg, err) => console.error(`${formatTimestamp()} [ERROR] [${cat}] ${msg}`, err || ''),
+    debug: (cat, msg) => console.debug(`[${formatTimestamp()}] [DEBUG] [${cat}] ${msg}`),
+    info: (cat, msg) => console.log(`[${formatTimestamp()}] [INFO] [${cat}] ${msg}`),
+    warn: (cat, msg) => console.warn(`[${formatTimestamp()}] [WARN] [${cat}] ${msg}`),
+    error: (cat, msg, err) => console.error(`[${formatTimestamp()}] [ERROR] [${cat}] ${msg}`, err || ''),
 };
 
 /**

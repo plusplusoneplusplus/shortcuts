@@ -72,8 +72,8 @@ describe('Logger', () => {
             consoleLogger.debug('AI Service', 'test message');
             expect(debugSpy).toHaveBeenCalledTimes(1);
             const output = debugSpy.mock.calls[0][0] as string;
-            // Should start with ISO timestamp
-            expect(output).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[DEBUG\]/);
+            // Should start with bracketed ISO timestamp
+            expect(output).toMatch(/^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] \[DEBUG\]/);
             expect(output).toContain('[AI Service]');
             expect(output).toContain('test message');
         });
@@ -82,7 +82,7 @@ describe('Logger', () => {
             consoleLogger.info('Pipeline', 'info msg');
             expect(logSpy).toHaveBeenCalledTimes(1);
             const output = logSpy.mock.calls[0][0] as string;
-            expect(output).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[INFO\]/);
+            expect(output).toMatch(/^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] \[INFO\]/);
             expect(output).toContain('[Pipeline]');
             expect(output).toContain('info msg');
         });
@@ -91,7 +91,7 @@ describe('Logger', () => {
             consoleLogger.warn('Utils', 'warn msg');
             expect(warnSpy).toHaveBeenCalledTimes(1);
             const output = warnSpy.mock.calls[0][0] as string;
-            expect(output).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[WARN\]/);
+            expect(output).toMatch(/^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] \[WARN\]/);
             expect(output).toContain('[Utils]');
             expect(output).toContain('warn msg');
         });
@@ -100,7 +100,7 @@ describe('Logger', () => {
             consoleLogger.error('General', 'error msg');
             expect(errorSpy).toHaveBeenCalledTimes(1);
             const output = errorSpy.mock.calls[0][0] as string;
-            expect(output).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[ERROR\]/);
+            expect(output).toMatch(/^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] \[ERROR\]/);
             expect(output).toContain('[General]');
             expect(output).toContain('error msg');
         });
