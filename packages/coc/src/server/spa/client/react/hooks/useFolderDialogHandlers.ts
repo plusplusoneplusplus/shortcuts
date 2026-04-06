@@ -16,7 +16,7 @@ export interface FolderCtxMenu {
     source: 'folder-row' | 'empty-space';
 }
 
-export type FolderDialogAction = 'rename' | 'create-subfolder' | 'create-task' | 'delete' | 'follow-prompt' | null;
+export type FolderDialogAction = 'rename' | 'create-subfolder' | 'create-task' | 'delete' | null;
 
 interface Options {
     folderActions: FolderActionsResult;
@@ -60,7 +60,6 @@ export function useFolderDialogHandlers({ folderActions, fileActions, refresh, a
             if (actionKey === 'create-subfolder') setFolderDialog({ action: 'create-subfolder', folder, submitting: false });
             if (actionKey === 'create-task') setFolderDialog({ action: 'create-task', folder, submitting: false });
             if (actionKey === 'delete') setFolderDialog({ action: 'delete', folder, submitting: false });
-            if (actionKey === 'follow-prompt') setFolderDialog({ action: 'follow-prompt', folder, submitting: false });
             if (actionKey === 'generate-task-ai') {
                 onOpenGenerateDialog?.(folder.relativePath || folder.name);
             }

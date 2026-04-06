@@ -88,6 +88,10 @@ vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
     useApp: () => ({ state: { workspaces: mockWorkspaces }, dispatch: vi.fn() }),
 }));
 
+vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
+    useQueue: () => ({ state: {}, dispatch: vi.fn() }),
+}));
+
 function mockJsonResponse(body: any, ok = true, status = 200): Response {
     return {
         ok,

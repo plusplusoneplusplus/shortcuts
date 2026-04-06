@@ -75,6 +75,10 @@ vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
     useApp: () => ({ state: { workspaces: [] }, dispatch: vi.fn() }),
 }));
 
+vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
+    useQueue: () => ({ state: {}, dispatch: vi.fn() }),
+}));
+
 const RAW_CONTENT = '# Hello\nSome content here';
 const UPDATED_CONTENT = '# Hello\nUpdated content after refresh';
 

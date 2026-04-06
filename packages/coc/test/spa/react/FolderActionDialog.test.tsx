@@ -11,7 +11,9 @@ import { FolderActionDialog } from '../../../src/server/spa/client/react/tasks/F
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/context/MinimizedDialogsContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
+import { EnqueueDialog } from '../../../src/server/spa/client/react/queue/EnqueueDialog';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -21,9 +23,13 @@ function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>
             <QueueProvider>
-                <ToastProvider value={{ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }}>
-                    {children}
-                </ToastProvider>
+                <MinimizedDialogsProvider>
+                    <ToastProvider value={{ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }}>
+                        {children}
+                        <EnqueueDialog />
+                        <MinimizedDialogsTray />
+                    </ToastProvider>
+                </MinimizedDialogsProvider>
             </QueueProvider>
         </AppProvider>
     );
@@ -530,7 +536,7 @@ describe('TasksPanel folder dialog actions', () => {
         });
     });
 
-    it('clicking "Bulk Run Skill" mounts FollowPromptDialog', async () => {
+    it('clicking "Bulk Run Skill" opens EnqueueDialog with context files', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
@@ -539,9 +545,10 @@ describe('TasksPanel folder dialog actions', () => {
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         fireEvent.click(screen.getByText('Bulk Run Skill'));
 
-        // FollowPromptDialog renders a Dialog with title "Run Skill"
-        expect(screen.getByText('Run Skill')).toBeTruthy();
-        expect(screen.getByText('Model')).toBeTruthy();
+        // EnqueueDialog opens with "Run Skill" title (context files mode)
+        await waitFor(() => {
+            expect(screen.getByText('Run Skill')).toBeTruthy();
+        });
     });
 
     it('cancel button closes the rename dialog without mutation', async () => {

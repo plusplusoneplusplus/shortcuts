@@ -1,6 +1,6 @@
 /**
  * UpdateDocumentDialog — modal for running an "Update Document" AI action on a task file.
- * Similar to FollowPromptDialog but with a pre-filled prompt template.
+ * Uses a pre-filled prompt template for document updating.
  */
 
 import { useState, useEffect, useCallback } from 'react';

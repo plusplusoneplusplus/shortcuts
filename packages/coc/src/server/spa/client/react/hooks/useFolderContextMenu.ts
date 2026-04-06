@@ -7,8 +7,10 @@ import { useMemo } from 'react';
 import type { ContextMenuItem } from '../tasks/comments/ContextMenu';
 import type { FolderCtxMenu } from './useFolderDialogHandlers';
 import type { FolderActionsResult } from './useFolderActions';
-import { countMarkdownFilesInFolder } from './useTaskTree';
+import { countMarkdownFilesInFolder, collectMarkdownFiles } from './useTaskTree';
 import type { RepoData } from '../repos/repoGrouping';
+import type { QueueAction } from '../context/QueueContext';
+import type { Dispatch } from 'react';
 
 interface Options {
     folderCtxMenu: FolderCtxMenu | null;
@@ -20,6 +22,9 @@ interface Options {
     siblingRepos: RepoData[];
     onQueueFolder: (folderPath: string) => void;
     handleFolderContextMenuAction: (actionKey: string, folder: import('./useTaskTree').TaskFolder) => void;
+    queueDispatch: Dispatch<QueueAction>;
+    wsId: string;
+    workspaceRootPath: string;
 }
 
 export function useFolderContextMenu({
@@ -32,6 +37,9 @@ export function useFolderContextMenu({
     siblingRepos,
     onQueueFolder,
     handleFolderContextMenuAction,
+    queueDispatch,
+    wsId,
+    workspaceRootPath,
 }: Options): { folderMenuItems: ContextMenuItem[] } {
     const folderMenuItems: ContextMenuItem[] = useMemo(() => {
         if (!folderCtxMenu) return [];
@@ -88,7 +96,21 @@ export function useFolderContextMenu({
                     {
                         label: 'Run Skill',
                         icon: '⚡',
-                        onClick: () => handleFolderContextMenuAction('follow-prompt', folder),
+                        onClick: () => {
+                            setFolderCtxMenu(null);
+                            const isAbsTasksFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
+                            const taskBase = isAbsTasksFolder ? tasksFolder : (workspaceRootPath + '/' + tasksFolder);
+                            const files = collectMarkdownFiles(folder).map(
+                                f => (taskBase + '/' + f.relativePath).replace(/\\/g, '/'),
+                            );
+                            queueDispatch({
+                                type: 'OPEN_DIALOG',
+                                workspaceId: wsId,
+                                contextFiles: files,
+                                contextTaskName: folder.name,
+                                bulkMode: true,
+                            });
+                        },
                     },
                 ],
             },
@@ -161,7 +183,21 @@ export function useFolderContextMenu({
             {
                 label: 'Bulk Run Skill',
                 icon: '⚡',
-                onClick: () => handleFolderContextMenuAction('follow-prompt', folder),
+                onClick: () => {
+                    setFolderCtxMenu(null);
+                    const isAbsTasksFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
+                    const taskBase = isAbsTasksFolder ? tasksFolder : (workspaceRootPath + '/' + tasksFolder);
+                    const files = collectMarkdownFiles(folder).map(
+                        f => (taskBase + '/' + f.relativePath).replace(/\\/g, '/'),
+                    );
+                    queueDispatch({
+                        type: 'OPEN_DIALOG',
+                        workspaceId: wsId,
+                        contextFiles: files,
+                        contextTaskName: folder.name,
+                        bulkMode: true,
+                    });
+                },
             },
             { separator: true, label: '', onClick: noop },
             // ── Danger ──

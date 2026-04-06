@@ -64,6 +64,10 @@ vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
     useApp: () => ({ state: { workspaces: [] }, dispatch: vi.fn() }),
 }));
 
+vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
+    useQueue: () => ({ state: {}, dispatch: vi.fn() }),
+}));
+
 vi.mock('../../../src/server/spa/client/react/context/MarkdownPopOutContext', () => ({
     useMarkdownPopOut: () => ({ markPoppedOut: vi.fn(), isPoppedOut: vi.fn(() => false) }),
 }));

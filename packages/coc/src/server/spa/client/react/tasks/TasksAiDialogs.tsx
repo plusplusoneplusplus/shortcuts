@@ -1,11 +1,11 @@
 /**
- * TasksAiDialogs — AI dialog portals: FollowPrompt, UpdateDocument, BulkFollowPrompt.
+ * TasksAiDialogs — AI dialog portals: UpdateDocument only.
+ * Run Skill and Bulk Run Skill are now handled by the global EnqueueDialog
+ * via QueueContext dispatch (OPEN_DIALOG with contextFiles).
  */
 
 import type { TaskFolder } from '../hooks/useTaskTree';
-import { FollowPromptDialog } from '../shared/FollowPromptDialog';
 import { UpdateDocumentDialog } from '../shared/UpdateDocumentDialog';
-import { BulkFollowPromptDialog } from '../shared/BulkFollowPromptDialog';
 
 interface TasksAiDialogsProps {
     wsId: string;
@@ -13,7 +13,7 @@ interface TasksAiDialogsProps {
     aiDialogType: 'follow-prompt' | 'update-document' | null;
     aiDialogTarget: { path: string; name: string } | null;
     closeAiDialog: () => void;
-    // Folder-level AI dialog (Bulk Run Skill)
+    // Folder-level AI dialog (kept for non-follow-prompt actions)
     folderDialogAction: string | null;
     folderDialogFolder: TaskFolder | null;
     closeFolderDialog: () => void;
@@ -24,36 +24,16 @@ export function TasksAiDialogs({
     aiDialogType,
     aiDialogTarget,
     closeAiDialog,
-    folderDialogAction,
-    folderDialogFolder,
-    closeFolderDialog,
 }: TasksAiDialogsProps) {
     return (
         <>
-            {/* File-level AI dialogs */}
-            {aiDialogType === 'follow-prompt' && aiDialogTarget && (
-                <FollowPromptDialog
-                    wsId={wsId}
-                    taskPath={aiDialogTarget.path}
-                    taskName={aiDialogTarget.name}
-                    onClose={closeAiDialog}
-                />
-            )}
+            {/* File-level Update Document dialog */}
             {aiDialogType === 'update-document' && aiDialogTarget && (
                 <UpdateDocumentDialog
                     wsId={wsId}
                     taskPath={aiDialogTarget.path}
                     taskName={aiDialogTarget.name}
                     onClose={closeAiDialog}
-                />
-            )}
-
-            {/* Bulk Run Skill dialog */}
-            {folderDialogAction === 'follow-prompt' && folderDialogFolder && (
-                <BulkFollowPromptDialog
-                    wsId={wsId}
-                    folder={folderDialogFolder}
-                    onClose={closeFolderDialog}
                 />
             )}
         </>

@@ -10,6 +10,7 @@ import { Dialog, FloatingDialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/usePreferences';
+import { useRecentSkills } from '../hooks/useRecentSkills';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { ImagePreviews } from '../shared/ImagePreviews';
@@ -73,6 +74,10 @@ export function EnqueueDialog() {
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const richTextRef = useRef<RichTextInputHandle>(null);
     const slashCommands = useSlashCommands(skills);
+    const { recentItems, trackUsage: trackRecentUsage } = useRecentSkills(workspaceId || undefined);
+    const [contextFiles, setContextFiles] = useState<string[]>([]);
+    const isBulkMode = queueState.dialogBulkMode && contextFiles.length > 1;
+    const hasContextFiles = contextFiles.length > 0;
 
     // Track previous dialog mode to detect mode switches
     const prevModeRef = useRef(isAskMode);
@@ -89,7 +94,7 @@ export function EnqueueDialog() {
         }
     }, [savedModels, isAskMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Seed folderPath and workspaceId from dialog initial values when dialog opens
+    // Seed folderPath, workspaceId, and context files from dialog initial values when dialog opens
     useEffect(() => {
         if (!queueState.showDialog) return;
         setFolderPath(queueState.dialogInitialFolderPath ?? '');
@@ -100,6 +105,7 @@ export function EnqueueDialog() {
             setPrompt(queueState.dialogInitialPrompt);
             richTextRef.current?.setValue(queueState.dialogInitialPrompt);
         }
+        setContextFiles(queueState.dialogContextFiles ?? []);
     }, [queueState.showDialog]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch folders when workspaceId changes
@@ -188,81 +194,115 @@ export function EnqueueDialog() {
         setSubmitting(true);
         queueDispatch({ type: 'SET_TASK_SUBMITTING', value: true });
         try {
-            let body: any;
-            if (isAskMode) {
-                // Ask mode: create a read-only chat task
-                const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
-                body = {
-                    type: 'chat',
-                    priority: 'normal',
-                    payload: {
-                        kind: 'chat',
-                        mode: 'ask',
-                        prompt: effectivePrompt || `Ask: ${effectiveSkills.join(', ')}`,
-                        workspaceId: workspaceId || undefined,
-                        workingDirectory: ws?.rootPath || undefined,
-                        ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
-                    },
-                    images: images.length > 0 ? images : undefined,
-                };
-                if (model) body.config = { model };
-            } else if (effectiveSkills.length > 0) {
-                // Skill-based task
-                const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
-                const workingDirectory = ws?.rootPath || '';
-                const displayName = effectiveSkills.length === 1
-                    ? `Skill: ${effectiveSkills[0]}`
-                    : `Skills: ${effectiveSkills.join(', ')}`;
-                body = {
-                    type: 'chat',
-                    priority: 'normal',
-                    displayName,
-                    payload: {
-                        kind: 'chat',
-                        mode: 'autopilot',
-                        prompt: effectivePrompt || `Use the ${effectiveSkills.join(', ')} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
-                        workingDirectory,
-                        context: {
-                            skills: effectiveSkills,
+            const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
+            const workingDirectory = ws?.rootPath || '';
+            const contextTaskName = queueState.dialogContextTaskName;
+
+            // Helper to build a single task body, optionally with context files
+            const buildBody = (files?: string[], taskNameOverride?: string): any => {
+                const skillLabel = effectiveSkills.length === 1 ? effectiveSkills[0] : effectiveSkills.join(', ');
+                let body: any;
+                if (isAskMode) {
+                    body = {
+                        type: 'chat',
+                        priority: 'normal',
+                        payload: {
+                            kind: 'chat',
+                            mode: 'ask',
+                            prompt: effectivePrompt || `Ask: ${skillLabel}`,
+                            workspaceId: workspaceId || undefined,
+                            workingDirectory: workingDirectory || undefined,
+                            ...(effectiveSkills.length > 0 || files ? { context: { ...(effectiveSkills.length > 0 ? { skills: effectiveSkills } : {}), ...(files ? { files } : {}) } } : {}),
                         },
-                    },
-                    images: images.length > 0 ? images : undefined,
-                };
+                        images: images.length > 0 ? images : undefined,
+                    };
+                } else if (effectiveSkills.length > 0) {
+                    const displayLabel = taskNameOverride || contextTaskName;
+                    const displayName = displayLabel
+                        ? `Follow: ${skillLabel} on ${displayLabel}`
+                        : effectiveSkills.length === 1
+                            ? `Skill: ${effectiveSkills[0]}`
+                            : `Skills: ${effectiveSkills.join(', ')}`;
+                    body = {
+                        type: 'chat',
+                        priority: 'normal',
+                        displayName,
+                        payload: {
+                            kind: 'chat',
+                            mode: 'autopilot',
+                            prompt: effectivePrompt || `Use the ${skillLabel} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
+                            workingDirectory,
+                            context: {
+                                skills: effectiveSkills,
+                                ...(files ? { files } : {}),
+                            },
+                        },
+                        images: images.length > 0 ? images : undefined,
+                    };
+                } else {
+                    body = {
+                        type: 'chat',
+                        priority: 'normal',
+                        payload: {
+                            kind: 'chat',
+                            mode: 'autopilot',
+                            prompt: effectivePrompt,
+                            workingDirectory: workingDirectory || folderPath || undefined,
+                            ...(files ? { context: { files } } : {}),
+                        },
+                        images: images.length > 0 ? images : undefined,
+                    };
+                }
                 if (model) body.config = { model };
+                if (beforeScript.trim()) body.payload.beforeScript = beforeScript.trim();
+                if (afterScript.trim()) body.payload.afterScript = afterScript.trim();
+                return body;
+            };
+
+            if (isBulkMode) {
+                // Bulk mode: one task per context file
+                let succeeded = 0;
+                let failed = 0;
+                for (const file of contextFiles) {
+                    const taskNameFromFile = file.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') ?? '';
+                    const body = buildBody([file], taskNameFromFile);
+                    try {
+                        const res = await fetch(getApiBase() + '/queue/tasks', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body),
+                        });
+                        if (res.ok) succeeded++;
+                        else failed++;
+                    } catch {
+                        failed++;
+                    }
+                }
+                // Bulk results are reported but we don't float chat for bulk
+                if (failed > 0 && succeeded === 0) {
+                    // All failed — just continue to cleanup
+                }
             } else {
-                // Freeform prompt
-                const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
-                body = {
-                    type: 'chat',
-                    priority: 'normal',
-                    payload: {
-                        kind: 'chat',
-                        mode: 'autopilot',
-                        prompt: effectivePrompt,
-                        workingDirectory: ws?.rootPath || folderPath || undefined,
-                    },
-                    images: images.length > 0 ? images : undefined,
-                };
-                if (model) body.config = { model };
-            }
-            // Inject optional before/after scripts into payload
-            if (beforeScript.trim()) body.payload.beforeScript = beforeScript.trim();
-            if (afterScript.trim()) body.payload.afterScript = afterScript.trim();
-            const res = await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (queueState.dialogLaunchMode === 'floating-chat') {
-                const created = await res.json().catch(() => null);
-                const createdId = created?.task?.id ?? created?.id;
-                if (createdId) {
-                    floatChat({
-                        taskId: createdId,
-                        workspaceId: workspaceId || undefined,
-                        title: (effectivePrompt || 'Ask AI').slice(0, 60),
-                        status: 'running',
-                    });
+                // Single task (may include context files)
+                const body = buildBody(
+                    contextFiles.length > 0 ? contextFiles : undefined,
+                );
+                const res = await fetch(getApiBase() + '/queue/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                if (queueState.dialogLaunchMode === 'floating-chat') {
+                    const created = await res.json().catch(() => null);
+                    const createdId = created?.task?.id ?? created?.id;
+                    if (createdId) {
+                        floatChat({
+                            taskId: createdId,
+                            workspaceId: workspaceId || undefined,
+                            title: (effectivePrompt || 'Ask AI').slice(0, 60),
+                            status: 'running',
+                        });
+                    }
                 }
             }
             setPrompt('');
@@ -270,9 +310,11 @@ export function EnqueueDialog() {
             setSelectedSkills([]);
             setBeforeScript('');
             setAfterScript('');
+            setContextFiles([]);
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
-            // Record skill usage for ordering
+            // Record skill usage for ordering + recent skills tracking
             for (const sk of effectiveSkills) {
+                trackRecentUsage(sk);
                 if (sk && workspaceId) {
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/preferences/skill-usage`, {
                         method: 'PATCH',
@@ -288,7 +330,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, trackRecentUsage, beforeScript, afterScript]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
@@ -360,6 +402,61 @@ export function EnqueueDialog() {
 
     const dialogContent = (
         <div className="flex flex-col gap-3">
+            {/* Context files chips (document-context mode) */}
+            {hasContextFiles && (
+                <div data-testid="context-files-section">
+                    <label className="block text-xs font-medium text-[#848484] mb-1">Context</label>
+                    {isBulkMode && (
+                        <div className="text-xs text-[#616161] dark:text-[#999] mb-1" data-testid="bulk-mode-banner">
+                            {contextFiles.length} file{contextFiles.length !== 1 ? 's' : ''} — one task per file
+                        </div>
+                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                        {contextFiles.map(f => {
+                            const name = f.split(/[/\\]/).pop() || f;
+                            return (
+                                <span
+                                    key={f}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-[#e8f0fe] dark:bg-[#1e3a5f] text-[#1e1e1e] dark:text-[#cccccc] border border-[#c4d7f2] dark:border-[#3c5a7f]"
+                                    title={f}
+                                    data-testid="context-file-chip"
+                                >
+                                    📄 {name}
+                                    <button
+                                        type="button"
+                                        className="ml-0.5 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                                        onClick={() => setContextFiles(prev => prev.filter(p => p !== f))}
+                                        aria-label={`Remove ${name}`}
+                                    >✕</button>
+                                </span>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+            {/* Recent skills quick-access */}
+            {recentItems.length > 0 && (
+                <div data-testid="recent-skills-section">
+                    <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Recent</div>
+                    <div className="flex flex-wrap gap-1">
+                        {recentItems.map(item => (
+                            <button
+                                key={`recent-${item.name}`}
+                                type="button"
+                                data-testid="recent-skill-button"
+                                data-name={item.name}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border border-[#e0e0e0] dark:border-[#555] hover:border-[#0078d4] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                disabled={submitting}
+                                onClick={() => {
+                                    setSelectedSkills(prev => prev.includes(item.name) ? prev : [...prev, item.name]);
+                                }}
+                            >
+                                ⚡ {item.name}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
             {/* Prompt — always visible */}
             <div>
                 <label className="block text-xs font-medium text-[#848484] mb-1">Prompt</label>
@@ -508,8 +605,8 @@ export function EnqueueDialog() {
         </div>
     );
 
-    const dialogTitle = isAskMode ? 'Ask AI (Read-only)' : 'Enqueue AI Task';
-    const submitLabel = isAskMode ? 'Ask' : 'Enqueue';
+    const dialogTitle = isAskMode ? 'Ask AI (Read-only)' : hasContextFiles ? 'Run Skill' : 'Enqueue AI Task';
+    const submitLabel = isAskMode ? 'Ask' : isBulkMode ? `Enqueue ${contextFiles.length} Tasks` : 'Enqueue';
 
     const footer = (
         <>

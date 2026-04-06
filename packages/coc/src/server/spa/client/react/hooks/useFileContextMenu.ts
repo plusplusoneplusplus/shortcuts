@@ -9,6 +9,8 @@ import type { FileCtxMenu, FileCtxInfo } from './useFileDialogHandlers';
 import type { FileActionsResult } from './useFileActions';
 import { isTaskDocument, isTaskDocumentGroup } from './useTaskTree';
 import type { RepoData } from '../repos/repoGrouping';
+import type { QueueAction } from '../context/QueueContext';
+import type { Dispatch } from 'react';
 
 interface Options {
     fileCtxMenu: FileCtxMenu | null;
@@ -25,6 +27,9 @@ interface Options {
     setFileMoveDialogOpen: (v: boolean) => void;
     setAiDialogTarget: (v: { path: string; name: string } | null) => void;
     setAiDialogType: (v: 'follow-prompt' | 'update-document' | null) => void;
+    queueDispatch: Dispatch<QueueAction>;
+    wsId: string;
+    workspaceRootPath: string;
 }
 
 export function useFileContextMenu({
@@ -42,6 +47,9 @@ export function useFileContextMenu({
     setFileMoveDialogOpen,
     setAiDialogTarget,
     setAiDialogType,
+    queueDispatch,
+    wsId,
+    workspaceRootPath,
 }: Options): { fileMenuItems: ContextMenuItem[] } {
     const fileMenuItems: ContextMenuItem[] = useMemo(() => {
         if (!fileCtxMenu) return [];
@@ -168,8 +176,17 @@ export function useFileContextMenu({
                 icon: '⚡',
                 onClick: () => {
                     setFileCtxMenu(null);
-                    setAiDialogTarget({ path: ctxItem.renamePath, name: ctxItem.displayName });
-                    setAiDialogType('follow-prompt');
+                    const isAbsTasksFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
+                    const taskBase = isAbsTasksFolder ? tasksFolder : (workspaceRootPath + '/' + tasksFolder);
+                    const absPath = workspaceRootPath
+                        ? taskBase + '/' + ctxItem.renamePath
+                        : ctxItem.renamePath;
+                    queueDispatch({
+                        type: 'OPEN_DIALOG',
+                        workspaceId: wsId,
+                        contextFiles: [absPath.replace(/\\/g, '/')],
+                        contextTaskName: ctxItem.displayName,
+                    });
                 },
             },
             {

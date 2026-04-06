@@ -10,7 +10,9 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/context/MinimizedDialogsContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
+import { EnqueueDialog } from '../../../src/server/spa/client/react/queue/EnqueueDialog';
 import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
 import type { Mock } from 'vitest';
 
@@ -26,9 +28,13 @@ function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>
             <QueueProvider>
-                <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
-                    {children}
-                </ToastProvider>
+                <MinimizedDialogsProvider>
+                    <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                        {children}
+                        <EnqueueDialog />
+                        <MinimizedDialogsTray />
+                    </ToastProvider>
+                </MinimizedDialogsProvider>
             </QueueProvider>
         </AppProvider>
     );
@@ -507,7 +513,7 @@ describe('Folder context menu', () => {
         expect(runSkillItems.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('"Run Skill" in Queue submenu opens BulkFollowPromptDialog', async () => {
+    it('"Run Skill" in Queue submenu opens EnqueueDialog with context', async () => {
         global.fetch = vi.fn().mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -536,10 +542,9 @@ describe('Folder context menu', () => {
         const runSkill = screen.getAllByText('Run Skill')[0];
         fireEvent.click(runSkill);
 
-        // BulkFollowPromptDialog should open
+        // EnqueueDialog should open with "Run Skill" title (context files mode)
         await waitFor(() => {
             expect(screen.getByText('Run Skill')).toBeTruthy();
-            expect(document.getElementById('bulk-follow-prompt-dialog')).toBeTruthy();
         });
     });
 

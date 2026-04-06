@@ -13,7 +13,6 @@ import { useTaskComments } from '../hooks/useTaskComments';
 import { Spinner } from './Spinner';
 import { SourceEditor } from './SourceEditor';
 import { Button } from './Button';
-import { FollowPromptDialog } from './FollowPromptDialog';
 import { UpdateDocumentDialog } from './UpdateDocumentDialog';
 import { ResolveContextDialog, shouldSkipResolveDialog } from './ResolveContextDialog';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
@@ -34,6 +33,7 @@ import { selectionToSourcePosition } from '../utils/selection-position';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { getLanguageFromFileName } from '../repos/useSyntaxHighlight';
 import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
@@ -100,6 +100,7 @@ export function MarkdownReviewEditor({
     onScrollTopChange,
 }: MarkdownReviewEditorProps) {
     const { state: appState } = useApp();
+    const { dispatch: queueDispatch } = useQueue();
     const workspaceRootPath = useMemo(() => {
         const ws = appState.workspaces.find((w: any) => w.id === wsId);
         return ws?.rootPath ? toForwardSlashes(ws.rootPath).replace(/\/+$/, '') : '';
@@ -114,7 +115,7 @@ export function MarkdownReviewEditor({
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
-    const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | null>(null);
+    const [aiDialogType, setAiDialogType] = useState<'update-document' | null>(null);
     const [resolveDialogState, setResolveDialogState] = useState<{
         open: boolean;
         mode: 'batch' | 'fix' | 'custom-ask';
@@ -755,7 +756,17 @@ export function MarkdownReviewEditor({
                                             size="sm"
                                             data-testid="task-preview-follow-prompt"
                                             title="Run Skill"
-                                            onClick={() => setAiDialogType('follow-prompt')}
+                                            onClick={() => {
+                                                const absPath = workspaceRootPath
+                                                    ? toForwardSlashes(workspaceRootPath + '/' + filePath)
+                                                    : filePath;
+                                                queueDispatch({
+                                                    type: 'OPEN_DIALOG',
+                                                    workspaceId: wsId,
+                                                    contextFiles: [absPath],
+                                                    contextTaskName: taskName,
+                                                });
+                                            }}
                                         >⚡</Button>
                                         <Button
                                             variant="ghost"
@@ -924,14 +935,6 @@ export function MarkdownReviewEditor({
                     onFixWithAI={handleFixWithAI}
                     isResolving={resolvingIds.has(activePopoverComment.id)}
                     isDeleting={deletingIds.has(activePopoverComment.id)}
-                />
-            )}
-            {showAiButtons && aiDialogType === 'follow-prompt' && (
-                <FollowPromptDialog
-                    wsId={wsId}
-                    taskPath={filePath}
-                    taskName={taskName}
-                    onClose={() => setAiDialogType(null)}
                 />
             )}
             {showAiButtons && aiDialogType === 'update-document' && (

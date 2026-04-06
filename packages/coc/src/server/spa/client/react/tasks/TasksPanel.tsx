@@ -12,6 +12,7 @@ import { useFileActions } from '../hooks/useFileActions';
 import { useArchiveUndo } from '../hooks/useArchiveUndo';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useQueue } from '../context/QueueContext';
+import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { TaskActions } from './TaskActions';
 import { ContextMenu } from './comments/ContextMenu';
@@ -74,7 +75,12 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const primaryFolderPath = tasksFolder;
 
     const { dispatch: queueDispatch } = useQueue();
+    const { state: appState } = useApp();
     const { addToast } = useGlobalToast();
+    const workspaceRootPath = useMemo(() => {
+        const ws = appState.workspaces.find((w: any) => w.id === wsId);
+        return ws?.rootPath ?? '';
+    }, [appState.workspaces, wsId]);
     const { undoAvailable, undoInFlight, setUndoAvailable, undoLastArchive } = useArchiveUndo(wsId, refresh);
     const [activeFolder, setActiveFolder] = useState<TaskFolder | null>(null);
     const handleActiveFolderChange = useCallback((folder: TaskFolder) => { setActiveFolder(folder); }, []);
@@ -142,6 +148,9 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         setFileMoveDialogOpen: fileDlg.setFileMoveDialogOpen,
         setAiDialogTarget: fileDlg.setAiDialogTarget,
         setAiDialogType: fileDlg.setAiDialogType,
+        queueDispatch,
+        wsId,
+        workspaceRootPath,
     });
 
     const { folderMenuItems } = useFolderContextMenu({
@@ -154,6 +163,9 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         siblingRepos,
         onQueueFolder: (fp) => queueDispatch({ type: 'OPEN_DIALOG', folderPath: fp }),
         handleFolderContextMenuAction: folderDlg.handleFolderContextMenuAction,
+        queueDispatch,
+        wsId,
+        workspaceRootPath,
     });
 
     useEffect(() => {

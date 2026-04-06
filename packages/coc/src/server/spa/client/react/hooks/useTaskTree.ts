@@ -132,6 +132,51 @@ export function countMarkdownFilesInFolder(folder: TaskFolder): number {
     return directSingles + groupedDocs + childDocs;
 }
 
+export interface CollectedTaskFile {
+    fileName: string;
+    relativePath: string;
+}
+
+const INACTIVE_STATUSES = new Set(['future', 'done']);
+
+/**
+ * Recursively collect active markdown files from a folder tree,
+ * excluding context files and inactive tasks (future/done).
+ */
+export function collectMarkdownFiles(folder: TaskFolder): CollectedTaskFile[] {
+    const files: CollectedTaskFile[] = [];
+
+    for (const doc of folder.singleDocuments) {
+        if (
+            doc.fileName.toLowerCase().endsWith('.md') &&
+            !isContextFile(doc.fileName) &&
+            !INACTIVE_STATUSES.has(doc.status ?? '')
+        ) {
+            const rel = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
+            files.push({ fileName: doc.fileName, relativePath: rel });
+        }
+    }
+
+    for (const group of folder.documentGroups) {
+        for (const doc of group.documents) {
+            if (
+                doc.fileName.toLowerCase().endsWith('.md') &&
+                !isContextFile(doc.fileName) &&
+                !INACTIVE_STATUSES.has(doc.status ?? '')
+            ) {
+                const rel = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
+                files.push({ fileName: doc.fileName, relativePath: rel });
+            }
+        }
+    }
+
+    for (const child of folder.children) {
+        files.push(...collectMarkdownFiles(child));
+    }
+
+    return files;
+}
+
 // ── Search utilities ───────────────────────────────────────────────────
 
 export function flattenTaskTree(folder: TaskFolder): (TaskDocument | TaskDocumentGroup)[] {

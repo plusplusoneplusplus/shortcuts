@@ -22,6 +22,12 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         dialogInitialWorkspaceId: null,
         dialogInitialPrompt: null,
         dialogMode: 'task',
+        dialogLaunchMode: 'default',
+        dialogContextFiles: null,
+        dialogContextTaskName: null,
+        dialogBulkMode: false,
+        showScriptDialog: false,
+        scriptDialogWorkspaceId: null,
         showHistory: false,
         isFollowUpStreaming: false,
         currentStreamingTurnIndex: null,
@@ -32,6 +38,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         selectedTaskIdByRepo: {},
         refreshVersion: 0,
         queueInitialized: false,
+        isTaskSubmitting: false,
         ...overrides,
     };
 }

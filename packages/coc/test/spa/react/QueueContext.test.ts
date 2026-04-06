@@ -19,6 +19,9 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         dialogInitialPrompt: null,
         dialogMode: 'task' as const,
         dialogLaunchMode: 'default' as const,
+        dialogContextFiles: null,
+        dialogContextTaskName: null,
+        dialogBulkMode: false,
         showScriptDialog: false,
         scriptDialogWorkspaceId: null,
         showHistory: false,
@@ -307,6 +310,29 @@ describe('QueueContext reducer', () => {
             const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', workspaceId: 'ws1' });
             expect(result.dialogLaunchMode).toBe('default');
         });
+
+        it('sets contextFiles when provided', () => {
+            const files = ['/path/to/a.md', '/path/to/b.md'];
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', contextFiles: files, contextTaskName: 'feature' });
+            expect(result.dialogContextFiles).toEqual(files);
+            expect(result.dialogContextTaskName).toBe('feature');
+        });
+
+        it('defaults contextFiles to null when omitted', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG' });
+            expect(result.dialogContextFiles).toBeNull();
+            expect(result.dialogContextTaskName).toBeNull();
+            expect(result.dialogBulkMode).toBe(false);
+        });
+
+        it('sets bulkMode when provided', () => {
+            const result = queueReducer(makeState(), {
+                type: 'OPEN_DIALOG',
+                contextFiles: ['/a.md', '/b.md'],
+                bulkMode: true,
+            });
+            expect(result.dialogBulkMode).toBe(true);
+        });
     });
 
     // ── Dialog and history toggles ─────────────────────────────────
@@ -335,6 +361,19 @@ describe('QueueContext reducer', () => {
             const state = makeState({ showDialog: true, dialogLaunchMode: 'floating-chat' });
             const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
             expect(result.dialogLaunchMode).toBe('default');
+        });
+
+        it('CLOSE_DIALOG resets context fields', () => {
+            const state = makeState({
+                showDialog: true,
+                dialogContextFiles: ['/a.md'],
+                dialogContextTaskName: 'feature',
+                dialogBulkMode: true,
+            });
+            const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
+            expect(result.dialogContextFiles).toBeNull();
+            expect(result.dialogContextTaskName).toBeNull();
+            expect(result.dialogBulkMode).toBe(false);
         });
 
         it('TOGGLE_HISTORY toggles showHistory', () => {
