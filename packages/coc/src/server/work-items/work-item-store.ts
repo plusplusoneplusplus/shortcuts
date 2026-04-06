@@ -285,6 +285,9 @@ export class FileWorkItemStore implements WorkItemStore {
             item.updatedAt = new Date().toISOString();
 
             await this.writeItem(repoId, item);
+
+            // Keep index in sync (lastRunAt, updatedAt)
+            await this.refreshIndexEntry(repoId, item);
         });
     }
 
@@ -307,6 +310,9 @@ export class FileWorkItemStore implements WorkItemStore {
             item.updatedAt = new Date().toISOString();
 
             await this.writeItem(repoId, item);
+
+            // Keep index in sync (lastRunAt, updatedAt)
+            await this.refreshIndexEntry(repoId, item);
         });
     }
 
@@ -404,6 +410,15 @@ export class FileWorkItemStore implements WorkItemStore {
             if (index.some(e => e.id === id)) return repo;
         }
         return undefined;
+    }
+
+    private async refreshIndexEntry(repoId: string, item: WorkItem): Promise<void> {
+        const index = await this.readIndex(repoId);
+        const idx = index.findIndex(e => e.id === item.id);
+        if (idx !== -1) {
+            index[idx] = toIndexEntry(item);
+            await this.writeIndex(repoId, index);
+        }
     }
 
     private async listRepoIds(): Promise<string[]> {

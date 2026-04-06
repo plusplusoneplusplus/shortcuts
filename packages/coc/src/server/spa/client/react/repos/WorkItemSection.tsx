@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useWorkItems } from '../context/WorkItemContext';
+import { formatRelativeTime } from '../utils/format';
 
 interface StatusConfig {
     label: string;
@@ -68,9 +69,18 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const toggleGroup = (status: string) =>
         setCollapsed(prev => ({ ...prev, [status]: !prev[status] }));
 
-    // Group items by status
+    // Group items by status, sorted by last run time descending within each group
     const grouped = Object.fromEntries(
-        STATUS_ORDER.map(s => [s, items.filter(i => i.status === s)])
+        STATUS_ORDER.map(s => [
+            s,
+            items
+                .filter(i => i.status === s)
+                .sort((a, b) => {
+                    const aTime = (a as any).lastRunAt || a.updatedAt;
+                    const bTime = (b as any).lastRunAt || b.updatedAt;
+                    return bTime.localeCompare(aTime);
+                }),
+        ])
     );
 
     const totalCount = items.length;
@@ -134,6 +144,15 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                                     <span className="shrink-0 text-[10px]">{PRIORITY_ICON[item.priority]}</span>
                                                 )}
                                                 <span className="truncate" title={item.title}>{item.title}</span>
+                                                {(() => {
+                                                    const ts = (item as any).lastRunAt || item.updatedAt;
+                                                    const label = formatRelativeTime(ts);
+                                                    return label ? (
+                                                        <span className="ml-auto shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title={ts}>
+                                                            {label}
+                                                        </span>
+                                                    ) : null;
+                                                })()}
                                             </div>
                                             {item.plan && (
                                                 <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5">

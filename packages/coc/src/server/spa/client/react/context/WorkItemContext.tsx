@@ -9,6 +9,7 @@ export interface WorkItemSummary {
     source: string;
     createdAt: string;
     updatedAt: string;
+    lastRunAt?: string;
     plan?: { version: number };
     tags?: string[];
 }
