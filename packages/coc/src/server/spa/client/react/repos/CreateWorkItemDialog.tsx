@@ -10,9 +10,11 @@ export interface CreateWorkItemDialogProps {
     onCreated?: (item: any) => void;
     /** Pre-fill from a chat session */
     fromChatId?: string;
+    /** Work item type — 'work-item' (default) or 'bug'. */
+    itemType?: 'work-item' | 'bug';
 }
 
-export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fromChatId }: CreateWorkItemDialogProps) {
+export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fromChatId, itemType = 'work-item' }: CreateWorkItemDialogProps) {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<'normal' | 'high' | 'low'>('normal');
@@ -58,6 +60,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
                         priority,
                         tags: parsedTags.length > 0 ? parsedTags : undefined,
                         source: 'manual',
+                        type: itemType,
                     }),
                 });
             }
@@ -70,11 +73,15 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
         }
     }, [workspaceId, fromChatId, title, description, priority, tags, onCreated, onClose]);
 
+    const isBug = itemType === 'bug';
+    const dialogTitle = isBug ? 'Create Bug' : 'Create Work Item';
+    const titlePlaceholder = isBug ? 'Bug title' : 'Work item title';
+
     return (
         <Dialog
             open={open}
             onClose={onClose}
-            title="Create Work Item"
+            title={dialogTitle}
             footer={
                 <>
                     <Button variant="secondary" onClick={onClose} disabled={loading}>
@@ -100,7 +107,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
                             className="w-full rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-sm text-[#1e1e1e] dark:text-[#cccccc] p-2 focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
                             value={title}
                             onChange={e => setTitle(e.target.value)}
-                            placeholder="Work item title"
+                            placeholder={titlePlaceholder}
                             disabled={loading}
                             onKeyDown={e => {
                                 if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {

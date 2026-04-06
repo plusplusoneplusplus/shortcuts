@@ -34,6 +34,12 @@ export type WorkItemSource = 'manual' | 'chat' | 'schedule';
 /** Priority levels for work items. */
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 
+/** Work item type — distinguishes bugs from regular work items. */
+export type WorkItemType = 'work-item' | 'bug';
+
+/** All valid work item types (useful for validation). */
+export const WORK_ITEM_TYPES: readonly WorkItemType[] = Object.freeze(['work-item', 'bug']);
+
 // ============================================================================
 // Plan Types
 // ============================================================================
@@ -139,6 +145,8 @@ export interface WorkItem {
     description: string;
     /** Current lifecycle status. */
     status: WorkItemStatus;
+    /** Work item type — 'work-item' (default) or 'bug'. */
+    type?: WorkItemType;
     /** ISO timestamp when the work item was created. */
     createdAt: string;
     /** ISO timestamp of last modification. */
@@ -205,6 +213,7 @@ export interface WorkItemIndexEntry {
     repoId: string;
     title: string;
     status: WorkItemStatus;
+    type?: WorkItemType;
     source: WorkItemSource;
     priority?: WorkItemPriority;
     planVersion?: number;
@@ -230,6 +239,8 @@ export interface WorkItemFilter {
     priority?: WorkItemPriority;
     /** Filter by tag (any match). */
     tags?: string[];
+    /** Filter by type. */
+    type?: WorkItemType;
 }
 
 /** Abstract store interface for work item persistence. */
@@ -289,6 +300,7 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         repoId: item.repoId,
         title: item.title,
         status: item.status,
+        type: item.type,
         source: item.source,
         priority: item.priority,
         planVersion: item.plan?.version,
