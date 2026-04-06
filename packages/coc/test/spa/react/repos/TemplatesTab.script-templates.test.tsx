@@ -35,9 +35,11 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
 }));
 
 const mockDeleteScriptTemplate = vi.fn();
+const mockUpdateScriptTemplate = vi.fn();
 const mockUseScriptTemplates = vi.fn().mockReturnValue({
     templates: [],
     saveTemplate: vi.fn(),
+    updateTemplate: mockUpdateScriptTemplate,
     deleteTemplate: mockDeleteScriptTemplate,
     loaded: true,
 });
@@ -99,6 +101,7 @@ async function renderTemplatesTab(scriptTemplateOverride: ScriptTemplate[] = SCR
     mockUseScriptTemplates.mockReturnValue({
         templates: scriptTemplateOverride,
         saveTemplate: vi.fn(),
+        updateTemplate: mockUpdateScriptTemplate,
         deleteTemplate: mockDeleteScriptTemplate,
         loaded: true,
     });
@@ -114,6 +117,7 @@ describe('Run Script Templates — selection and detail view', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockDeleteScriptTemplate.mockReset();
+        mockUpdateScriptTemplate.mockReset();
         mockAddToast.mockReset();
         mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         mockFetchApi.mockResolvedValue({ templates: [] });
@@ -365,6 +369,242 @@ describe('Run Script Templates — selection and detail view', () => {
 
         await waitFor(() => {
             expect(screen.queryByTestId('script-templates-list')).toBeNull();
+        });
+    });
+});
+
+describe('Run Script Templates — edit mode', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockDeleteScriptTemplate.mockReset();
+        mockUpdateScriptTemplate.mockReset();
+        mockAddToast.mockReset();
+        mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+        mockFetchApi.mockResolvedValue({ templates: [] });
+    });
+
+    it('detail view has Edit button in view mode', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('script-template-edit-btn')).toBeDefined();
+        });
+    });
+
+    it('clicking Edit button switches to edit mode with form inputs', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('script-template-edit-name')).toBeDefined();
+            expect(screen.getByTestId('script-template-edit-script')).toBeDefined();
+            expect(screen.getByTestId('script-template-edit-args')).toBeDefined();
+            expect(screen.getByTestId('script-template-edit-cwd')).toBeDefined();
+            expect(screen.getByTestId('script-template-edit-model')).toBeDefined();
+            expect(screen.getByTestId('script-template-edit-pause')).toBeDefined();
+        });
+    });
+
+    it('edit mode pre-populates form with current values', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+
+        await waitFor(() => {
+            expect((screen.getByTestId('script-template-edit-name') as HTMLInputElement).value).toBe('Build Project');
+            expect((screen.getByTestId('script-template-edit-script') as HTMLInputElement).value).toBe('./build.sh');
+            expect((screen.getByTestId('script-template-edit-args') as HTMLInputElement).value).toBe('--release');
+            expect((screen.getByTestId('script-template-edit-cwd') as HTMLInputElement).value).toBe('/workspace/project');
+            expect((screen.getByTestId('script-template-edit-model') as HTMLInputElement).value).toBe('gpt-4o');
+            expect((screen.getByTestId('script-template-edit-pause') as HTMLInputElement).checked).toBe(true);
+        });
+    });
+
+    it('edit mode hides Enqueue and Delete buttons, shows Save and Cancel', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('script-template-save-btn')).toBeDefined();
+            expect(screen.getByTestId('script-template-cancel-btn')).toBeDefined();
+            expect(screen.queryByTestId('script-template-enqueue-btn')).toBeNull();
+            expect(screen.queryByTestId('script-template-delete-btn')).toBeNull();
+        });
+    });
+
+    it('Cancel button discards changes and returns to view mode', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+        await waitFor(() => screen.getByTestId('script-template-edit-name'));
+
+        // Modify a field
+        fireEvent.change(screen.getByTestId('script-template-edit-name'), { target: { value: 'Changed Name' } });
+
+        // Click Cancel
+        fireEvent.click(screen.getByTestId('script-template-cancel-btn'));
+
+        await waitFor(() => {
+            // Should be back in view mode with original name
+            expect(screen.queryByTestId('script-template-edit-name')).toBeNull();
+            expect(screen.getByTestId('script-template-detail').textContent).toContain('Build Project');
+        });
+    });
+
+    it('Save button calls updateTemplate with edited values', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+        await waitFor(() => screen.getByTestId('script-template-edit-name'));
+
+        // Edit fields
+        fireEvent.change(screen.getByTestId('script-template-edit-name'), { target: { value: 'New Name' } });
+        fireEvent.change(screen.getByTestId('script-template-edit-script'), { target: { value: './new-script.sh' } });
+        fireEvent.change(screen.getByTestId('script-template-edit-args'), { target: { value: '--debug' } });
+        fireEvent.change(screen.getByTestId('script-template-edit-cwd'), { target: { value: '/new/dir' } });
+        fireEvent.change(screen.getByTestId('script-template-edit-model'), { target: { value: 'claude-sonnet' } });
+        fireEvent.click(screen.getByTestId('script-template-edit-pause'));
+
+        // Save
+        fireEvent.click(screen.getByTestId('script-template-save-btn'));
+
+        await waitFor(() => {
+            expect(mockUpdateScriptTemplate).toHaveBeenCalledWith('st-1', {
+                name: 'New Name',
+                scriptPath: './new-script.sh',
+                args: '--debug',
+                workingDirectory: '/new/dir',
+                model: 'claude-sonnet',
+                pauseOnFailure: undefined,
+            });
+        });
+    });
+
+    it('Save returns to view mode after successful save', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+        await waitFor(() => screen.getByTestId('script-template-save-btn'));
+
+        fireEvent.click(screen.getByTestId('script-template-save-btn'));
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('script-template-edit-name')).toBeNull();
+            expect(screen.getByTestId('script-template-enqueue-btn')).toBeDefined();
+        });
+    });
+
+    it('Save trims whitespace from field values', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+        await waitFor(() => screen.getByTestId('script-template-edit-name'));
+
+        fireEvent.change(screen.getByTestId('script-template-edit-name'), { target: { value: '  Trimmed Name  ' } });
+        fireEvent.change(screen.getByTestId('script-template-edit-script'), { target: { value: '  ./script.sh  ' } });
+        fireEvent.click(screen.getByTestId('script-template-save-btn'));
+
+        await waitFor(() => {
+            expect(mockUpdateScriptTemplate).toHaveBeenCalledWith('st-1', expect.objectContaining({
+                name: 'Trimmed Name',
+                scriptPath: './script.sh',
+            }));
+        });
+    });
+
+    it('Save does not call updateTemplate when name is empty', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+        await waitFor(() => screen.getByTestId('script-template-edit-name'));
+
+        fireEvent.change(screen.getByTestId('script-template-edit-name'), { target: { value: '' } });
+        fireEvent.click(screen.getByTestId('script-template-save-btn'));
+
+        expect(mockUpdateScriptTemplate).not.toHaveBeenCalled();
+    });
+
+    it('Save does not call updateTemplate when scriptPath is empty', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+        await waitFor(() => screen.getByTestId('script-template-edit-script'));
+
+        fireEvent.change(screen.getByTestId('script-template-edit-script'), { target: { value: '   ' } });
+        fireEvent.click(screen.getByTestId('script-template-save-btn'));
+
+        expect(mockUpdateScriptTemplate).not.toHaveBeenCalled();
+    });
+
+    it('Save clears optional fields to undefined when emptied', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+        await waitFor(() => screen.getByTestId('script-template-edit-args'));
+
+        fireEvent.change(screen.getByTestId('script-template-edit-args'), { target: { value: '' } });
+        fireEvent.change(screen.getByTestId('script-template-edit-cwd'), { target: { value: '' } });
+        fireEvent.change(screen.getByTestId('script-template-edit-model'), { target: { value: '' } });
+        fireEvent.click(screen.getByTestId('script-template-save-btn'));
+
+        await waitFor(() => {
+            expect(mockUpdateScriptTemplate).toHaveBeenCalledWith('st-1', expect.objectContaining({
+                args: undefined,
+                workingDirectory: undefined,
+                model: undefined,
+            }));
+        });
+    });
+
+    it('context menu shows Edit option for script templates', async () => {
+        await renderTemplatesTab();
+        const item = screen.getByTestId('script-template-item-st-1');
+        fireEvent.contextMenu(item);
+        await waitFor(() => {
+            expect(screen.getByText('Edit')).toBeDefined();
+            expect(screen.getByText('Delete')).toBeDefined();
+        });
+    });
+
+    it('context menu Edit triggers edit mode', async () => {
+        await renderTemplatesTab();
+        const item = screen.getByTestId('script-template-item-st-1');
+        fireEvent.contextMenu(item);
+        await waitFor(() => screen.getByText('Edit'));
+        fireEvent.click(screen.getByText('Edit'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('script-template-edit-name')).toBeDefined();
+            expect(screen.getByTestId('script-template-save-btn')).toBeDefined();
+        });
+    });
+
+    it('selecting a different template exits edit mode', async () => {
+        await renderTemplatesTab();
+        fireEvent.click(screen.getByTestId('script-template-item-st-1'));
+        await waitFor(() => screen.getByTestId('script-template-edit-btn'));
+        fireEvent.click(screen.getByTestId('script-template-edit-btn'));
+        await waitFor(() => screen.getByTestId('script-template-edit-name'));
+
+        // Select a different template
+        fireEvent.click(screen.getByTestId('script-template-item-st-2'));
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('script-template-edit-name')).toBeNull();
+            expect(screen.getByTestId('script-template-detail').textContent).toContain('Run Tests');
         });
     });
 });

@@ -20,6 +20,7 @@ export interface ScriptTemplate {
 export interface UseScriptTemplatesResult {
     templates: ScriptTemplate[];
     saveTemplate: (t: Omit<ScriptTemplate, 'id'>) => void;
+    updateTemplate: (id: string, updates: Partial<Omit<ScriptTemplate, 'id'>>) => void;
     deleteTemplate: (id: string) => void;
     loaded: boolean;
 }
@@ -67,6 +68,14 @@ export function useScriptTemplates(wsId?: string): UseScriptTemplatesResult {
         });
     }, [persist]);
 
+    const updateTemplate = useCallback((id: string, updates: Partial<Omit<ScriptTemplate, 'id'>>) => {
+        setTemplates(prev => {
+            const updated = prev.map(t => t.id === id ? { ...t, ...updates } : t);
+            persist(updated);
+            return updated;
+        });
+    }, [persist]);
+
     const deleteTemplate = useCallback((id: string) => {
         setTemplates(prev => {
             const updated = prev.filter(t => t.id !== id);
@@ -75,5 +84,5 @@ export function useScriptTemplates(wsId?: string): UseScriptTemplatesResult {
         });
     }, [persist]);
 
-    return { templates, saveTemplate, deleteTemplate, loaded };
+    return { templates, saveTemplate, updateTemplate, deleteTemplate, loaded };
 }

@@ -414,10 +414,11 @@ interface ScriptTemplateListItemProps {
     template: ScriptTemplate;
     isSelected: boolean;
     onSelect: () => void;
+    onEdit: () => void;
     onDelete: () => void;
 }
 
-function ScriptTemplateListItem({ template, isSelected, onSelect, onDelete }: ScriptTemplateListItemProps) {
+function ScriptTemplateListItem({ template, isSelected, onSelect, onEdit, onDelete }: ScriptTemplateListItemProps) {
     const [showContextMenu, setShowContextMenu] = useState(false);
     const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
@@ -457,6 +458,7 @@ function ScriptTemplateListItem({ template, isSelected, onSelect, onDelete }: Sc
                     y={menuPos.y}
                     onClose={() => setShowContextMenu(false)}
                     items={[
+                        { label: 'Edit', onClick: onEdit },
                         { label: 'Delete', onClick: onDelete, danger: true },
                     ]}
                 />
@@ -470,13 +472,59 @@ function ScriptTemplateListItem({ template, isSelected, onSelect, onDelete }: Sc
 interface ScriptTemplateDetailViewProps {
     template: ScriptTemplate;
     workspaceId: string;
+    editing: boolean;
+    onEdit: () => void;
+    onCancelEdit: () => void;
+    onUpdate: (id: string, updates: Partial<Omit<ScriptTemplate, 'id'>>) => void;
     onDelete: () => void;
 }
 
-function ScriptTemplateDetailView({ template, workspaceId, onDelete }: ScriptTemplateDetailViewProps) {
+function ScriptTemplateDetailView({ template, workspaceId, editing, onEdit, onCancelEdit, onUpdate, onDelete }: ScriptTemplateDetailViewProps) {
     const { dispatch: queueDispatch } = useQueue();
     const { addToast } = useGlobalToast();
     const [enqueueing, setEnqueueing] = useState(false);
+
+    const [formName, setFormName] = useState(template.name);
+    const [formScriptPath, setFormScriptPath] = useState(template.scriptPath);
+    const [formArgs, setFormArgs] = useState(template.args || '');
+    const [formWorkingDirectory, setFormWorkingDirectory] = useState(template.workingDirectory || '');
+    const [formModel, setFormModel] = useState(template.model || '');
+    const [formPauseOnFailure, setFormPauseOnFailure] = useState(template.pauseOnFailure || false);
+
+    // Reset form state when template changes
+    useEffect(() => {
+        setFormName(template.name);
+        setFormScriptPath(template.scriptPath);
+        setFormArgs(template.args || '');
+        setFormWorkingDirectory(template.workingDirectory || '');
+        setFormModel(template.model || '');
+        setFormPauseOnFailure(template.pauseOnFailure || false);
+    }, [template.id]);
+
+    const handleSave = () => {
+        const trimmedName = formName.trim();
+        const trimmedScriptPath = formScriptPath.trim();
+        if (!trimmedName || !trimmedScriptPath) return;
+        onUpdate(template.id, {
+            name: trimmedName,
+            scriptPath: trimmedScriptPath,
+            args: formArgs.trim() || undefined,
+            workingDirectory: formWorkingDirectory.trim() || undefined,
+            model: formModel.trim() || undefined,
+            pauseOnFailure: formPauseOnFailure || undefined,
+        });
+        onCancelEdit();
+    };
+
+    const handleCancel = () => {
+        setFormName(template.name);
+        setFormScriptPath(template.scriptPath);
+        setFormArgs(template.args || '');
+        setFormWorkingDirectory(template.workingDirectory || '');
+        setFormModel(template.model || '');
+        setFormPauseOnFailure(template.pauseOnFailure || false);
+        onCancelEdit();
+    };
 
     const handleEnqueue = async () => {
         setEnqueueing(true);
@@ -513,35 +561,84 @@ function ScriptTemplateDetailView({ template, workspaceId, onDelete }: ScriptTem
         }
     };
 
+    const inputClass = "w-full px-3 py-1.5 text-sm rounded border border-[#d0d0d0] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4]";
+
     return (
         <div className="p-6" data-testid="script-template-detail">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
-                <h2 className="text-lg font-semibold text-[#1e1e1e] dark:text-[#e0e0e0]">
-                    {template.name}
-                </h2>
+                {editing ? (
+                    <div className="flex-1 mr-4">
+                        <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Name *</label>
+                        <input
+                            className={cn(inputClass, "mt-1")}
+                            value={formName}
+                            onChange={e => setFormName(e.target.value)}
+                            data-testid="script-template-edit-name"
+                        />
+                    </div>
+                ) : (
+                    <h2 className="text-lg font-semibold text-[#1e1e1e] dark:text-[#e0e0e0]">
+                        {template.name}
+                    </h2>
+                )}
                 <div className="flex gap-2">
-                    <Button size="sm" variant="primary" onClick={handleEnqueue} disabled={enqueueing} data-testid="script-template-enqueue-btn">
-                        {enqueueing ? 'Enqueuing…' : '▶ Enqueue'}
-                    </Button>
-                    <Button size="sm" variant="danger" onClick={onDelete} data-testid="script-template-delete-btn">
-                        Delete
-                    </Button>
+                    {editing ? (
+                        <>
+                            <Button size="sm" variant="primary" onClick={handleSave} data-testid="script-template-save-btn">
+                                💾 Save
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={handleCancel} data-testid="script-template-cancel-btn">
+                                Cancel
+                            </Button>
+                        </>
+                    ) : (
+                        <>
+                            <Button size="sm" variant="primary" onClick={handleEnqueue} disabled={enqueueing} data-testid="script-template-enqueue-btn">
+                                {enqueueing ? 'Enqueuing…' : '▶ Enqueue'}
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={onEdit} data-testid="script-template-edit-btn">
+                                ✏ Edit
+                            </Button>
+                            <Button size="sm" variant="danger" onClick={onDelete} data-testid="script-template-delete-btn">
+                                Delete
+                            </Button>
+                        </>
+                    )}
                 </div>
             </div>
 
             {/* Script / Command */}
             <div className="mb-4">
-                <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Script / Command</label>
-                <div className="mt-1">
-                    <code className="text-sm text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2a2a2a] px-2 py-1 rounded font-mono block" data-testid="script-template-script-value">
-                        {template.scriptPath}
-                    </code>
-                </div>
+                <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Script / Command{editing ? ' *' : ''}</label>
+                {editing ? (
+                    <input
+                        className={cn(inputClass, "mt-1 font-mono")}
+                        value={formScriptPath}
+                        onChange={e => setFormScriptPath(e.target.value)}
+                        data-testid="script-template-edit-script"
+                    />
+                ) : (
+                    <div className="mt-1">
+                        <code className="text-sm text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2a2a2a] px-2 py-1 rounded font-mono block" data-testid="script-template-script-value">
+                            {template.scriptPath}
+                        </code>
+                    </div>
+                )}
             </div>
 
             {/* Args */}
-            {template.args && (
+            {editing ? (
+                <div className="mb-4">
+                    <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Args</label>
+                    <input
+                        className={cn(inputClass, "mt-1 font-mono")}
+                        value={formArgs}
+                        onChange={e => setFormArgs(e.target.value)}
+                        data-testid="script-template-edit-args"
+                    />
+                </div>
+            ) : template.args ? (
                 <div className="mb-4">
                     <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Args</label>
                     <div className="mt-1">
@@ -550,39 +647,73 @@ function ScriptTemplateDetailView({ template, workspaceId, onDelete }: ScriptTem
                         </code>
                     </div>
                 </div>
-            )}
+            ) : null}
 
             {/* Working Directory */}
-            {template.workingDirectory && (
+            {editing ? (
+                <div className="mb-4">
+                    <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Working Directory</label>
+                    <input
+                        className={cn(inputClass, "mt-1")}
+                        value={formWorkingDirectory}
+                        onChange={e => setFormWorkingDirectory(e.target.value)}
+                        data-testid="script-template-edit-cwd"
+                    />
+                </div>
+            ) : template.workingDirectory ? (
                 <div className="mb-4">
                     <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Working Directory</label>
                     <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]" data-testid="script-template-cwd-value">
                         {template.workingDirectory}
                     </p>
                 </div>
-            )}
+            ) : null}
 
             {/* Model */}
             <div className="mb-4">
                 <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Model</label>
-                <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]" data-testid="script-template-model-value">
-                    {template.model || 'default'}
-                </p>
+                {editing ? (
+                    <input
+                        className={cn(inputClass, "mt-1")}
+                        value={formModel}
+                        onChange={e => setFormModel(e.target.value)}
+                        placeholder="default"
+                        data-testid="script-template-edit-model"
+                    />
+                ) : (
+                    <p className="mt-1 text-sm text-[#1e1e1e] dark:text-[#cccccc]" data-testid="script-template-model-value">
+                        {template.model || 'default'}
+                    </p>
+                )}
             </div>
 
             {/* Pause on Failure */}
             <div className="mb-4">
                 <label className="text-xs font-medium text-[#6e6e6e] dark:text-[#888] uppercase tracking-wide">Pause on Failure</label>
-                <div className="mt-1">
-                    <span className={cn(
-                        "px-2 py-0.5 text-xs rounded",
-                        template.pauseOnFailure
-                            ? "bg-[#fff3cd] dark:bg-[#4d3800] text-[#856404] dark:text-[#ffc107]"
-                            : "bg-[#f0f0f0] dark:bg-[#2a2a2a] text-[#6e6e6e] dark:text-[#888]"
-                    )} data-testid="script-template-pause-value">
-                        {template.pauseOnFailure ? 'Yes' : 'No'}
-                    </span>
-                </div>
+                {editing ? (
+                    <div className="mt-1">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={formPauseOnFailure}
+                                onChange={e => setFormPauseOnFailure(e.target.checked)}
+                                data-testid="script-template-edit-pause"
+                            />
+                            <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Pause on failure</span>
+                        </label>
+                    </div>
+                ) : (
+                    <div className="mt-1">
+                        <span className={cn(
+                            "px-2 py-0.5 text-xs rounded",
+                            template.pauseOnFailure
+                                ? "bg-[#fff3cd] dark:bg-[#4d3800] text-[#856404] dark:text-[#ffc107]"
+                                : "bg-[#f0f0f0] dark:bg-[#2a2a2a] text-[#6e6e6e] dark:text-[#888]"
+                        )} data-testid="script-template-pause-value">
+                            {template.pauseOnFailure ? 'Yes' : 'No'}
+                        </span>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -964,7 +1095,9 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
     const [skillTemplatesExpanded, setSkillTemplatesExpanded] = useState(true);
 
     // ── Run Script Template state ──
-    const { templates: scriptTemplates, deleteTemplate: deleteScriptTemplate, loaded: scriptTemplatesLoaded } = useScriptTemplates(workspaceId);
+    const { templates: scriptTemplates, deleteTemplate: deleteScriptTemplate, updateTemplate: updateScriptTemplate, loaded: scriptTemplatesLoaded } = useScriptTemplates(workspaceId);
+
+    const [editingScriptTemplateId, setEditingScriptTemplateId] = useState<string | null>(null);
     const selectedScriptTemplateId = state.selectedScriptTemplateId;
     const [scriptTemplatesExpanded, setScriptTemplatesExpanded] = useState(true);
 
@@ -1088,7 +1221,13 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
         setSelectedTemplateName(null);
         setShowTemplateCreate(false);
         setEditingTemplateName(null);
+        setEditingScriptTemplateId(null);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/templates/script-template/' + encodeURIComponent(id);
+    };
+
+    const handleEditScriptTemplate = (id: string) => {
+        handleSelectScriptTemplate(id);
+        setEditingScriptTemplateId(id);
     };
 
     const handleDeleteScriptTemplate = (id: string) => {
@@ -1289,6 +1428,7 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
                                         template={t}
                                         isSelected={selectedScriptTemplateId === t.id}
                                         onSelect={() => handleSelectScriptTemplate(t.id)}
+                                        onEdit={() => handleEditScriptTemplate(t.id)}
                                         onDelete={() => handleDeleteScriptTemplate(t.id)}
                                     />
                                 ))}
@@ -1312,6 +1452,10 @@ export function TemplatesTab({ repo }: TemplatesTabProps) {
                         <ScriptTemplateDetailView
                             template={scriptTemplates.find(t => t.id === selectedScriptTemplateId)!}
                             workspaceId={workspaceId}
+                            editing={editingScriptTemplateId === selectedScriptTemplateId}
+                            onEdit={() => setEditingScriptTemplateId(selectedScriptTemplateId)}
+                            onCancelEdit={() => setEditingScriptTemplateId(null)}
+                            onUpdate={updateScriptTemplate}
                             onDelete={() => handleDeleteScriptTemplate(selectedScriptTemplateId)}
                         />
                     </div>
