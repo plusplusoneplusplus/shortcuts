@@ -220,6 +220,8 @@ export interface WorkItemIndexEntry {
     createdAt: string;
     updatedAt: string;
     completedAt?: string;
+    /** ISO timestamp of the most recent execution activity (derived from executionHistory). */
+    lastRunAt?: string;
     tags?: string[];
 }
 
@@ -293,6 +295,21 @@ export function isValidTransition(from: WorkItemStatus, to: WorkItemStatus): boo
     return VALID_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
+/**
+ * Derive the most recent execution timestamp from a work item's execution history.
+ * Prefers `completedAt`, then `startedAt` from the latest entry.
+ * Returns `undefined` if there is no execution history.
+ */
+export function getLastRunTime(executionHistory: WorkItemExecution[] | undefined): string | undefined {
+    if (!executionHistory || executionHistory.length === 0) return undefined;
+    let latest: string | undefined;
+    for (const exec of executionHistory) {
+        const ts = exec.completedAt ?? exec.startedAt;
+        if (!latest || ts > latest) latest = ts;
+    }
+    return latest;
+}
+
 /** Extract an index entry from a full work item. */
 export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
     return {
@@ -307,6 +324,7 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
         completedAt: item.completedAt,
+        lastRunAt: getLastRunTime(item.executionHistory),
         tags: item.tags,
     };
 }

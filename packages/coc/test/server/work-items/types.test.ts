@@ -6,11 +6,13 @@ import {
     isTerminalStatus,
     isValidTransition,
     toIndexEntry,
+    getLastRunTime,
 } from '../../../src/server/work-items/types';
 import type {
     WorkItem,
     WorkItemStatus,
     WorkItemIndexEntry,
+    WorkItemExecution,
 } from '../../../src/server/work-items/types';
 
 function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
@@ -187,6 +189,7 @@ describe('Work Item Types', () => {
                 createdAt: '2026-01-01T00:00:00.000Z',
                 updatedAt: '2026-01-01T00:00:00.000Z',
                 completedAt: undefined,
+                lastRunAt: undefined,
                 tags: ['backend', 'auth'],
             });
         });
@@ -210,6 +213,65 @@ describe('Work Item Types', () => {
             const entry = toIndexEntry(item);
             expect(entry).not.toHaveProperty('description');
             expect(entry).not.toHaveProperty('executionHistory');
+        });
+
+        it('includes lastRunAt derived from execution history', () => {
+            const item = makeWorkItem({
+                executionHistory: [
+                    { taskId: 't-1', startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-01-01T01:00:00.000Z', status: 'completed' },
+                    { taskId: 't-2', startedAt: '2026-01-02T00:00:00.000Z', status: 'running' },
+                ],
+            });
+
+            const entry = toIndexEntry(item);
+            expect(entry.lastRunAt).toBe('2026-01-02T00:00:00.000Z');
+        });
+
+        it('sets lastRunAt to undefined when no execution history', () => {
+            const item = makeWorkItem();
+            const entry = toIndexEntry(item);
+            expect(entry.lastRunAt).toBeUndefined();
+        });
+    });
+
+    describe('getLastRunTime', () => {
+        it('returns undefined for undefined history', () => {
+            expect(getLastRunTime(undefined)).toBeUndefined();
+        });
+
+        it('returns undefined for empty history', () => {
+            expect(getLastRunTime([])).toBeUndefined();
+        });
+
+        it('returns startedAt when no completedAt', () => {
+            const history: WorkItemExecution[] = [
+                { taskId: 't-1', startedAt: '2026-03-01T10:00:00.000Z', status: 'running' },
+            ];
+            expect(getLastRunTime(history)).toBe('2026-03-01T10:00:00.000Z');
+        });
+
+        it('prefers completedAt over startedAt for the same entry', () => {
+            const history: WorkItemExecution[] = [
+                { taskId: 't-1', startedAt: '2026-03-01T10:00:00.000Z', completedAt: '2026-03-01T11:00:00.000Z', status: 'completed' },
+            ];
+            expect(getLastRunTime(history)).toBe('2026-03-01T11:00:00.000Z');
+        });
+
+        it('returns the most recent timestamp across multiple entries', () => {
+            const history: WorkItemExecution[] = [
+                { taskId: 't-1', startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-01-01T01:00:00.000Z', status: 'completed' },
+                { taskId: 't-2', startedAt: '2026-02-01T00:00:00.000Z', completedAt: '2026-02-01T01:00:00.000Z', status: 'failed' },
+                { taskId: 't-3', startedAt: '2026-03-01T00:00:00.000Z', status: 'running' },
+            ];
+            expect(getLastRunTime(history)).toBe('2026-03-01T00:00:00.000Z');
+        });
+
+        it('picks completedAt of an older entry if it is the most recent timestamp', () => {
+            const history: WorkItemExecution[] = [
+                { taskId: 't-1', startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-06-01T00:00:00.000Z', status: 'completed' },
+                { taskId: 't-2', startedAt: '2026-03-01T00:00:00.000Z', status: 'running' },
+            ];
+            expect(getLastRunTime(history)).toBe('2026-06-01T00:00:00.000Z');
         });
     });
 });
