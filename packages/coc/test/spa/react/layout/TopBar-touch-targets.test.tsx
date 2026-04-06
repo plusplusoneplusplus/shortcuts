@@ -45,6 +45,10 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
+    fetchApi: vi.fn().mockResolvedValue({ gitGroupOrder: [] }),
+}));
+
 describe('TopBar touch targets', () => {
     let viewportCleanup: (() => void) | undefined;
 
