@@ -960,12 +960,13 @@ describe('ActivityListPane', () => {
             expect(screen.queryByText('This is a prompt')).toBeNull();
         });
 
-        it('uses tighter padding', () => {
+        it('uses tighter padding with mobile-responsive vertical padding', () => {
             mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
             renderPane({ running: [makeRunningTask()] });
             const card = document.querySelector('[data-task-id="run-1"]');
             expect(card!.className).toContain('px-2');
-            expect(card!.className).toContain('py-1');
+            expect(card!.className).toContain('py-2.5');
+            expect(card!.className).toContain('md:py-1');
         });
 
         it('uses reduced gap for section containers', () => {
@@ -973,6 +974,58 @@ describe('ActivityListPane', () => {
             const { container } = renderPane({ running: [makeRunningTask()] });
             const gapEl = container.querySelector('.gap-0\\.5');
             expect(gapEl).toBeTruthy();
+        });
+
+        it('applies mobile-responsive padding to history cards', () => {
+            mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
+            renderPane({ history: [makeHistoryTask()] });
+            const card = document.querySelector('[data-task-id="h-1"]');
+            expect(card!.className).toContain('py-2.5');
+            expect(card!.className).toContain('md:py-1');
+        });
+
+        it('applies mobile-responsive padding to pinned cards', () => {
+            mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
+            mockPinnedChatIds = new Set(['h-1']);
+            renderPane({ history: [makeHistoryTask()] });
+            const card = document.querySelector('[data-task-id="h-1"]');
+            expect(card!.className).toContain('py-2.5');
+            expect(card!.className).toContain('md:py-1');
+        });
+
+        it('applies mobile-responsive padding to queued cards', () => {
+            mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
+            renderPane({ queued: [makeQueuedTask()] });
+            const card = document.querySelector('[data-task-id="q-1"]');
+            expect(card!.className).toContain('py-2.5');
+            expect(card!.className).toContain('md:py-1');
+        });
+
+        it('applies mobile-responsive padding to archived cards', () => {
+            mockDisplaySettings = { taskCardDensity: 'dense', showReportIntent: false };
+            mockArchivedChatIds = new Set(['h-1']);
+            renderPane({ history: [makeHistoryTask()] });
+            // Archived section is collapsed by default — expand it
+            fireEvent.click(screen.getByTestId('archived-chats-section-toggle'));
+            const card = document.querySelector('[data-task-id="h-1"]');
+            expect(card!.className).toContain('py-2.5');
+            expect(card!.className).toContain('md:py-1');
+        });
+
+        it('does not apply mobile-responsive padding in compact mode', () => {
+            mockDisplaySettings = { taskCardDensity: 'compact', showReportIntent: false };
+            renderPane({ history: [makeHistoryTask()] });
+            const card = document.querySelector('[data-task-id="h-1"]');
+            expect(card!.className).not.toContain('py-2.5');
+            expect(card!.className).not.toContain('md:py-1');
+        });
+
+        it('does not apply mobile-responsive padding in normal mode', () => {
+            mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false };
+            renderPane({ history: [makeHistoryTask()] });
+            const card = document.querySelector('[data-task-id="h-1"]');
+            expect(card!.className).not.toContain('py-2.5');
+            expect(card!.className).not.toContain('md:py-1');
         });
     });
 

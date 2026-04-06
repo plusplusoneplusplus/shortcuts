@@ -876,7 +876,7 @@ export function ActivityListPane({
                                         <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
                                         <Card
                                             className={cn(
-                                                isDense ? "px-2 py-1 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500" : "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
+                                                isDense ? "px-2 py-2.5 md:py-1 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500" : "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
                                                 isHistorySelected
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
                                                     : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
@@ -967,7 +967,7 @@ export function ActivityListPane({
                                         <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
                                         <Card
                                             className={cn(
-                                                isDense ? "px-2 py-1 cursor-pointer" : "p-2 cursor-pointer",
+                                                isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
                                                 isHistorySelected
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
                                                     : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
@@ -1032,7 +1032,7 @@ export function ActivityListPane({
                                     <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
                                     <Card
                                         className={cn(
-                                            isDense ? "px-2 py-1 cursor-pointer opacity-70" : "p-2 cursor-pointer opacity-70",
+                                            isDense ? "px-2 py-2.5 md:py-1 cursor-pointer opacity-70" : "p-2 cursor-pointer opacity-70",
                                             selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                         )}
                                         onClick={() => {
@@ -1148,7 +1148,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
 
     return (
         <Card
-            className={cn(dense ? "px-2 py-1 cursor-pointer" : "p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60", isAdmitted && !isPinned && "border-l-2 border-l-green-500 dark:border-l-green-400")}
+            className={cn(dense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60", isAdmitted && !isPinned && "border-l-2 border-l-green-500 dark:border-l-green-400")}
             onClick={handleClick}
             onContextMenu={onContextMenu}
             onTouchStart={longPress.onTouchStart}
