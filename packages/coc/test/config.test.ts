@@ -363,6 +363,19 @@ timeout: 300
             expect(result.chat.followUpSuggestions.enabled).toBe(true);
             expect(result.chat.followUpSuggestions.count).toBe(3);
         });
+
+        it('should merge serve.serverName from override', () => {
+            const override: CLIConfig = { serve: { serverName: 'MBP' } };
+            const result = mergeConfig(DEFAULT_CONFIG, override);
+            expect(result.serve?.serverName).toBe('MBP');
+            expect(result.serve?.port).toBe(4000); // default preserved
+        });
+
+        it('should leave serve.serverName undefined when not set', () => {
+            const override: CLIConfig = { serve: { port: 9000 } };
+            const result = mergeConfig(DEFAULT_CONFIG, override);
+            expect(result.serve?.serverName).toBeUndefined();
+        });
     });
 
     // ========================================================================
@@ -448,6 +461,16 @@ timeout: 300
             expect(result.sources['serve.theme']).toBe('file');
             expect(result.sources['serve.host']).toBe('default');
             expect(result.sources['serve.dataDir']).toBe('default');
+            expect(result.sources['serve.serverName']).toBe('default');
+        });
+
+        it('should mark serve.serverName as file when set', () => {
+            const configPath = path.join(tmpDir, 'sname.yaml');
+            fs.writeFileSync(configPath, 'serve:\n  serverName: MBP\n');
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.sources['serve.serverName']).toBe('file');
+            expect(result.resolved.serve?.serverName).toBe('MBP');
         });
 
         it('should report file source for chat.followUpSuggestions.enabled when set', () => {
@@ -507,6 +530,7 @@ timeout: 300
                 '  host: 0.0.0.0',
                 '  dataDir: /tmp/coc',
                 '  theme: light',
+                '  serverName: MBP',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 
@@ -610,6 +634,18 @@ timeout: 300
             expect(loaded!.serve?.host).toBe('0.0.0.0');
             expect(loaded!.serve?.dataDir).toBe('/tmp/coc');
             expect(loaded!.serve?.theme).toBe('dark');
+        });
+
+        it('should persist serve.serverName correctly', () => {
+            const configPath = path.join(tmpDir, 'serve-name.yaml');
+            const config: CLIConfig = {
+                serve: { serverName: 'MBP' },
+            };
+            writeConfigFile(configPath, config);
+
+            const loaded = loadConfigFile(configPath);
+            expect(loaded).toBeDefined();
+            expect(loaded!.serve?.serverName).toBe('MBP');
         });
     });
 

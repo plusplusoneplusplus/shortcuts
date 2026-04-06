@@ -55,6 +55,7 @@ export const CLIConfigSchema = z.object({
         host: z.string().optional(),
         dataDir: z.string().optional(),
         theme: z.enum(['auto', 'light', 'dark']).optional(),
+        serverName: z.string().optional(),
     }).strict().optional(),
     queue: z.object({
         historyLimit: z.number().int().positive().optional(),

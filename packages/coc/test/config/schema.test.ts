@@ -62,6 +62,11 @@ describe('CLIConfigSchema', () => {
         expect(result.serve?.host).toBeUndefined();
     });
 
+    it('validates serve.serverName', () => {
+        const result = CLIConfigSchema.parse({ serve: { serverName: 'MBP' } });
+        expect(result.serve?.serverName).toBe('MBP');
+    });
+
     it('validates port at boundary values', () => {
         expect(CLIConfigSchema.parse({ serve: { port: 1 } }).serve?.port).toBe(1);
         expect(CLIConfigSchema.parse({ serve: { port: 65535 } }).serve?.port).toBe(65535);

@@ -34,6 +34,7 @@ import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
+import { shortenHostname } from './hostname-utils';
 
 // ============================================================================
 // Close Handler Builder
@@ -139,12 +140,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         aiInvoker,
     });
 
-    const hostname = os.hostname();
+    const rawHostname = os.hostname();
+    const displayHostname = resolvedConfig.serve?.serverName || shortenHostname(rawHostname);
     const handler = createRequestHandler({
-        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname }),
+        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname }),
         store, spaETag: getBundleETag,
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
-        getIconSvg: () => generateIconSvg(hostname),
+        getIconSvg: () => generateIconSvg(rawHostname),
     });
     const server = http.createServer(handler);
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);

@@ -56,6 +56,8 @@ export interface CLIConfig {
         host?: string;
         dataDir?: string;
         theme?: 'auto' | 'light' | 'dark';
+        /** Custom display name shown in the dashboard title bar (default: shortened os.hostname()) */
+        serverName?: string;
     };
     /** Queue defaults */
     queue?: {
@@ -133,6 +135,7 @@ export interface ResolvedCLIConfig {
         host: string;
         dataDir: string;
         theme: 'auto' | 'light' | 'dark';
+        serverName?: string;
     };
     queue?: {
         historyLimit?: number;
@@ -193,7 +196,7 @@ export const CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
     'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
     'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
-    'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme',
+    'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme', 'serve.serverName',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -317,6 +320,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
             host: override.serve?.host ?? base.serve?.host ?? '0.0.0.0',
             dataDir: override.serve?.dataDir ?? base.serve?.dataDir ?? '~/.coc',
             theme: override.serve?.theme ?? base.serve?.theme ?? 'auto',
+            serverName: override.serve?.serverName ?? base.serve?.serverName,
         },
         queue: (override.queue || base.queue) ? {
             historyLimit: override.queue?.historyLimit ?? base.queue?.historyLimit,
