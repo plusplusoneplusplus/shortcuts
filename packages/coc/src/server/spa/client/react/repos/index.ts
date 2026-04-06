@@ -2,6 +2,8 @@ export { ReposView } from './ReposView';
 export { RepoGitTab } from './RepoGitTab';
 export { CommitList } from './CommitList';
 export { CommitDetail } from './CommitDetail';
+export { buildFixupGroups, parseFixupSubject, FIXUP_GROUP_COLORS_LIGHT, FIXUP_GROUP_COLORS_DARK } from './fixup-utils';
+export type { FixupGroupMap, FixupEntry, FixupGroupTarget, ParsedFixup, FixupType } from './fixup-utils';
 export { BranchRangeOverview } from './BranchRangeOverview';
 export { CommitFileContent } from './CommitFileContent';
 export { CommitTooltip } from './CommitTooltip';

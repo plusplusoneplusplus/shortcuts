@@ -2,22 +2,30 @@
  * CommitTooltip — hover tooltip for commit rows in the left panel.
  *
  * Shows full commit subject, author, date, hash, parents, body, and a
- * Copy Hash button. Positioned absolutely relative to the hovered row.
+ * Copy Hash button. For fixup commits, also shows the fixup type and
+ * target commit info. Positioned absolutely relative to the hovered row.
  */
 
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '../shared';
 import { copyToClipboard } from '../utils/format';
 import type { GitCommitItem } from './CommitList';
+import type { FixupEntry, FixupGroupTarget } from './fixup-utils';
 
 export interface CommitTooltipProps {
     commit: GitCommitItem;
     anchorRect: DOMRect | null;
     onMouseEnter?: () => void;
     onMouseLeave?: () => void;
+    /** If this commit is a fixup, its entry from the fixup group map. */
+    fixupEntry?: FixupEntry;
+    /** If this commit is a fixup target, its group info. */
+    targetGroup?: FixupGroupTarget;
+    /** Group color resolved for the current theme. */
+    groupColor?: string;
 }
 
-export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave }: CommitTooltipProps) {
+export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave, fixupEntry, targetGroup, groupColor }: CommitTooltipProps) {
     const [copied, setCopied] = useState(false);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
@@ -83,6 +91,28 @@ export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave }
                     <div>Parents: {commit.parentHashes.map(p => p.substring(0, 7)).join(', ')}</div>
                 )}
             </div>
+
+            {/* Fixup relationship info */}
+            {fixupEntry && (
+                <div
+                    className="flex items-center gap-1.5 text-[11px] mb-2 px-2 py-1 rounded"
+                    style={{ backgroundColor: groupColor ? `${groupColor}18` : undefined, color: groupColor }}
+                    data-testid="tooltip-fixup-info"
+                >
+                    <span className="font-bold">{fixupEntry.pillLabel}</span>
+                    <span>for <span className="font-mono">{fixupEntry.targetHash.substring(0, 7)}</span> — {fixupEntry.displaySubject}</span>
+                </div>
+            )}
+            {targetGroup && (
+                <div
+                    className="flex items-center gap-1.5 text-[11px] mb-2 px-2 py-1 rounded"
+                    style={{ backgroundColor: groupColor ? `${groupColor}18` : undefined, color: groupColor }}
+                    data-testid="tooltip-fixup-target-info"
+                >
+                    <span className="font-bold">×{targetGroup.fixupHashes.length} fix</span>
+                    <span>Fixups: {targetGroup.fixupHashes.map(h => h.substring(0, 7)).join(', ')}</span>
+                </div>
+            )}
 
             {/* Body / description */}
             {commit.body && (

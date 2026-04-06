@@ -39,6 +39,7 @@ import { useQueue } from '../context/QueueContext';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
+import { buildFixupGroups } from './fixup-utils';
 
 /**
  * Best-effort rebind of commit-chat binding when a hash changes.
@@ -1047,6 +1048,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setPendingReorder(null);
     }, []);
 
+    // Compute fixup groups for context menu "Rebase autosquash" option
+    const fixupGroupsForMenu = useMemo(() => buildFixupGroups(commits), [commits]);
+
     const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!contextMenu) return [];
         const items: ContextMenuItem[] = [];
@@ -1078,6 +1082,15 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     label: 'Amend Title\u2026',
                     icon: '✏️',
                     onClick: () => { closeContextMenu(); setRewordingCommit(commit); },
+                });
+            }
+            // Show "Rebase autosquash from here" on target commits that have fixups
+            if (fixupGroupsForMenu.targetGroups.has(commit.hash)) {
+                items.push({ label: '', separator: true, onClick: () => {} });
+                items.push({
+                    label: 'Rebase Autosquash from Here',
+                    icon: '📦',
+                    onClick: () => { closeContextMenu(); handleRebaseAutosquash(); },
                 });
             }
             items.push({ label: '', separator: true, onClick: () => {} });
@@ -1170,7 +1183,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId]);
+    }, [contextMenu, skills, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash]);
 
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {

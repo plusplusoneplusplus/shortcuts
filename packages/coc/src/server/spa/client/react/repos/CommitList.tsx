@@ -8,7 +8,7 @@
  * ↑/↓ and Enter.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
 import { CommitTooltip } from './CommitTooltip';
@@ -18,6 +18,8 @@ import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { useCommitCommentTotals } from '../hooks/useCommitCommentTotals';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';
+import { buildFixupGroups, FIXUP_GROUP_COLORS_LIGHT, FIXUP_GROUP_COLORS_DARK } from './fixup-utils';
+import type { FixupGroupMap } from './fixup-utils';
 
 export interface GitCommitItem {
     hash: string;
@@ -98,6 +100,13 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
         workspaceId ?? '',
         commits.map(c => c.hash),
     );
+
+    // Build fixup group map for visual grouping
+    const fixupGroups: FixupGroupMap = useMemo(() => buildFixupGroups(commits), [commits]);
+
+    // Detect dark mode for color palette selection
+    const isDarkMode = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const groupColors = isDarkMode ? FIXUP_GROUP_COLORS_DARK : FIXUP_GROUP_COLORS_LIGHT;
 
     // Pre-compute storageKey → count lookup keyed by filePath for render-time access
     useEffect(() => {
@@ -370,6 +379,18 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                         const showSeparator = unpushedCount > 0 && index === unpushedCount;
                         const canDrag = reorderable && isUnpushed;
                         const isDragOver = dragOverIndex === index && dragIndex !== index;
+
+                        // Fixup group visual treatment
+                        const fixupEntry = fixupGroups.fixupEntries.get(commit.hash);
+                        const targetGroup = fixupGroups.targetGroups.get(commit.hash);
+                        const isFixup = !!fixupEntry;
+                        const hasFixups = !!targetGroup;
+                        const groupColor = fixupEntry
+                            ? groupColors[fixupEntry.colorSlot]
+                            : targetGroup
+                                ? groupColors[targetGroup.colorSlot]
+                                : undefined;
+
                         return (
                             <div
                                 key={commit.hash}
@@ -393,20 +414,39 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                     role="option"
                                     aria-selected={isSelected}
                                     data-hash={commit.hash}
-                                    className={`commit-row w-full flex items-start gap-2 px-3 py-2 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}`}
+                                    className={`commit-row w-full flex items-start gap-2 px-3 py-2 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}`}
                                     onClick={(e) => handleCommitClick(commit, e)}
                                     onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
                                     onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
                                     onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
                                     data-testid={`commit-row-${commit.shortHash}`}
+                                    data-fixup-type={fixupEntry?.type}
+                                    data-fixup-target={fixupEntry?.targetHash}
                                 >
                                     {canDrag && (
                                         <span className="text-[10px] mt-0.5 flex-shrink-0 cursor-grab text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]" title="Drag to reorder">⠿</span>
                                     )}
-                                    <span className="text-[10px] mt-0.5 flex-shrink-0">{isUnpushed ? '●' : '○'}</span>
+                                    <span
+                                        className="text-[10px] mt-0.5 flex-shrink-0"
+                                        style={groupColor ? { color: groupColor } : undefined}
+                                        data-testid={groupColor ? `fixup-dot-${commit.shortHash}` : undefined}
+                                    >
+                                        {isUnpushed ? '●' : '○'}
+                                    </span>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-start gap-2">
                                             <span className={`font-mono text-xs flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
+                                            {/* Fixup pill badge */}
+                                            {fixupEntry && (
+                                                <span
+                                                    className="text-[10px] font-bold px-1.5 py-0 rounded-full leading-[18px] flex-shrink-0"
+                                                    style={{ backgroundColor: groupColor, color: '#fff' }}
+                                                    title={`${fixupEntry.type} for ${fixupEntry.targetHash.substring(0, 7)} — ${fixupEntry.displaySubject}`}
+                                                    data-testid={`fixup-pill-${commit.shortHash}`}
+                                                >
+                                                    {fixupEntry.pillLabel}
+                                                </span>
+                                            )}
                                             {(() => {
                                                 const count = commitTotals.get(commit.hash) ?? 0;
                                                 return count > 0 ? (
@@ -419,7 +459,20 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                                     </span>
                                                 ) : null;
                                             })()}
-                                            <span className="text-xs text-[#1e1e1e] dark:text-[#ccc] break-words min-w-0">{commit.subject}</span>
+                                            <span className="text-xs text-[#1e1e1e] dark:text-[#ccc] break-words min-w-0">
+                                                {isFixup ? fixupEntry!.displaySubject : commit.subject}
+                                            </span>
+                                            {/* Target commit fixup count */}
+                                            {hasFixups && (
+                                                <span
+                                                    className="text-[10px] flex-shrink-0 ml-auto whitespace-nowrap"
+                                                    style={{ color: groupColor }}
+                                                    title={`Fixups: ${targetGroup!.fixupHashes.map(h => h.substring(0, 7)).join(', ')}`}
+                                                    data-testid={`fixup-count-${commit.shortHash}`}
+                                                >
+                                                    ×{targetGroup!.fixupHashes.length} fix
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="text-[11px] text-[#848484] mt-0.5">
                                             {formatRelativeTime(commit.date)} · {commit.author}
@@ -465,9 +518,26 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                 </>
             )}
             {/* Hover tooltip */}
-            {hoveredCommit && tooltipAnchorRect && (
-                <CommitTooltip commit={hoveredCommit} anchorRect={tooltipAnchorRect} onMouseEnter={handleTooltipMouseEnter} onMouseLeave={handleTooltipMouseLeave} />
-            )}
+            {hoveredCommit && tooltipAnchorRect && (() => {
+                const hovFixupEntry = fixupGroups.fixupEntries.get(hoveredCommit.hash);
+                const hovTargetGroup = fixupGroups.targetGroups.get(hoveredCommit.hash);
+                const hovGroupColor = hovFixupEntry
+                    ? groupColors[hovFixupEntry.colorSlot]
+                    : hovTargetGroup
+                        ? groupColors[hovTargetGroup.colorSlot]
+                        : undefined;
+                return (
+                    <CommitTooltip
+                        commit={hoveredCommit}
+                        anchorRect={tooltipAnchorRect}
+                        onMouseEnter={handleTooltipMouseEnter}
+                        onMouseLeave={handleTooltipMouseLeave}
+                        fixupEntry={hovFixupEntry}
+                        targetGroup={hovTargetGroup}
+                        groupColor={hovGroupColor}
+                    />
+                );
+            })()}
         </div>
     );
 }
