@@ -38,6 +38,10 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+    useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => ({
     usePopOut: () => ({
         poppedOutTasks: mockPoppedOutTasks,

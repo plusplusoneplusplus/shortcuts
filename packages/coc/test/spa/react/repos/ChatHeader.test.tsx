@@ -1,0 +1,330 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+
+// --- Hoisted mocks ---
+const { mockContainerWidth, mockBreakpoint } = vi.hoisted(() => ({
+    mockContainerWidth: { width: 800, tier: 'wide' as const, isWide: true, isMedium: false, isNarrow: false },
+    mockBreakpoint: { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+    useContainerWidth: () => mockContainerWidth,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => mockBreakpoint,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+    useFloatingChats: () => ({
+        isFloating: () => false,
+        floatingChats: new Map(),
+        floatChat: vi.fn(),
+        unfloatChat: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/shared', async () => {
+    const actual = await vi.importActual('../../../../src/server/spa/client/react/shared');
+    return {
+        ...actual,
+        Badge: ({ children, status }: any) => <span data-testid="badge" data-status={status}>{children}</span>,
+        Button: ({ children, onClick, loading }: any) => (
+            <button onClick={onClick} disabled={loading} data-testid="resume-cli-btn">{children}</button>
+        ),
+    };
+});
+
+vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
+    ReferencesDropdown: ({ planPath, files }: any) => {
+        const total = (planPath ? 1 : 0) + (files?.length ?? 0);
+        return total > 0 ? <span data-testid="references-dropdown">Refs ({total})</span> : null;
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
+    ConversationMetadataPopover: () => <span data-testid="metadata-popover">i</span>,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/components/ContextWindowIndicator', () => ({
+    ContextWindowIndicator: ({ tokenLimit }: any) =>
+        tokenLimit ? <span data-testid="context-window">ctx</span> : null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
+    copyToClipboard: vi.fn().mockResolvedValue(undefined),
+    copyHtmlToClipboard: vi.fn().mockResolvedValue(undefined),
+    formatConversationAsText: vi.fn().mockReturnValue('text'),
+    formatConversationAsHtml: vi.fn().mockReturnValue('<html>'),
+    formatDuration: (ms: number) => `${ms}ms`,
+    statusIcon: (s: string) => s === 'completed' ? '✅' : '⏳',
+    statusLabel: (s: string) => s,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+    chatMarkdownToHtml: vi.fn().mockReturnValue('<p>html</p>'),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
+    cn: (...args: any[]) => args.filter(Boolean).join(' '),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/ChatHeaderOverflowMenu', () => ({
+    ChatHeaderOverflowMenu: ({ items }: any) =>
+        items.length > 0 ? <span data-testid="overflow-menu" data-count={items.length}>⋮</span> : null,
+}));
+
+import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/repos/ChatHeader';
+
+function defaultProps(overrides: Partial<ChatHeaderProps> = {}): ChatHeaderProps {
+    return {
+        task: { status: 'completed', duration: 5000 },
+        metadataProcess: { id: 'proc-1' },
+        planPath: '/some/plan.md',
+        createdFiles: [{ filePath: '/some/file.ts' }],
+        pinnedFile: undefined,
+        variant: 'inline',
+        isPopOut: false,
+        loading: false,
+        turns: [{ role: 'user', content: 'hello' } as any],
+        resumeLaunching: false,
+        resumeSessionId: 'session-1',
+        isPending: false,
+        sessionTokenLimit: 128000,
+        sessionCurrentTokens: 50000,
+        sessionModel: 'gpt-4',
+        copied: false,
+        setCopied: vi.fn(),
+        taskId: 'task-1',
+        onLaunchInteractiveResume: vi.fn(),
+        onPopOut: vi.fn(),
+        onFloat: vi.fn(),
+        onBack: vi.fn(),
+        title: 'Test Chat',
+        wsId: 'ws-1',
+        ...overrides,
+    };
+}
+
+function setTier(tier: 'wide' | 'medium' | 'narrow') {
+    mockContainerWidth.tier = tier;
+    mockContainerWidth.isWide = tier === 'wide';
+    mockContainerWidth.isMedium = tier === 'medium';
+    mockContainerWidth.isNarrow = tier === 'narrow';
+    mockContainerWidth.width = tier === 'wide' ? 800 : tier === 'medium' ? 600 : 400;
+}
+
+describe('ChatHeader', () => {
+    beforeEach(() => {
+        setTier('wide');
+        mockBreakpoint.isMobile = false;
+        mockBreakpoint.isDesktop = true;
+    });
+
+    describe('wide tier (>= 700px)', () => {
+        it('renders all elements inline', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.getByText('Test Chat')).toBeTruthy();
+            expect(screen.getByTestId('badge')).toBeTruthy();
+            expect(screen.getByTestId('references-dropdown')).toBeTruthy();
+            expect(screen.getByText('5000ms')).toBeTruthy();
+            expect(screen.getByTestId('resume-cli-btn')).toBeTruthy();
+            expect(screen.getByTestId('context-window')).toBeTruthy();
+            expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
+            expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
+            expect(screen.getByTestId('metadata-popover')).toBeTruthy();
+            expect(screen.getByTestId('activity-chat-float-btn')).toBeTruthy();
+            expect(screen.getByTestId('activity-chat-popout-btn')).toBeTruthy();
+        });
+
+        it('does not show overflow menu', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.queryByTestId('overflow-menu')).toBeNull();
+        });
+
+        it('shows full status label in badge', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            const badge = screen.getByTestId('badge');
+            expect(badge.textContent).toContain('completed');
+        });
+    });
+
+    describe('medium tier (500-699px)', () => {
+        beforeEach(() => setTier('medium'));
+
+        it('hides inline references, duration, resume CLI, context window', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.queryByTestId('references-dropdown')).toBeNull();
+            expect(screen.queryByText('5000ms')).toBeNull();
+            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
+            expect(screen.queryByTestId('context-window')).toBeNull();
+        });
+
+        it('hides inline HTML copy and metadata', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
+            expect(screen.queryByTestId('metadata-popover')).toBeNull();
+        });
+
+        it('shows overflow menu', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.getByTestId('overflow-menu')).toBeTruthy();
+        });
+
+        it('shows icon-only status badge (no label)', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            const badge = screen.getByTestId('badge');
+            expect(badge.textContent).not.toContain('completed');
+            expect(badge.textContent).toContain('✅');
+        });
+
+        it('still shows copy button directly', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
+        });
+
+        it('still shows float/popout buttons', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.getByTestId('activity-chat-float-btn')).toBeTruthy();
+            expect(screen.getByTestId('activity-chat-popout-btn')).toBeTruthy();
+        });
+    });
+
+    describe('narrow tier (< 500px)', () => {
+        beforeEach(() => setTier('narrow'));
+
+        it('hides inline secondary items', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.queryByTestId('references-dropdown')).toBeNull();
+            expect(screen.queryByText('5000ms')).toBeNull();
+            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
+            expect(screen.queryByTestId('context-window')).toBeNull();
+            expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
+            expect(screen.queryByTestId('metadata-popover')).toBeNull();
+        });
+
+        it('hides float/popout buttons (moved to overflow)', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.queryByTestId('activity-chat-float-btn')).toBeNull();
+            expect(screen.queryByTestId('activity-chat-popout-btn')).toBeNull();
+        });
+
+        it('shows overflow menu with more items', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu).toBeTruthy();
+            // Narrow includes float + popout in overflow
+            const wideCount = parseInt(menu.getAttribute('data-count') ?? '0');
+            expect(wideCount).toBeGreaterThan(5);
+        });
+
+        it('truncates the title', () => {
+            render(<ChatHeader {...defaultProps({ title: 'A very long chat title that should be truncated at narrow width' })} />);
+            const titleEl = screen.getByText('A very long chat title that should be truncated at narrow width');
+            expect(titleEl.className).toContain('truncate');
+            expect(titleEl.className).toContain('max-w-[120px]');
+        });
+
+        it('still shows back, title, badge, and copy', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.getByTestId('activity-chat-back-btn')).toBeTruthy();
+            expect(screen.getByText('Test Chat')).toBeTruthy();
+            expect(screen.getByTestId('badge')).toBeTruthy();
+            expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
+        });
+    });
+
+    describe('variant and popout behaviour', () => {
+        it('hides back button for floating variant', () => {
+            render(<ChatHeader {...defaultProps({ variant: 'floating' })} />);
+            expect(screen.queryByTestId('activity-chat-back-btn')).toBeNull();
+        });
+
+        it('hides float/popout buttons when isPopOut', () => {
+            render(<ChatHeader {...defaultProps({ isPopOut: true })} />);
+            expect(screen.queryByTestId('activity-chat-float-btn')).toBeNull();
+            expect(screen.queryByTestId('activity-chat-popout-btn')).toBeNull();
+        });
+
+        it('uses compact padding for floating variant', () => {
+            render(<ChatHeader {...defaultProps({ variant: 'floating' })} />);
+            const header = screen.getByTestId('chat-header');
+            expect(header.className).toContain('px-2 py-1');
+            expect(header.className).not.toContain('border-b');
+        });
+    });
+
+    describe('conditional elements', () => {
+        it('hides badge when task is null', () => {
+            render(<ChatHeader {...defaultProps({ task: null })} />);
+            expect(screen.queryByTestId('badge')).toBeNull();
+        });
+
+        it('hides resume CLI when isPending', () => {
+            render(<ChatHeader {...defaultProps({ isPending: true })} />);
+            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
+        });
+
+        it('hides resume CLI when no session', () => {
+            render(<ChatHeader {...defaultProps({ resumeSessionId: null })} />);
+            expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
+        });
+
+        it('hides context window when no token limit', () => {
+            render(<ChatHeader {...defaultProps({ sessionTokenLimit: undefined })} />);
+            expect(screen.queryByTestId('context-window')).toBeNull();
+        });
+
+        it('hides metadata when isPending', () => {
+            render(<ChatHeader {...defaultProps({ isPending: true })} />);
+            expect(screen.queryByTestId('metadata-popover')).toBeNull();
+        });
+
+        it('hides metadata when no metadataProcess', () => {
+            render(<ChatHeader {...defaultProps({ metadataProcess: null })} />);
+            expect(screen.queryByTestId('metadata-popover')).toBeNull();
+        });
+
+        it('shows default title "Chat" when title not provided', () => {
+            render(<ChatHeader {...defaultProps({ title: undefined })} />);
+            expect(screen.getByText('Chat')).toBeTruthy();
+        });
+
+        it('hides references when no files and no plan', () => {
+            render(<ChatHeader {...defaultProps({ planPath: '', createdFiles: [] })} />);
+            expect(screen.queryByTestId('references-dropdown')).toBeNull();
+        });
+
+        it('hides duration when task has no duration', () => {
+            render(<ChatHeader {...defaultProps({ task: { status: 'completed' } })} />);
+            expect(screen.queryByText('5000ms')).toBeNull();
+        });
+    });
+
+    describe('overflow menu content', () => {
+        it('includes references in overflow at medium tier', () => {
+            setTier('medium');
+            render(<ChatHeader {...defaultProps()} />);
+            const menu = screen.getByTestId('overflow-menu');
+            const count = parseInt(menu.getAttribute('data-count') ?? '0');
+            expect(count).toBeGreaterThanOrEqual(5); // html, metadata, refs, resume-cli, duration, ctx-window
+        });
+
+        it('has no overflow items when everything is hidden by props', () => {
+            setTier('medium');
+            render(<ChatHeader {...defaultProps({
+                task: null,
+                metadataProcess: null,
+                planPath: '',
+                createdFiles: [],
+                resumeSessionId: null,
+                isPending: true,
+                sessionTokenLimit: undefined,
+            })} />);
+            const menu = screen.getByTestId('overflow-menu');
+            // Only copy-html remains (always shown in overflow at < 700px)
+            const count = parseInt(menu.getAttribute('data-count') ?? '0');
+            expect(count).toBe(1);
+        });
+    });
+});

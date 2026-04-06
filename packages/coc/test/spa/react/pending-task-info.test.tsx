@@ -37,6 +37,10 @@ vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => (
     invalidateDisplaySettings: vi.fn(),
 }));
 
+vi.mock('../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+    useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>

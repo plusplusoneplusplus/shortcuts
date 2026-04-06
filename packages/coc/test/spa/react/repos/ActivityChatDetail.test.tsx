@@ -148,6 +148,10 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+    useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
+}));
+
 // useDraftStore
 vi.mock('../../../../src/server/spa/client/react/hooks/useDraftStore', () => ({
     getDraft: (...args: any[]) => mockState.getDraft(...args),

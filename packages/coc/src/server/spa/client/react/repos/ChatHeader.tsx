@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Badge } from '../shared';
 import { Button } from '../shared';
 import { ReferencesDropdown } from '../shared/ReferencesDropdown';
@@ -8,7 +8,9 @@ import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatC
 import { chatMarkdownToHtml } from '../processes/ConversationTurnBubble';
 import { cn } from '../shared/cn';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useContainerWidth, type ContainerWidthTier } from '../hooks/useContainerWidth';
 import { useFloatingChats } from '../context/FloatingChatsContext';
+import { ChatHeaderOverflowMenu, type OverflowMenuItem } from './ChatHeaderOverflowMenu';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 export interface ChatHeaderProps {
@@ -40,6 +42,130 @@ export interface ChatHeaderProps {
     wsId?: string;
 }
 
+/** Build overflow menu items based on what's hidden at the current container tier */
+function buildOverflowItems(
+    tier: ContainerWidthTier,
+    props: {
+        task: any;
+        loading: boolean;
+        turns: ClientConversationTurn[];
+        isPending: boolean;
+        resumeSessionId: string | null | undefined;
+        resumeLaunching: boolean;
+        onLaunchInteractiveResume: () => void;
+        metadataProcess: any;
+        planPath: string;
+        createdFiles: { filePath: string }[];
+        sessionTokenLimit: number | undefined;
+        sessionCurrentTokens: number | undefined;
+        sessionModel: string | undefined;
+        variant: 'inline' | 'floating';
+        isPopOut: boolean;
+        isMobile: boolean;
+        isFloatingChat: boolean;
+        taskId: string;
+        onFloat: () => void;
+        onPopOut: () => void;
+        onCopyHtml: () => void;
+        copiedHtml: boolean;
+    },
+): OverflowMenuItem[] {
+    if (tier === 'wide') return [];
+
+    const items: OverflowMenuItem[] = [];
+
+    // Copy HTML — always in overflow at < 700px
+    items.push({
+        key: 'copy-html',
+        label: props.copiedHtml ? '✓ Copied HTML' : 'Copy as HTML',
+        icon: <span className="text-[10px]">HTML</span>,
+        onClick: props.onCopyHtml,
+    });
+
+    // Metadata
+    if (!props.isPending && props.metadataProcess) {
+        items.push({
+            key: 'metadata',
+            label: 'Metadata',
+            icon: <span className="text-[10px] font-semibold">i</span>,
+            onClick: () => { /* handled via render */ },
+            render: () => (
+                <ConversationMetadataPopover process={props.metadataProcess} turnsCount={props.turns.length} />
+            ),
+        });
+    }
+
+    // References
+    const refTotal = (props.planPath ? 1 : 0) + (props.createdFiles?.length ?? 0);
+    if (refTotal > 0) {
+        items.push({
+            key: 'references',
+            label: `References (${refTotal})`,
+            onClick: () => { /* handled via render */ },
+            render: () => (
+                <ReferencesDropdown planPath={props.planPath} files={props.createdFiles} />
+            ),
+        });
+    }
+
+    // Resume CLI
+    if (!props.isPending && props.resumeSessionId) {
+        items.push({
+            key: 'resume-cli',
+            label: 'Resume CLI',
+            icon: <span className="text-xs">▶</span>,
+            onClick: props.onLaunchInteractiveResume,
+        });
+    }
+
+    // Duration
+    if (props.task?.duration != null) {
+        items.push({
+            key: 'duration',
+            label: `Duration: ${formatDuration(props.task.duration)}`,
+            icon: <span className="text-xs">⏱</span>,
+            onClick: () => {},
+        });
+    }
+
+    // Context window
+    if (props.sessionTokenLimit && props.sessionTokenLimit > 0) {
+        items.push({
+            key: 'context-window',
+            label: 'Context window',
+            onClick: () => {},
+            render: () => (
+                <ContextWindowIndicator
+                    tokenLimit={props.sessionTokenLimit}
+                    currentTokens={props.sessionCurrentTokens}
+                    modelName={props.sessionModel}
+                    className="flex max-w-[240px]"
+                />
+            ),
+        });
+    }
+
+    // Float / Pop-out — only in overflow at narrow (< 500px)
+    if (tier === 'narrow') {
+        if (props.variant !== 'floating' && !props.isPopOut && !props.isMobile && !props.isFloatingChat) {
+            items.push({
+                key: 'float',
+                label: 'Float in window',
+                onClick: props.onFloat,
+            });
+        }
+        if (!props.isPopOut && !props.isMobile && props.variant !== 'floating') {
+            items.push({
+                key: 'popout',
+                label: 'Pop out to new window',
+                onClick: props.onPopOut,
+            });
+        }
+    }
+
+    return items;
+}
+
 export function ChatHeader({
     task,
     metadataProcess,
@@ -69,54 +195,113 @@ export function ChatHeader({
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
     const [copiedHtml, setCopiedHtml] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const { tier } = useContainerWidth(containerRef);
+
+    const handleCopyHtml = async () => {
+        try {
+            const html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId));
+            await copyHtmlToClipboard(html);
+            setCopiedHtml(true);
+            setTimeout(() => setCopiedHtml(false), 2000);
+        } catch (e) {
+            console.error('Copy HTML failed:', e);
+        }
+    };
+
+    const isWide = tier === 'wide';
+    const isNarrow = tier === 'narrow';
+    const showFloatPopout = isWide || (!isNarrow);
+
+    const overflowItems = useMemo(() => buildOverflowItems(tier, {
+        task,
+        loading,
+        turns,
+        isPending,
+        resumeSessionId,
+        resumeLaunching,
+        onLaunchInteractiveResume,
+        metadataProcess,
+        planPath,
+        createdFiles,
+        sessionTokenLimit,
+        sessionCurrentTokens,
+        sessionModel,
+        variant,
+        isPopOut,
+        isMobile,
+        isFloatingChat: isFloating(taskId),
+        taskId,
+        onFloat,
+        onPopOut,
+        onCopyHtml: () => void handleCopyHtml(),
+        copiedHtml,
+    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
-        <div className={cn(
-            'flex items-center justify-between',
-            variant === 'floating'
-                ? 'px-2 py-1'
-                : 'px-4 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-        )}>
+        <div
+            ref={containerRef}
+            data-testid="chat-header"
+            className={cn(
+                'flex items-center justify-between',
+                variant === 'floating'
+                    ? 'px-2 py-1'
+                    : 'px-4 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
+            )}
+        >
+            {/* Left side */}
             <div className="flex items-center gap-2 min-w-0">
                 {onBack && variant !== 'floating' && (
                     <button
-                        className="inline-flex items-center justify-center px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
+                        className="inline-flex items-center justify-center px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1 flex-shrink-0"
                         onClick={onBack}
                         data-testid="activity-chat-back-btn"
                     >
                         ← Back
                     </button>
                 )}
-                <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">{title ?? 'Chat'}</span>
+                <span className={cn(
+                    'text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]',
+                    isNarrow && 'truncate max-w-[120px]',
+                )}>
+                    {title ?? 'Chat'}
+                </span>
                 {task && (
                     <Badge status={task.status}>
-                        {statusIcon(task.status)} {statusLabel(task.status)}
+                        {statusIcon(task.status)}{isWide ? ` ${statusLabel(task.status)}` : ''}
                     </Badge>
                 )}
-                <ReferencesDropdown planPath={planPath} files={createdFiles} />
-                {task?.duration != null && (
-                    <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
+                {/* References, duration, Resume CLI, context window — only in wide tier */}
+                {isWide && (
+                    <>
+                        <ReferencesDropdown planPath={planPath} files={createdFiles} />
+                        {task?.duration != null && (
+                            <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
+                        )}
+                        {!isPending && resumeSessionId && (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                loading={resumeLaunching}
+                                onClick={onLaunchInteractiveResume}
+                            >
+                                Resume CLI
+                            </Button>
+                        )}
+                        <ContextWindowIndicator
+                            tokenLimit={sessionTokenLimit}
+                            currentTokens={sessionCurrentTokens}
+                            modelName={sessionModel}
+                            className="flex ml-2 max-w-[180px]"
+                        />
+                    </>
                 )}
-                {!isPending && resumeSessionId && (
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        className="hidden sm:inline-flex"
-                        loading={resumeLaunching}
-                        onClick={onLaunchInteractiveResume}
-                    >
-                        Resume CLI
-                    </Button>
-                )}
-                <ContextWindowIndicator
-                    tokenLimit={sessionTokenLimit}
-                    currentTokens={sessionCurrentTokens}
-                    modelName={sessionModel}
-                    className="hidden sm:flex ml-2 max-w-[180px]"
-                />
             </div>
-            <div className="flex items-center gap-2">
-                {variant !== 'floating' && !isPopOut && !isMobile && !isFloating(taskId) && (
+
+            {/* Right side */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Float / Popout buttons — shown in wide + medium, hidden in narrow (moved to overflow) */}
+                {showFloatPopout && variant !== 'floating' && !isPopOut && !isMobile && !isFloating(taskId) && (
                     <button
                         title="Float in current window"
                         data-testid="activity-chat-float-btn"
@@ -129,7 +314,7 @@ export function ChatHeader({
                         </svg>
                     </button>
                 )}
-                {!isPopOut && !isMobile && variant !== 'floating' && (
+                {showFloatPopout && !isPopOut && !isMobile && variant !== 'floating' && (
                     <button
                         title="Pop out to new window"
                         data-testid="activity-chat-popout-btn"
@@ -143,6 +328,7 @@ export function ChatHeader({
                         </svg>
                     </button>
                 )}
+                {/* Copy conversation — always visible */}
                 <button
                     title="Copy conversation"
                     data-testid="copy-conversation-btn"
@@ -167,27 +353,25 @@ export function ChatHeader({
                         </svg>
                     )}
                 </button>
-                <button
-                    title="Copy conversation as HTML"
-                    data-testid="copy-conversation-html-btn"
-                    disabled={loading || turns.length === 0}
-                    onClick={async () => {
-                        try {
-                            const html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId));
-                            await copyHtmlToClipboard(html);
-                            setCopiedHtml(true);
-                            setTimeout(() => setCopiedHtml(false), 2000);
-                        } catch (e) {
-                            console.error('Copy HTML failed:', e);
-                        }
-                    }}
-                    className="inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                >
-                    {copiedHtml ? '✓' : 'HTML'}
-                </button>
-                {!isPending && metadataProcess && (
-                    <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                {/* Copy HTML + Metadata — inline only in wide tier */}
+                {isWide && (
+                    <>
+                        <button
+                            title="Copy conversation as HTML"
+                            data-testid="copy-conversation-html-btn"
+                            disabled={loading || turns.length === 0}
+                            onClick={() => void handleCopyHtml()}
+                            className="inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                        >
+                            {copiedHtml ? '✓' : 'HTML'}
+                        </button>
+                        {!isPending && metadataProcess && (
+                            <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                        )}
+                    </>
                 )}
+                {/* Overflow menu — shown at < 700px */}
+                {!isWide && <ChatHeaderOverflowMenu items={overflowItems} />}
             </div>
         </div>
     );
