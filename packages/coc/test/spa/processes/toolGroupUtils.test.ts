@@ -25,9 +25,11 @@ describe('getToolGroupCategory', () => {
         expect(getToolGroupCategory('create')).toBe('write');
     });
 
-    it('returns shell for powershell, shell', () => {
+    it('returns shell for powershell, shell, bash', () => {
         expect(getToolGroupCategory('powershell')).toBe('shell');
         expect(getToolGroupCategory('shell')).toBe('shell');
+        // bash is used on Linux/macOS — regression: was previously returning null
+        expect(getToolGroupCategory('bash')).toBe('shell');
     });
 
     it('returns null for task, skill, unknown, empty string', () => {

@@ -25,7 +25,7 @@ interface ToolCallLike {
     status?: string;
 }
 
-const SHELL_TOOL_NAMES = new Set(['powershell', 'shell']);
+const SHELL_TOOL_NAMES = new Set(['powershell', 'shell', 'bash']);
 
 /**
  * Standard git commit output pattern:

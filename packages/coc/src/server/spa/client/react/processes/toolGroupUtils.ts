@@ -29,6 +29,7 @@ export const CATEGORY_MAP: Record<string, ToolGroupCategory> = {
     create:     'write',
     powershell: 'shell',
     shell:      'shell',
+    bash:       'shell',
 };
 
 export const CATEGORY_ICONS: Record<ToolGroupCategory, string> = {

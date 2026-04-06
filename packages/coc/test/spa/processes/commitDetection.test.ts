@@ -277,6 +277,40 @@ describe('detectCommitsInToolGroup', () => {
             expect(commits).toHaveLength(1);
         });
 
+        it('accepts bash as tool name (Linux/macOS regression)', () => {
+            // On Linux/macOS the Copilot agent uses the "bash" tool name, not "shell" or "powershell".
+            // Regression: bash tool calls were previously excluded from commit detection.
+            const toolCalls = [
+                {
+                    id: 't1',
+                    toolName: 'bash',
+                    args: { command: 'git add -A && git commit -m "feat: add thing"', description: 'Commit changes' },
+                    result: '[main 2fe0d631] feat: add thing\n 7 files changed, 153 insertions(+), 4 deletions(-)',
+                    status: 'completed',
+                },
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].shortHash).toBe('2fe0d631');
+            expect(commits[0].subject).toBe('feat: add thing');
+            expect(commits[0].branch).toBe('main');
+            expect(commits[0].filesChanged).toBe(7);
+            expect(commits[0].insertions).toBe(153);
+            expect(commits[0].deletions).toBe(4);
+            expect(commits[0].toolCallId).toBe('t1');
+            expect(commits[0].isFixup).toBe(false);
+        });
+
+        it('bash tool: ignores read-only git commands', () => {
+            const toolCalls = [
+                { id: 't1', toolName: 'bash', args: { command: 'git log --oneline' }, result: '[main abc1234] Some old commit', status: 'completed' },
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(0);
+        });
+
         it('handles unknown command but matching git commit output', () => {
             // When args are missing, we should still try to detect
             const toolCalls = [
