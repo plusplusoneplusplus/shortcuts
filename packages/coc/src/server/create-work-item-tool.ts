@@ -69,6 +69,9 @@ export function createWorkItemTool(
 
     const tool = defineTool<CreateWorkItemArgs>('create_work_item', {
         description:
+            'IMPORTANT: Before calling this tool, you MUST first invoke the `create-work-item` skill ' +
+            'to interactively draft, refine, and confirm the work item with the user. ' +
+            'Only call this tool after the skill has completed the draft → refine → confirm workflow. ' +
             'Create a new work item in the Work Items page for this repository. ' +
             'Use this when the user asks to create a work item, track a feature request, ' +
             'file a bug, or save a task for later execution. ' +
