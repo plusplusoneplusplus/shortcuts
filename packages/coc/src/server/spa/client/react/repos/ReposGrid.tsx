@@ -11,6 +11,7 @@ import { fetchApi } from '../hooks/useApi';
 import { FirstStepsCard } from '../welcome/FirstStepsCard';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { Button, cn } from '../shared';
+import { ReposEmptyState } from './ReposEmptyState';
 import { RepoCard } from './RepoCard';
 import { AddRepoDialog } from './AddRepoDialog';
 import { AddFolderDialog } from './AddFolderDialog';
@@ -336,10 +337,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                     SHOW_WELCOME_TUTORIAL && !state.onboardingProgress?.dismissed ? (
                         <FirstStepsCard onAddRepo={() => setAddOpen(true)} />
                     ) : (
-                        <div id="repos-empty" data-testid="repos-empty" className="text-center text-xs text-[#848484] py-8">
-                            No repositories registered.
-                            <br />Click &quot;+ Add&quot; to register a workspace.
-                        </div>
+                        <ReposEmptyState onAddRepo={() => setAddOpen(true)} />
                     )
                 ) : (
                     groups.map((group, idx) => renderGroup(group, idx))

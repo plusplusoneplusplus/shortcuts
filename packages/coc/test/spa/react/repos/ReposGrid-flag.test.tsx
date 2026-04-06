@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 // Mock featureFlags BEFORE importing components.
@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('ReposGrid with SHOW_WELCOME_TUTORIAL = false', () => {
-    it('shows empty state instead of FirstStepsCard when flag is false and no repos', async () => {
+    it('shows ReposEmptyState instead of FirstStepsCard when flag is false and no repos', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({}),
@@ -42,6 +42,28 @@ describe('ReposGrid with SHOW_WELCOME_TUTORIAL = false', () => {
         await waitFor(() => {
             expect(screen.getByTestId('repos-empty')).toBeTruthy();
         });
+        expect(screen.getByText('No repositories yet')).toBeTruthy();
+        expect(screen.getByText('+ Add Repository')).toBeTruthy();
         expect(screen.queryByTestId('first-steps-card')).toBeNull();
+    });
+
+    it('CTA button click opens AddRepoDialog', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({}),
+        }));
+        render(
+            <Wrap>
+                <ReposGrid repos={[]} onRefresh={vi.fn()} />
+            </Wrap>,
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('repos-empty')).toBeTruthy();
+        });
+        const ctaButton = screen.getByText('+ Add Repository');
+        fireEvent.click(ctaButton);
+        await waitFor(() => {
+            expect(document.getElementById('add-repo-overlay')).toBeTruthy();
+        });
     });
 });
