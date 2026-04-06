@@ -237,8 +237,10 @@ export function FlatFileList({
                                 {displayStatus}
                             </span>
                             {file.oldPath ? (
-                                <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 truncate" title={`${file.oldPath} → ${file.path}`}>
-                                    {file.oldPath} → {file.path}
+                                <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 flex items-center gap-0" title={`${file.oldPath} → ${file.path}`}>
+                                    <TruncatedPath path={file.oldPath} className="text-[#1e1e1e] dark:text-[#ccc]" />
+                                    <span className="flex-shrink-0 mx-0.5"> → </span>
+                                    <TruncatedPath path={file.path} className="text-[#1e1e1e] dark:text-[#ccc]" />
                                 </span>
                             ) : (
                                 <TruncatedPath path={file.path} className="text-[#1e1e1e] dark:text-[#ccc] flex-1" />
@@ -468,9 +470,15 @@ function FileEntry({
                 >
                     {displayStatus}
                 </span>
-                <span className="text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 truncate" title={node.oldPath ? `${node.oldPath} → ${node.path}` : undefined}>
-                    {node.name}
-                </span>
+                {node.oldPath ? (
+                    <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 flex items-center gap-0" title={`${node.oldPath} → ${node.path}`}>
+                        <TruncatedPath path={node.oldPath} className="text-[#1e1e1e] dark:text-[#ccc]" />
+                        <span className="flex-shrink-0 mx-0.5"> → </span>
+                        <TruncatedPath path={node.path} className="text-[#1e1e1e] dark:text-[#ccc]" />
+                    </span>
+                ) : (
+                    <TruncatedPath path={node.name} className="text-[#1e1e1e] dark:text-[#ccc] flex-1" />
+                )}
                 {node.additions !== undefined && (
                     <span className="text-[#16825d] text-xs flex-shrink-0">+{node.additions}</span>
                 )}

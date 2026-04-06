@@ -120,8 +120,10 @@ export function BranchAllFilesDiff({ workspaceId, files, onFileSelect }: BranchA
                                     {normalizeStatus(file.status)}
                                 </span>
                                 {file.oldPath ? (
-                                    <span className="font-mono text-xs text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 truncate" title={`${file.oldPath} → ${file.path}`}>
-                                        {file.oldPath} → {file.path}
+                                    <span className="font-mono text-xs text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 flex items-center gap-0" title={`${file.oldPath} → ${file.path}`}>
+                                        <TruncatedPath path={file.oldPath} className="text-xs text-[#1e1e1e] dark:text-[#ccc]" />
+                                        <span className="flex-shrink-0 mx-0.5"> → </span>
+                                        <TruncatedPath path={file.path} className="text-xs text-[#1e1e1e] dark:text-[#ccc]" />
                                     </span>
                                 ) : (
                                     <TruncatedPath path={file.path} className="text-xs text-[#1e1e1e] dark:text-[#ccc] flex-1" />

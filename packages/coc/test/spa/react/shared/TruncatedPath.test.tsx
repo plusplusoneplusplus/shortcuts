@@ -17,7 +17,6 @@ describe('TruncatedPath', () => {
         const el = screen.getByTitle('README.md');
         expect(el).toBeDefined();
         expect(el.textContent).toBe('README.md');
-        // Should have a single child span (the filename)
         expect(el.children).toHaveLength(1);
     });
 
@@ -25,7 +24,6 @@ describe('TruncatedPath', () => {
         render(<TruncatedPath path="packages/coc/src/index.ts" />);
         const el = screen.getByTitle('packages/coc/src/index.ts');
         expect(el).toBeDefined();
-        // Two child spans: dir prefix + filename
         expect(el.children).toHaveLength(2);
         expect(el.children[0].textContent).toBe('packages/coc/src/');
         expect(el.children[1].textContent).toBe('index.ts');
@@ -38,11 +36,11 @@ describe('TruncatedPath', () => {
         expect(el).toBeDefined();
     });
 
-    it('applies the truncate class on the directory prefix', () => {
+    it('applies whitespace-nowrap on the directory prefix', () => {
         render(<TruncatedPath path="a/b/c/file.ts" />);
         const el = screen.getByTitle('a/b/c/file.ts');
         const dirSpan = el.children[0] as HTMLElement;
-        expect(dirSpan.className).toContain('truncate');
+        expect(dirSpan.className).toContain('whitespace-nowrap');
     });
 
     it('applies flex-shrink-0 on the filename span', () => {
@@ -67,23 +65,103 @@ describe('TruncatedPath', () => {
     it('handles root-level file (leading slash)', () => {
         render(<TruncatedPath path="/file.ts" />);
         const el = screen.getByTitle('/file.ts');
-        // sep=0 means dirPrefix is empty (sep > 0 check), so only filename span
-        expect(el.children).toHaveLength(1);
-        expect(el.textContent).toBe('file.ts');
+        // leading empty segment + filename => dir="/", shows 2 children
+        expect(el.children).toHaveLength(2);
+        expect(el.children[0].textContent).toBe('/');
+        expect(el.children[1].textContent).toBe('file.ts');
     });
 
-    it('preserves full text content of the path', () => {
+    it('preserves full text content for paths within maxSegments', () => {
         const path = 'packages/coc/src/server/handler.ts';
         render(<TruncatedPath path={path} />);
         const el = screen.getByTitle(path);
         expect(el.textContent).toBe(path);
     });
 
-    it('handles deeply nested paths', () => {
+    // --- JS-level middle-truncation tests ---
+
+    it('does not truncate paths with segments <= maxSegments (default 5)', () => {
+        const path = 'packages/coc/src/server/handler.ts'; // 4 dir segments
+        render(<TruncatedPath path={path} />);
+        const el = screen.getByTitle(path);
+        expect(el.children[0].textContent).toBe('packages/coc/src/server/');
+        expect(el.children[1].textContent).toBe('handler.ts');
+    });
+
+    it('does not truncate paths with exactly maxSegments dir segments', () => {
+        const path = 'a/b/c/d/e/file.ts'; // 5 dir segments = default maxSegments
+        render(<TruncatedPath path={path} />);
+        const el = screen.getByTitle(path);
+        expect(el.children[0].textContent).toBe('a/b/c/d/e/');
+        expect(el.children[1].textContent).toBe('file.ts');
+    });
+
+    it('middle-truncates deeply nested paths (default maxSegments=5)', () => {
+        const path = 'packages/coc/src/server/spa/client/react/hooks/useScriptTemplates.ts';
+        render(<TruncatedPath path={path} />);
+        const el = screen.getByTitle(path);
+        // 8 dir segments > 5: head=3, tail=2 → packages/coc/src/…/react/hooks/
+        expect(el.children[0].textContent).toBe('packages/coc/src/…/react/hooks/');
+        expect(el.children[1].textContent).toBe('useScriptTemplates.ts');
+    });
+
+    it('middle-truncates with 6 dir segments (just over default)', () => {
+        const path = 'a/b/c/d/e/f/file.ts'; // 6 dir segments
+        render(<TruncatedPath path={path} />);
+        const el = screen.getByTitle(path);
+        // head=3, tail=2 → a/b/c/…/e/f/
+        expect(el.children[0].textContent).toBe('a/b/c/…/e/f/');
+        expect(el.children[1].textContent).toBe('file.ts');
+    });
+
+    it('respects custom maxSegments prop', () => {
+        const path = 'a/b/c/d/e/f/file.ts'; // 6 dir segments
+        render(<TruncatedPath path={path} maxSegments={3} />);
+        const el = screen.getByTitle(path);
+        // maxSegments=3: head=2, tail=1 → a/b/…/f/
+        expect(el.children[0].textContent).toBe('a/b/…/f/');
+        expect(el.children[1].textContent).toBe('file.ts');
+    });
+
+    it('handles maxSegments=1', () => {
+        const path = 'a/b/c/d/file.ts'; // 4 dir segments
+        render(<TruncatedPath path={path} maxSegments={1} />);
+        const el = screen.getByTitle(path);
+        // head=1, tail=0 → a/…/
+        expect(el.children[0].textContent).toBe('a/…/');
+        expect(el.children[1].textContent).toBe('file.ts');
+    });
+
+    it('handles maxSegments=2', () => {
+        const path = 'a/b/c/d/file.ts'; // 4 dir segments
+        render(<TruncatedPath path={path} maxSegments={2} />);
+        const el = screen.getByTitle(path);
+        // head=1, tail=1 → a/…/d/
+        expect(el.children[0].textContent).toBe('a/…/d/');
+        expect(el.children[1].textContent).toBe('file.ts');
+    });
+
+    it('handles Windows-style backslash paths', () => {
+        const path = 'packages\\coc\\src\\server\\spa\\client\\react\\hooks\\useScriptTemplates.ts';
+        render(<TruncatedPath path={path} />);
+        const el = screen.getByTitle(path);
+        // 8 dir segments > 5: head=3, tail=2 → packages\coc\src\…\react\hooks\
+        expect(el.children[0].textContent).toBe('packages\\coc\\src\\…\\react\\hooks\\');
+        expect(el.children[1].textContent).toBe('useScriptTemplates.ts');
+    });
+
+    it('handles Windows paths within maxSegments', () => {
+        const path = 'src\\server\\index.ts'; // 2 dir segments
+        render(<TruncatedPath path={path} />);
+        const el = screen.getByTitle(path);
+        expect(el.children[0].textContent).toBe('src\\server\\');
+        expect(el.children[1].textContent).toBe('index.ts');
+    });
+
+    it('title tooltip always shows the full untruncated path', () => {
         const path = 'a/b/c/d/e/f/g/h/deep.tsx';
         render(<TruncatedPath path={path} />);
         const el = screen.getByTitle(path);
-        expect(el.children[0].textContent).toBe('a/b/c/d/e/f/g/h/');
-        expect(el.children[1].textContent).toBe('deep.tsx');
+        expect(el.getAttribute('title')).toBe(path);
     });
 });
