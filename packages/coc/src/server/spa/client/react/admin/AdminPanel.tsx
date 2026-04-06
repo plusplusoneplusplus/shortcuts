@@ -69,6 +69,9 @@ export function AdminPanel() {
     const [chatFollowUpEnabled, setChatFollowUpEnabled] = useState(true);
     const [chatFollowUpCount, setChatFollowUpCount] = useState('3');
 
+    // Server name (cosmetic display name in title bar)
+    const [serverName, setServerName] = useState('');
+
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
 
@@ -129,6 +132,7 @@ export function AdminPanel() {
             setTaskCardDensity((resolved.taskCardDensity === 'dense' ? 'dense' : 'compact') as 'compact' | 'dense');
             setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
             setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
+            setServerName(resolved.serve?.serverName ?? '');
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -265,6 +269,26 @@ export function AdminPanel() {
             setDisplaySaving(false);
         }
     }, [taskCardDensity, addToast]);
+
+    const handleSaveServerName = useCallback(async () => {
+        const trimmed = serverName.trim();
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'serve.serverName': trimmed || null }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            setServerName(trimmed);
+            addToast('Server name saved — takes effect on next page reload', 'success');
+            await loadConfig();
+        } catch (err: any) {
+            addToast(err.message || 'Could not save server name', 'error');
+        }
+    }, [serverName, addToast, loadConfig]);
 
     const handleExport= useCallback(async () => {
         setExportStatus('Exporting…');
@@ -889,6 +913,33 @@ export function AdminPanel() {
                                 Serve{' '}
                                 <span className="font-mono">{resolved.serve?.host ?? '0.0.0.0'}:{resolved.serve?.port ?? '4000'}</span>
                                 {resolved.serve?.dataDir && <span className="ml-2 font-mono">{resolved.serve.dataDir}</span>}
+                            </div>
+                        </div>
+
+                        <hr className={dividerClass} />
+
+                        {/* Server name */}
+                        <div>
+                            <div className={sectionHeadClass}>Display Name</div>
+                            <p className="text-xs text-[#616161] dark:text-[#999] mb-2">
+                                Short name shown in the dashboard title bar (e.g. <code className="bg-black/5 dark:bg-white/5 px-1 rounded">MBP</code>).
+                                Leave blank to use the auto-shortened hostname.
+                                Takes effect on next page reload.
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <label className={labelClass} htmlFor="admin-server-name">Name</label>
+                                <input
+                                    id="admin-server-name"
+                                    type="text"
+                                    maxLength={64}
+                                    placeholder={resolved.serve?.host ? `auto (${resolved.serve.host})` : 'auto'}
+                                    value={serverName}
+                                    onChange={e => setServerName(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleSaveServerName(); }}
+                                    className={inputClass}
+                                />
+                                <SourceBadge source={sources['serve.serverName']} />
+                                <Button id="admin-server-name-save" variant="secondary" size="sm" onClick={handleSaveServerName}>Save</Button>
                             </div>
                         </div>
 

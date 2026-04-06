@@ -205,7 +205,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'serve.serverName'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -259,6 +259,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     errors.push('groupSingleLineMessages must be a boolean');
                 }
             }
+            if ('serve.serverName' in body) {
+                const val = body['serve.serverName'];
+                if (val !== null && val !== undefined && (typeof val !== 'string' || val.length > 64)) {
+                    errors.push('serve.serverName must be a string of at most 64 characters, or null to clear');
+                }
+            }
 
             // Validate nested chat.followUpSuggestions fields
             const chatBody = body['chat.followUpSuggestions.enabled'] !== undefined || body['chat.followUpSuggestions.count'] !== undefined
@@ -295,6 +301,17 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('toolCompactness' in body) { existing.toolCompactness = body.toolCompactness as CLIConfig['toolCompactness']; }
             if ('taskCardDensity' in body) { existing.taskCardDensity = body.taskCardDensity as CLIConfig['taskCardDensity']; }
             if ('groupSingleLineMessages' in body) { existing.groupSingleLineMessages = body.groupSingleLineMessages as boolean; }
+
+            // Handle serve.serverName (cosmetic override for dashboard title)
+            if ('serve.serverName' in body) {
+                const val = body['serve.serverName'];
+                if (val === null || val === '') {
+                    if (existing.serve) { delete existing.serve.serverName; }
+                } else {
+                    if (!existing.serve) { existing.serve = {}; }
+                    existing.serve.serverName = val as string;
+                }
+            }
 
             // Handle nested chat.followUpSuggestions fields
             if ('chat.followUpSuggestions.enabled' in body) {

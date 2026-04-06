@@ -1120,6 +1120,70 @@ describe('Admin Handler', () => {
     // GET /api/admin/import-token
     // ========================================================================
 
+    describe('serve.serverName', () => {
+        it('should accept a valid serverName string', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'serve.serverName': 'MBP' }),
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.serve?.serverName).toBe('MBP');
+            expect(body.sources['serve.serverName']).toBe('file');
+        });
+
+        it('should clear serverName when null is sent', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            // First set it
+            await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'serve.serverName': 'MBP' }),
+            });
+            // Then clear it
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'serve.serverName': null }),
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.serve?.serverName).toBeUndefined();
+        });
+
+        it('should reject serverName longer than 64 characters', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'serve.serverName': 'a'.repeat(65) }),
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('serve.serverName');
+        });
+
+        it('should preserve other serve fields when setting serverName', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'serve.serverName': 'MyServer' }),
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            // Other serve fields should still have defaults
+            expect(body.resolved.serve?.port).toBe(4000);
+            expect(body.resolved.serve?.theme).toBe('auto');
+        });
+    });
+
     describe('GET /api/admin/import-token', () => {
         it('should return a token and expiry', async () => {
             const srv = await startServer();

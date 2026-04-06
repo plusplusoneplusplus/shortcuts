@@ -44,6 +44,7 @@ export interface CLIConfig {
         host?: string;
         dataDir?: string;
         theme?: 'auto' | 'light' | 'dark';
+        serverName?: string;
     };
 }
 
