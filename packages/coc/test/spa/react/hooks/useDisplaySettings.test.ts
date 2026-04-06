@@ -29,31 +29,31 @@ describe('useDisplaySettings', () => {
         expect(source).toContain('toolCompactness: 0 | 1 | 2 | 3');
     });
 
-    it('includes toolCompactness default of 1 in DEFAULT_SETTINGS', () => {
-        expect(source).toContain('toolCompactness: 1');
+    it('includes toolCompactness default of 3 in DEFAULT_SETTINGS', () => {
+        expect(source).toContain('toolCompactness: 3');
     });
 
     it('maps toolCompactness from resolved in fetchDisplaySettings', () => {
         expect(source).toContain('data?.resolved?.toolCompactness');
     });
 
-    it('falls back to 1 when toolCompactness is absent', () => {
-        expect(source).toContain('data?.resolved?.toolCompactness ?? 1');
+    it('falls back to 3 when toolCompactness is absent', () => {
+        expect(source).toContain('data?.resolved?.toolCompactness ?? 3');
     });
 
     it('includes taskCardDensity in DisplaySettings interface', () => {
         expect(source).toContain("taskCardDensity: 'compact' | 'dense'");
     });
 
-    it('includes taskCardDensity default of compact in DEFAULT_SETTINGS', () => {
-        expect(source).toContain("taskCardDensity: 'compact'");
+    it('includes taskCardDensity default of dense in DEFAULT_SETTINGS', () => {
+        expect(source).toContain("taskCardDensity: 'dense'");
     });
 
     it('maps taskCardDensity from resolved in fetchDisplaySettings', () => {
         expect(source).toContain('data?.resolved?.taskCardDensity');
     });
 
-    it('falls back to compact when taskCardDensity is absent', () => {
-        expect(source).toContain("taskCardDensity === 'dense' ? 'dense' : 'compact'");
+    it('falls back to dense when taskCardDensity is absent', () => {
+        expect(source).toContain("taskCardDensity === 'compact' ? 'compact' : 'dense'");
     });
 });

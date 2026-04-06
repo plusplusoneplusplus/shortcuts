@@ -50,7 +50,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.approvePermissions).toBe(false);
             expect(DEFAULT_CONFIG.persist).toBe(true);
             expect(DEFAULT_CONFIG.showReportIntent).toBe(false);
-            expect(DEFAULT_CONFIG.toolCompactness).toBe(0);
+            expect(DEFAULT_CONFIG.toolCompactness).toBe(3);
             expect(DEFAULT_CONFIG.model).toBeUndefined();
             expect(DEFAULT_CONFIG.mcpConfig).toBeUndefined();
             expect(DEFAULT_CONFIG.timeout).toBeUndefined();
@@ -340,7 +340,7 @@ timeout: 300
         it('should preserve toolCompactness default when not overridden', () => {
             const override: CLIConfig = { model: 'test' };
             const result = mergeConfig(DEFAULT_CONFIG, override);
-            expect(result.toolCompactness).toBe(0);
+            expect(result.toolCompactness).toBe(3);
         });
 
         it('should override chat.followUpSuggestions.enabled from file', () => {
@@ -553,7 +553,7 @@ timeout: 300
             fs.writeFileSync(configPath, 'model: test\n');
             const result = getResolvedConfigWithSource(configPath);
 
-            expect(result.resolved.toolCompactness).toBe(0);
+            expect(result.resolved.toolCompactness).toBe(3);
             expect(result.sources['toolCompactness']).toBe('default');
         });
     });

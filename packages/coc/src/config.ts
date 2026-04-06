@@ -167,8 +167,8 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     approvePermissions: false,
     persist: true,
     showReportIntent: false,
-    toolCompactness: 0,
-    taskCardDensity: 'compact',
+    toolCompactness: 3,
+    taskCardDensity: 'dense',
     groupSingleLineMessages: true,
     chat: {
         followUpSuggestions: {

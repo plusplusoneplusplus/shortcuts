@@ -61,8 +61,8 @@ export function AdminPanel() {
 
     // Display settings
     const [showReportIntent, setShowReportIntent] = useState(false);
-    const [toolCompactness, setToolCompactness] = useState<0 | 1 | 2 | 3>(0);
-    const [taskCardDensity, setTaskCardDensity] = useState<'compact' | 'dense'>('compact');
+    const [toolCompactness, setToolCompactness] = useState<0 | 1 | 2 | 3>(3);
+    const [taskCardDensity, setTaskCardDensity] = useState<'compact' | 'dense'>('dense');
     const [displaySaving, setDisplaySaving] = useState(false);
 
     // Chat settings

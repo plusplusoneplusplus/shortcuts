@@ -13,7 +13,7 @@ interface DisplaySettings {
     groupSingleLineMessages: boolean;
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 1, taskCardDensity: 'compact', groupSingleLineMessages: true };
+const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', groupSingleLineMessages: true };
 
 let cachedSettings: DisplaySettings | null = null;
 let fetchPromise: Promise<DisplaySettings> | null = null;
@@ -25,8 +25,8 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
         const data = await res.json();
         return {
             showReportIntent: data?.resolved?.showReportIntent ?? false,
-            toolCompactness: (data?.resolved?.toolCompactness ?? 1) as 0 | 1 | 2 | 3,
-            taskCardDensity: (data?.resolved?.taskCardDensity === 'dense' ? 'dense' : 'compact') as 'compact' | 'dense',
+            toolCompactness: (data?.resolved?.toolCompactness ?? 3) as 0 | 1 | 2 | 3,
+            taskCardDensity: (data?.resolved?.taskCardDensity === 'compact' ? 'compact' : 'dense') as 'compact' | 'dense',
             groupSingleLineMessages: data?.resolved?.groupSingleLineMessages ?? true,
         };
     } catch {
