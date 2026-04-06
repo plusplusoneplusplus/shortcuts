@@ -464,8 +464,10 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
         expect(task).toBeDefined();
-        // Images are stored in context.taskGeneration, not at payload level
         expect(task.payload.context.taskGeneration.images).toHaveLength(images.length);
+        // serializeTask strips top-level images and replaces with imagesCount/hasImages
+        expect(task.payload.imagesCount).toBe(images.length);
+        expect(task.payload.hasImages).toBe(true);
     });
 
     it('should filter non-string images and cap at 10', async () => {
@@ -487,8 +489,9 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
         expect(task).toBeDefined();
-        // Images are stored in context.taskGeneration; non-strings filtered, capped at 10
         expect(task.payload.context.taskGeneration.images).toHaveLength(10);
+        expect(task.payload.imagesCount).toBe(10);
+        expect(task.payload.hasImages).toBe(true);
     });
 
     it('should not include images field when images array is empty', async () => {
@@ -508,6 +511,8 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
         expect(task.payload.context.taskGeneration.images).toBeUndefined();
+        expect(task.payload.imagesCount).toBe(0);
+        expect(task.payload.hasImages).toBe(false);
     });
 
     it('should not include images field when images is not provided', async () => {
@@ -526,5 +531,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
         expect(task.payload.context.taskGeneration.images).toBeUndefined();
+        expect(task.payload.imagesCount).toBe(0);
+        expect(task.payload.hasImages).toBe(false);
     });
 });

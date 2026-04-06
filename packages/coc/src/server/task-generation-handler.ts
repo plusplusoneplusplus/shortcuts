@@ -308,6 +308,9 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 workingDirectory: ws.rootPath,
                 workspaceId: id,
                 model,
+                // Images must be at the top level for chat-base-executor and
+                // process-lifecycle-runner to forward them to the AI SDK.
+                ...(validImages && validImages.length > 0 ? { images: validImages } : {}),
                 context: {
                     taskGeneration: {
                         targetFolder,
