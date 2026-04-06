@@ -389,6 +389,7 @@ export class FileWorkItemStore implements WorkItemStore {
             }
             if (filter.source && e.source !== filter.source) return false;
             if (filter.priority && e.priority !== filter.priority) return false;
+            if (filter.type && (e.type ?? 'work-item') !== filter.type) return false;
             if (filter.tags?.length) {
                 if (!e.tags?.some(t => filter.tags!.includes(t))) return false;
             }

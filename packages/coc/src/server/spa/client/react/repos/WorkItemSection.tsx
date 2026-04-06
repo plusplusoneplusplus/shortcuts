@@ -18,17 +18,18 @@ interface StatusConfig {
 }
 
 const STATUS_CONFIG: Record<string, StatusConfig> = {
-    executing:      { label: 'Executing',        icon: '⚡', badgeColor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-    aiDone:         { label: 'AI Done',           icon: '🔄', badgeColor: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-    readyToExecute: { label: 'Ready to Execute',  icon: '✅', badgeColor: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-    planning:       { label: 'Planning',          icon: '🔍', badgeColor: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
     created:        { label: 'Created',           icon: '📝', badgeColor: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
-    done:           { label: 'Done',              icon: '🎉', badgeColor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', defaultCollapsed: true },
+    planning:       { label: 'Planning',          icon: '🔍', badgeColor: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+    readyToExecute: { label: 'Ready to Execute',  icon: '✅', badgeColor: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+    executing:      { label: 'Executing',         icon: '⚡', badgeColor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+    aiDone:         { label: 'AI Done',           icon: '🔄', badgeColor: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
+    aiFailed:       { label: 'AI Failed',         icon: '⚠️', badgeColor: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', defaultCollapsed: true },
     failed:         { label: 'Failed',            icon: '❌', badgeColor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', defaultCollapsed: true },
+    done:           { label: 'Done',              icon: '🎉', badgeColor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', defaultCollapsed: true },
 };
 
-/** Display order for status groups */
-const STATUS_ORDER = ['executing', 'aiDone', 'readyToExecute', 'planning', 'created', 'done', 'failed'] as const;
+/** Display order for status groups — lifecycle progression: new → active → terminal */
+const STATUS_ORDER = ['created', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'failed', 'done'] as const;
 
 const PRIORITY_ICON: Record<string, string> = { high: '🔴', normal: '', low: '🔵' };
 
@@ -126,6 +127,9 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                             data-testid={`work-item-card-${item.id}`}
                                         >
                                             <div className="flex items-center gap-1 min-w-0 text-xs">
+                                                {(item as any).type === 'bug' && (
+                                                    <span className="shrink-0 text-[10px]" title="Bug">🐛</span>
+                                                )}
                                                 {item.priority && PRIORITY_ICON[item.priority] && (
                                                     <span className="shrink-0 text-[10px]">{PRIORITY_ICON[item.priority]}</span>
                                                 )}

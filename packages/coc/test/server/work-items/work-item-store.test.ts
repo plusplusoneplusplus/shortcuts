@@ -204,6 +204,35 @@ describe('FileWorkItemStore', () => {
             const entries = await store.listWorkItems({ repoId: 'empty-repo' });
             expect(entries).toEqual([]);
         });
+
+        it('filters by type', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'wi-feat', type: 'work-item' }));
+            await store.addWorkItem(makeWorkItem({ id: 'wi-bug', type: 'bug' }));
+            await store.addWorkItem(makeWorkItem({ id: 'wi-none' })); // no type — defaults to 'work-item'
+
+            const bugs = await store.listWorkItems({ repoId: 'test-repo', type: 'bug' });
+            expect(bugs).toHaveLength(1);
+            expect(bugs[0].id).toBe('wi-bug');
+
+            const workItems = await store.listWorkItems({ repoId: 'test-repo', type: 'work-item' });
+            expect(workItems).toHaveLength(2);
+            expect(workItems.map(w => w.id).sort()).toEqual(['wi-feat', 'wi-none']);
+        });
+
+        it('stores and retrieves type field', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'wi-typed', type: 'bug' }));
+            const item = await store.getWorkItem('wi-typed', 'test-repo');
+            expect(item).toBeDefined();
+            expect(item!.type).toBe('bug');
+        });
+
+        it('index entry includes type field', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'wi-bug-idx', type: 'bug' }));
+            const entries = await store.listWorkItems({ repoId: 'test-repo' });
+            const entry = entries.find(e => e.id === 'wi-bug-idx');
+            expect(entry).toBeDefined();
+            expect(entry!.type).toBe('bug');
+        });
     });
 
     describe('plan versioning', () => {

@@ -2,6 +2,7 @@ export type {
     WorkItemStatus,
     WorkItemSource,
     WorkItemPriority,
+    WorkItemType,
     WorkItemPlan,
     WorkItemPlanVersion,
     WorkItemExecution,
@@ -14,6 +15,7 @@ export type {
 
 export {
     WORK_ITEM_STATUSES,
+    WORK_ITEM_TYPES,
     TERMINAL_WORK_ITEM_STATUSES,
     VALID_TRANSITIONS,
     isTerminalStatus,

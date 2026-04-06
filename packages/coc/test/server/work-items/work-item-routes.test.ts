@@ -142,6 +142,29 @@ describe('Work Item Routes', () => {
             expect(res.body.source).toBe('chat');
             expect(res.body.sourceId).toBe('proc-123');
         });
+
+        it('creates a bug with type field', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Crash on startup',
+                type: 'bug',
+                priority: 'high',
+            });
+
+            expect(res.status).toBe(201);
+            expect(res.body.title).toBe('Crash on startup');
+            expect(res.body.type).toBe('bug');
+            expect(res.body.priority).toBe('high');
+        });
+
+        it('ignores invalid type values', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Invalid type',
+                type: 'epic',
+            });
+
+            expect(res.status).toBe(201);
+            expect(res.body.type).toBeUndefined();
+        });
     });
 
     describe('GET /api/workspaces/:id/work-items', () => {
@@ -184,6 +207,22 @@ describe('Work Item Routes', () => {
             const res = await request('GET', `/api/workspaces/unknown-repo/work-items`);
             expect(res.status).toBe(200);
             expect(res.body).toEqual([]);
+        });
+
+        it('filters by type', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Bug item', type: 'bug',
+            });
+
+            const bugs = await request('GET', `/api/workspaces/${REPO_ID}/work-items?type=bug`);
+            expect(bugs.status).toBe(200);
+            expect(bugs.body).toHaveLength(1);
+            expect(bugs.body[0].title).toBe('Bug item');
+
+            const workItems = await request('GET', `/api/workspaces/${REPO_ID}/work-items?type=work-item`);
+            expect(workItems.status).toBe(200);
+            // Item A and Item B have no type, so they default to 'work-item'
+            expect(workItems.body).toHaveLength(2);
         });
     });
 

@@ -37,6 +37,7 @@ import {
 import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
 import { createUpdateTaskStatusTool } from '../update-task-status-tool';
 import { createWorkItemTool, type BroadcastWorkItemFn } from '../create-work-item-tool';
+import { createBugTool } from '../create-bug-tool';
 
 // ============================================================================
 // System Message Builders
@@ -288,8 +289,8 @@ export function buildUpdateTaskStatusAddon(
 // ============================================================================
 
 /**
- * Builds the tools array and prompt suffix for the `create_work_item` tool.
- * The tool is only injected when a valid dataDir and repoId are available.
+ * Builds the tools array and prompt suffix for the `create_work_item` and `create_bug` tools.
+ * The tools are only injected when a valid dataDir and repoId are available.
  *
  * @param dataDir     - Base data directory (e.g. `~/.coc`).
  * @param repoId      - Workspace / repo ID the item should be created in.
@@ -304,13 +305,15 @@ export function buildCreateWorkItemAddon(
         return { tools: [], suffix: '' };
     }
 
-    const { tool } = createWorkItemTool(dataDir, repoId, broadcastFn);
+    const { tool: workItemTool } = createWorkItemTool(dataDir, repoId, broadcastFn);
+    const { tool: bugTool } = createBugTool(dataDir, repoId, broadcastFn);
     const suffix =
-        '\n\nYou have access to the `create_work_item` tool. ' +
-        'When the user asks to create a work item, track a feature, file a bug, or save a task for later execution, ' +
-        'follow this workflow:\n' +
+        '\n\nYou have access to the `create_work_item` and `create_bug` tools. ' +
+        'When the user asks to create a work item, track a feature, or save a task for later execution, ' +
+        'use `create_work_item`. When the user asks to file a bug, report a defect, or log an issue, ' +
+        'use `create_bug`. Both tools follow the same workflow:\n' +
         '1. **Draft** — Analyze the request and present a summary:\n' +
-        '   📋 Work Item Draft\n' +
+        '   📋 Work Item Draft / 🐛 Bug Report Draft\n' +
         '   Title: <title>\n' +
         '   Priority: <high|normal|low>\n' +
         '   Tags: <tags or "none">\n' +
@@ -318,9 +321,9 @@ export function buildCreateWorkItemAddon(
         '   Plan: <markdown plan using ## Objective, ## Background, ## Steps (with - [ ] checkboxes), ## Acceptance Criteria, ## Notes>\n' +
         '   Then ask "Confirm to create, or give feedback to refine."\n' +
         '2. **Refine** — If the user provides feedback, update and re-present the summary. Repeat until confirmed.\n' +
-        '3. **Create** — Only after the user confirms, call `create_work_item` with title, description, priority, tags, and a complete plan.\n' +
+        '3. **Create** — Only after the user confirms, call the appropriate tool with title, description, priority, tags, and a complete plan.\n' +
         'The `plan` parameter is REQUIRED — always generate a plan with concrete steps.\n' +
         'Never execute the work item steps inside this chat session — use the tool to persist it, then stop.';
 
-    return { tools: [tool], suffix };
+    return { tools: [workItemTool, bugTool], suffix };
 }

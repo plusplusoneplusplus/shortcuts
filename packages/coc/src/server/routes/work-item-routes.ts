@@ -17,14 +17,15 @@ import * as crypto from 'crypto';
 import type { Route } from '../types';
 import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
-import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority } from '../work-items/types';
-import { WORK_ITEM_STATUSES, isValidTransition } from '../work-items/types';
+import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority, WorkItemType } from '../work-items/types';
+import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, isValidTransition } from '../work-items/types';
 import type { WorkItem } from '../work-items/types';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../websocket';
 
 const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
+const VALID_TYPES: Set<string> = new Set(['work-item', 'bug']);
 
 export interface WorkItemRouteContext {
     routes: Route[];
@@ -63,6 +64,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (typeof query.tags === 'string' && query.tags) {
                 filter.tags = query.tags.split(',');
             }
+            if (typeof query.type === 'string' && VALID_TYPES.has(query.type)) {
+                filter.type = query.type as WorkItemType;
+            }
 
             const entries = await workItemStore.listWorkItems(filter);
             sendJSON(res, 200, entries);
@@ -95,6 +99,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 title: body.title,
                 description: body.description || '',
                 status: 'created',
+                type: VALID_TYPES.has(body.type) ? body.type : undefined,
                 createdAt: now,
                 updatedAt: now,
                 source: VALID_SOURCES.has(body.source) ? body.source : 'manual',
