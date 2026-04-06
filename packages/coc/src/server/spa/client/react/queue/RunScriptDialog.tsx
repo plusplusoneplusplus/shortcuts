@@ -17,7 +17,7 @@ import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 
 export function RunScriptDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
-    const { state: appState } = useApp();
+    const { state: appState, dispatch: appDispatch } = useApp();
     const { isMobile } = useBreakpoint();
     const open = queueState.showScriptDialog;
 
@@ -119,11 +119,14 @@ export function RunScriptDialog() {
             const data = await fetch(getApiBase() + '/queue').then(r => r.json());
             queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
             reset();
+            if (!appState.onboardingProgress?.hasRunWorkflow) {
+                appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } });
+            }
             close();
         } finally {
             setSubmitting(false);
         }
-    }, [script, args, workingDir, model, pauseOnFailure, workspaceId, queueDispatch, close, reset]);
+    }, [script, args, workingDir, model, pauseOnFailure, workspaceId, queueDispatch, close, reset, appState.onboardingProgress, appDispatch]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !submitting) {

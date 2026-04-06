@@ -2774,3 +2774,152 @@ describe('EnqueueDialog ask mode', () => {
         expect(postBody.config?.model).toBeUndefined();
     });
 });
+
+// ============================================================================
+// Onboarding: hasRunWorkflow dispatch
+// ============================================================================
+
+describe('EnqueueDialog onboarding hasRunWorkflow', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+    const dispatchCalls: any[] = [];
+
+    // Spy component that records all AppContext dispatches
+    function DispatchSpy() {
+        const { dispatch } = useApp();
+        useEffect(() => {
+            const orig = dispatch;
+            // We wrap by monkey-patching at the call site via a custom hook below
+        }, []);
+        return null;
+    }
+
+    // Instead, capture dispatches by wrapping AppProvider and using a recorder
+    function WrapWithSpy({ children, workspaces = [], onboardingProgress }: { children: ReactNode; workspaces?: any[]; onboardingProgress?: any }) {
+        return (
+            <AppProvider>
+                <QueueProvider>
+                    <MinimizedDialogsProvider>
+                        <WorkspaceSetter workspaces={workspaces} />
+                        {onboardingProgress && <OnboardingSetter progress={onboardingProgress} />}
+                        <DispatchRecorder calls={dispatchCalls} />
+                        {children}
+                        <MinimizedDialogsTray />
+                    </MinimizedDialogsProvider>
+                </QueueProvider>
+            </AppProvider>
+        );
+    }
+
+    function OnboardingSetter({ progress }: { progress: any }) {
+        const { dispatch } = useApp();
+        useEffect(() => {
+            dispatch({ type: 'UPDATE_ONBOARDING', payload: progress });
+        }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        return null;
+    }
+
+    function DispatchRecorder({ calls }: { calls: any[] }) {
+        const { dispatch: realDispatch } = useApp();
+        // Record calls to UPDATE_ONBOARDING by wrapping via fetch spy
+        // Since UPDATE_ONBOARDING triggers a PATCH to /preferences, we detect it in fetchSpy
+        return null;
+    }
+
+    beforeEach(() => {
+        dispatchCalls.length = 0;
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/summary')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: { name: 'tasks', relativePath: '', children: [] } }) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences') && opts?.method === 'PATCH') {
+                const body = JSON.parse(opts?.body || '{}');
+                if (body.onboardingProgress) {
+                    dispatchCalls.push(body);
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('dispatches UPDATE_ONBOARDING { hasRunWorkflow: true } after successful enqueue', async () => {
+        render(
+            <WrapWithSpy workspaces={[{ id: 'ws1', name: 'WS', rootPath: '/tmp' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </WrapWithSpy>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Enter prompt
+        const textarea = screen.getByTestId('prompt-input');
+        textarea.innerText = 'Run something';
+        fireEvent.input(textarea);
+
+        // Submit
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => {
+            const taskPost = fetchSpy.mock.calls.find(
+                (c: any[]) => typeof c[0] === 'string' && c[0].includes('/queue/tasks')
+            );
+            expect(taskPost).toBeTruthy();
+        });
+
+        // Verify the PATCH to /preferences included hasRunWorkflow
+        await waitFor(() => {
+            expect(dispatchCalls.some(c => c.onboardingProgress?.hasRunWorkflow === true)).toBe(true);
+        });
+    });
+
+    it('does not dispatch UPDATE_ONBOARDING if hasRunWorkflow is already true', async () => {
+        render(
+            <WrapWithSpy
+                workspaces={[{ id: 'ws1', name: 'WS', rootPath: '/tmp' }]}
+                onboardingProgress={{ hasRunWorkflow: true }}
+            >
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </WrapWithSpy>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Clear any dispatches from OnboardingSetter
+        dispatchCalls.length = 0;
+
+        // Enter prompt
+        const textarea = screen.getByTestId('prompt-input');
+        textarea.innerText = 'Another task';
+        fireEvent.input(textarea);
+
+        // Submit
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => {
+            const taskPost = fetchSpy.mock.calls.find(
+                (c: any[]) => typeof c[0] === 'string' && c[0].includes('/queue/tasks')
+            );
+            expect(taskPost).toBeTruthy();
+        });
+
+        // Wait a tick to ensure no further dispatches
+        await new Promise(r => setTimeout(r, 50));
+
+        // Should NOT have dispatched hasRunWorkflow again
+        expect(dispatchCalls.filter(c => c.onboardingProgress?.hasRunWorkflow === true)).toHaveLength(0);
+    });
+});

@@ -147,3 +147,17 @@ describe('RunScriptDialog Ctrl+Enter submit shortcut', () => {
         expect(RUN_SCRIPT_SOURCE).toContain('title="Ctrl+Enter"');
     });
 });
+
+describe('RunScriptDialog onboarding hasRunWorkflow', () => {
+    it('destructures dispatch from useApp as appDispatch', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('dispatch: appDispatch');
+    });
+
+    it('guards dispatch with onboardingProgress check', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain('!appState.onboardingProgress?.hasRunWorkflow');
+    });
+
+    it('dispatches UPDATE_ONBOARDING with hasRunWorkflow true', () => {
+        expect(RUN_SCRIPT_SOURCE).toContain("appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } })");
+    });
+});

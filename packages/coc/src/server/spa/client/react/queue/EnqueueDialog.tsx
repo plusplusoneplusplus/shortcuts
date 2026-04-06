@@ -43,7 +43,7 @@ export function flattenFolders(node: any, depth = 0): FolderOption[] {
 
 export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
-    const { state: appState } = useApp();
+    const { state: appState, dispatch: appDispatch } = useApp();
     const { isMobile } = useBreakpoint();
     const { floatChat } = useFloatingChats();
     const isAskMode = queueState.dialogMode === 'ask';
@@ -282,10 +282,13 @@ export function EnqueueDialog() {
                 }
             }
             clearImages();
+            if (!appState.onboardingProgress?.hasRunWorkflow) {
+                appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } });
+            }
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
