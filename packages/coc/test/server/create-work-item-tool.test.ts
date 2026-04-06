@@ -150,13 +150,13 @@ describe('createWorkItemTool', () => {
 
     // ── Plan parameter tests ──────────────────────────────────────────────────
 
-    it('parameters include optional plan field', () => {
+    it('parameters include required plan field', () => {
         const { tool } = createWorkItemTool(dataDir, repoId);
         const params = tool.parameters as Record<string, any>;
         expect(params.properties.plan).toBeDefined();
         expect(params.properties.plan.type).toBe('string');
-        // plan is optional (not in required array)
-        expect(params.required).not.toContain('plan');
+        // plan is required to ensure work items always have an actionable plan
+        expect(params.required).toContain('plan');
     });
 
     it('handler creates item with status "created" when no plan is provided', async () => {

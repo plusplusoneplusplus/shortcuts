@@ -308,8 +308,18 @@ export function buildCreateWorkItemAddon(
     const suffix =
         '\n\nYou have access to the `create_work_item` tool. ' +
         'When the user asks to create a work item, track a feature, file a bug, or save a task for later execution, ' +
-        'follow the `create-work-item` skill instructions: draft the work item summary first, ' +
-        'let the user refine it with feedback, and only call `create_work_item` once the user confirms. ' +
+        'follow this workflow:\n' +
+        '1. **Draft** — Analyze the request and present a summary:\n' +
+        '   📋 Work Item Draft\n' +
+        '   Title: <title>\n' +
+        '   Priority: <high|normal|low>\n' +
+        '   Tags: <tags or "none">\n' +
+        '   Description: <markdown description>\n' +
+        '   Plan: <markdown plan using ## Objective, ## Background, ## Steps (with - [ ] checkboxes), ## Acceptance Criteria, ## Notes>\n' +
+        '   Then ask "Confirm to create, or give feedback to refine."\n' +
+        '2. **Refine** — If the user provides feedback, update and re-present the summary. Repeat until confirmed.\n' +
+        '3. **Create** — Only after the user confirms, call `create_work_item` with title, description, priority, tags, and a complete plan.\n' +
+        'The `plan` parameter is REQUIRED — always generate a plan with concrete steps.\n' +
         'Never execute the work item steps inside this chat session — use the tool to persist it, then stop.';
 
     return { tools: [tool], suffix };

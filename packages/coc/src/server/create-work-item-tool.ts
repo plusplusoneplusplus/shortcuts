@@ -69,12 +69,11 @@ export function createWorkItemTool(
 
     const tool = defineTool<CreateWorkItemArgs>('create_work_item', {
         description:
-            'IMPORTANT: Before calling this tool, you MUST first invoke the `create-work-item` skill ' +
-            'to interactively draft, refine, and confirm the work item with the user. ' +
-            'Only call this tool after the skill has completed the draft → refine → confirm workflow. ' +
             'Create a new work item in the Work Items page for this repository. ' +
             'Use this when the user asks to create a work item, track a feature request, ' +
             'file a bug, or save a task for later execution. ' +
+            'IMPORTANT: Before calling this tool, you MUST first present a draft summary to the user, ' +
+            'iterate on their feedback, and only call this tool once the user confirms. ' +
             'Always include a `plan` field using the standard template: ' +
             '## Objective, ## Background, ## Steps (with checkboxes), ## Acceptance Criteria, ## Notes. ' +
             `Template:\n${WORK_ITEM_PLAN_TEMPLATE}`,
@@ -107,7 +106,7 @@ export function createWorkItemTool(
                         '## Acceptance Criteria, ## Notes.',
                 },
             },
-            required: ['title'],
+            required: ['title', 'plan'],
         },
         handler: async (rawArgs: CreateWorkItemArgs) => {
             const args = normalizePlanFromDescription(rawArgs);
