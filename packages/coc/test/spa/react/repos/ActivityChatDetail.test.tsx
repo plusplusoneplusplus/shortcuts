@@ -1151,4 +1151,104 @@ describe('ActivityChatDetail', () => {
             });
         });
     });
+
+    // ── Refresh deduplication ──────────────────────────────────────────────
+
+    describe('refresh deduplication', () => {
+        /**
+         * Helper that bumps refreshVersion N times before mounting ActivityChatDetail,
+         * simulating a scenario where prior interactions already incremented it.
+         */
+        function PreBumpedDetail({ bumps, taskId, ...rest }: { bumps: number; taskId: string } & Partial<React.ComponentProps<typeof ActivityChatDetail>>) {
+            const { dispatch } = useQueue();
+            const [ready, setReady] = React.useState(false);
+            useEffect(() => {
+                for (let i = 0; i < bumps; i++) {
+                    dispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+                }
+                setReady(true);
+            }, []); // eslint-disable-line react-hooks/exhaustive-deps
+            if (!ready) return null;
+            return <ActivityChatDetail taskId={taskId} {...rest} />;
+        }
+
+        it('does not duplicate fetches when refreshVersion > 0 on mount', async () => {
+            const task = makeTask();
+            const proc = makeProcess();
+            setupStandardFetch(task, proc);
+
+            await act(async () => {
+                render(
+                    <Wrap>
+                        <PreBumpedDetail bumps={3} taskId="task-1" />
+                    </Wrap>,
+                );
+            });
+
+            // Wait for normal initial load to complete
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+            });
+
+            // Count calls to /queue/ and /processes/ — should be exactly 1 each
+            // (the initial load), not 2 (initial + spurious refresh)
+            const queueCalls = fetchMock.mock.calls.filter(
+                ([url]: [string]) => typeof url === 'string' && url.includes('/queue/'),
+            );
+            const processCalls = fetchMock.mock.calls.filter(
+                ([url]: [string]) => typeof url === 'string' && url.includes('/processes/'),
+            );
+            expect(queueCalls).toHaveLength(1);
+            expect(processCalls).toHaveLength(1);
+        });
+
+        it('still re-fetches on genuine re-click after mount', async () => {
+            const task = makeTask();
+            const proc = makeProcess();
+            setupStandardFetch(task, proc);
+
+            /**
+             * Helper that renders ActivityChatDetail then dispatches
+             * REFRESH_SELECTED_QUEUE_TASK after mount to simulate a re-click.
+             */
+            function ReClickDetail() {
+                const { dispatch } = useQueue();
+                const triggerRef = createRef<() => void>();
+                (triggerRef as any).current = () => {
+                    dispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+                };
+                // Expose trigger via testid button
+                return (
+                    <>
+                        <ActivityChatDetail taskId="task-1" />
+                        <button data-testid="trigger-refresh" onClick={() => (triggerRef as any).current?.()} />
+                    </>
+                );
+            }
+
+            render(<Wrap><ReClickDetail /></Wrap>);
+
+            // Wait for initial load
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+            });
+
+            // Clear fetch mock to isolate re-click fetches
+            fetchMock.mockClear();
+            setupStandardFetch(task, proc);
+
+            // Simulate re-click
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('trigger-refresh'));
+            });
+
+            // The refresh effect should fire and re-fetch both endpoints
+            await waitFor(() => {
+                const queueCalls = fetchMock.mock.calls.filter(
+                    ([url]: [string]) => typeof url === 'string' && url.includes('/queue/'),
+                );
+                expect(queueCalls.length).toBeGreaterThanOrEqual(1);
+            });
+        });
+    });
 });

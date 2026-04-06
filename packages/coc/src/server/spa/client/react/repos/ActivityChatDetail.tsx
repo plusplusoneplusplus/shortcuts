@@ -102,13 +102,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const loadCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
     const turnsContainerRef = useRef<HTMLDivElement>(null);
-    const lastRefreshVersionRef = useRef(0);
     const isInitialLoadRef = useRef(true);
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const textPaste = useTextPaste();
     const { isMobile } = useBreakpoint();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    // Init from current refreshVersion so a fresh mount treats it as "already seen"
+    const lastRefreshVersionRef = useRef(queueState.refreshVersion);
     const { state: appState, dispatch: appDispatch } = useApp();
     const slashCommands = useSlashCommands(skills);
 
@@ -387,6 +388,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Re-fetch conversation when user re-clicks the already-selected task
+    // (REFRESH_SELECTED_QUEUE_TASK bumps refreshVersion).
+    // NOTE: taskId is constant within a mount (parent uses key={taskId}).
     useEffect(() => {
         const isRefresh = queueState.refreshVersion > 0 &&
             lastRefreshVersionRef.current !== queueState.refreshVersion;
