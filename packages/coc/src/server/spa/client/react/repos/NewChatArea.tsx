@@ -28,7 +28,7 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
     const textPaste = useTextPaste();
 
     const { dispatch: queueDispatch } = useQueue();
-    const { state: appState } = useApp();
+    const { state: appState, dispatch: appDispatch } = useApp();
 
     async function handleSend() {
         const trimmed = input.trim();
@@ -68,6 +68,9 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
 
             const newTask = await res.json();
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newTask.task?.id ?? newTask.id, repoId: workspaceId });
+            if (!appState.onboardingProgress?.hasUsedChat) {
+                appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasUsedChat: true } });
+            }
             setInput('');
             richTextRef.current?.setValue('');
             textPaste.clearPaste();

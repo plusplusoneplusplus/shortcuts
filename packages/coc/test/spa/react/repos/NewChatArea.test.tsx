@@ -8,12 +8,14 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
-    },
+        onboardingProgress: { hasUsedChat: false },
+    } as Record<string, any>,
     mockFetch: vi.fn(),
+    mockAppDispatch: vi.fn(),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
@@ -21,7 +23,7 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
-    useApp: () => ({ state: mockAppState, dispatch: vi.fn() }),
+    useApp: () => ({ state: mockAppState, dispatch: mockAppDispatch }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
@@ -60,6 +62,7 @@ import { NewChatArea } from '../../../../src/server/spa/client/react/repos/NewCh
 beforeEach(() => {
     vi.clearAllMocks();
     mockAppState.workspaces = [{ id: 'ws-1', rootPath: '/home/user/repo' }];
+    mockAppState.onboardingProgress = { hasUsedChat: false };
     globalThis.fetch = mockFetch;
 });
 
@@ -271,5 +274,63 @@ describe('NewChatArea', () => {
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
         expect(body.payload.workingDirectory).toBeUndefined();
+    });
+
+    it('dispatches UPDATE_ONBOARDING with hasUsedChat after successful send', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ id: 'task-1' }),
+        });
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        expect(mockAppDispatch).toHaveBeenCalledWith({
+            type: 'UPDATE_ONBOARDING',
+            payload: { hasUsedChat: true },
+        });
+    });
+
+    it('does not dispatch UPDATE_ONBOARDING if hasUsedChat is already true', async () => {
+        mockAppState.onboardingProgress = { hasUsedChat: true };
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ id: 'task-2' }),
+        });
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        expect(mockAppDispatch).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'UPDATE_ONBOARDING' }),
+        );
+    });
+
+    it('does not dispatch UPDATE_ONBOARDING when POST fails', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            text: async () => 'Server error',
+        });
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        expect(mockAppDispatch).not.toHaveBeenCalled();
     });
 });
