@@ -22,6 +22,12 @@ function wslConfigEnvironment(existingEnv: Record<string, string | undefined> | 
     const configDir = getCopilotConfigDir();
     const translatedConfigDir = windowsPathToWslPath(path.resolve(configDir));
     if (!translatedConfigDir) {
+        const aiLog = getAIServiceLogger();
+        aiLog.warn(
+            { configDir },
+            'Cannot translate Copilot config path to WSL mount path. ' +
+            'COPILOT_HOME will not be set in the WSL environment.',
+        );
         return existingEnv ?? {};
     }
 
@@ -54,6 +60,7 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
         const executionContext = resolveWorkspaceExecutionContext(cwd);
         if (executionContext.kind === 'wsl') {
             clientOptions.cliPath = getWslExecutablePath();
+            // COPILOT_WSL_CLI_COMMAND: override the CLI binary name invoked inside WSL (dev/test escape hatch)
             clientOptions.cliArgs = buildWslCommandArgs(executionContext, [process.env['COPILOT_WSL_CLI_COMMAND'] || 'copilot']);
             clientOptions.cwd = undefined;
             clientOptions.env = wslConfigEnvironment(options.env);

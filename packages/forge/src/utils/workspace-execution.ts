@@ -37,7 +37,10 @@ function normalizeLinuxPath(input: string): string {
 }
 
 export function getWslExecutablePath(): string {
-    const systemRoot = process.env['SystemRoot'] ?? path.win32.join('C:', 'Windows');
+    const systemRoot = process.env['SystemRoot'];
+    if (!systemRoot) {
+        throw new Error('SystemRoot environment variable is not set. Cannot locate wsl.exe.');
+    }
     return path.win32.join(systemRoot, 'System32', 'wsl.exe');
 }
 
@@ -146,10 +149,7 @@ export function normalizeExecutionPath(pathLike: string): string {
     if (process.platform === 'win32') {
         normalized = normalized.toLowerCase();
     }
-    if (normalized.length > 1 && normalized.endsWith('/')) {
-        normalized = normalized.slice(0, -1);
-    }
-    return normalized;
+    return trimTrailingPathSeparators(normalized);
 }
 
 export function isWslExecutionContext(context: WorkspaceExecutionContext): context is WslExecutionContext {

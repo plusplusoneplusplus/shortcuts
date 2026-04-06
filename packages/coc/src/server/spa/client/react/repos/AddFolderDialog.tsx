@@ -263,6 +263,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
                                         className={`px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(root.path.toLowerCase())
                                             ? 'border-[#0078d4] text-[#0078d4]'
                                             : 'border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]'}`}
+                                        data-testid={`browse-root-${root.label}`}
                                         onClick={() => navigateTo(root.path)}
                                     >
                                         {root.label}
