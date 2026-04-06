@@ -1,5 +1,11 @@
 # @plusplusoneplusplus/forge
 
+## 1.1.0
+
+### Minor Changes
+
+- Improvements and bug fixes.
+
 ## 1.0.3
 
 ### Patch Changes
