@@ -7,11 +7,12 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { AddRepoDialog } from './AddRepoDialog';
 import { AddFolderDialog } from './AddFolderDialog';
 import type { RepoData, RepoGroup } from './repoGrouping';
-import { groupReposByRemote } from './repoGrouping';
+import { groupReposByRemote, applyGroupOrder } from './repoGrouping';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { isHidden as isHiddenTask } from '../hooks/useRepoQueueStats';
 import { getApiBase } from '../utils/config';
+import { fetchApi } from '../hooks/useApi';
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 
 export type QueueDotStatus = 'idle' | 'running' | 'queued' | 'paused';
@@ -113,6 +114,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [overflowFilter, setOverflowFilter] = useState('');
     const [overflowHighlight, setOverflowHighlight] = useState(-1);
     const [visibleRepoIds, setVisibleRepoIds] = useState<Set<string> | null>(null);
+    const [groupOrder, setGroupOrder] = useState<string[]>([]);
 
     const dropdownRef = useRef<HTMLDivElement>(null);
     const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -121,7 +123,18 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const tabContainerRef = useRef<HTMLDivElement>(null);
     const measureContainerRef = useRef<HTMLDivElement>(null);
 
-    const groups = useMemo(() => groupReposByRemote(repos, {}), [repos]);
+    useEffect(() => {
+        let cancelled = false;
+        fetchApi('/preferences').then((prefs: any) => {
+            if (!cancelled && Array.isArray(prefs?.gitGroupOrder)) {
+                setGroupOrder(prefs.gitGroupOrder);
+            }
+        });
+        return () => { cancelled = true; };
+    }, []);
+
+    const rawGroups = useMemo(() => groupReposByRemote(repos, {}), [repos]);
+    const groups = useMemo(() => applyGroupOrder(rawGroups, groupOrder), [rawGroups, groupOrder]);
     const allRepoIds = useMemo(() => flattenGroups(groups), [groups]);
     const { dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();

@@ -4,7 +4,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { RepoTabStrip } from '../../../../src/server/spa/client/react/repos/RepoTabStrip';
 
 const mockDispatch = vi.fn();
@@ -19,6 +19,11 @@ vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
+}));
+
+const mockFetchApi = vi.fn().mockResolvedValue({ gitGroupOrder: [] });
+vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
+    fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
@@ -49,6 +54,7 @@ const makeRepo = (id: string, name: string, color = '#ff0000', remoteUrl?: strin
 describe('RepoTabStrip', () => {
     beforeEach(() => {
         cleanup();
+        mockFetchApi.mockReset().mockResolvedValue({ gitGroupOrder: [] });
     });
 
     it('renders a tab for each repo', () => {
@@ -717,5 +723,36 @@ describe('RepoTabStrip', () => {
             fireEvent.click(screen.getByTestId('repo-tab-context-queue-task'));
             expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'r2' });
         });
+    });
+
+    it('applies saved gitGroupOrder from preferences to tab order', async () => {
+        // Two repos with different remoteUrls → two groups: "github.com/org/bravo" and "github.com/org/alpha"
+        const repoA = makeRepo('a1', 'Alpha', '#ff0000', 'https://github.com/org/alpha');
+        const repoB = makeRepo('b1', 'Bravo', '#00ff00', 'https://github.com/org/bravo');
+
+        // Mock fetchApi to return a specific group order (Bravo group before Alpha group)
+        const bravoGroupKey = 'github.com/org/bravo';
+        const alphaGroupKey = 'github.com/org/alpha';
+        mockFetchApi.mockResolvedValueOnce({ gitGroupOrder: [bravoGroupKey, alphaGroupKey] });
+
+        await act(async () => {
+            render(
+                <RepoTabStrip
+                    repos={[repoA, repoB]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+        });
+
+        expect(mockFetchApi).toHaveBeenCalledWith('/preferences');
+
+        const tabs = screen.getAllByTestId('repo-tab');
+        expect(tabs).toHaveLength(2);
+        // Bravo should come first per the saved order
+        expect(tabs[0].textContent).toContain('Bravo');
+        expect(tabs[1].textContent).toContain('Alpha');
     });
 });

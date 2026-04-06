@@ -32,6 +32,10 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
 }));
 
+vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
+    fetchApi: vi.fn().mockResolvedValue({ gitGroupOrder: [] }),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
     AddRepoDialog: ({ open }: { open: boolean }) => open ? <div data-testid="add-repo-dialog" /> : null,
 }));
