@@ -88,9 +88,9 @@ export interface GlobalPreferences {
 
     /** Tracks progress through the onboarding checklist steps. */
     onboardingProgress?: {
-        repoAdded?: boolean;
-        firstChatSent?: boolean;
-        workflowsVisited?: boolean;
+        hasUsedChat?: boolean;
+        hasRunWorkflow?: boolean;
+        hasOpenedWiki?: boolean;
         settingsVisited?: boolean;
         dismissed?: boolean;
     };
@@ -180,7 +180,7 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
     if (typeof obj.onboardingProgress === 'object' && obj.onboardingProgress !== null && !Array.isArray(obj.onboardingProgress)) {
         const raw = obj.onboardingProgress as Record<string, unknown>;
         const validated: NonNullable<GlobalPreferences['onboardingProgress']> = {};
-        for (const key of ['repoAdded', 'firstChatSent', 'workflowsVisited', 'settingsVisited', 'dismissed'] as const) {
+        for (const key of ['hasUsedChat', 'hasRunWorkflow', 'hasOpenedWiki', 'settingsVisited', 'dismissed'] as const) {
             if (typeof raw[key] === 'boolean') {
                 validated[key] = raw[key] as boolean;
             }

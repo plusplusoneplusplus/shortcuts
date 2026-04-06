@@ -142,7 +142,7 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips onboardingProgress', () => {
-        const progress = { repoAdded: true, firstChatSent: false, workflowsVisited: true, settingsVisited: false, dismissed: false };
+        const progress = { hasUsedChat: true, hasRunWorkflow: false, hasOpenedWiki: true, settingsVisited: false, dismissed: false };
         writePreferences(tmpDir, { global: { onboardingProgress: progress } });
         const result = readPreferences(tmpDir);
         expect(result.global?.onboardingProgress).toEqual(progress);
@@ -991,13 +991,13 @@ describe('validateGlobalPreferences', () => {
     // -- onboardingProgress field --
 
     it('accepts valid onboardingProgress sub-fields', () => {
-        const result = validateGlobalPreferences({ onboardingProgress: { repoAdded: true, firstChatSent: false } });
-        expect(result).toEqual({ onboardingProgress: { repoAdded: true, firstChatSent: false } });
+        const result = validateGlobalPreferences({ onboardingProgress: { hasUsedChat: true, hasRunWorkflow: false } });
+        expect(result).toEqual({ onboardingProgress: { hasUsedChat: true, hasRunWorkflow: false } });
     });
 
     it('strips unknown onboardingProgress sub-fields', () => {
-        const result = validateGlobalPreferences({ onboardingProgress: { repoAdded: true, hackerField: true } });
-        expect(result).toEqual({ onboardingProgress: { repoAdded: true } });
+        const result = validateGlobalPreferences({ onboardingProgress: { hasUsedChat: true, hackerField: true } });
+        expect(result).toEqual({ onboardingProgress: { hasUsedChat: true } });
     });
 
     it('rejects non-object onboardingProgress', () => {
@@ -1008,12 +1008,23 @@ describe('validateGlobalPreferences', () => {
     });
 
     it('rejects non-boolean onboardingProgress sub-field values', () => {
-        const result = validateGlobalPreferences({ onboardingProgress: { repoAdded: 'yes' } });
+        const result = validateGlobalPreferences({ onboardingProgress: { hasUsedChat: 'yes' } });
         expect(result.onboardingProgress).toBeUndefined();
     });
 
     it('omits onboardingProgress when all sub-fields are unknown', () => {
         const result = validateGlobalPreferences({ onboardingProgress: { unknown: true } });
+        expect(result.onboardingProgress).toBeUndefined();
+    });
+
+    it('round-trips new onboardingProgress keys', () => {
+        const input = { hasUsedChat: true, hasRunWorkflow: true, hasOpenedWiki: true };
+        const result = validateGlobalPreferences({ onboardingProgress: input });
+        expect(result).toEqual({ onboardingProgress: input });
+    });
+
+    it('strips old/removed onboardingProgress keys', () => {
+        const result = validateGlobalPreferences({ onboardingProgress: { repoAdded: true, firstChatSent: true, workflowsVisited: true } });
         expect(result.onboardingProgress).toBeUndefined();
     });
 
@@ -1331,19 +1342,19 @@ describe('Preferences REST API', () => {
     // -- onboardingProgress persistence via API --
 
     it('PATCH with onboardingProgress replaces wholesale', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { onboardingProgress: { repoAdded: true } });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { onboardingProgress: { firstChatSent: true } });
+        await putJSON(`${baseUrl}/api/preferences`, { onboardingProgress: { hasUsedChat: true } });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { onboardingProgress: { hasRunWorkflow: true } });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body.onboardingProgress).toEqual({ firstChatSent: true });
-        expect(body.onboardingProgress.repoAdded).toBeUndefined();
+        expect(body.onboardingProgress).toEqual({ hasRunWorkflow: true });
+        expect(body.onboardingProgress.hasUsedChat).toBeUndefined();
     });
 
     it('PUT strips unknown onboardingProgress sub-fields', async () => {
-        const res = await putJSON(`${baseUrl}/api/preferences`, { onboardingProgress: { repoAdded: true, evil: true } });
+        const res = await putJSON(`${baseUrl}/api/preferences`, { onboardingProgress: { hasUsedChat: true, evil: true } });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body.onboardingProgress).toEqual({ repoAdded: true });
+        expect(body.onboardingProgress).toEqual({ hasUsedChat: true });
         expect(body.onboardingProgress.evil).toBeUndefined();
     });
 });
