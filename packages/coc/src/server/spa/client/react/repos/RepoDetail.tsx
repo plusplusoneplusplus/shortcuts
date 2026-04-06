@@ -216,21 +216,21 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     <div className="flex gap-3 items-center py-1">
                         {/* Title row */}
                         <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <button
-                                className="text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] flex-shrink-0 p-0.5 -ml-1"
-                                onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = ''; }}
-                                aria-label="Back to repos"
-                                data-testid="repo-back-btn"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-                                </svg>
-                            </button>
                             <span
                                 className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
                                 style={{ background: color }}
                             />
-                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
+                            <button
+                                className="flex items-center gap-1.5 min-w-0 flex-1 text-left group"
+                                onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = ''; }}
+                                aria-label="Back to repos"
+                                data-testid="repo-name-back"
+                            >
+                                <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate group-active:opacity-70">{ws.name}</h1>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 flex-shrink-0 text-[#999999] dark:text-[#666666]">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                </svg>
+                            </button>
                         </div>
                         {/* Action buttons */}
                         <div className="flex items-center gap-2 flex-shrink-0">

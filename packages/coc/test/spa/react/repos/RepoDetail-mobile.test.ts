@@ -194,35 +194,53 @@ describe('RepoDetail mobile: tab scroll affordance', () => {
     });
 });
 
-describe('RepoDetail mobile: back button in header', () => {
-    it('renders mobile back button with data-testid="repo-back-btn"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-back-btn"');
+describe('RepoDetail mobile: tappable repo name (back navigation)', () => {
+    it('does not render the old chevron-left back button', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-back-btn"');
     });
 
-    it('back button is only shown on mobile (gated on isMobile)', () => {
-        // The button is wrapped in {isMobile && (...)}
-        const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
-        // isMobile guard is in the parent conditional block
-        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 700), backBtnIdx);
+    it('renders tappable repo name with data-testid="repo-name-back"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-name-back"');
+    });
+
+    it('tappable repo name is only shown on mobile (gated on isMobile)', () => {
+        const nameBackIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-name-back"');
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, nameBackIdx - 1000), nameBackIdx);
         expect(nearby).toContain('isMobile');
     });
 
-    it('back button dispatches SET_SELECTED_REPO with null', () => {
-        // onClick handler is before data-testid in the source
-        const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
-        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 400), backBtnIdx + 100);
+    it('tappable repo name dispatches SET_SELECTED_REPO with null', () => {
+        const nameBackIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-name-back"');
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, nameBackIdx - 400), nameBackIdx + 100);
         expect(nearby).toContain("type: 'SET_SELECTED_REPO', id: null");
     });
 
-    it('back button clears hash (repos is implicit default, not #repos)', () => {
-        // location.hash assignment is before data-testid in the source
-        const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
-        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 400), backBtnIdx + 100);
+    it('tappable repo name clears hash', () => {
+        const nameBackIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-name-back"');
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, nameBackIdx - 400), nameBackIdx + 100);
         expect(nearby).toContain("''");
     });
 
-    it('back button has aria-label "Back to repos"', () => {
+    it('tappable repo name has aria-label "Back to repos"', () => {
         expect(REPO_DETAIL_SOURCE).toContain('aria-label="Back to repos"');
+    });
+
+    it('tappable repo name includes a chevron-down icon as visual cue', () => {
+        const nameBackIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-name-back"');
+        const nearby = REPO_DETAIL_SOURCE.substring(nameBackIdx, nameBackIdx + 700);
+        expect(nearby).toContain('m19.5 8.25-7.5 7.5-7.5-7.5');
+    });
+
+    it('tappable repo name has group-active opacity for tap feedback', () => {
+        const nameBackIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-name-back"');
+        const nearby = REPO_DETAIL_SOURCE.substring(nameBackIdx, nameBackIdx + 500);
+        expect(nearby).toContain('group-active:opacity-70');
+    });
+
+    it('tappable repo name wraps h1 in a button element', () => {
+        const nameBackIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-name-back"');
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, nameBackIdx - 500), nameBackIdx);
+        expect(nearby).toContain('<button');
     });
 });
 
