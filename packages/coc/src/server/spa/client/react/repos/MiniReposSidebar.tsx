@@ -9,6 +9,7 @@ import { useQueue } from '../context/QueueContext';
 import { cn } from '../shared';
 import { groupReposByRemote } from './repoGrouping';
 import { AddRepoDialog } from './AddRepoDialog';
+import { ReposEmptyState } from './ReposEmptyState';
 import type { RepoData } from './repoGrouping';
 
 interface MiniReposSidebarProps {
@@ -147,8 +148,8 @@ export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHov
             {/* Repo items */}
             <div className="flex-1 overflow-y-auto py-1 flex flex-col">
                 {repos.length === 0 ? (
-                    <div className="text-[9px] text-[#848484] text-center px-1 py-4" data-testid="mini-empty">
-                        No repos
+                    <div data-testid="mini-empty">
+                        <ReposEmptyState onAddRepo={() => setAddOpen(true)} compact />
                     </div>
                 ) : (
                     groups.map((group, gi) => (

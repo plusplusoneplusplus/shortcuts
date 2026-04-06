@@ -132,13 +132,25 @@ describe('MiniReposSidebar', () => {
     it('shows add button', () => {
         render(<Wrap><MiniReposSidebar repos={[]} onRefresh={() => {}} /></Wrap>);
         expect(screen.getByTestId('mini-add-btn')).toBeDefined();
-        expect(screen.getByLabelText('Add repository')).toBeDefined();
+        expect(screen.getByTestId('mini-add-btn').getAttribute('aria-label')).toBe('Add repository');
     });
 
     it('shows empty state when no repos', () => {
         render(<Wrap><MiniReposSidebar repos={[]} onRefresh={() => {}} /></Wrap>);
         expect(screen.getByTestId('mini-empty')).toBeDefined();
-        expect(screen.getByText('No repos')).toBeDefined();
+        expect(screen.getByTestId('repos-empty-compact')).toBeDefined();
+        expect(screen.queryByText('No repos')).toBeNull();
+        const btn = screen.getAllByLabelText('Add repository');
+        expect(btn.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('clicking compact empty state icon opens AddRepoDialog', () => {
+        render(<Wrap><MiniReposSidebar repos={[]} onRefresh={() => {}} /></Wrap>);
+        const compactEl = screen.getByTestId('repos-empty-compact');
+        const iconBtn = compactEl.querySelector('button');
+        expect(iconBtn).not.toBeNull();
+        fireEvent.click(iconBtn!);
+        expect(screen.getByText('Add Repository')).toBeDefined();
     });
 
     it('shows repo count in footer', () => {
