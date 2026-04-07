@@ -16,7 +16,8 @@ import * as fs from 'fs';
 import type { QueueStats } from '@plusplusoneplusplus/forge';
 import {
     serializeTask,
-    serializeQueueItem,
+    serializeTaskSummary,
+    serializeQueueItemSummary,
     enrichChatTasks,
     getAggregateStats,
     getManagerByRepoIdentifier,
@@ -53,8 +54,8 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
                 if (mgr) {
-                    queued = mgr.getQueueItems().map(serializeQueueItem);
-                    running = mgr.getRunning().map(serializeTask);
+                    queued = mgr.getQueueItems().map(serializeQueueItemSummary);
+                    running = mgr.getRunning().map(serializeTaskSummary);
                     stats = mgr.getStats();
                 } else {
                     queued = [];
@@ -64,8 +65,8 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             } else {
                 const globalPath = globalWorkspaceRootPath ?? process.cwd();
                 const globalMgr = bridge.registry.getQueueForRepo(globalPath);
-                queued = globalMgr.getQueueItems().map(serializeQueueItem);
-                running = globalMgr.getRunning().map(serializeTask);
+                queued = globalMgr.getQueueItems().map(serializeQueueItemSummary);
+                running = globalMgr.getRunning().map(serializeTaskSummary);
                 stats = globalMgr.getStats();
             }
 
@@ -125,12 +126,12 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
                 history = mgr
-                    ? mgr.getHistory().map(serializeTask)
+                    ? mgr.getHistory().map(serializeTaskSummary)
                     : [];
             } else {
                 const globalPath = globalWorkspaceRootPath ?? process.cwd();
                 const globalMgr = bridge.registry.getQueueForRepo(globalPath);
-                history = globalMgr.getHistory().map(serializeTask);
+                history = globalMgr.getHistory().map(serializeTaskSummary);
             }
 
             if (typeFilter) {
@@ -146,7 +147,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                             !seenIds.has(task.id)
                         ) {
                             seenIds.add(task.id);
-                            history.push(serializeTask(task));
+                            history.push(serializeTaskSummary(task));
                         }
                     }
                 };

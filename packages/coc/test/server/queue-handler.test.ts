@@ -846,6 +846,41 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(404);
             expect(JSON.parse(res.body).error).toBe('Task not found');
         });
+
+        it('should return full task with config and payload (not summary)', async () => {
+            const srv = await startServer();
+
+            const fullPayload = {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'A detailed prompt that should not be truncated in the detail response',
+                additionalContext: 'Extra context data',
+            };
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask({
+                displayName: 'Detail check',
+                payload: fullPayload,
+                config: { model: 'test-model' },
+            }));
+            const taskId = JSON.parse(createRes.body).task.id;
+
+            const res = await request(`${srv.url}/api/queue/${taskId}`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            // Detail endpoint must return full payload (not truncated summary)
+            expect(body.task.payload.prompt).toBe(fullPayload.prompt);
+            expect(body.task.payload.additionalContext).toBe('Extra context data');
+            expect(body.task.config).toBeDefined();
+            expect(body.task.config.model).toBe('test-model');
+
+            // Verify list endpoint returns summary (reduced payload without config)
+            const listRes = await request(`${srv.url}/api/queue`);
+            const listBody = JSON.parse(listRes.body);
+            const listTask = listBody.queued.find((t: any) => t.id === taskId);
+            expect(listTask).toBeDefined();
+            // Summary omits config and additionalContext
+            expect(listTask.config).toBeUndefined();
+            expect(listTask.payload.additionalContext).toBeUndefined();
+        });
     });
 
     // ========================================================================
@@ -2946,13 +2981,12 @@ describe('Queue Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.taskId).toBeDefined();
 
-            // Verify paths contain queue_ prefix by checking the enqueued task prompt
-            const queueRes = await request(`${srv.url}/api/queue`);
-            const queueBody = JSON.parse(queueRes.body);
-            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
-            expect(task).toBeDefined();
-            expect(task.payload.prompt).toContain('queue_abc123');
-            expect(task.payload.prompt).toContain('queue_def456');
+            // Verify paths contain queue_ prefix by checking the enqueued task prompt (use detail endpoint for full payload)
+            const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
+            const detailBody = JSON.parse(detailRes.body);
+            expect(detailBody.task).toBeDefined();
+            expect(detailBody.task.payload.prompt).toContain('queue_abc123');
+            expect(detailBody.task.payload.prompt).toContain('queue_def456');
         });
 
         it('should preserve IDs that already have queue_ prefix', async () => {
@@ -2965,15 +2999,15 @@ describe('Queue Handler', () => {
                 workspaceId: 'ws1',
             });
             expect(res.status).toBe(201);
-
-            const queueRes = await request(`${srv.url}/api/queue`);
-            const queueBody = JSON.parse(queueRes.body);
             const body = JSON.parse(res.body);
-            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
-            expect(task).toBeDefined();
+
+            // Use detail endpoint for full payload
+            const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
+            const detailBody = JSON.parse(detailRes.body);
+            expect(detailBody.task).toBeDefined();
             // Should NOT double-prefix
-            expect(task.payload.prompt).toContain('queue_abc123');
-            expect(task.payload.prompt).not.toContain('queue_queue_abc123');
+            expect(detailBody.task.payload.prompt).toContain('queue_abc123');
+            expect(detailBody.task.payload.prompt).not.toContain('queue_queue_abc123');
         });
 
         it('should forward userPrompt into the enqueued task prompt', async () => {
@@ -2989,12 +3023,12 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
 
-            const queueRes = await request(`${srv.url}/api/queue`);
-            const queueBody = JSON.parse(queueRes.body);
-            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
-            expect(task).toBeDefined();
-            expect(task.payload.prompt).toContain('Focus on action items only');
-            expect(task.payload.prompt).toContain('Additional focus / question from the user:');
+            // Use detail endpoint for full payload
+            const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
+            const detailBody = JSON.parse(detailRes.body);
+            expect(detailBody.task).toBeDefined();
+            expect(detailBody.task.payload.prompt).toContain('Focus on action items only');
+            expect(detailBody.task.payload.prompt).toContain('Additional focus / question from the user:');
         });
 
         it('should not include user prompt section when userPrompt is empty', async () => {
@@ -3010,11 +3044,11 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
 
-            const queueRes = await request(`${srv.url}/api/queue`);
-            const queueBody = JSON.parse(queueRes.body);
-            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
-            expect(task).toBeDefined();
-            expect(task.payload.prompt).not.toContain('Additional focus');
+            // Use detail endpoint for full payload
+            const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
+            const detailBody = JSON.parse(detailRes.body);
+            expect(detailBody.task).toBeDefined();
+            expect(detailBody.task.payload.prompt).not.toContain('Additional focus');
         });
 
         it('should truncate userPrompt to 2000 characters', async () => {
@@ -3031,13 +3065,13 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
 
-            const queueRes = await request(`${srv.url}/api/queue`);
-            const queueBody = JSON.parse(queueRes.body);
-            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
-            expect(task).toBeDefined();
+            // Use detail endpoint for full payload
+            const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
+            const detailBody = JSON.parse(detailRes.body);
+            expect(detailBody.task).toBeDefined();
             // The user prompt section should exist but be truncated
-            expect(task.payload.prompt).toContain('Additional focus');
-            const afterMarker = task.payload.prompt.split('Additional focus / question from the user:\n')[1];
+            expect(detailBody.task.payload.prompt).toContain('Additional focus');
+            const afterMarker = detailBody.task.payload.prompt.split('Additional focus / question from the user:\n')[1];
             expect(afterMarker.length).toBeLessThanOrEqual(2000);
         });
     });
