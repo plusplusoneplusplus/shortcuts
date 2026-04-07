@@ -62,8 +62,8 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
 
             try {
-                const uncommitted = branchService.hasUncommittedChanges(ws.rootPath);
-                const status = branchService.getBranchStatus(ws.rootPath, uncommitted);
+                const uncommitted = await branchService.hasUncommittedChanges(ws.rootPath);
+                const status = await branchService.getBranchStatus(ws.rootPath, uncommitted);
                 sendJSON(res, 200, status);
             } catch (err) {
                 return handleAPIError(res, err);

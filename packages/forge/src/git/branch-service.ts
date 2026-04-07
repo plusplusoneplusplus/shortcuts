@@ -39,7 +39,7 @@ export class BranchService {
 
     /**
      * Execute a git command synchronously.
-     * Uses cross-platform compatible options.
+     * Used by branch management operations (create, switch, delete, etc.).
      */
     private execGitSync(command: string, options: GitExecOptions): string {
         return execSync(command, {
@@ -54,7 +54,7 @@ export class BranchService {
     /**
      * Execute a git command asynchronously via execAsync.
      */
-    private async execGitAsync(command: string, options: GitExecOptions): Promise<string> {
+    private async execGit(command: string, options: GitExecOptions): Promise<string> {
         const { stdout } = await execAsync(command, {
             cwd: options.cwd,
             timeout: options.timeout || 30000,
@@ -73,14 +73,14 @@ export class BranchService {
      * @param repoRoot Repository root path
      * @param hasUncommittedChanges Whether there are uncommitted changes
      */
-    getBranchStatus(repoRoot: string, hasUncommittedChanges: boolean): BranchStatus | null {
+    async getBranchStatus(repoRoot: string, hasUncommittedChanges: boolean): Promise<BranchStatus | null> {
         try {
-            const headHash = this.getHeadHash(repoRoot);
+            const headHash = await this.getHeadHash(repoRoot);
             if (!headHash) {
                 return null;
             }
 
-            const isDetached = this.isDetachedHead(repoRoot);
+            const isDetached = await this.isDetachedHead(repoRoot);
 
             if (isDetached) {
                 return {
@@ -93,12 +93,12 @@ export class BranchService {
                 };
             }
 
-            const branchName = this.getCurrentBranchName(repoRoot);
+            const branchName = await this.getCurrentBranchName(repoRoot);
             if (!branchName) {
                 return null;
             }
 
-            const trackingInfo = this.getTrackingBranchInfo(repoRoot, branchName);
+            const trackingInfo = await this.getTrackingBranchInfo(repoRoot, branchName);
 
             return {
                 name: branchName,
@@ -117,9 +117,9 @@ export class BranchService {
     /**
      * Check if HEAD is detached.
      */
-    private isDetachedHead(repoRoot: string): boolean {
+    private async isDetachedHead(repoRoot: string): Promise<boolean> {
         try {
-            const output = this.execGitSync('git symbolic-ref -q HEAD', { cwd: repoRoot });
+            const output = await this.execGit('git symbolic-ref -q HEAD', { cwd: repoRoot });
             return !output.trim();
         } catch {
             return true;
@@ -129,9 +129,9 @@ export class BranchService {
     /**
      * Get the HEAD commit hash.
      */
-    private getHeadHash(repoRoot: string): string {
+    private async getHeadHash(repoRoot: string): Promise<string> {
         try {
-            return this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
+            return (await this.execGit('git rev-parse HEAD', { cwd: repoRoot })).trim();
         } catch {
             return '';
         }
@@ -140,9 +140,9 @@ export class BranchService {
     /**
      * Get the current branch name.
      */
-    private getCurrentBranchName(repoRoot: string): string | null {
+    private async getCurrentBranchName(repoRoot: string): Promise<string | null> {
         try {
-            const output = this.execGitSync('git rev-parse --abbrev-ref HEAD', { cwd: repoRoot });
+            const output = await this.execGit('git rev-parse --abbrev-ref HEAD', { cwd: repoRoot });
             const name = output.trim();
             return name === 'HEAD' ? null : name;
         } catch {
@@ -153,17 +153,17 @@ export class BranchService {
     /**
      * Get tracking branch information (ahead/behind counts).
      */
-    private getTrackingBranchInfo(repoRoot: string, branchName: string): {
+    private async getTrackingBranchInfo(repoRoot: string, branchName: string): Promise<{
         trackingBranch?: string;
         ahead: number;
         behind: number;
-    } {
+    }> {
         try {
             const upstreamCmd = `git rev-parse --abbrev-ref "${branchName}@{upstream}"`;
             let trackingBranch: string | undefined;
 
             try {
-                trackingBranch = this.execGitSync(upstreamCmd, { cwd: repoRoot }).trim();
+                trackingBranch = (await this.execGit(upstreamCmd, { cwd: repoRoot })).trim();
             } catch {
                 return { ahead: 0, behind: 0 };
             }
@@ -171,8 +171,13 @@ export class BranchService {
             const aheadCmd = `git rev-list --count "${trackingBranch}..${branchName}"`;
             const behindCmd = `git rev-list --count "${branchName}..${trackingBranch}"`;
 
-            const ahead = parseInt(this.execGitSync(aheadCmd, { cwd: repoRoot }).trim(), 10) || 0;
-            const behind = parseInt(this.execGitSync(behindCmd, { cwd: repoRoot }).trim(), 10) || 0;
+            const [aheadStr, behindStr] = await Promise.all([
+                this.execGit(aheadCmd, { cwd: repoRoot }),
+                this.execGit(behindCmd, { cwd: repoRoot }),
+            ]);
+
+            const ahead = parseInt(aheadStr.trim(), 10) || 0;
+            const behind = parseInt(behindStr.trim(), 10) || 0;
 
             return { trackingBranch, ahead, behind };
         } catch (error) {
@@ -498,7 +503,7 @@ export class BranchService {
 
             command += ` "${branchName}"`;
 
-            await this.execGitAsync(command, { cwd: repoRoot });
+            await this.execGit(command, { cwd: repoRoot });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -517,9 +522,9 @@ export class BranchService {
     ): Promise<GitOperationResult> {
         try {
             if (checkout) {
-                await this.execGitAsync(`git checkout -b "${branchName}"`, { cwd: repoRoot });
+                await this.execGit(`git checkout -b "${branchName}"`, { cwd: repoRoot });
             } else {
-                await this.execGitAsync(`git branch "${branchName}"`, { cwd: repoRoot });
+                await this.execGit(`git branch "${branchName}"`, { cwd: repoRoot });
             }
             return { success: true };
         } catch (error) {
@@ -539,7 +544,7 @@ export class BranchService {
     ): Promise<GitOperationResult> {
         try {
             const flag = force ? '-D' : '-d';
-            await this.execGitAsync(`git branch ${flag} "${branchName}"`, { cwd: repoRoot });
+            await this.execGit(`git branch ${flag} "${branchName}"`, { cwd: repoRoot });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -557,7 +562,7 @@ export class BranchService {
         newName: string
     ): Promise<GitOperationResult> {
         try {
-            await this.execGitAsync(`git branch -m "${oldName}" "${newName}"`, { cwd: repoRoot });
+            await this.execGit(`git branch -m "${oldName}" "${newName}"`, { cwd: repoRoot });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -571,7 +576,7 @@ export class BranchService {
      */
     async mergeBranch(repoRoot: string, branchName: string): Promise<GitOperationResult> {
         try {
-            await this.execGitAsync(`git merge "${branchName}"`, { cwd: repoRoot, timeout: 600000 });
+            await this.execGit(`git merge "${branchName}"`, { cwd: repoRoot, timeout: 600000 });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -587,12 +592,12 @@ export class BranchService {
         try {
             let cmd = 'git push';
             if (setUpstream) {
-                const branchName = this.getCurrentBranchName(repoRoot);
+                const branchName = await this.getCurrentBranchName(repoRoot);
                 if (branchName) {
                     cmd = `git push -u origin "${branchName}"`;
                 }
             }
-            await this.execGitAsync(cmd, { cwd: repoRoot, timeout: 600000 });
+            await this.execGit(cmd, { cwd: repoRoot, timeout: 600000 });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -607,7 +612,7 @@ export class BranchService {
     async pull(repoRoot: string, rebase: boolean = false): Promise<GitOperationResult> {
         try {
             const cmd = rebase ? 'git pull --rebase' : 'git pull';
-            await this.execGitAsync(cmd, { cwd: repoRoot, timeout: 600000 });
+            await this.execGit(cmd, { cwd: repoRoot, timeout: 600000 });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -624,7 +629,7 @@ export class BranchService {
     async rebaseAutosquash(repoRoot: string): Promise<GitOperationResult> {
         try {
             const seqEditor = process.platform === 'win32' ? 'true' : ':';
-            await this.execGitAsync('git rebase -i --autosquash @{upstream}', {
+            await this.execGit('git rebase -i --autosquash @{upstream}', {
                 cwd: repoRoot,
                 timeout: 600000,
                 env: { GIT_SEQUENCE_EDITOR: seqEditor },
@@ -643,7 +648,7 @@ export class BranchService {
     async fetch(repoRoot: string, remote?: string): Promise<GitOperationResult> {
         try {
             const cmd = remote ? `git fetch "${remote}"` : 'git fetch --all';
-            await this.execGitAsync(cmd, { cwd: repoRoot, timeout: 600000 });
+            await this.execGit(cmd, { cwd: repoRoot, timeout: 600000 });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -660,7 +665,7 @@ export class BranchService {
             const cmd = message
                 ? `git stash push -m "${message.replace(/"/g, '\\"')}"`
                 : 'git stash push';
-            await this.execGitAsync(cmd, { cwd: repoRoot });
+            await this.execGit(cmd, { cwd: repoRoot });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -675,7 +680,7 @@ export class BranchService {
      */
     async cherryPick(repoRoot: string, hash: string): Promise<{ success: boolean; conflicts: boolean; message: string }> {
         try {
-            await this.execGitAsync(`git cherry-pick ${hash}`, { cwd: repoRoot });
+            await this.execGit(`git cherry-pick ${hash}`, { cwd: repoRoot });
             return { success: true, conflicts: false, message: 'Cherry-pick applied successfully' };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -693,7 +698,7 @@ export class BranchService {
      */
     async popStash(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGitAsync('git stash pop', { cwd: repoRoot });
+            await this.execGit('git stash pop', { cwd: repoRoot });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -716,7 +721,7 @@ export class BranchService {
         const msgPath = path.join(tmpDir, 'COMMIT_MSG');
         try {
             fs.writeFileSync(msgPath, message, 'utf-8');
-            await this.execGitAsync(`git commit --amend --only -F "${msgPath}"`, { cwd: repoRoot });
+            await this.execGit(`git commit --amend --only -F "${msgPath}"`, { cwd: repoRoot });
             const hash = this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
             return { success: true, hash };
         } catch (error) {
@@ -731,9 +736,9 @@ export class BranchService {
     /**
      * Check if there are uncommitted changes (staged or unstaged).
      */
-    hasUncommittedChanges(repoRoot: string): boolean {
+    async hasUncommittedChanges(repoRoot: string): Promise<boolean> {
         try {
-            const output = this.execGitSync('git status --porcelain', { cwd: repoRoot });
+            const output = await this.execGit('git status --porcelain', { cwd: repoRoot });
             return output.trim().length > 0;
         } catch {
             return false;
@@ -781,7 +786,7 @@ export class BranchService {
      */
     async rebaseContinue(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGitAsync('git rebase --continue', {
+            await this.execGit('git rebase --continue', {
                 cwd: repoRoot,
                 timeout: 600000,
                 env: { GIT_EDITOR: 'true' },
@@ -799,7 +804,7 @@ export class BranchService {
      */
     async rebaseAbort(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGitAsync('git rebase --abort', { cwd: repoRoot });
+            await this.execGit('git rebase --abort', { cwd: repoRoot });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -813,7 +818,7 @@ export class BranchService {
      */
     async mergeContinue(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGitAsync('git merge --continue', {
+            await this.execGit('git merge --continue', {
                 cwd: repoRoot,
                 timeout: 600000,
                 env: { GIT_EDITOR: 'true' },
@@ -831,7 +836,7 @@ export class BranchService {
      */
     async mergeAbort(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGitAsync('git merge --abort', { cwd: repoRoot });
+            await this.execGit('git merge --abort', { cwd: repoRoot });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -873,7 +878,7 @@ export class BranchService {
             // Find the base commit (parent of the oldest commit in the order)
             const baseHash = this.execGitSync(`git rev-parse ${commitOrder[0]}~1`, { cwd: repoRoot }).trim();
 
-            await this.execGitAsync(`git rebase -i ${baseHash}`, {
+            await this.execGit(`git rebase -i ${baseHash}`, {
                 cwd: repoRoot,
                 timeout: 600000,
                 env: { GIT_SEQUENCE_EDITOR: seqEditor },
@@ -944,7 +949,7 @@ export class BranchService {
                 msgEditor = msgScriptPath;
             }
 
-            await this.execGitAsync(`git rebase -i ${parentHash}`, {
+            await this.execGit(`git rebase -i ${parentHash}`, {
                 cwd: repoRoot,
                 timeout: 600000,
                 env: { GIT_SEQUENCE_EDITOR: seqEditor, GIT_EDITOR: msgEditor },

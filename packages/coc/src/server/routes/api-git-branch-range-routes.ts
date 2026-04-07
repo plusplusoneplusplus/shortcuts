@@ -62,7 +62,7 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const rangeService = getGitRangeService();
-                const range = rangeService.detectCommitRange(ws.rootPath);
+                const range = await rangeService.detectCommitRange(ws.rootPath);
                 if (!range) {
                     const result = { onDefaultBranch: true };
                     gitCache.set(cacheKey, result);
@@ -90,7 +90,7 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const rangeService = getGitRangeService();
-                const range = rangeService.detectCommitRange(ws.rootPath);
+                const range = await rangeService.detectCommitRange(ws.rootPath);
                 if (!range) {
                     return sendJSON(res, 200, { files: [] });
                 }
@@ -112,7 +112,7 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const rangeService = getGitRangeService();
-                const range = rangeService.detectCommitRange(ws.rootPath);
+                const range = await rangeService.detectCommitRange(ws.rootPath);
                 if (!range) {
                     return sendJSON(res, 200, { diff: '' });
                 }
@@ -138,7 +138,7 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const rangeService = getGitRangeService();
-                const range = rangeService.detectCommitRange(ws.rootPath);
+                const range = await rangeService.detectCommitRange(ws.rootPath);
                 if (!range) {
                     return sendJSON(res, 200, { diff: '', path: filePath });
                 }

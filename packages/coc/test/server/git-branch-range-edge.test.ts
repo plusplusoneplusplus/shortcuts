@@ -44,6 +44,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             getRangeDiff: mockGetRangeDiff,
             getFileDiff: mockGetFileDiff,
             getCurrentBranch: vi.fn().mockReturnValue('main'),
+            getCurrentBranch: vi.fn().mockResolvedValue('main'),
         })),
     };
 });

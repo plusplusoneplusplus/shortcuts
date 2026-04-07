@@ -38,10 +38,12 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         ...actual,
         GitRangeService: class {
             detectCommitRange = mockDetectCommitRange;
+            getCurrentBranch = vi.fn().mockResolvedValue('main');
         },
         BranchService: vi.fn().mockImplementation(() => ({
-            getBranchStatus: mockGetBranchStatus,
+            getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn().mockReturnValue(false),
+            hasUncommittedChanges: vi.fn().mockResolvedValue(false),
         })),
     };
 });

@@ -33,6 +33,7 @@ export {
 export {
     ExecGitOptions,
     execGit,
+    execGitAsync,
 } from './exec';
 
 export { GitLogService } from './git-log-service';

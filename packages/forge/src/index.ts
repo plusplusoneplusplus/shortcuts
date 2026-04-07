@@ -933,6 +933,7 @@ export {
     STAGE_LABEL,
     ExecGitOptions,
     execGit,
+    execGitAsync,
     getRemoteUrl,
     normalizeRemoteUrl,
     computeRemoteHash,

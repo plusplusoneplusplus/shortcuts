@@ -1,5 +1,16 @@
-import { describe, it, expect } from 'vitest';
-import { normalizeRemoteUrl, computeRemoteHash } from '../../src/git/remote';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { normalizeRemoteUrl, computeRemoteHash, detectRemoteUrl } from '../../src/git/remote';
+import { execGitAsync } from '../../src/git/exec';
+
+vi.mock('../../src/git/exec', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/git/exec')>();
+    return {
+        ...actual,
+        execGitAsync: vi.fn(),
+    };
+});
+
+const mockedExecGitAsync = execGitAsync as unknown as ReturnType<typeof vi.fn>;
 
 describe('normalizeRemoteUrl', () => {
     it('lowercases the URL', () => {
@@ -75,5 +86,53 @@ describe('computeRemoteHash', () => {
     it('produces different hashes for different repositories', () => {
         expect(computeRemoteHash('https://github.com/owner/repo-a'))
             .not.toBe(computeRemoteHash('https://github.com/owner/repo-b'));
+    });
+});
+
+describe('detectRemoteUrl', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('returns origin URL when origin remote exists', async () => {
+        mockedExecGitAsync.mockResolvedValueOnce('https://github.com/owner/repo.git');
+
+        const url = await detectRemoteUrl('/repo');
+        expect(url).toBe('https://github.com/owner/repo.git');
+    });
+
+    it('falls back to first remote when origin fails', async () => {
+        mockedExecGitAsync
+            .mockRejectedValueOnce(new Error('no origin'))          // git remote get-url origin
+            .mockResolvedValueOnce('upstream\nbackup\n')             // git remote (list remotes)
+            .mockResolvedValueOnce('https://github.com/other/repo'); // git remote get-url upstream
+
+        const url = await detectRemoteUrl('/repo');
+        expect(url).toBe('https://github.com/other/repo');
+    });
+
+    it('returns undefined when no remotes configured', async () => {
+        mockedExecGitAsync
+            .mockRejectedValueOnce(new Error('no origin'))
+            .mockResolvedValueOnce('');
+
+        const url = await detectRemoteUrl('/repo');
+        expect(url).toBeUndefined();
+    });
+
+    it('returns undefined when all git calls fail', async () => {
+        mockedExecGitAsync
+            .mockRejectedValueOnce(new Error('no origin'))
+            .mockRejectedValueOnce(new Error('not a git repo'));
+
+        const url = await detectRemoteUrl('/not-a-repo');
+        expect(url).toBeUndefined();
+    });
+
+    it('returns undefined when origin URL is empty', async () => {
+        mockedExecGitAsync.mockResolvedValueOnce('');
+
+        const url = await detectRemoteUrl('/repo');
+        expect(url).toBeUndefined();
     });
 });

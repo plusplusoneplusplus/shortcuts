@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getLogger, LogCategory } from '../logger';
 import { execGit } from './exec';
+import { execGitAsync } from './exec';
 import { GitChangeStatus, GitCommitRange, GitCommitRangeFile, GitRangeConfig } from './types';
 
 /**
@@ -58,9 +59,9 @@ export class GitRangeService {
      * Get the current branch name.
      * @returns Current branch name or 'HEAD' if detached
      */
-    getCurrentBranch(repoRoot: string): string {
+    async getCurrentBranch(repoRoot: string): Promise<string> {
         try {
-            const branch = this.execGitCommand(['rev-parse', '--abbrev-ref', 'HEAD'], repoRoot);
+            const branch = await execGitAsync(['rev-parse', '--abbrev-ref', 'HEAD'], repoRoot);
             return branch || 'HEAD';
         } catch (error) {
             getLogger().error(LogCategory.GIT, 'Failed to get current branch', error instanceof Error ? error : undefined);
@@ -285,12 +286,12 @@ export class GitRangeService {
      * Detect and return the commit range for the current branch.
      * @returns GitCommitRange or null if no range detected
      */
-    detectCommitRange(repoRoot: string): GitCommitRange | null {
+    async detectCommitRange(repoRoot: string): Promise<GitCommitRange | null> {
         if (!fs.existsSync(repoRoot)) {
             return null;
         }
         try {
-            const currentBranch = this.getCurrentBranch(repoRoot);
+            const currentBranch = await this.getCurrentBranch(repoRoot);
 
             const defaultBranch = this.getDefaultRemoteBranch(repoRoot);
             if (!defaultBranch) {

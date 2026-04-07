@@ -66,8 +66,8 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         BranchService: vi.fn().mockImplementation(() => ({
             getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,
-            getBranchStatus: mockGetBranchStatus,
-            hasUncommittedChanges: mockHasUncommittedChanges,
+            getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
+            hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
             createBranch: mockCreateBranch,
             switchBranch: mockSwitchBranch,
             deleteBranch: mockDeleteBranch,
@@ -87,6 +87,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             rebaseReorder: mockRebaseReorder,
             rewordCommit: mockRewordCommit,
         })),
+        detectRemoteUrl: vi.fn(async () => undefined),
     };
 });
 

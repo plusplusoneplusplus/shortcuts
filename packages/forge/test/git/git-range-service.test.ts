@@ -10,6 +10,7 @@ import { GitRangeService } from '../../src/git/git-range-service';
 // Mock the exec module
 vi.mock('../../src/git/exec', () => ({
     execGit: vi.fn(),
+    execGitAsync: vi.fn(),
 }));
 
 // Mock the logger
@@ -29,9 +30,10 @@ vi.mock('fs', async (importOriginal) => {
     return { ...actual, existsSync: vi.fn().mockReturnValue(true) };
 });
 
-import { execGit } from '../../src/git/exec';
+import { execGit, execGitAsync } from '../../src/git/exec';
 
 const mockExecGit = vi.mocked(execGit);
+const mockExecGitAsync = vi.mocked(execGitAsync);
 
 describe('GitRangeService', () => {
     let service: GitRangeService;
@@ -49,19 +51,19 @@ describe('GitRangeService', () => {
     // getCurrentBranch
     // -----------------------------------------------------------------------
     describe('getCurrentBranch', () => {
-        it('should return branch name', () => {
-            mockExecGit.mockReturnValue('feature-branch');
-            expect(service.getCurrentBranch('/repo')).toBe('feature-branch');
+        it('should return branch name', async () => {
+            mockExecGitAsync.mockResolvedValue('feature-branch');
+            expect(await service.getCurrentBranch('/repo')).toBe('feature-branch');
         });
 
-        it('should return HEAD on failure', () => {
-            mockExecGit.mockImplementation(() => { throw new Error('not a git repo'); });
-            expect(service.getCurrentBranch('/repo')).toBe('HEAD');
+        it('should return HEAD on failure', async () => {
+            mockExecGitAsync.mockRejectedValue(new Error('not a git repo'));
+            expect(await service.getCurrentBranch('/repo')).toBe('HEAD');
         });
 
-        it('should return HEAD when output is empty', () => {
-            mockExecGit.mockReturnValue('');
-            expect(service.getCurrentBranch('/repo')).toBe('HEAD');
+        it('should return HEAD when output is empty', async () => {
+            mockExecGitAsync.mockResolvedValue('');
+            expect(await service.getCurrentBranch('/repo')).toBe('HEAD');
         });
     });
 
@@ -276,9 +278,9 @@ describe('GitRangeService', () => {
     // -----------------------------------------------------------------------
     describe('detectCommitRange', () => {
         const setupMocksForFullRange = () => {
+            // getCurrentBranch uses execGitAsync
+            mockExecGitAsync.mockResolvedValueOnce('feature/test');
             mockExecGit
-                // getCurrentBranch → rev-parse --abbrev-ref HEAD
-                .mockReturnValueOnce('feature/test')
                 // getDefaultRemoteBranch → rev-parse --verify origin/main
                 .mockReturnValueOnce('abc123')
                 // getMergeBase
@@ -293,9 +295,9 @@ describe('GitRangeService', () => {
                 .mockReturnValueOnce('1 file changed, 10 insertions(+), 5 deletions(-)');
         };
 
-        it('should assemble full range', () => {
+        it('should assemble full range', async () => {
             setupMocksForFullRange();
-            const range = service.detectCommitRange('/repo');
+            const range = await service.detectCommitRange('/repo');
             expect(range).not.toBeNull();
             expect(range!.baseRef).toBe('origin/main');
             expect(range!.headRef).toBe('HEAD');
@@ -306,37 +308,35 @@ describe('GitRangeService', () => {
             expect(range!.deletions).toBe(5);
         });
 
-        it('should return null when no default branch', () => {
-            mockExecGit
-                .mockReturnValueOnce('main') // getCurrentBranch
-                .mockImplementation(() => { throw new Error(); }); // all branch detection fails
+        it('should return null when no default branch', async () => {
+            mockExecGitAsync.mockResolvedValueOnce('main'); // getCurrentBranch
+            mockExecGit.mockImplementation(() => { throw new Error(); }); // all branch detection fails
 
-            expect(service.detectCommitRange('/repo')).toBeNull();
+            expect(await service.detectCommitRange('/repo')).toBeNull();
         });
 
-        it('should return null when no merge base', () => {
+        it('should return null when no merge base', async () => {
+            mockExecGitAsync.mockResolvedValueOnce('feature'); // getCurrentBranch
             mockExecGit
-                .mockReturnValueOnce('feature') // getCurrentBranch
                 .mockReturnValueOnce('abc123')   // getDefaultRemoteBranch (origin/main)
                 .mockImplementation(() => { throw new Error(); }); // merge-base fails
 
-            expect(service.detectCommitRange('/repo')).toBeNull();
+            expect(await service.detectCommitRange('/repo')).toBeNull();
         });
 
-        it('should return null when no commits ahead', () => {
+        it('should return null when no commits ahead', async () => {
+            mockExecGitAsync.mockResolvedValueOnce('feature'); // getCurrentBranch
             mockExecGit
-                .mockReturnValueOnce('feature')
                 .mockReturnValueOnce('abc')      // origin/main exists
                 .mockReturnValueOnce('base123')  // merge-base
                 .mockReturnValueOnce('0');        // 0 commits ahead
 
-            expect(service.detectCommitRange('/repo')).toBeNull();
+            expect(await service.detectCommitRange('/repo')).toBeNull();
         });
 
-        it('should respect maxFiles config', () => {
+        it('should respect maxFiles config', async () => {
             const svc = new GitRangeService({ maxFiles: 1 });
-            // getCurrentBranch
-            mockExecGit.mockReturnValueOnce('feature');
+            mockExecGitAsync.mockResolvedValueOnce('feature'); // getCurrentBranch
             // getDefaultRemoteBranch → origin/main
             mockExecGit.mockReturnValueOnce('abc');
             // merge-base
@@ -350,7 +350,7 @@ describe('GitRangeService', () => {
             // shortstat
             mockExecGit.mockReturnValueOnce('2 files changed, 3 insertions(+)');
 
-            const range = svc.detectCommitRange('/repo');
+            const range = await svc.detectCommitRange('/repo');
             expect(range).not.toBeNull();
             expect(range!.files).toHaveLength(1);
             svc.dispose();
@@ -462,28 +462,28 @@ describe('GitRangeService', () => {
     // Constructor config
     // -----------------------------------------------------------------------
     describe('config defaults', () => {
-        it('should use default maxFiles=100 and showOnDefaultBranch=false', () => {
+        it('should use default maxFiles=100 and showOnDefaultBranch=false', async () => {
             // With 0 commits ahead and showOnDefaultBranch=false (default), return null
+            mockExecGitAsync.mockResolvedValueOnce('main'); // getCurrentBranch
             mockExecGit
-                .mockReturnValueOnce('main')   // getCurrentBranch
                 .mockReturnValueOnce('abc')     // origin/main exists
                 .mockReturnValueOnce('base')    // merge-base
                 .mockReturnValueOnce('0');       // 0 commits ahead
 
-            expect(service.detectCommitRange('/repo')).toBeNull();
+            expect(await service.detectCommitRange('/repo')).toBeNull();
         });
 
-        it('should respect showOnDefaultBranch=true when 0 commits ahead', () => {
+        it('should respect showOnDefaultBranch=true when 0 commits ahead', async () => {
             // Even with showOnDefaultBranch=true, the current code returns null for 0 commits.
             // This matches the original extension behaviour.
             const svc = new GitRangeService({ showOnDefaultBranch: true });
+            mockExecGitAsync.mockResolvedValueOnce('main'); // getCurrentBranch
             mockExecGit
-                .mockReturnValueOnce('main')
                 .mockReturnValueOnce('abc')
                 .mockReturnValueOnce('base')
                 .mockReturnValueOnce('0');
 
-            expect(svc.detectCommitRange('/repo')).toBeNull();
+            expect(await svc.detectCommitRange('/repo')).toBeNull();
             svc.dispose();
         });
     });

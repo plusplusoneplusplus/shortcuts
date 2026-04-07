@@ -33,7 +33,7 @@ function getBranchService(): BranchService {
  * Detect and persist the remote URL for a workspace if it has changed.
  */
 async function syncRemoteUrl(ws: WorkspaceInfo, store: ProcessStore): Promise<string | undefined> {
-    const remoteUrl = detectRemoteUrl(ws.rootPath);
+    const remoteUrl = await detectRemoteUrl(ws.rootPath);
     if (remoteUrl && remoteUrl !== ws.remoteUrl) {
         await store.updateWorkspace(ws.id, { remoteUrl });
     }
@@ -57,7 +57,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
 
             let remoteUrl: string | undefined = body.remoteUrl;
             if (!remoteUrl) {
-                remoteUrl = detectRemoteUrl(body.rootPath);
+                remoteUrl = await detectRemoteUrl(body.rootPath);
             }
 
             const workspace: WorkspaceInfo = {
@@ -188,8 +188,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
 
-            const dirty = getBranchService().hasUncommittedChanges(ws.rootPath);
-            const branchStatus = getBranchService().getBranchStatus(ws.rootPath, dirty);
+            const dirty = await getBranchService().hasUncommittedChanges(ws.rootPath);
+            const branchStatus = await getBranchService().getBranchStatus(ws.rootPath, dirty);
 
             if (!branchStatus) {
                 const remoteUrl = await syncRemoteUrl(ws, store);
@@ -197,7 +197,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 return;
             }
 
-            const branch = getGitRangeService().getCurrentBranch(ws.rootPath);
+            const branch = await getGitRangeService().getCurrentBranch(ws.rootPath);
             const remoteUrl = await syncRemoteUrl(ws, store);
             const ahead = branchStatus.ahead;
             const behind = branchStatus.behind;
@@ -230,14 +230,14 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                     if (!ws) { results[wsId] = null; return; }
 
                     try {
-                        const dirty = getBranchService().hasUncommittedChanges(ws.rootPath);
-                        const branchStatus = getBranchService().getBranchStatus(ws.rootPath, dirty);
+                        const dirty = await getBranchService().hasUncommittedChanges(ws.rootPath);
+                        const branchStatus = await getBranchService().getBranchStatus(ws.rootPath, dirty);
                         if (!branchStatus) {
                             const remoteUrl = await syncRemoteUrl(ws, store);
                             results[wsId] = { branch: null, dirty: false, isGitRepo: false, remoteUrl: remoteUrl || null };
                             return;
                         }
-                        const branch = getGitRangeService().getCurrentBranch(ws.rootPath);
+                        const branch = await getGitRangeService().getCurrentBranch(ws.rootPath);
                         const remoteUrl = await syncRemoteUrl(ws, store);
                         results[wsId] = {
                             branch, dirty,

@@ -41,111 +41,6 @@ describe('BranchService', () => {
         service = new BranchService();
     });
 
-    // ── getBranchStatus ──────────────────────────────────────────
-
-    describe('getBranchStatus', () => {
-        it('returns BranchStatus with branch name, ahead/behind, and tracking branch', () => {
-            // rev-parse HEAD → hash
-            mockedExecSync
-                .mockReturnValueOnce('abc1234def\n')    // getHeadHash
-                .mockReturnValueOnce('refs/heads/main\n') // isDetachedHead (symbolic-ref succeeds)
-                .mockReturnValueOnce('main\n')            // getCurrentBranchName
-                .mockReturnValueOnce('origin/main\n')     // upstream lookup
-                .mockReturnValueOnce('3\n')               // ahead
-                .mockReturnValueOnce('1\n');              // behind
-
-            const result = service.getBranchStatus('/repo', false);
-
-            expect(result).toEqual({
-                name: 'main',
-                isDetached: false,
-                ahead: 3,
-                behind: 1,
-                trackingBranch: 'origin/main',
-                hasUncommittedChanges: false,
-            });
-        });
-
-        it('returns detached HEAD status when symbolic-ref throws', () => {
-            mockedExecSync
-                .mockReturnValueOnce('deadbeef1234\n')  // getHeadHash
-                .mockImplementationOnce(() => { throw new Error('not a symbolic ref'); }); // isDetachedHead
-
-            const result = service.getBranchStatus('/repo', true);
-
-            expect(result).toEqual({
-                name: '',
-                isDetached: true,
-                detachedHash: 'deadbeef1234',
-                ahead: 0,
-                behind: 0,
-                hasUncommittedChanges: true,
-            });
-        });
-
-        it('returns null when rev-parse HEAD fails (not a git repo)', () => {
-            mockedExecSync.mockImplementationOnce(() => { throw new Error('not a git repo'); });
-
-            const result = service.getBranchStatus('/not-a-repo', false);
-
-            expect(result).toBeNull();
-        });
-
-        it('sets hasUncommittedChanges to the value passed in (passthrough)', () => {
-            mockedExecSync
-                .mockReturnValueOnce('abc1234\n')
-                .mockReturnValueOnce('refs/heads/main\n')
-                .mockReturnValueOnce('main\n')
-                .mockReturnValueOnce('origin/main\n')
-                .mockReturnValueOnce('0\n')
-                .mockReturnValueOnce('0\n');
-
-            const result = service.getBranchStatus('/repo', true);
-
-            expect(result?.hasUncommittedChanges).toBe(true);
-        });
-
-        it('returns ahead: 0, behind: 0 when no upstream is configured', () => {
-            mockedExecSync
-                .mockReturnValueOnce('abc1234\n')         // getHeadHash
-                .mockReturnValueOnce('refs/heads/feat\n') // isDetachedHead
-                .mockReturnValueOnce('feat\n')            // getCurrentBranchName
-                .mockImplementationOnce(() => { throw new Error('no upstream'); }); // upstream lookup
-
-            const result = service.getBranchStatus('/repo', false);
-
-            expect(result).toEqual({
-                name: 'feat',
-                isDetached: false,
-                ahead: 0,
-                behind: 0,
-                hasUncommittedChanges: false,
-            });
-        });
-    });
-
-    // ── hasUncommittedChanges ────────────────────────────────────
-
-    describe('hasUncommittedChanges', () => {
-        it('returns true when git status --porcelain produces output', () => {
-            mockedExecSync.mockReturnValueOnce(' M file.ts\n');
-
-            expect(service.hasUncommittedChanges('/repo')).toBe(true);
-        });
-
-        it('returns false when git status --porcelain returns empty string', () => {
-            mockedExecSync.mockReturnValueOnce('');
-
-            expect(service.hasUncommittedChanges('/repo')).toBe(false);
-        });
-
-        it('returns false when git command throws', () => {
-            mockedExecSync.mockImplementationOnce(() => { throw new Error('fail'); });
-
-            expect(service.hasUncommittedChanges('/repo')).toBe(false);
-        });
-    });
-
     // ── getLocalBranches ─────────────────────────────────────────
 
     describe('getLocalBranches', () => {
@@ -480,8 +375,8 @@ describe('BranchService', () => {
         });
 
         it('runs git push -u origin "branchName" when setUpstream is true', async () => {
-            // getCurrentBranchName
-            mockedExecSync.mockReturnValueOnce('my-branch\n');
+            // getCurrentBranchName (async)
+            mockedExecAsync.mockResolvedValueOnce({ stdout: 'my-branch\n', stderr: '' });
             mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
 
             const result = await service.push('/repo', true);
@@ -1386,5 +1281,118 @@ describe('BranchService.rewordCommit', () => {
 
         const msgCall = mockedWriteFileSync.mock.calls[0];
         expect(msgCall[1]).toBe(title.trim());
+    });
+
+    // ── getBranchStatus / hasUncommittedChanges (async) ─────────────────────────────────────────────
+
+    describe('hasUncommittedChanges', () => {
+        it('returns true when git status --porcelain produces output', async () => {
+            mockedExecAsync.mockResolvedValueOnce({ stdout: ' M file.ts\n', stderr: '' });
+
+            expect(await service.hasUncommittedChanges('/repo')).toBe(true);
+        });
+
+        it('returns false when git status --porcelain returns empty string', async () => {
+            mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+            expect(await service.hasUncommittedChanges('/repo')).toBe(false);
+        });
+
+        it('returns false when git command rejects', async () => {
+            mockedExecAsync.mockRejectedValueOnce(new Error('fail'));
+
+            expect(await service.hasUncommittedChanges('/repo')).toBe(false);
+        });
+    });
+
+    describe('getBranchStatus', () => {
+        it('returns BranchStatus with branch name, ahead/behind, and tracking branch', async () => {
+            mockedExecAsync
+                .mockResolvedValueOnce({ stdout: 'abc1234def\n', stderr: '' })    // getHeadHash
+                .mockResolvedValueOnce({ stdout: 'refs/heads/main\n', stderr: '' }) // isDetachedHead
+                .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })            // getCurrentBranchName
+                .mockResolvedValueOnce({ stdout: 'origin/main\n', stderr: '' })     // upstream lookup
+                .mockResolvedValueOnce({ stdout: '3\n', stderr: '' })               // ahead
+                .mockResolvedValueOnce({ stdout: '1\n', stderr: '' });              // behind
+
+            const result = await service.getBranchStatus('/repo', false);
+
+            expect(result).toEqual({
+                name: 'main',
+                isDetached: false,
+                ahead: 3,
+                behind: 1,
+                trackingBranch: 'origin/main',
+                hasUncommittedChanges: false,
+            });
+        });
+
+        it('returns detached HEAD status when symbolic-ref rejects', async () => {
+            mockedExecAsync
+                .mockResolvedValueOnce({ stdout: 'deadbeef1234\n', stderr: '' }) // getHeadHash
+                .mockRejectedValueOnce(new Error('not a symbolic ref'));          // isDetachedHead
+
+            const result = await service.getBranchStatus('/repo', true);
+
+            expect(result).toEqual({
+                name: '',
+                isDetached: true,
+                detachedHash: 'deadbeef1234',
+                ahead: 0,
+                behind: 0,
+                hasUncommittedChanges: true,
+            });
+        });
+
+        it('returns null when rev-parse HEAD fails (not a git repo)', async () => {
+            mockedExecAsync.mockRejectedValueOnce(new Error('not a git repo'));
+
+            const result = await service.getBranchStatus('/not-a-repo', false);
+
+            expect(result).toBeNull();
+        });
+
+        it('returns ahead: 0, behind: 0 when no upstream is configured', async () => {
+            mockedExecAsync
+                .mockResolvedValueOnce({ stdout: 'abc1234\n', stderr: '' })       // getHeadHash
+                .mockResolvedValueOnce({ stdout: 'refs/heads/feat\n', stderr: '' }) // isDetachedHead
+                .mockResolvedValueOnce({ stdout: 'feat\n', stderr: '' })            // getCurrentBranchName
+                .mockRejectedValueOnce(new Error('no upstream'));                    // upstream lookup
+
+            const result = await service.getBranchStatus('/repo', false);
+
+            expect(result).toEqual({
+                name: 'feat',
+                isDetached: false,
+                ahead: 0,
+                behind: 0,
+                hasUncommittedChanges: false,
+            });
+        });
+
+        it('runs ahead/behind counts in parallel', async () => {
+            const callOrder: string[] = [];
+            mockedExecAsync
+                .mockResolvedValueOnce({ stdout: 'abc1234\n', stderr: '' })       // getHeadHash
+                .mockResolvedValueOnce({ stdout: 'refs/heads/main\n', stderr: '' }) // isDetachedHead
+                .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })            // getCurrentBranchName
+                .mockResolvedValueOnce({ stdout: 'origin/main\n', stderr: '' })     // upstream lookup
+                .mockImplementationOnce(async () => {                               // ahead
+                    callOrder.push('ahead');
+                    return { stdout: '2\n', stderr: '' };
+                })
+                .mockImplementationOnce(async () => {                               // behind
+                    callOrder.push('behind');
+                    return { stdout: '5\n', stderr: '' };
+                });
+
+            const result = await service.getBranchStatus('/repo', false);
+
+            expect(result?.ahead).toBe(2);
+            expect(result?.behind).toBe(5);
+            // Both calls were made (parallel via Promise.all)
+            expect(callOrder).toContain('ahead');
+            expect(callOrder).toContain('behind');
+        });
     });
 });

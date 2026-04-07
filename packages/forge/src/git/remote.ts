@@ -9,7 +9,7 @@
  */
 
 import { createHash } from 'crypto';
-import { execGit } from './exec';
+import { execGit, execGitAsync } from './exec';
 
 /**
  * Normalise a remote URL for hashing purposes:
@@ -75,17 +75,25 @@ export function computeRemoteHash(remoteUrl: string): string {
  *
  * @param repoRoot Absolute path to the repository root.
  */
-export function detectRemoteUrl(repoRoot: string): string | undefined {
+/**
+ * Detect the primary git remote URL for a repository root.
+ *
+ * Tries `origin` first; falls back to the first available remote if `origin`
+ * is not configured.  Returns `undefined` when the directory is not a git
+ * repository or has no remotes.
+ *
+ * @param repoRoot Absolute path to the repository root.
+ */
+export async function detectRemoteUrl(repoRoot: string): Promise<string | undefined> {
     try {
-        const url = execGit(['remote', 'get-url', 'origin'], repoRoot);
+        const url = await execGitAsync(['remote', 'get-url', 'origin'], repoRoot);
         return url || undefined;
     } catch {
-        // No `origin` remote — try the first available remote.
         try {
-            const remotesOut = execGit(['remote'], repoRoot);
+            const remotesOut = await execGitAsync(['remote'], repoRoot);
             const firstRemote = remotesOut.trim().split('\n').filter(Boolean)[0];
             if (firstRemote) {
-                const url = execGit(['remote', 'get-url', firstRemote], repoRoot);
+                const url = await execGitAsync(['remote', 'get-url', firstRemote], repoRoot);
                 return url || undefined;
             }
         } catch { /* not a git repo or no remotes configured */ }

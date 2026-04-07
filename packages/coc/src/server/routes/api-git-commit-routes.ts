@@ -96,7 +96,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 }
 
                 let unpushedCount = 0;
-                const branchStatus = getBranchService().getBranchStatus(ws.rootPath, false);
+                const branchStatus = await getBranchService().getBranchStatus(ws.rootPath, false);
                 if (branchStatus) {
                     unpushedCount = branchStatus.ahead;
                 }
