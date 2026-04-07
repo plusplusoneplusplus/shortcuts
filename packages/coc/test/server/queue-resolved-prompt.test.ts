@@ -299,7 +299,7 @@ describe('SPA Enhanced Detail Rendering', () => {
     it('includes context blocks collapsible in chat rendering', () => {
         const bundle = getClientBundle();
         expect(bundle).toContain('Context');
-        expect(bundle).toContain('context.blocks');
+        expect(bundle).toContain('ctx.blocks');
     });
 
     it('includes mode field in chat rendering', () => {

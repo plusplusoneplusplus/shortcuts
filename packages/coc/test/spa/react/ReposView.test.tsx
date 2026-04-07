@@ -557,10 +557,6 @@ describe('AddRepoDialog', () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({}),
-            })
-            .mockResolvedValueOnce({
-                ok: true,
                 json: () => Promise.resolve({
                     path: 'C:\\Users\\georgeqiao',
                     parent: 'C:\\Users',
@@ -595,8 +591,8 @@ describe('AddRepoDialog', () => {
         const wslButton = await screen.findByRole('button', { name: 'WSL Home (Ubuntu-24.04)' });
         fireEvent.click(wslButton);
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-        const [secondUrl] = fetchMock.mock.calls[2];
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        const [secondUrl] = fetchMock.mock.calls[1];
         expect(String(secondUrl)).toContain(encodeURIComponent(wslHome));
     });
 });
