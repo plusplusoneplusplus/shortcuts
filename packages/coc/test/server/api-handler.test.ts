@@ -347,6 +347,39 @@ describe('API Handler', () => {
             const nonVirtual = listed.workspaces.filter((ws: any) => !ws.virtual);
             expect(nonVirtual).toHaveLength(1);
             expect(nonVirtual[0].id).toBe('ws-1');
+            // isGitRepo should be present (false for non-existent path)
+            expect(typeof nonVirtual[0].isGitRepo).toBe('boolean');
+        });
+
+        it('should return isGitRepo=true for a real git repo and false for a non-git directory', async () => {
+            const srv = await startServer();
+
+            // Create a temp directory with .git to simulate a git repo
+            const gitDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-git-'));
+            fs.mkdirSync(path.join(gitDir, '.git'));
+
+            // Create a temp directory without .git
+            const nonGitDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-nongit-'));
+
+            try {
+                await postJSON(`${srv.url}/api/workspaces`, {
+                    id: 'ws-git', name: 'git-repo', rootPath: gitDir,
+                });
+                await postJSON(`${srv.url}/api/workspaces`, {
+                    id: 'ws-nongit', name: 'non-git', rootPath: nonGitDir,
+                });
+
+                const listRes = await request(`${srv.url}/api/workspaces`);
+                const listed = JSON.parse(listRes.body);
+                const gitWs = listed.workspaces.find((ws: any) => ws.id === 'ws-git');
+                const nonGitWs = listed.workspaces.find((ws: any) => ws.id === 'ws-nongit');
+
+                expect(gitWs.isGitRepo).toBe(true);
+                expect(nonGitWs.isGitRepo).toBe(false);
+            } finally {
+                fs.rmSync(gitDir, { recursive: true, force: true });
+                fs.rmSync(nonGitDir, { recursive: true, force: true });
+            }
         });
 
         it('should return 400 when required fields are missing', async () => {

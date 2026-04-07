@@ -136,6 +136,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
 
                     return {
                         workspace: ws,
+                        gitInfo: { isGitRepo: !!ws.isGitRepo, branch: null, dirty: false },
                         gitInfoLoading: true,
                         workflows: summaryRes?.workflows || [],
                         stats,

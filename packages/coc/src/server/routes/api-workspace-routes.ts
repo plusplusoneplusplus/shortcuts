@@ -79,7 +79,11 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         pattern: '/api/workspaces',
         handler: async (_req, res) => {
             const workspaces = await store.getWorkspaces();
-            sendJSON(res, 200, { workspaces });
+            const enriched = workspaces.map(ws => ({
+                ...ws,
+                isGitRepo: fs.existsSync(path.join(ws.rootPath, '.git')),
+            }));
+            sendJSON(res, 200, { workspaces: enriched });
         },
     });
 
