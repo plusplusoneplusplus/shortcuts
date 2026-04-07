@@ -1,7 +1,7 @@
 {
   "name": "@plusplusoneplusplus/coc",
   "version": "1.1.0",
-  "description": "CoC (Copilot of Copilot) - CLI tool for executing YAML-based AI pipelines",
+  "description": "CoC (Copilot of Copilot) - CLI and web dashboard for executing YAML-based AI workflows with queue, scheduling, wiki serving, and task management",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
