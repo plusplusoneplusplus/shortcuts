@@ -326,6 +326,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         const isSelected = ws.id === selectedRepoId;
         const unseenCount = unseenCounts[ws.id] ?? 0;
         const color = ws.color || '#848484';
+        const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';
         return (
             <button
                 key={ws.id}
@@ -347,7 +348,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 }}
             >
                 <span
-                    className={"inline-block w-2 h-2 rounded-full flex-shrink-0" + getDotAnimationClass(repoQueueStatusMap[ws.id] ?? 'idle')}
+                    className={`inline-block w-2 h-2 ${dotShape} flex-shrink-0` + getDotAnimationClass(repoQueueStatusMap[ws.id] ?? 'idle')}
                     style={{ background: isSelected ? 'rgba(255,255,255,0.7)' : color }}
                     data-testid="repo-tab-dot"
                 />
@@ -510,7 +511,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                     }}
                                                 >
                                                     <span
-                                                        className={"inline-block w-2 h-2 rounded-full flex-shrink-0" + getDotAnimationClass(repoQueueStatusMap[ws.id] ?? 'idle')}
+                                                        className={`inline-block w-2 h-2 ${(repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm'} flex-shrink-0` + getDotAnimationClass(repoQueueStatusMap[ws.id] ?? 'idle')}
                                                         style={{ background: color }}
                                                         data-testid="overflow-repo-dot"
                                                     />

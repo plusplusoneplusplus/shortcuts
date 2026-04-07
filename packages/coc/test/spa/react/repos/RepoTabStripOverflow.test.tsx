@@ -592,6 +592,23 @@ describe('RepoTabStrip overflow', () => {
         });
     });
 
+    it('non-git repo in overflow dropdown renders a square dot', () => {
+        const gitRepo = { ...makeRepo('r1', 'GitRepo'), gitInfo: { branch: 'main', isGitRepo: true, dirty: false, ahead: 0, behind: 0 } };
+        const nonGitRepo = { ...makeRepo('r2', 'Folder'), gitInfo: { branch: '', isGitRepo: false, dirty: false, ahead: 0, behind: 0 } };
+        renderWithOverflow(
+            [gitRepo, nonGitRepo],
+            { containerWidth: 90, tabWidth: 80, selectedRepoId: 'r1' },
+        );
+        fireEvent.click(screen.getByTestId('overflow-pill'));
+        const dots = screen.getAllByTestId('overflow-repo-dot');
+        // First dot (git repo) → circle
+        expect(dots[0].className).toContain('rounded-full');
+        expect(dots[0].className).not.toContain('rounded-sm');
+        // Second dot (non-git repo) → square
+        expect(dots[1].className).toContain('rounded-sm');
+        expect(dots[1].className).not.toContain('rounded-full');
+    });
+
     describe('dynamic resize', () => {
         it('updates overflow count when container width changes', () => {
             const repos = Array.from({ length: 6 }, (_, i) => makeRepo(`r${i}`, `Repo-${i}`));

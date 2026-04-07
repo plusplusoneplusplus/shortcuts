@@ -725,6 +725,45 @@ describe('RepoTabStrip', () => {
         });
     });
 
+    it('non-git repo tab renders a square dot (rounded-sm)', () => {
+        const repo = { ...makeRepo('r1', 'LocalDir'), gitInfo: { branch: '', isGitRepo: false, dirty: false, ahead: 0, behind: 0 } };
+        render(
+            <RepoTabStrip repos={[repo]} selectedRepoId={null} onSelect={vi.fn()} unseenCounts={{}} onRefresh={vi.fn()} />
+        );
+        const dot = screen.getByTestId('repo-tab-dot');
+        expect(dot.className).toContain('rounded-sm');
+        expect(dot.className).not.toContain('rounded-full');
+    });
+
+    it('git repo tab renders a circle dot (rounded-full)', () => {
+        const repo = { ...makeRepo('r1', 'GitProject'), gitInfo: { branch: 'main', isGitRepo: true, dirty: false, ahead: 0, behind: 0 } };
+        render(
+            <RepoTabStrip repos={[repo]} selectedRepoId={null} onSelect={vi.fn()} unseenCounts={{}} onRefresh={vi.fn()} />
+        );
+        const dot = screen.getByTestId('repo-tab-dot');
+        expect(dot.className).toContain('rounded-full');
+        expect(dot.className).not.toContain('rounded-sm');
+    });
+
+    it('while gitInfoLoading is true, dot defaults to circle', () => {
+        const repo = { ...makeRepo('r1', 'Loading'), gitInfoLoading: true };
+        render(
+            <RepoTabStrip repos={[repo]} selectedRepoId={null} onSelect={vi.fn()} unseenCounts={{}} onRefresh={vi.fn()} />
+        );
+        const dot = screen.getByTestId('repo-tab-dot');
+        expect(dot.className).toContain('rounded-full');
+        expect(dot.className).not.toContain('rounded-sm');
+    });
+
+    it('repo with no gitInfo defaults to circle dot', () => {
+        const repo = makeRepo('r1', 'Unknown');
+        render(
+            <RepoTabStrip repos={[repo]} selectedRepoId={null} onSelect={vi.fn()} unseenCounts={{}} onRefresh={vi.fn()} />
+        );
+        const dot = screen.getByTestId('repo-tab-dot');
+        expect(dot.className).toContain('rounded-full');
+    });
+
     it('applies saved gitGroupOrder from preferences to tab order', async () => {
         // Two repos with different remoteUrls → two groups: "github.com/org/bravo" and "github.com/org/alpha"
         const repoA = makeRepo('a1', 'Alpha', '#ff0000', 'https://github.com/org/alpha');
