@@ -25,6 +25,16 @@ import { useFloatingChats } from '../context/FloatingChatsContext';
 import { SkillPicker } from './SkillPicker';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
+import type { PostAction } from '../../../task-types';
+
+interface HookEntry {
+    id: string;
+    timing: 'before' | 'after';
+    type: 'script' | 'skill';
+    script: string;
+    skillName: string;
+    prompt: string;
+}
 
 interface FolderOption { label: string; value: string; }
 interface SkillOption { name: string; description?: string; }
@@ -69,8 +79,23 @@ export function EnqueueDialog() {
     const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [minimized, setMinimized] = useState(false);
-    const [beforeScript, setBeforeScript] = useState('');
-    const [afterScript, setAfterScript] = useState('');
+    const [hooks, setHooks] = useState<HookEntry[]>([]);
+
+    const addHook = () => setHooks(prev => [...prev, {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timing: 'after',
+        type: 'script',
+        script: '',
+        skillName: '',
+        prompt: '',
+    }]);
+
+    const removeHook = (id: string) =>
+        setHooks(prev => prev.filter(h => h.id !== id));
+
+    const updateHook = (id: string, updates: Partial<HookEntry>) =>
+        setHooks(prev => prev.map(h => h.id === id ? { ...h, ...updates } : h));
+
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const richTextRef = useRef<RichTextInputHandle>(null);
     const slashCommands = useSlashCommands(skills);
@@ -176,12 +201,31 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'SET_DIALOG_MODE', mode: t.mode });
         }
         setSelectedTemplateId(t.id);
+        // Restore hooks from template postActions
+        if (t.postActions && t.postActions.length > 0) {
+            setHooks(t.postActions.map((pa, i) => ({
+                id: `tpl-${i}-${Date.now()}`,
+                timing: 'after' as const,
+                type: pa.type,
+                script: pa.type === 'script' ? pa.script : '',
+                skillName: pa.type === 'skill' ? pa.skillName : '',
+                prompt: (pa.type === 'skill' ? pa.prompt : undefined) ?? '',
+            })));
+        } else {
+            setHooks([]);
+        }
     }, [isAskMode, queueDispatch]);
 
     const handleSaveTemplate = useCallback(() => {
         const mode = isAskMode ? 'ask' : 'task';
-        saveTemplate({ model: model || '', mode, skills: selectedSkills });
-    }, [isAskMode, model, selectedSkills, saveTemplate]);
+        const postActions: PostAction[] = hooks
+            .filter(h => (h.type === 'script' && h.script.trim()) || (h.type === 'skill' && h.skillName))
+            .map(h => {
+                if (h.type === 'script') return { type: 'script' as const, script: h.script.trim() };
+                return { type: 'skill' as const, skillName: h.skillName, ...(h.prompt.trim() ? { prompt: h.prompt.trim() } : {}) };
+            });
+        saveTemplate({ model: model || '', mode, skills: selectedSkills, postActions });
+    }, [isAskMode, model, selectedSkills, hooks, saveTemplate]);
 
     const handleSubmit = useCallback(async () => {
         // Parse /skill tokens from prompt text (skills are extracted but prompt is kept intact)
@@ -254,8 +298,25 @@ export function EnqueueDialog() {
                     };
                 }
                 if (model) body.config = { model };
-                if (beforeScript.trim()) body.payload.beforeScript = beforeScript.trim();
-                if (afterScript.trim()) body.payload.afterScript = afterScript.trim();
+                // Before-hooks: take the first script-type before hook (backward compat)
+                const beforeHook = hooks.find(h => h.timing === 'before' && h.type === 'script' && h.script.trim());
+                if (beforeHook) body.payload.beforeScript = beforeHook.script.trim();
+
+                // After-hooks → postActions array
+                const afterHooks = hooks.filter(h => h.timing === 'after' && (
+                    (h.type === 'script' && h.script.trim()) ||
+                    (h.type === 'skill' && h.skillName)
+                ));
+                if (afterHooks.length > 0) {
+                    body.payload.postActions = afterHooks.map(h => {
+                        if (h.type === 'script') return { type: 'script' as const, script: h.script.trim() };
+                        return { type: 'skill' as const, skillName: h.skillName, ...(h.prompt.trim() ? { prompt: h.prompt.trim() } : {}) };
+                    });
+                }
+                // Backward compat: also set afterScript if there's exactly one script-type after hook
+                if (afterHooks.length === 1 && afterHooks[0].type === 'script') {
+                    body.payload.afterScript = afterHooks[0].script.trim();
+                }
                 return body;
             };
 
@@ -308,8 +369,7 @@ export function EnqueueDialog() {
             setPrompt('');
             richTextRef.current?.setValue('');
             setSelectedSkills([]);
-            setBeforeScript('');
-            setAfterScript('');
+            setHooks([]);
             setContextFiles([]);
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
             // Record skill usage for ordering + recent skills tracking
@@ -330,7 +390,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, trackRecentUsage, beforeScript, afterScript]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, trackRecentUsage, hooks]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
@@ -375,8 +435,7 @@ export function EnqueueDialog() {
     const handleRestore = useCallback(() => setMinimized(false), []);
     const handleClose = useCallback(() => {
         setMinimized(false);
-        setBeforeScript('');
-        setAfterScript('');
+        setHooks([]);
         queueDispatch({ type: 'CLOSE_DIALOG' });
     }, [queueDispatch]);
 
@@ -528,34 +587,95 @@ export function EnqueueDialog() {
                     onSkillChange={handleSkillChange}
                 />
             )}
-            <details>
-              <summary className="text-xs font-medium text-[#848484] cursor-pointer select-none mb-1">
-                Scripts (optional)
-              </summary>
-              <div className="flex flex-col gap-2 mt-2">
-                <div>
-                  <label className="block text-xs text-[#848484] mb-1">Before script</label>
-                  <input
-                    type="text"
-                    value={beforeScript}
-                    onChange={e => setBeforeScript(e.target.value)}
-                    placeholder="./scripts/setup.sh"
-                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                  />
-                  <p className="text-xs text-[#848484] mt-0.5">Runs before the AI task</p>
+            <details data-testid="hooks-section">
+                <summary className="text-xs font-medium text-[#848484] cursor-pointer select-none mb-1">
+                    Hooks (optional)
+                </summary>
+                <div className="flex flex-col gap-2 mt-2">
+                    {hooks.map(hook => (
+                        <div
+                            key={hook.id}
+                            data-testid="hook-entry"
+                            className="flex items-start gap-2 p-2 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]"
+                        >
+                            {/* Timing selector */}
+                            <select
+                                value={hook.timing}
+                                onChange={e => updateHook(hook.id, { timing: e.target.value as 'before' | 'after' })}
+                                className="px-2 py-1.5 text-xs rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                                data-testid="hook-timing"
+                            >
+                                <option value="before">Before</option>
+                                <option value="after">After</option>
+                            </select>
+
+                            {/* Type selector */}
+                            <select
+                                value={hook.type}
+                                onChange={e => updateHook(hook.id, { type: e.target.value as 'script' | 'skill' })}
+                                className="px-2 py-1.5 text-xs rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                                data-testid="hook-type"
+                            >
+                                <option value="script">Script</option>
+                                <option value="skill">Skill</option>
+                            </select>
+
+                            {/* Type-specific inputs */}
+                            {hook.type === 'script' ? (
+                                <input
+                                    type="text"
+                                    value={hook.script}
+                                    onChange={e => updateHook(hook.id, { script: e.target.value })}
+                                    placeholder="./scripts/setup.sh"
+                                    className="flex-1 min-w-0 px-2 py-1.5 text-xs rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                                    data-testid="hook-script-input"
+                                />
+                            ) : (
+                                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                                    <select
+                                        value={hook.skillName}
+                                        onChange={e => updateHook(hook.id, { skillName: e.target.value })}
+                                        className="w-full px-2 py-1.5 text-xs rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                                        data-testid="hook-skill-select"
+                                    >
+                                        <option value="">Select skill…</option>
+                                        {skills.map(s => (
+                                            <option key={s.name} value={s.name}>{s.name}</option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        type="text"
+                                        value={hook.prompt}
+                                        onChange={e => updateHook(hook.id, { prompt: e.target.value })}
+                                        placeholder="Optional instructions…"
+                                        className="w-full px-2 py-1.5 text-xs rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                                        data-testid="hook-skill-prompt"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Remove button */}
+                            <button
+                                type="button"
+                                onClick={() => removeHook(hook.id)}
+                                className="px-1.5 py-1 text-xs text-[#848484] hover:text-[#e51400] transition-colors"
+                                title="Remove hook"
+                                data-testid="hook-remove"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    ))}
+
+                    <button
+                        type="button"
+                        onClick={addHook}
+                        className="self-start inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-[#e0e0e0] dark:border-[#555] text-[#848484] hover:border-[#0078d4] hover:text-[#0078d4] transition-colors"
+                        data-testid="hook-add"
+                    >
+                        + Add hook
+                    </button>
                 </div>
-                <div>
-                  <label className="block text-xs text-[#848484] mb-1">After script</label>
-                  <input
-                    type="text"
-                    value={afterScript}
-                    onChange={e => setAfterScript(e.target.value)}
-                    placeholder="./scripts/cleanup.sh"
-                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                  />
-                  <p className="text-xs text-[#848484] mt-0.5">Always runs, even if the AI task fails</p>
-                </div>
-              </div>
             </details>
             <div>
                 <label className="block text-xs font-medium text-[#848484] mb-1">Model</label>
