@@ -1476,5 +1476,47 @@ describe('Diff Comments Resolve AI Routes', () => {
             expect(input.payload.context.resolveDiffCommentsMulti.oldRef).toBe('main');
             expect(input.payload.context.resolveDiffCommentsMulti.newRef).toBe('feature-branch');
         });
+
+        it('includes context.files with absolute paths for file references', async () => {
+            await postJSON(collectionUrl(), makePostBody());
+
+            await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.payload.context.files).toBeDefined();
+            expect(Array.isArray(input.payload.context.files)).toBe(true);
+            expect(input.payload.context.files).toHaveLength(1);
+            // The file path should be resolved to an absolute path
+            const filePath = input.payload.context.files[0];
+            expect(path.isAbsolute(filePath)).toBe(true);
+            expect(filePath).toContain('src/index.ts'.split('/').pop());
+        });
+
+        it('includes multiple files in context.files for multi-file resolve', async () => {
+            // Create comments on two different files
+            await postJSON(collectionUrl(), makePostBody());
+            await postJSON(collectionUrl(), {
+                ...makePostBody({ filePath: 'src/utils.ts' }),
+                comment: 'Another file comment',
+            });
+
+            await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.payload.context.files).toBeDefined();
+            expect(input.payload.context.files.length).toBeGreaterThanOrEqual(1);
+            // All paths should be absolute
+            for (const fp of input.payload.context.files) {
+                expect(path.isAbsolute(fp)).toBe(true);
+            }
+        });
     });
 });

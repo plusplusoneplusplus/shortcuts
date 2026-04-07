@@ -9,7 +9,7 @@
  * Uses port 0 (OS-assigned) for test isolation.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -1028,6 +1028,153 @@ describe('Task Comments REST API', () => {
             );
             const reply = JSON.parse(replyRes.body).reply;
             expect(reply.author).toBe('Anonymous');
+        });
+    });
+});
+
+// ============================================================================
+// Resolve AI Tests — enqueueResolveTask payload
+// ============================================================================
+
+describe('Task Comments Resolve AI Routes', () => {
+    let tmpDir: string;
+    let httpServer: http.Server;
+    let baseUrl: string;
+    let mockEnqueue: ReturnType<typeof vi.fn>;
+    let routes: import('@plusplusoneplusplus/coc-server').Route[];
+
+    const WS_ID = 'ws-resolve';
+    const TASK_PATH = 'feature/task1.md';
+
+    beforeEach(async () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-comments-resolve-'));
+        routes = [];
+        mockEnqueue = vi.fn().mockResolvedValue('task-456');
+
+        const mockBridge = {
+            getOrCreateBridge: vi.fn(),
+            registry: {
+                getQueueForRepo: vi.fn().mockReturnValue({
+                    enqueue: mockEnqueue,
+                }),
+            },
+        } as any;
+
+        const { registerTaskCommentsRoutes } = await import('../../src/server/task-comments-handler');
+        registerTaskCommentsRoutes(routes, tmpDir, mockBridge, undefined, () => undefined);
+
+        httpServer = http.createServer(async (req, res) => {
+            const url = req.url || '';
+            const method = req.method || 'GET';
+            for (const route of routes) {
+                if (route.method && route.method !== method) continue;
+                const match = url.match(route.pattern);
+                if (match) {
+                    await route.handler(req, res, match);
+                    return;
+                }
+            }
+            res.writeHead(404);
+            res.end();
+        });
+
+        await new Promise<void>((resolve) => {
+            httpServer.listen(0, '127.0.0.1', () => resolve());
+        });
+        const addr = httpServer.address() as import('net').AddressInfo;
+        baseUrl = `http://127.0.0.1:${addr.port}`;
+    });
+
+    afterEach(async () => {
+        await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    function commentsUrl(taskPath = TASK_PATH) {
+        return `${baseUrl}/api/comments/${WS_ID}/${taskPath}`;
+    }
+
+    function batchResolveUrl(taskPath = TASK_PATH) {
+        return `${baseUrl}/api/comments/${WS_ID}/${taskPath}/batch-resolve`;
+    }
+
+    describe('POST /batch-resolve', () => {
+        it('returns 400 when documentContent is missing', async () => {
+            const res = await postJSON(batchResolveUrl(), {});
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('documentContent');
+        });
+
+        it('returns 400 when no open comments exist', async () => {
+            const res = await postJSON(batchResolveUrl(), {
+                documentContent: '# Task One\nSome content',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('No open comments');
+        });
+
+        it('returns 202 with taskId when open comments exist', async () => {
+            await postJSON(commentsUrl(), makeCommentData());
+
+            const res = await postJSON(batchResolveUrl(), {
+                documentContent: '# Task One\nSome content',
+            });
+
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBe('task-456');
+        });
+
+        it('enqueues correct payload shape with resolveComments', async () => {
+            await postJSON(commentsUrl(), makeCommentData());
+
+            await postJSON(batchResolveUrl(), {
+                documentContent: '# Task One\nSome content',
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.type).toBe('chat');
+            expect(input.payload.kind).toBe('chat');
+            expect(input.payload.mode).toBe('autopilot');
+            expect(input.payload.tools).toContain('resolve-comments');
+            expect(input.payload.context.resolveComments).toBeDefined();
+            expect(input.payload.context.resolveComments.documentUri).toBe(TASK_PATH);
+            expect(input.payload.context.resolveComments.filePath).toBe(TASK_PATH);
+            expect(input.payload.context.resolveComments.commentIds).toHaveLength(1);
+        });
+
+        it('includes context.files with absolute path for file reference', async () => {
+            await postJSON(commentsUrl(), makeCommentData());
+
+            await postJSON(batchResolveUrl(), {
+                documentContent: '# Task One\nSome content',
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.payload.context.files).toBeDefined();
+            expect(Array.isArray(input.payload.context.files)).toBe(true);
+            expect(input.payload.context.files).toHaveLength(1);
+            // The file path should be resolved to an absolute path
+            const filePath = input.payload.context.files[0];
+            expect(path.isAbsolute(filePath)).toBe(true);
+            expect(filePath).toContain('task1.md');
+        });
+
+        it('passes skills in context when provided', async () => {
+            await postJSON(commentsUrl(), makeCommentData());
+
+            await postJSON(batchResolveUrl(), {
+                documentContent: '# Task One\nSome content',
+                skills: ['my-skill'],
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.payload.context.skills).toEqual(['my-skill']);
         });
     });
 });

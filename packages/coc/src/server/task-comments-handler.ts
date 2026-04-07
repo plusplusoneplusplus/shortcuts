@@ -133,6 +133,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
                 context: {
+                    files: [path.resolve(wsRootPath, taskPath)],
                     resolveComments: {
                         documentUri: taskPath,
                         commentIds,

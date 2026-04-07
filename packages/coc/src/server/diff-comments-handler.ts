@@ -15,6 +15,7 @@
  */
 
 import { sendJSON, sendError, parseBody } from './api-handler';
+import * as path from 'path';
 import type { Route } from './types';
 import type { ProcessWebSocketServer } from './websocket';
 import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
@@ -124,6 +125,7 @@ export function registerDiffCommentsRoutes(
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
                 context: {
+                    files: files.map(f => path.resolve(wsRootPath, f.filePath)),
                     resolveDiffCommentsMulti: {
                         files,
                         wsId,
