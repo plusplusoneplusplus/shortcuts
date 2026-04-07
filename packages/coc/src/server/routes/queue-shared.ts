@@ -111,6 +111,77 @@ export function serializeQueueItem(item: QueuedTask | PauseMarker): Record<strin
     return serializeTask(item as QueuedTask);
 }
 
+/** Truncate a string to maxLen characters, appending '…' if truncated. */
+function truncateString(value: unknown, maxLen: number): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    if (value.length <= maxLen) return value;
+    return value.substring(0, maxLen - 1) + '…';
+}
+
+/**
+ * Lightweight serialization for list views — omits result, config, and
+ * full payload spread to keep /api/queue/history responses small.
+ */
+export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> {
+    const payload = task.payload as any;
+    const imagesCount = Array.isArray(payload?.images)
+        ? payload.images.length
+        : (payload?.imagesCount ?? 0);
+
+    // Only the payload sub-fields the SPA list views actually read
+    const slimPayload: Record<string, unknown> = {
+        mode: payload?.mode,
+        kind: payload?.kind,
+        prompt: truncateString(payload?.prompt, 200),
+        promptContent: truncateString(payload?.promptContent, 200),
+        planFilePath: payload?.planFilePath,
+        filePath: payload?.filePath,
+        workingDirectory: payload?.workingDirectory,
+        workspaceId: payload?.workspaceId,
+        scheduleId: payload?.scheduleId,
+        imagesCount,
+        hasImages: imagesCount > 0 || !!payload?.imagesFilePath,
+    };
+
+    // Nested payload fields used by SPA
+    if (payload?.data?.originalTaskPath !== undefined) {
+        slimPayload.data = { originalTaskPath: payload.data.originalTaskPath };
+    }
+    if (payload?.context?.files !== undefined) {
+        slimPayload.context = { files: payload.context.files };
+    }
+
+    return {
+        id: task.id,
+        repoId: task.repoId,
+        folderPath: task.folderPath,
+        type: task.type,
+        priority: task.priority,
+        status: task.status,
+        createdAt: task.createdAt,
+        startedAt: task.startedAt,
+        completedAt: task.completedAt,
+        payload: slimPayload,
+        displayName: task.displayName,
+        processId: task.processId,
+        error: truncateString(task.error, 500),
+        retryCount: task.retryCount,
+        frozen: task.frozen ?? undefined,
+        admitted: task.admitted ?? undefined,
+    };
+}
+
+/**
+ * Summary-serialize a queue item (task or pause marker) for list views.
+ */
+export function serializeQueueItemSummary(item: QueuedTask | PauseMarker): Record<string, unknown> {
+    if ((item as PauseMarker).kind === 'pause-marker') {
+        const marker = item as PauseMarker;
+        return { kind: 'pause-marker', id: marker.id, createdAt: marker.createdAt };
+    }
+    return serializeTaskSummary(item as QueuedTask);
+}
+
 // ============================================================================
 // Validation Helpers
 // ============================================================================
