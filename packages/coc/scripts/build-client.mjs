@@ -56,6 +56,7 @@ await esbuild.build({
     logLevel: 'info',
     loader: {
         '.ttf': 'dataurl',
+        '.css': 'css',
     },
 });
 
