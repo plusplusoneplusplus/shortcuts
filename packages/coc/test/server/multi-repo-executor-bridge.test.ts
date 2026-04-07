@@ -36,6 +36,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 import { MultiRepoQueueExecutorBridge } from '../../src/server/multi-repo-executor-bridge';
+import * as queueExecutorBridgeMod from '../../src/server/queue-executor-bridge';
 
 // ============================================================================
 // Helpers
@@ -124,6 +125,69 @@ describe('MultiRepoQueueExecutorBridge', () => {
             expect(bA).not.toBe(bB);
             expect(bridge.getAllBridges().size).toBe(2);
 
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // workingDirectory injection
+    // --------------------------------------------------------------------
+
+    describe('workingDirectory injection', () => {
+        it('injects rootPath as workingDirectory into per-repo bridge options', () => {
+            const { bridge } = createBridge();
+            const spy = vi.spyOn(queueExecutorBridgeMod, 'createQueueExecutorBridge');
+
+            bridge.getOrCreateBridge('/repo/wd-test');
+            const resolvedPath = require('path').resolve('/repo/wd-test');
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            const passedOptions = spy.mock.calls[0][2] as Record<string, unknown>;
+            expect(passedOptions.workingDirectory).toBe(resolvedPath);
+
+            spy.mockRestore();
+            bridge.dispose();
+        });
+
+        it('per-repo workingDirectory overrides global defaultOptions', () => {
+            const registry = new (require('@plusplusoneplusplus/forge').RepoQueueRegistry)();
+            const store = createMockProcessStore();
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+                autoStart: false,
+                workingDirectory: '/global/default',
+            });
+            const spy = vi.spyOn(queueExecutorBridgeMod, 'createQueueExecutorBridge');
+
+            bridge.getOrCreateBridge('/repo/override');
+            const resolvedPath = require('path').resolve('/repo/override');
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            const passedOptions = spy.mock.calls[0][2] as Record<string, unknown>;
+            expect(passedOptions.workingDirectory).toBe(resolvedPath);
+
+            spy.mockRestore();
+            bridge.dispose();
+        });
+
+        it('preserves other defaultOptions when injecting workingDirectory', () => {
+            const registry = new (require('@plusplusoneplusplus/forge').RepoQueueRegistry)();
+            const store = createMockProcessStore();
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+                autoStart: false,
+                sharedConcurrency: 3,
+            });
+            const spy = vi.spyOn(queueExecutorBridgeMod, 'createQueueExecutorBridge');
+
+            bridge.getOrCreateBridge('/repo/preserve');
+            const resolvedPath = require('path').resolve('/repo/preserve');
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            const passedOptions = spy.mock.calls[0][2] as Record<string, unknown>;
+            expect(passedOptions.workingDirectory).toBe(resolvedPath);
+            expect(passedOptions.sharedConcurrency).toBe(3);
+            expect(passedOptions.autoStart).toBe(false);
+
+            spy.mockRestore();
             bridge.dispose();
         });
     });

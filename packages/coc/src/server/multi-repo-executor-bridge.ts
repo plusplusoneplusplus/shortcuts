@@ -96,7 +96,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         const { executor, bridge } = createQueueExecutorBridge(
             queueManager,
             this.store,
-            this.defaultOptions,
+            { ...this.defaultOptions, workingDirectory: normalized },
         );
 
         this.bridges.set(normalized, { executor, bridge });
