@@ -15,6 +15,11 @@ export interface SkillTemplate {
     model: string;
     mode: 'ask' | 'task';
     skills: string[];
+    /** Post-actions (scripts/skills) to run after the AI task. */
+    postActions?: Array<
+        | { type: 'script'; script: string }
+        | { type: 'skill'; skillName: string; prompt?: string }
+    >;
 }
 
 export interface UseSkillTemplatesResult {
