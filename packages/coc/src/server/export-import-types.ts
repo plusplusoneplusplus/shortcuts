@@ -46,6 +46,9 @@ export interface CLIConfig {
         theme?: 'auto' | 'light' | 'dark';
         serverName?: string;
     };
+    terminal?: {
+        enabled?: boolean;
+    };
 }
 
 /** Data wiper instance for clearing server data (opaque handle). */

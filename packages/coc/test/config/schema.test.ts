@@ -284,6 +284,25 @@ describe('CLIConfigSchema', () => {
         expect(() => CLIConfigSchema.parse({ chat: { unknown: true } }))
             .toThrow();
     });
+
+    // ========================================================================
+    // terminal
+    // ========================================================================
+
+    describe('terminal', () => {
+        it('validates terminal.enabled true', () => {
+            expect(() => CLIConfigSchema.parse({ terminal: { enabled: true } })).not.toThrow();
+        });
+        it('validates terminal.enabled false', () => {
+            expect(() => CLIConfigSchema.parse({ terminal: { enabled: false } })).not.toThrow();
+        });
+        it('rejects terminal.enabled string', () => {
+            expect(() => CLIConfigSchema.parse({ terminal: { enabled: 'yes' } })).toThrow();
+        });
+        it('rejects unknown terminal sub-field', () => {
+            expect(() => CLIConfigSchema.parse({ terminal: { enabled: true, foo: 1 } })).toThrow();
+        });
+    });
 });
 
 describe('validateConfigWithSchema', () => {

@@ -449,6 +449,15 @@ describe('Admin Handler', () => {
             expect(body.sources['chat.followUpSuggestions.enabled']).toBe('file');
             expect(body.sources['chat.followUpSuggestions.count']).toBe('default');
         });
+
+        it('should return terminal.enabled=false by default', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.terminal.enabled).toBe(false);
+            expect(body.sources['terminal.enabled']).toBe('default');
+        });
     });
 
     // ========================================================================
@@ -1113,6 +1122,46 @@ describe('Admin Handler', () => {
             const body = JSON.parse(getRes.body);
             expect(body.resolved.showReportIntent).toBe(true);
             expect(body.resolved.model).toBe('test-model');
+        });
+
+        it('should accept terminal.enabled=true', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'terminal.enabled': true }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.terminal.enabled).toBe(true);
+            expect(body.sources['terminal.enabled']).toBe('file');
+        });
+
+        it('should accept terminal.enabled=false', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'terminal.enabled': false }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.terminal.enabled).toBe(false);
+        });
+
+        it('should reject non-boolean terminal.enabled', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'terminal.enabled': 'yes' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('terminal.enabled');
         });
     });
 

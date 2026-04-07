@@ -71,6 +71,10 @@ export interface CLIConfig {
     };
     /** Logging configuration */
     logging?: LoggingConfig;
+    /** Terminal configuration */
+    terminal?: {
+        enabled?: boolean;
+    };
 }
 
 // ============================================================================
@@ -148,6 +152,10 @@ export interface ResolvedCLIConfig {
     };
     /** Logging config passed through from file (not fully resolved — use resolveLoggingConfig) */
     logging?: LoggingConfig;
+    /** Terminal configuration */
+    terminal: {
+        enabled: boolean;
+    };
 }
 
 // ============================================================================
@@ -182,6 +190,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         dataDir: '~/.coc',
         theme: 'auto',
     },
+    terminal: {
+        enabled: false,
+    },
 };
 
 /**
@@ -197,6 +208,7 @@ export const CONFIG_SOURCE_KEYS = [
     'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
     'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
     'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme', 'serve.serverName',
+    'terminal.enabled',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -331,6 +343,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
             enabled: override.models?.enabled ?? base.models?.enabled,
         } : undefined,
         logging: override.logging ?? base.logging,
+        terminal: {
+            enabled: override.terminal?.enabled ?? base.terminal.enabled,
+        },
     };
 }
 
@@ -370,6 +385,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('serve.')) {
         const subKey = key.slice('serve.'.length) as keyof NonNullable<CLIConfig['serve']>;
         return fileConfig.serve?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('terminal.')) {
+        const subKey = key.slice('terminal.'.length) as keyof NonNullable<CLIConfig['terminal']>;
+        return fileConfig.terminal?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';

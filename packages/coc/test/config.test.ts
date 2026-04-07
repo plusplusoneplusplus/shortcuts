@@ -57,6 +57,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.chat).toEqual({
                 followUpSuggestions: { enabled: true, count: 3 },
             });
+            expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: false });
         });
     });
 
@@ -310,6 +311,7 @@ timeout: 300
                 persist: false,
                 showReportIntent: true,
                 chat: { followUpSuggestions: { enabled: true, count: 3 } },
+                terminal: { enabled: false },
             };
             const override: CLIConfig = {};
             const result = mergeConfig(base, override);
@@ -375,6 +377,16 @@ timeout: 300
             const override: CLIConfig = { serve: { port: 9000 } };
             const result = mergeConfig(DEFAULT_CONFIG, override);
             expect(result.serve?.serverName).toBeUndefined();
+        });
+
+        it('should preserve terminal.enabled default when not overridden', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
+            expect(result.terminal.enabled).toBe(false);
+        });
+
+        it('should override terminal.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { terminal: { enabled: true } });
+            expect(result.terminal.enabled).toBe(true);
         });
     });
 
@@ -491,6 +503,22 @@ timeout: 300
             expect(result.sources['chat.followUpSuggestions.count']).toBe('default');
         });
 
+        it('should report file source for terminal.enabled when set', () => {
+            const configPath = path.join(tmpDir, 'terminal.yaml');
+            fs.writeFileSync(configPath, 'terminal:\n  enabled: true\n');
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.terminal.enabled).toBe(true);
+            expect(result.sources['terminal.enabled']).toBe('file');
+        });
+
+        it('should report default source for terminal.enabled when not set', () => {
+            const configPath = path.join(tmpDir, 'no-terminal.yaml');
+            fs.writeFileSync(configPath, 'model: gpt-4\n');
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.terminal.enabled).toBe(false);
+            expect(result.sources['terminal.enabled']).toBe('default');
+        });
+
         it('should return resolved config with defaults applied', () => {
             const configPath = path.join(tmpDir, 'config.yaml');
             fs.writeFileSync(configPath, 'model: claude\n');
@@ -531,6 +559,8 @@ timeout: 300
                 '  dataDir: /tmp/coc',
                 '  theme: light',
                 '  serverName: MBP',
+                'terminal:',
+                '  enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 

@@ -72,6 +72,9 @@ export function AdminPanel() {
     // Server name (cosmetic display name in title bar)
     const [serverName, setServerName] = useState('');
 
+    // Terminal settings
+    const [terminalEnabled, setTerminalEnabled] = useState(false);
+
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
 
@@ -133,6 +136,7 @@ export function AdminPanel() {
             setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
             setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
             setServerName(resolved.serve?.serverName ?? '');
+            setTerminalEnabled(resolved.terminal?.enabled ?? false);
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -222,7 +226,31 @@ export function AdminPanel() {
         }
     }, [showReportIntent, addToast]);
 
-    const handleChangeToolCompactness = useCallback(async (newValue: 0 | 1 | 2 | 3) => {
+    const handleToggleTerminalEnabled = useCallback(async (newValue: boolean) => {
+        const prevValue = terminalEnabled;
+        setTerminalEnabled(newValue);
+        setDisplaySaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'terminal.enabled': newValue }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Settings saved', 'success');
+            invalidateDisplaySettings();
+        } catch (err: any) {
+            setTerminalEnabled(prevValue);
+            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+        } finally {
+            setDisplaySaving(false);
+        }
+    }, [terminalEnabled, addToast]);
+
+    const handleChangeToolCompactness= useCallback(async (newValue: 0 | 1 | 2 | 3) => {
         const prevValue = toolCompactness;
         setToolCompactness(newValue);
         setDisplaySaving(true);
@@ -777,6 +805,35 @@ export function AdminPanel() {
                                             data-testid="input-chat-followup-count"
                                         />
                                         <SourceBadge source={sources['chat.followUpSuggestions.count']} />
+                                    </div>
+                                </div>
+
+                                <hr className={dividerClass} />
+
+                                {/* Terminal section */}
+                                <div className="space-y-1.5">
+                                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Terminal</div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Enable the web terminal feature in the dashboard">
+                                            Enable web terminal
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['terminal.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={terminalEnabled}
+                                                    disabled={displaySaving}
+                                                    onChange={e => void handleToggleTerminalEnabled(e.target.checked)}
+                                                    data-testid="toggle-terminal-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-[#616161] dark:text-[#999]">
+                                        When enabled, a Terminal tab appears in the dashboard providing shell access to the server machine.
                                     </div>
                                 </div>
 

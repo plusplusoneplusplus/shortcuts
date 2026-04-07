@@ -205,7 +205,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'serve.serverName'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'serve.serverName', 'terminal.enabled'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -263,6 +263,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 const val = body['serve.serverName'];
                 if (val !== null && val !== undefined && (typeof val !== 'string' || val.length > 64)) {
                     errors.push('serve.serverName must be a string of at most 64 characters, or null to clear');
+                }
+            }
+            if ('terminal.enabled' in body) {
+                if (typeof body['terminal.enabled'] !== 'boolean') {
+                    errors.push('terminal.enabled must be a boolean');
                 }
             }
 
@@ -323,6 +328,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 if (!existing.chat) { existing.chat = {}; }
                 if (!existing.chat.followUpSuggestions) { existing.chat.followUpSuggestions = {}; }
                 existing.chat.followUpSuggestions.count = body['chat.followUpSuggestions.count'] as number;
+            }
+
+            // Handle nested terminal.enabled field
+            if ('terminal.enabled' in body) {
+                if (!existing.terminal) { existing.terminal = {}; }
+                existing.terminal.enabled = body['terminal.enabled'] as boolean;
             }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);

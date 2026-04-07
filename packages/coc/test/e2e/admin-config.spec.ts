@@ -261,6 +261,48 @@ test.describe('Admin: Display settings', () => {
         await expect(page.locator('.toast-success')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('.toast-success')).toContainText('Settings saved');
     });
+
+    test('toggle terminal enabled sends PUT to config', async ({ page, serverUrl }) => {
+        await page.route('**/api/admin/config', (route, req) => {
+            if (req.method() === 'GET') {
+                return route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({
+                        ...MOCK_CONFIG_RESPONSE,
+                        resolved: { ...MOCK_CONFIG_RESPONSE.resolved, terminal: { enabled: false } },
+                    }),
+                });
+            }
+            if (req.method() === 'PUT') {
+                return route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify(MOCK_CONFIG_RESPONSE),
+                });
+            }
+            return route.continue();
+        });
+
+        await navigateToAdmin(page, serverUrl);
+        await expect(page.locator('[data-testid="toggle-terminal-enabled"]')).toBeVisible({ timeout: 5000 });
+
+        // Intercept PUT
+        const putPromise = page.waitForRequest(req =>
+            req.url().includes('/api/admin/config') && req.method() === 'PUT',
+        );
+
+        // Click toggle
+        await page.locator('[data-testid="toggle-terminal-enabled"]').click({ force: true });
+
+        const putReq = await putPromise;
+        const body = JSON.parse(putReq.postData() ?? '{}');
+        expect(typeof body['terminal.enabled']).toBe('boolean');
+
+        // Toast 'Settings saved'
+        await expect(page.locator('.toast-success')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.toast-success')).toContainText('Settings saved');
+    });
 });
 
 // ================================================================
