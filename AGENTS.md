@@ -139,6 +139,10 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 
 **Execution layer:** Process CRUD API, queue management, admin (time-limited crypto tokens for destructive ops), WebSocket (workspace-scoped events, file subscriptions), SSE per-process streaming, export/import.
 
+**WebSocket upgrade dispatch:** `attachWebSocketUpgradeHandler(server, processWs, terminalWs?)` in `websocket.ts` routes upgrades by URL pathname: `/ws` → `ProcessWebSocketServer`, `/ws/terminal` → `TerminalWebSocketServer` (if provided), else `socket.destroy()`. Both WS servers expose a `handleUpgrade(req, socket, head)` method. `ProcessWebSocketServer.attach(server)` is a backward-compat shim that self-registers its own upgrade listener.
+
+**Terminal layer:** `TerminalWebSocketServer` in `terminal/terminal-ws-server.ts` manages WebSocket connections at `/ws/terminal?workspaceId=X`. Each connection is workspace-scoped; clients send `terminal-create` messages to spawn PTY sessions, then `terminal-input`/`terminal-resize`/`terminal-close` to interact. Multiple sessions per connection are supported. PTY management is delegated to `TerminalSessionManager`. Instantiated only when `resolvedConfig.terminal.enabled` is true. Cleaned up via `closeAll()` during server shutdown.
+
 **WSL repos:** Repo-root discovery accepts WSL UNC and Linux-style paths. Keep Windows-hosted trust/config/session storage, but route repo execution through the shared forge workspace-execution helpers rather than adding ad hoc `wsl.exe` spawning in server code.
 
 **Module decomposition:** Large handler files are split into focused sub-modules with thin re-export aggregators for backward compatibility:

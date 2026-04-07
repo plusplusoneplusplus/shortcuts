@@ -135,6 +135,11 @@ src/
 │   │   ├── conversation-session-manager.ts  # Manage wiki chat sessions
 │   │   ├── file-watcher.ts       # Watch wiki source files
 │   │   └── admin-handlers.ts     # Wiki admin endpoints
+│   ├── terminal/                  # WebSocket-based terminal
+│   │   ├── index.ts              # Barrel exports
+│   │   ├── types.ts              # Terminal session and message types (IPty, TerminalSession, TerminalClientMessage, TerminalServerMessage)
+│   │   ├── terminal-session-manager.ts  # PTY lifecycle management (create, resize, destroy, idle cleanup)
+│   │   └── terminal-ws-server.ts # WebSocket server for /ws/terminal — per-workspace connections, multi-session per client, PTY I/O forwarding, heartbeat
 │   └── spa/              # Dashboard SPA
 │       ├── html-template.ts  # HTML generation - Generates full HTML with inline bundled assets from client/dist/
 │       ├── index.ts          # Module exports - generateDashboardHtml + DashboardOptions

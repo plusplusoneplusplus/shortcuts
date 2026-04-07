@@ -30,6 +30,7 @@ import { createScheduleInfrastructure } from './infrastructure/schedule-infrastr
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
+import { TerminalWebSocketServer } from './terminal/index';
 import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './in-memory-process-store';
@@ -51,6 +52,7 @@ interface CloseHandlerDeps {
     bridge: MultiRepoQueueExecutorBridge;
     queuePersistence: { dispose(): void };
     wsServer: ProcessWebSocketServer;
+    terminalWsServer?: { closeAll(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -79,6 +81,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
             bridge.dispose();
         }
 
+        deps.terminalWsServer?.closeAll();
         wsServer.closeAll();
         for (const socket of activeSockets) {
             socket.destroy();
@@ -149,7 +152,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         getIconSvg: () => generateIconSvg(rawHostname),
     });
     const server = http.createServer(handler);
-    wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+    let terminalWsServer: TerminalWebSocketServer | undefined;
+    if (resolvedConfig.terminal?.enabled) {
+        terminalWsServer = new TerminalWebSocketServer(store);
+    }
+    wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalWsServer);
     const { taskWatcher, pipelineWatcher, templateWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
@@ -171,7 +178,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
             staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher,
-            wikiManager, scheduleManager, bridge, queuePersistence, wsServer, activeSockets, server,
+            wikiManager, scheduleManager, bridge, queuePersistence, wsServer, terminalWsServer, activeSockets, server,
         }),
     };
 }
@@ -193,8 +200,13 @@ export { sendJSON, parseBody, parseQueryParams, stripExcludedFields } from './ap
 export { detectRemoteUrl, normalizeRemoteUrl } from './api-handler';
 
 // WebSocket
-export { ProcessWebSocketServer, toProcessSummary, toCommentSummary } from './websocket';
+export { ProcessWebSocketServer, toProcessSummary, toCommentSummary, attachWebSocketUpgradeHandler } from './websocket';
 export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, ServerMessage, ClientMessage, QueueSnapshot } from './websocket';
+
+// Terminal
+export { TerminalWebSocketServer } from './terminal/index';
+export { TerminalSessionManager, toSessionInfo } from './terminal/index';
+export type { TerminalSessionManagerOptions, IPty, TerminalSession, TerminalSessionInfo, TerminalClientMessage, TerminalServerMessage } from './terminal/index';
 
 // SSE
 export { handleProcessStream } from './sse-handler';

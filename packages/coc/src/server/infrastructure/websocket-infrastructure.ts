@@ -11,11 +11,12 @@
  */
 
 import * as http from 'http';
-import { ProcessWebSocketServer, toProcessSummary } from '../websocket';
+import { ProcessWebSocketServer, toProcessSummary, attachWebSocketUpgradeHandler } from '../websocket';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
 import type { ScheduleManager } from '../schedule-manager';
+import type { TerminalWebSocketServer } from '../terminal/index';
 
 // ============================================================================
 // Factory
@@ -38,9 +39,11 @@ export function createWebSocketInfrastructure(
     bridge: MultiRepoQueueExecutorBridge,
     registry: RepoQueueRegistry,
     scheduleManager: ScheduleManager,
+    terminalWsServer?: TerminalWebSocketServer,
 ): ProcessWebSocketServer {
     const wsServer = new ProcessWebSocketServer();
-    wsServer.attach(server);
+    wsServer.attachConnectionHandler();
+    attachWebSocketUpgradeHandler(server, wsServer, terminalWsServer);
 
     // Wire drain events from multi-repo bridge to WebSocket
     bridge.on('drain-start', (event: { queued: number; running: number }) => {

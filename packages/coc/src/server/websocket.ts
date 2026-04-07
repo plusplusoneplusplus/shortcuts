@@ -14,6 +14,7 @@
 
 import * as http from 'http';
 import * as crypto from 'crypto';
+import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { AIProcess, MarkdownComment } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from './server-logger';
@@ -173,19 +174,30 @@ export class ProcessWebSocketServer {
 
     /**
      * Attach the WebSocket server to an HTTP server.
-     * Handles upgrade requests to /ws.
+     * Backward-compat shim — registers its own upgrade listener and
+     * connection handler.  Production code should prefer calling
+     * `attachConnectionHandler()` + `attachWebSocketUpgradeHandler()`.
      */
     attach(server: http.Server): void {
-        server.on('upgrade', (req: http.IncomingMessage, socket, head: Buffer) => {
-            if (req.url !== '/ws') {
-                socket.destroy();
-                return;
-            }
-            this.wss.handleUpgrade(req, socket, head, (ws) => {
-                this.wss.emit('connection', ws, req);
-            });
-        });
+        attachWebSocketUpgradeHandler(server, this);
+        this.attachConnectionHandler();
+    }
 
+    /**
+     * Handle a WebSocket upgrade for this server.
+     * Called by the upgrade dispatch function.
+     */
+    handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): void {
+        this.wss.handleUpgrade(req, socket, head, (ws) => {
+            this.wss.emit('connection', ws, req);
+        });
+    }
+
+    /**
+     * Register the `connection` handler on the internal WebSocketServer
+     * and start the heartbeat timer.  Does not touch the HTTP server.
+     */
+    attachConnectionHandler(): void {
         this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
             const clientId = crypto.randomUUID();
             const remoteAddress = req.socket?.remoteAddress;
@@ -467,4 +479,31 @@ export function toCommentSummary(comment: MarkdownComment): MarkdownCommentSumma
     };
 }
 
+// ============================================================================
+// Upgrade Dispatch
+// ============================================================================
 
+/**
+ * Standalone upgrade dispatcher that routes incoming WebSocket upgrades
+ * to the correct server based on the request URL pathname.
+ *
+ * - `/ws`          → processWs (ProcessWebSocketServer)
+ * - `/ws/terminal` → terminalWs (TerminalWebSocketServer), if provided
+ * - anything else  → socket.destroy()
+ */
+export function attachWebSocketUpgradeHandler(
+    server: http.Server,
+    processWs: ProcessWebSocketServer,
+    terminalWs?: { handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): void },
+): void {
+    server.on('upgrade', (req, socket: Duplex, head: Buffer) => {
+        const url = new URL(req.url!, `http://${req.headers.host}`);
+        if (url.pathname === '/ws') {
+            processWs.handleUpgrade(req, socket, head);
+        } else if (url.pathname === '/ws/terminal' && terminalWs) {
+            terminalWs.handleUpgrade(req, socket, head);
+        } else {
+            socket.destroy();
+        }
+    });
+}
