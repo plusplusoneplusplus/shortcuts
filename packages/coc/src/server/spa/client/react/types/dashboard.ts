@@ -19,7 +19,7 @@ export interface ClientTokenUsage {
 }
 
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'models';
-export type RepoSubTab = 'settings' | 'templates' | 'tasks' | 'schedules' | 'git' | 'wiki' | 'workflow' | 'explorer' | 'activity' | 'pull-requests';
+export type RepoSubTab = 'settings' | 'templates' | 'tasks' | 'schedules' | 'git' | 'wiki' | 'workflow' | 'explorer' | 'activity' | 'pull-requests' | 'terminal';
 export type SettingsSection = 'info' | 'preferences' | 'mcp' | 'skills' | 'instructions' | 'memory' | 'tasks';
 /** @deprecated Use SettingsSection */
 export type CopilotSection = SettingsSection;

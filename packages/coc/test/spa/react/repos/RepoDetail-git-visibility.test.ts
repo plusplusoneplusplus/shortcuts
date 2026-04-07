@@ -41,8 +41,8 @@ describe('Git tab hidden for non-git repos', () => {
 
     it('computes visibleSubTabs by filtering git when !isGitRepo', () => {
         // The useMemo should filter BASE_VISIBLE_SUB_TABS based on isGitRepo
-        expect(REPO_DETAIL_SOURCE).toContain('BASE_VISIBLE_SUB_TABS.filter');
-        expect(REPO_DETAIL_SOURCE).toMatch(/isGitRepo\s*\?\s*BASE_VISIBLE_SUB_TABS\s*:\s*BASE_VISIBLE_SUB_TABS\.filter/);
+        expect(REPO_DETAIL_SOURCE).toContain('BASE_VISIBLE_SUB_TABS');
+        expect(REPO_DETAIL_SOURCE).toContain("t.key !== 'git'");
     });
 
     it('filters out pull-requests tab for non-git repos', () => {

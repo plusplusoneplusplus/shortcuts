@@ -11,6 +11,8 @@ export interface DashboardOptions {
     apiBasePath?: string;
     /** Enable wiki tab with CDN libs for markdown/mermaid rendering */
     enableWiki?: boolean;
+    /** Whether the web terminal feature is enabled in server config. */
+    terminalEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

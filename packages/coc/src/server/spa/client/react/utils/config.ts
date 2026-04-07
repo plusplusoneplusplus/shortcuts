@@ -7,6 +7,7 @@ interface DashboardConfig {
     apiBasePath: string;
     wsPath: string;
     hostname?: string;
+    terminalEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -27,4 +28,8 @@ export function getWsPath(): string {
 
 export function getHostname(): string | undefined {
     return getConfig().hostname;
+}
+
+export function isTerminalEnabled(): boolean {
+    return getConfig().terminalEnabled === true;
 }
