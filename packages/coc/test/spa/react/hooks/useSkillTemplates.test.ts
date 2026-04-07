@@ -224,6 +224,67 @@ describe('useSkillTemplates', () => {
         expect(body.skillTemplates).toEqual([]);
     });
 
+    // ── postActions round-trip ────────────────────────────────────
+
+    it('template with postActions round-trips correctly on load', async () => {
+        const saved = [{
+            id: 'pa-1',
+            name: 'with post-actions',
+            model: 'claude-sonnet-4.6',
+            mode: 'task',
+            skills: ['impl'],
+            postActions: [
+                { type: 'script', script: './deploy.sh' },
+                { type: 'skill', skillName: 'review-summary' },
+            ],
+        }];
+        fetchMock.mockResolvedValue(makePrefsResponse(saved));
+
+        const { result } = renderHook(() => useSkillTemplates('ws1'));
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+
+        expect(result.current.templates).toHaveLength(1);
+        expect(result.current.templates[0].postActions).toHaveLength(2);
+        expect(result.current.templates[0].postActions![0]).toEqual({ type: 'script', script: './deploy.sh' });
+        expect(result.current.templates[0].postActions![1]).toEqual({ type: 'skill', skillName: 'review-summary' });
+    });
+
+    it('saveTemplate persists postActions in the PATCH body', async () => {
+        fetchMock
+            .mockResolvedValueOnce(makePrefsResponse())  // initial GET
+            .mockResolvedValue(makePatchResponse());      // subsequent PATCHes
+
+        const { result } = renderHook(() => useSkillTemplates('ws1'));
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+
+        act(() => {
+            result.current.saveTemplate({
+                name: 'new-pa',
+                model: '',
+                mode: 'task',
+                skills: [],
+                postActions: [{ type: 'script', script: './test.sh' }],
+            });
+        });
+
+        expect(result.current.templates).toHaveLength(1);
+        expect(result.current.templates[0].postActions).toEqual([{ type: 'script', script: './test.sh' }]);
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+        expect(body.skillTemplates[0].postActions).toEqual([{ type: 'script', script: './test.sh' }]);
+    });
+
+    it('template without postActions has undefined postActions field', async () => {
+        const saved = [{ id: 'no-pa', model: '', mode: 'ask', skills: [] }];
+        fetchMock.mockResolvedValue(makePrefsResponse(saved));
+
+        const { result } = renderHook(() => useSkillTemplates('ws1'));
+        await waitFor(() => expect(result.current.loaded).toBe(true));
+
+        expect(result.current.templates[0].postActions).toBeUndefined();
+    });
+
     // ── wsId change ───────────────────────────────────────────────
 
     it('resets templates when wsId changes', async () => {

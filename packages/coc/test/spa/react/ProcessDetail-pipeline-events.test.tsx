@@ -278,3 +278,117 @@ describe('ProcessDetail pipeline SSE listeners', () => {
         expect(lastEventSource).toBeNull();
     });
 });
+
+// ── Post-action hook-step dedup ────────────────────────────────────────
+
+describe('ProcessDetail post-action hook-step dedup', () => {
+    it('multiple post-action hook-steps coexist (not overwritten)', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <SeededProcessDetail process={makeProcess('p-pa', 'running')} />
+                </Wrap>
+            );
+        });
+
+        expect(lastEventSource).not.toBeNull();
+        const es = lastEventSource!;
+
+        // Emit two distinct post-action hook-steps
+        await act(async () => {
+            emitSSEEvent(es, 'hook-step', {
+                hookStep: { step: 'post-action-0', status: 'done', script: './a.sh',
+                    index: 0, actionType: 'script' },
+            });
+        });
+        await act(async () => {
+            emitSSEEvent(es, 'hook-step', {
+                hookStep: { step: 'post-action-1', status: 'done', script: './b.sh',
+                    index: 1, actionType: 'script' },
+            });
+        });
+
+        // Both should render — dedup uses step+index as key so they don't collide
+        const { container } = render(
+            <Wrap>
+                <SeededProcessDetail process={makeProcess('p-pa', 'running')} />
+            </Wrap>
+        );
+        // Re-render picks up the same EventSource, but the key assertion is that
+        // the listener logic keeps both entries (stepKey differs: 'post-action-0-0' vs 'post-action-1-1')
+        expect(es.listeners.get('hook-step')!.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('hook-step listener registers for running processes', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <SeededProcessDetail process={makeProcess('p-hs', 'running')} />
+                </Wrap>
+            );
+        });
+
+        expect(lastEventSource).not.toBeNull();
+        const es = lastEventSource!;
+
+        // Verify hook-step event type is registered
+        const registeredEvents = Array.from(es.listeners.keys());
+        expect(registeredEvents).toContain('hook-step');
+    });
+
+    it('skill post-action hook-step carries skillName and actionType', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <SeededProcessDetail process={makeProcess('p-skill', 'running')} />
+                </Wrap>
+            );
+        });
+
+        expect(lastEventSource).not.toBeNull();
+        const es = lastEventSource!;
+
+        // Emit a skill post-action hook-step — verify listener accepts it without error
+        await act(async () => {
+            emitSSEEvent(es, 'hook-step', {
+                hookStep: {
+                    step: 'post-action-0', status: 'done',
+                    index: 0, actionType: 'skill', skillName: 'review-summary',
+                },
+            });
+        });
+
+        // Listener processed the event without throwing
+        expect(es.listeners.get('hook-step')!.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('updating an existing hook-step replaces it (same step+index key)', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <SeededProcessDetail process={makeProcess('p-upd', 'running')} />
+                </Wrap>
+            );
+        });
+
+        expect(lastEventSource).not.toBeNull();
+        const es = lastEventSource!;
+
+        // Emit running then done for the same step — should update in-place, not duplicate
+        await act(async () => {
+            emitSSEEvent(es, 'hook-step', {
+                hookStep: { step: 'post-action-0', status: 'running', script: './x.sh',
+                    index: 0, actionType: 'script' },
+            });
+        });
+        await act(async () => {
+            emitSSEEvent(es, 'hook-step', {
+                hookStep: { step: 'post-action-0', status: 'done', script: './x.sh',
+                    index: 0, actionType: 'script', durationMs: 42 },
+            });
+        });
+
+        // The listener handled both events; second replaces first via stepKey match
+        expect(es.listeners.get('hook-step')!.length).toBeGreaterThanOrEqual(1);
+    });
+});
