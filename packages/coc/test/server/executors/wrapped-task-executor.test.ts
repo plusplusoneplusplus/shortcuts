@@ -36,6 +36,15 @@ vi.mock('child_process', () => ({
     spawn: (...args: any[]) => mockSpawn(...args),
 }));
 
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const original = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
+    return {
+        ...original,
+        resolveSkill: vi.fn().mockRejectedValue(new original.SkillResolverError('not mocked', 'SKILL_NOT_FOUND')),
+        getLogger: () => ({ warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() }),
+    };
+});
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -347,5 +356,386 @@ describe('WrappedTaskExecutor', () => {
         const doneEvent = events.find((c: any) => c[1].hookStep?.status === 'done');
         expect(doneEvent[1].hookStep.durationMs).toBeTypeOf('number');
         expect(doneEvent[1].hookStep.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    // ========================================================================
+    // Post-actions: script type
+    // ========================================================================
+
+    describe('post-actions (script)', () => {
+        it('runs script post-actions after AI task and after-script', async () => {
+            const inner = makeInnerExecutor({ status: 'completed' });
+            const executor = new WrappedTaskExecutor(inner, store);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    afterScript: './cleanup.sh',
+                    postActions: [{ type: 'script', script: 'echo post' }],
+                },
+            });
+
+            simulateScriptSuccess('cleanup ok');   // after-script
+            simulateScriptSuccess('post output');  // post-action script
+
+            const result = await executor.execute(task, 'test');
+            expect(result).toEqual({ status: 'completed' });
+
+            const events = (store.emitProcessEvent as any).mock.calls;
+            // after-running, after-done, post-action-0-running, post-action-0-done
+            const postEvents = events.filter((c: any) => c[1].hookStep?.step === 'post-action-0');
+            expect(postEvents).toHaveLength(2);
+            expect(postEvents[0][1].hookStep).toMatchObject({ step: 'post-action-0', status: 'running', script: 'echo post', actionType: 'script', index: 0 });
+            expect(postEvents[1][1].hookStep).toMatchObject({ step: 'post-action-0', status: 'done', script: 'echo post', actionType: 'script', index: 0 });
+            expect(postEvents[1][1].hookStep.output).toBe('post output');
+        });
+
+        it('runs multiple script post-actions sequentially', async () => {
+            const inner = makeInnerExecutor({ status: 'completed' });
+            const executor = new WrappedTaskExecutor(inner, store);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    postActions: [
+                        { type: 'script', script: 'echo first' },
+                        { type: 'script', script: 'echo second' },
+                    ],
+                },
+            });
+
+            simulateScriptSuccess('first out');
+            simulateScriptSuccess('second out');
+
+            await executor.execute(task, 'test');
+
+            const events = (store.emitProcessEvent as any).mock.calls;
+            const pa0 = events.filter((c: any) => c[1].hookStep?.step === 'post-action-0');
+            const pa1 = events.filter((c: any) => c[1].hookStep?.step === 'post-action-1');
+            expect(pa0).toHaveLength(2);
+            expect(pa1).toHaveLength(2);
+            expect(pa1[0][1].hookStep.index).toBe(1);
+        });
+
+        it('script post-action failure emits failed event but continues to next action', async () => {
+            const inner = makeInnerExecutor({ status: 'completed' });
+            const executor = new WrappedTaskExecutor(inner, store);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    postActions: [
+                        { type: 'script', script: 'bad-script' },
+                        { type: 'script', script: 'echo ok' },
+                    ],
+                },
+            });
+
+            simulateScriptFailure('script error');
+            simulateScriptSuccess('ok output');
+
+            const result = await executor.execute(task, 'test');
+            expect(result).toEqual({ status: 'completed' });
+
+            const events = (store.emitProcessEvent as any).mock.calls;
+            const pa0Failed = events.find((c: any) =>
+                c[1].hookStep?.step === 'post-action-0' && c[1].hookStep?.status === 'failed'
+            );
+            expect(pa0Failed).toBeDefined();
+            expect(pa0Failed[1].hookStep.output).toContain('script error');
+
+            const pa1Done = events.find((c: any) =>
+                c[1].hookStep?.step === 'post-action-1' && c[1].hookStep?.status === 'done'
+            );
+            expect(pa1Done).toBeDefined();
+        });
+
+        it('post-actions run even when AI task fails', async () => {
+            const inner = makeInnerExecutor(undefined, true);
+            const executor = new WrappedTaskExecutor(inner, store);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    postActions: [{ type: 'script', script: 'echo post' }],
+                },
+            });
+
+            simulateScriptSuccess('post output');
+
+            await expect(executor.execute(task, 'test')).rejects.toThrow('AI execution failed');
+
+            const events = (store.emitProcessEvent as any).mock.calls;
+            const postDone = events.find((c: any) =>
+                c[1].hookStep?.step === 'post-action-0' && c[1].hookStep?.status === 'done'
+            );
+            expect(postDone).toBeDefined();
+        });
+
+        it('no post-actions when array is empty', async () => {
+            const inner = makeInnerExecutor({ status: 'completed' });
+            const executor = new WrappedTaskExecutor(inner, store);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    postActions: [],
+                },
+            });
+
+            const result = await executor.execute(task, 'test');
+            expect(result).toEqual({ status: 'completed' });
+            expect(store.emitProcessEvent).not.toHaveBeenCalled();
+        });
+    });
+
+    // ========================================================================
+    // Post-actions: skill type
+    // ========================================================================
+
+    describe('post-actions (skill)', () => {
+        const mockExecuteSkill = vi.fn<(...args: any[]) => Promise<string>>();
+        const mockResolveSkillConfig = vi.fn<(...args: any[]) => Promise<{ skillDirectories?: string[] }>>();
+
+        beforeEach(() => {
+            mockExecuteSkill.mockReset();
+            mockResolveSkillConfig.mockReset();
+        });
+
+        it('runs skill post-action with task context and skill content', async () => {
+            const inner = makeInnerExecutor({ status: 'completed', response: 'AI response' });
+            // Mock resolveSkill — it's used for workspace-local resolution
+            const { resolveSkill: resolveSkillMock } = await import('@plusplusoneplusplus/forge');
+            vi.mocked(resolveSkillMock).mockResolvedValueOnce('# Skill Instructions\nDo something.');
+
+            mockExecuteSkill.mockResolvedValueOnce('skill output');
+
+            const executor = new WrappedTaskExecutor(inner, store, mockResolveSkillConfig, mockExecuteSkill);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test prompt',
+                    workingDirectory: '/my/project',
+                    postActions: [{ type: 'skill', skillName: 'my-skill', prompt: 'extra instructions' }],
+                },
+            });
+
+            await executor.execute(task, 'test');
+
+            expect(mockExecuteSkill).toHaveBeenCalledTimes(1);
+            const [sentPrompt, sentWd, sentModel] = mockExecuteSkill.mock.calls[0];
+            expect(sentPrompt).toContain('<task-context>');
+            expect(sentPrompt).toContain('<status>success</status>');
+            expect(sentPrompt).toContain('<original-prompt>test prompt</original-prompt>');
+            expect(sentPrompt).toContain('<skill name="my-skill">');
+            expect(sentPrompt).toContain('extra instructions');
+            expect(sentWd).toBe('/my/project');
+
+            const events = (store.emitProcessEvent as any).mock.calls;
+            const skillDone = events.find((c: any) =>
+                c[1].hookStep?.step === 'post-action-0' && c[1].hookStep?.status === 'done'
+            );
+            expect(skillDone).toBeDefined();
+            expect(skillDone[1].hookStep).toMatchObject({
+                actionType: 'skill',
+                skillName: 'my-skill',
+                index: 0,
+                output: 'skill output',
+            });
+        });
+
+        it('skill post-action includes failed status when AI task fails', async () => {
+            const inner = makeInnerExecutor(undefined, true);
+            const { resolveSkill: resolveSkillMock } = await import('@plusplusoneplusplus/forge');
+            vi.mocked(resolveSkillMock).mockResolvedValueOnce('# Skill content');
+            mockExecuteSkill.mockResolvedValueOnce('skill output');
+
+            const executor = new WrappedTaskExecutor(inner, store, mockResolveSkillConfig, mockExecuteSkill);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    workingDirectory: '/proj',
+                    postActions: [{ type: 'skill', skillName: 'summarize' }],
+                },
+            });
+
+            await expect(executor.execute(task, 'test')).rejects.toThrow('AI execution failed');
+
+            const [sentPrompt] = mockExecuteSkill.mock.calls[0];
+            expect(sentPrompt).toContain('<status>failed</status>');
+            expect(sentPrompt).toContain('<error>AI execution failed</error>');
+        });
+
+        it('skill not found emits failed event and continues', async () => {
+            const inner = makeInnerExecutor({ status: 'completed' });
+            const { resolveSkill: resolveSkillMock } = await import('@plusplusoneplusplus/forge');
+            const { SkillResolverError: SkillResolverErrorClass } = await import('@plusplusoneplusplus/forge');
+            vi.mocked(resolveSkillMock).mockRejectedValueOnce(new SkillResolverErrorClass('not found', 'SKILL_NOT_FOUND'));
+            mockResolveSkillConfig.mockResolvedValueOnce({ skillDirectories: [] });
+
+            const executor = new WrappedTaskExecutor(inner, store, mockResolveSkillConfig, mockExecuteSkill);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    workingDirectory: '/proj',
+                    postActions: [
+                        { type: 'skill', skillName: 'nonexistent' },
+                        { type: 'script', script: 'echo ok' },
+                    ],
+                },
+            });
+
+            simulateScriptSuccess('ok');
+
+            const result = await executor.execute(task, 'test');
+            expect(result).toEqual({ status: 'completed' });
+
+            const events = (store.emitProcessEvent as any).mock.calls;
+            const skillFailed = events.find((c: any) =>
+                c[1].hookStep?.step === 'post-action-0' && c[1].hookStep?.status === 'failed'
+            );
+            expect(skillFailed).toBeDefined();
+            expect(skillFailed[1].hookStep.output).toContain('not found');
+
+            // Second action still runs
+            const pa1Done = events.find((c: any) =>
+                c[1].hookStep?.step === 'post-action-1' && c[1].hookStep?.status === 'done'
+            );
+            expect(pa1Done).toBeDefined();
+        });
+
+        it('executeSkill not configured emits failed event', async () => {
+            const inner = makeInnerExecutor({ status: 'completed' });
+            // No executeSkill callback
+            const executor = new WrappedTaskExecutor(inner, store);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    postActions: [{ type: 'skill', skillName: 'my-skill' }],
+                },
+            });
+
+            const result = await executor.execute(task, 'test');
+            expect(result).toEqual({ status: 'completed' });
+
+            const events = (store.emitProcessEvent as any).mock.calls;
+            const skillFailed = events.find((c: any) =>
+                c[1].hookStep?.step === 'post-action-0' && c[1].hookStep?.status === 'failed'
+            );
+            expect(skillFailed).toBeDefined();
+            expect(skillFailed[1].hookStep.output).toContain('not configured');
+        });
+
+        it('executeSkill throwing emits failed event and continues', async () => {
+            const inner = makeInnerExecutor({ status: 'completed' });
+            const { resolveSkill: resolveSkillMock } = await import('@plusplusoneplusplus/forge');
+            vi.mocked(resolveSkillMock).mockResolvedValueOnce('# Skill');
+            mockExecuteSkill.mockRejectedValueOnce(new Error('AI service error'));
+
+            const executor = new WrappedTaskExecutor(inner, store, mockResolveSkillConfig, mockExecuteSkill);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    workingDirectory: '/proj',
+                    postActions: [{ type: 'skill', skillName: 'broken-skill' }],
+                },
+            });
+
+            const result = await executor.execute(task, 'test');
+            expect(result).toEqual({ status: 'completed' });
+
+            const events = (store.emitProcessEvent as any).mock.calls;
+            const skillFailed = events.find((c: any) =>
+                c[1].hookStep?.step === 'post-action-0' && c[1].hookStep?.status === 'failed'
+            );
+            expect(skillFailed).toBeDefined();
+            expect(skillFailed[1].hookStep.output).toContain('AI service error');
+            expect(skillFailed[1].hookStep.durationMs).toBeTypeOf('number');
+        });
+    });
+
+    // ========================================================================
+    // Post-actions: mixed script + skill
+    // ========================================================================
+
+    describe('post-actions (mixed)', () => {
+        it('runs mixed script and skill post-actions in order', async () => {
+            const inner = makeInnerExecutor({ status: 'completed', response: 'done' });
+            const mockExecuteSkill = vi.fn<(...args: any[]) => Promise<string>>().mockResolvedValueOnce('skill result');
+            const { resolveSkill: resolveSkillMock } = await import('@plusplusoneplusplus/forge');
+            vi.mocked(resolveSkillMock).mockResolvedValueOnce('# Skill content');
+
+            const executor = new WrappedTaskExecutor(inner, store, undefined, mockExecuteSkill);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    workingDirectory: '/proj',
+                    postActions: [
+                        { type: 'script', script: 'echo first' },
+                        { type: 'skill', skillName: 'my-skill' },
+                    ],
+                },
+            });
+
+            simulateScriptSuccess('first out');
+
+            await executor.execute(task, 'test');
+
+            const events = (store.emitProcessEvent as any).mock.calls;
+            // post-action-0 is script, post-action-1 is skill
+            const pa0 = events.filter((c: any) => c[1].hookStep?.step === 'post-action-0');
+            const pa1 = events.filter((c: any) => c[1].hookStep?.step === 'post-action-1');
+            expect(pa0[1][1].hookStep.actionType).toBe('script');
+            expect(pa1[1][1].hookStep.actionType).toBe('skill');
+            expect(pa1[1][1].hookStep.skillName).toBe('my-skill');
+        });
+    });
+
+    // ========================================================================
+    // buildTaskContext (via integration)
+    // ========================================================================
+
+    describe('buildTaskContext', () => {
+        it('escapes XML special characters in prompt and response', async () => {
+            const inner = makeInnerExecutor({ status: 'completed', response: 'result with <tags> & "quotes"' });
+            const mockExecuteSkill = vi.fn<(...args: any[]) => Promise<string>>().mockResolvedValueOnce('ok');
+            const { resolveSkill: resolveSkillMock } = await import('@plusplusoneplusplus/forge');
+            vi.mocked(resolveSkillMock).mockResolvedValueOnce('# Skill');
+
+            const executor = new WrappedTaskExecutor(inner, store, undefined, mockExecuteSkill);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'prompt with <special> & chars',
+                    workingDirectory: '/proj',
+                    postActions: [{ type: 'skill', skillName: 'test-skill' }],
+                },
+            });
+
+            await executor.execute(task, 'test');
+
+            const [sentPrompt] = mockExecuteSkill.mock.calls[0];
+            expect(sentPrompt).toContain('&lt;special&gt;');
+            expect(sentPrompt).toContain('&amp; chars');
+            expect(sentPrompt).toContain('&lt;tags&gt;');
+            // escapeXml only escapes &, <, > (text-content safe); quotes are not escaped
+            expect(sentPrompt).toContain('&amp; "quotes"');
+        });
+
+        it('includes model and working-directory when present', async () => {
+            const inner = makeInnerExecutor({ status: 'completed' });
+            const mockExecuteSkill = vi.fn<(...args: any[]) => Promise<string>>().mockResolvedValueOnce('ok');
+            const { resolveSkill: resolveSkillMock } = await import('@plusplusoneplusplus/forge');
+            vi.mocked(resolveSkillMock).mockResolvedValueOnce('# Skill');
+
+            const executor = new WrappedTaskExecutor(inner, store, undefined, mockExecuteSkill);
+            const task = makeTask({
+                payload: {
+                    kind: 'chat', mode: 'autopilot', prompt: 'test',
+                    model: 'gpt-5',
+                    workingDirectory: '/my/dir',
+                    postActions: [{ type: 'skill', skillName: 'test-skill' }],
+                },
+            });
+
+            await executor.execute(task, 'test');
+
+            const [sentPrompt] = mockExecuteSkill.mock.calls[0];
+            expect(sentPrompt).toContain('<model>gpt-5</model>');
+            expect(sentPrompt).toContain('<working-directory>/my/dir</working-directory>');
+        });
     });
 });

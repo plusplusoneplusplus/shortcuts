@@ -1,4 +1,5 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
+import { approveAllPermissions } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext } from '../task-types';
 import type { ExecutionContext } from '../task-strategies';
@@ -15,6 +16,7 @@ import { ResolveCommentsExecutor } from './resolve-comments-executor';
 import { MemoryAggregateExecutor } from '../memory/memory-aggregate-executor';
 import { ProcessLifecycleRunner } from './process-lifecycle-runner';
 import { WrappedTaskExecutor } from './wrapped-task-executor';
+import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
 
 export interface ExecutorRegistryOptions {
@@ -45,6 +47,8 @@ export class ExecutorRegistry {
     private readonly approvePermissions: boolean;
     private readonly defaultWorkingDirectory?: string;
     private readonly dataDir?: string;
+    private readonly aiService: CopilotSDKService;
+    private readonly resolveSkillConfigFn: ExecutorRegistryOptions['resolveSkillConfig'];
     private readonly workflowExecutor: WorkflowExecutor;
     private readonly chatExecutor: ChatExecutor;
     private readonly planExecutor: PlanExecutor;
@@ -58,6 +62,8 @@ export class ExecutorRegistry {
         this.approvePermissions = options.approvePermissions;
         this.defaultWorkingDirectory = options.defaultWorkingDirectory;
         this.dataDir = options.dataDir;
+        this.aiService = options.aiService;
+        this.resolveSkillConfigFn = options.resolveSkillConfig;
 
         const chatOpts = {
             workingDirectory: options.defaultWorkingDirectory,
@@ -92,8 +98,14 @@ export class ExecutorRegistry {
             const payload = task.payload as unknown as ChatPayload;
             const executor = this.resolveChatExecutor(task, payload);
 
-            if (payload.beforeScript || payload.afterScript) {
-                return new WrappedTaskExecutor(executor, this.store).execute(task, prompt);
+            if (payload.beforeScript || payload.afterScript || payload.postActions?.length) {
+                const hasSkillActions = payload.postActions?.some(a => a.type === 'skill');
+                return new WrappedTaskExecutor(
+                    executor,
+                    this.store,
+                    hasSkillActions ? this.resolveSkillConfigFn : undefined,
+                    hasSkillActions ? this.buildSkillExecuteFn() : undefined,
+                ).execute(task, prompt);
             }
 
             return executor.execute(task, prompt);
@@ -112,6 +124,21 @@ export class ExecutorRegistry {
     /** Build execution context for strategy-based execution. */
     buildExecutionContext(task: QueuedTask): ExecutionContext {
         return { processId: `queue_${task.id}`, store: this.store, approvePermissions: this.approvePermissions, workingDirectory: this.getWorkingDirectory(task) };
+    }
+
+    /** Create a skill execution callback that invokes the AI service directly. */
+    private buildSkillExecuteFn(): SkillExecuteFn {
+        return async (prompt, workingDirectory, model) => {
+            const result = await this.aiService.sendMessage({
+                prompt,
+                mode: 'autopilot',
+                model,
+                workingDirectory,
+                onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
+            });
+            if (!result.success) throw new Error(result.error || 'Skill execution failed');
+            return result.response || '';
+        };
     }
 
     /** Resolve the chat-mode executor based on payload context and mode. */
