@@ -16,11 +16,17 @@ import type { TokenUsage } from './copilot-sdk-wrapper/types';
  * Used by SSE streaming to push real-time output to clients.
  */
 export interface HookStepEvent {
-    step: 'before' | 'after';
+    step: string;
     status: 'running' | 'done' | 'failed';
     script: string;
     output?: string;
     durationMs?: number;
+    /** Index within the postActions array (for post-action steps). */
+    index?: number;
+    /** Whether this is a 'script' or 'skill' action (for post-action steps). */
+    actionType?: 'script' | 'skill';
+    /** Skill name (for skill post-actions). */
+    skillName?: string;
 }
 
 export interface ProcessOutputEvent {

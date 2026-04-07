@@ -89,6 +89,15 @@ export interface ChatContext {
 }
 
 // ============================================================================
+// Post-Action Types
+// ============================================================================
+
+/** A single post-action to run after the AI task completes. */
+export type PostAction =
+    | { type: 'script'; script: string }
+    | { type: 'skill'; skillName: string; prompt?: string };
+
+// ============================================================================
 // Payload Interfaces
 // ============================================================================
 
@@ -112,6 +121,8 @@ export interface ChatPayload {
     beforeScript?: string;
     /** Shell command/path to run after the AI task (always runs, even if AI fails). */
     afterScript?: string;
+    /** Ordered list of post-actions (scripts or skills) to run after the AI task. */
+    postActions?: PostAction[];
     /** Base64 data-URLs to persist in the user conversation turn. */
     images?: string[];
 }
