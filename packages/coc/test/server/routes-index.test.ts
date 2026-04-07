@@ -146,6 +146,8 @@ describe('registerAllRoutes', () => {
         expect(patterns.some(p => p.includes('/api/models'))).toBe(true);
         // Logs
         expect(patterns.some(p => p.includes('/api/logs'))).toBe(true);
+        // Terminal status
+        expect(patterns.some(p => p.includes('/api/terminal/status'))).toBe(true);
         // Memory
         expect(patterns.some(p => p.includes('/api/memory'))).toBe(true);
     });

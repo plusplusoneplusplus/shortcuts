@@ -30,7 +30,7 @@ import { createScheduleInfrastructure } from './infrastructure/schedule-infrastr
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
-import { TerminalWebSocketServer } from './terminal/index';
+import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './in-memory-process-store';
@@ -53,6 +53,7 @@ interface CloseHandlerDeps {
     queuePersistence: { dispose(): void };
     wsServer: ProcessWebSocketServer;
     terminalWsServer?: { closeAll(): void };
+    terminalSessionManager?: { destroyAll(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -81,6 +82,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
             bridge.dispose();
         }
 
+        deps.terminalSessionManager?.destroyAll();
         deps.terminalWsServer?.closeAll();
         wsServer.closeAll();
         for (const socket of activeSockets) {
@@ -120,6 +122,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — bridge captures this via closure before wsServer is assigned
     let wsServer!: ProcessWebSocketServer;
 
+    // Forward declaration — terminal infra is created after the HTTP server
+    let terminalInfra: import('./infrastructure/terminal-infrastructure').TerminalInfrastructure | undefined;
+
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
         store, dataDir, options, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, () => wsServer,
@@ -141,6 +146,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         resolvedAiService, getWsServer: () => wsServer,
         queuePersistence, wikiOptions: options.wiki,
         aiInvoker,
+        getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,
+        resolvedConfig,
     });
 
     const rawHostname = os.hostname();
@@ -152,11 +159,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         getIconSvg: () => generateIconSvg(rawHostname),
     });
     const server = http.createServer(handler);
-    let terminalWsServer: TerminalWebSocketServer | undefined;
-    if (resolvedConfig.terminal?.enabled) {
-        terminalWsServer = new TerminalWebSocketServer(store);
-    }
-    wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalWsServer);
+
+    // Terminal infrastructure (optional — gated by config + node-pty availability)
+    terminalInfra = createTerminalInfrastructure(store, resolvedConfig);
+
+    wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalInfra?.terminalWsServer);
     const { taskWatcher, pipelineWatcher, templateWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
@@ -178,7 +185,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
             staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher,
-            wikiManager, scheduleManager, bridge, queuePersistence, wsServer, terminalWsServer, activeSockets, server,
+            wikiManager, scheduleManager, bridge, queuePersistence, wsServer,
+            terminalWsServer: terminalInfra?.terminalWsServer,
+            terminalSessionManager: terminalInfra?.terminalSessionManager,
+            activeSockets, server,
         }),
     };
 }
@@ -207,6 +217,9 @@ export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary
 export { TerminalWebSocketServer } from './terminal/index';
 export { TerminalSessionManager, toSessionInfo } from './terminal/index';
 export type { TerminalSessionManagerOptions, IPty, TerminalSession, TerminalSessionInfo, TerminalClientMessage, TerminalServerMessage } from './terminal/index';
+export { registerTerminalRoutes } from './terminal/terminal-routes';
+export { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
+export type { TerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 
 // SSE
 export { handleProcessStream } from './sse-handler';

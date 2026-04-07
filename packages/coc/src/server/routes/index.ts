@@ -40,7 +40,10 @@ import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../template
 import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
+import { registerTerminalRoutes } from '../terminal/terminal-routes';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
+import type { ResolvedCLIConfig } from '../../config';
+import type { TerminalSessionManager } from '../terminal/index';
 
 export interface RegisterRoutesOptions {
     store: ProcessStore;
@@ -56,6 +59,8 @@ export interface RegisterRoutesOptions {
     queuePersistence: MultiRepoQueuePersistence;
     wikiOptions?: WikiServerOptions;
     aiInvoker: AIInvoker;
+    getTerminalSessionManager?: () => TerminalSessionManager | undefined;
+    resolvedConfig?: ResolvedCLIConfig;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -73,6 +78,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerProviderRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);
+    registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig);
 
     // Queue routes receive the bridge directly for per-repo routing
     registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath);
