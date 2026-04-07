@@ -42,6 +42,11 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         name: 'code-refactoring',
         description: 'Automated code refactoring suggestion that drafts a refactoring plan for critical, high-value technical debt issues',
         relativePath: 'code-refactoring'
+    },
+    {
+        name: 'kb-refresh',
+        description: 'Distill recent CoC chat histories into knowledge-base skill improvements, proposing additions, updates, and removals',
+        relativePath: 'kb-refresh'
     }
 ];
 
