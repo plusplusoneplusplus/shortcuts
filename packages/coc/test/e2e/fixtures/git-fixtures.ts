@@ -7,10 +7,35 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { seedWorkspace } from './seed';
+
+function runGit(repoDir: string, ...args: string[]): void {
+    execFileSync('git', args, { cwd: repoDir, stdio: 'ignore' });
+}
+
+function commitAll(repoDir: string, message: string): void {
+    runGit(repoDir, 'add', '-A');
+    runGit(repoDir, 'commit', '-m', message);
+}
+
+function addLocalOrigin(tmpDir: string, repoDir: string): void {
+    const remoteDir = path.join(tmpDir, 'origin.git');
+    fs.mkdirSync(remoteDir, { recursive: true });
+    runGit(remoteDir, 'init', '--bare');
+    const currentBranch = execFileSync('git', ['branch', '--show-current'], {
+        cwd: repoDir,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    runGit(repoDir, 'remote', 'add', 'origin', remoteDir);
+    runGit(repoDir, 'push', '-u', 'origin', 'HEAD');
+    if (currentBranch) {
+        runGit(remoteDir, 'symbolic-ref', 'HEAD', `refs/heads/${currentBranch}`);
+    }
+}
 
 /**
  * Create a repo with 3 commits for CommitList tests.
@@ -24,27 +49,24 @@ export function createMultiCommitRepo(tmpDir: string): string {
     const repoDir = path.join(tmpDir, 'test-repo');
     fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
 
-    execSync('git init', { cwd: repoDir, stdio: 'ignore' });
-    execSync('git config user.name "test"', { cwd: repoDir, stdio: 'ignore' });
-    execSync('git config user.email "test@test"', { cwd: repoDir, stdio: 'ignore' });
+    runGit(repoDir, 'init');
+    runGit(repoDir, 'config', 'user.name', 'test');
+    runGit(repoDir, 'config', 'user.email', 'test@test');
+    runGit(repoDir, 'config', 'core.autocrlf', 'false');
+    runGit(repoDir, 'config', 'core.safecrlf', 'false');
 
     // Commit 1: initial file
     fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export default {};\n');
-    execSync('git add -A && git commit -m "feat: initial setup"', {
-        cwd: repoDir, stdio: 'ignore', shell: true as any,
-    });
+    commitAll(repoDir, 'feat: initial setup');
 
     // Commit 2: add a second file
     fs.writeFileSync(path.join(repoDir, 'src', 'utils.ts'), 'export function helper() {}\n');
-    execSync('git add -A && git commit -m "feat: add utils"', {
-        cwd: repoDir, stdio: 'ignore', shell: true as any,
-    });
+    commitAll(repoDir, 'feat: add utils');
 
     // Commit 3: modify existing file
     fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export default { version: 2 };\n');
-    execSync('git add -A && git commit -m "fix: update index"', {
-        cwd: repoDir, stdio: 'ignore', shell: true as any,
-    });
+    commitAll(repoDir, 'fix: update index');
+    addLocalOrigin(tmpDir, repoDir);
 
     return repoDir;
 }
@@ -65,7 +87,7 @@ export function createDirtyWorkingTreeRepo(tmpDir: string): string {
 
     // Staged change: add a new file and stage it
     fs.writeFileSync(path.join(repoDir, 'src', 'staged.ts'), 'export const staged = true;\n');
-    execSync('git add src/staged.ts', { cwd: repoDir, stdio: 'ignore' });
+    runGit(repoDir, 'add', 'src/staged.ts');
 
     // Untracked file: create but don't add
     fs.writeFileSync(path.join(repoDir, 'src', 'untracked.ts'), '// new file\n');
@@ -84,18 +106,14 @@ export function createFeatureBranchRepo(tmpDir: string): string {
     const repoDir = createMultiCommitRepo(tmpDir);
 
     // Create and switch to feature branch
-    execSync('git checkout -b feature/test-branch', { cwd: repoDir, stdio: 'ignore' });
+    runGit(repoDir, 'checkout', '-b', 'feature/test-branch');
 
     // Add commits on the feature branch
     fs.writeFileSync(path.join(repoDir, 'src', 'feature.ts'), 'export const feature = true;\n');
-    execSync('git add -A && git commit -m "feat: add feature module"', {
-        cwd: repoDir, stdio: 'ignore', shell: true as any,
-    });
+    commitAll(repoDir, 'feat: add feature module');
 
     fs.writeFileSync(path.join(repoDir, 'src', 'feature-utils.ts'), 'export function fHelper() {}\n');
-    execSync('git add -A && git commit -m "feat: add feature utils"', {
-        cwd: repoDir, stdio: 'ignore', shell: true as any,
-    });
+    commitAll(repoDir, 'feat: add feature utils');
 
     return repoDir;
 }
@@ -117,7 +135,7 @@ export function createDirtyWorkingTreeRepoMultiple(tmpDir: string): string {
 
     // Staged change
     fs.writeFileSync(path.join(repoDir, 'src', 'staged.ts'), 'export const staged = true;\n');
-    execSync('git add src/staged.ts', { cwd: repoDir, stdio: 'ignore' });
+    runGit(repoDir, 'add', 'src/staged.ts');
 
     // Untracked files
     fs.writeFileSync(path.join(repoDir, 'src', 'untracked1.ts'), '// new file 1\n');
@@ -138,30 +156,26 @@ export function createRepoWithUnpushedCommits(tmpDir: string): string {
 
     // Create a bare remote
     fs.mkdirSync(bareDir, { recursive: true });
-    execSync('git init --bare', { cwd: bareDir, stdio: 'ignore' });
+    runGit(bareDir, 'init', '--bare');
 
     // Clone the bare remote
-    execSync(`git clone "${bareDir}" "${repoDir}"`, { stdio: 'ignore' });
-    execSync('git config user.name "test"', { cwd: repoDir, stdio: 'ignore' });
-    execSync('git config user.email "test@test"', { cwd: repoDir, stdio: 'ignore' });
+    execFileSync('git', ['clone', bareDir, repoDir], { stdio: 'ignore' });
+    runGit(repoDir, 'config', 'user.name', 'test');
+    runGit(repoDir, 'config', 'user.email', 'test@test');
+    runGit(repoDir, 'config', 'core.autocrlf', 'false');
+    runGit(repoDir, 'config', 'core.safecrlf', 'false');
 
     // Initial commits pushed to remote
     fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
     fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export default {};\n');
-    execSync('git add -A && git commit -m "feat: initial setup"', {
-        cwd: repoDir, stdio: 'ignore', shell: true as any,
-    });
+    commitAll(repoDir, 'feat: initial setup');
     fs.writeFileSync(path.join(repoDir, 'src', 'utils.ts'), 'export function helper() {}\n');
-    execSync('git add -A && git commit -m "feat: add utils"', {
-        cwd: repoDir, stdio: 'ignore', shell: true as any,
-    });
-    execSync('git push origin HEAD', { cwd: repoDir, stdio: 'ignore' });
+    commitAll(repoDir, 'feat: add utils');
+    runGit(repoDir, 'push', 'origin', 'HEAD');
 
     // Unpushed commit (not pushed to remote)
     fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export default { v: 2 };\n');
-    execSync('git add -A && git commit -m "fix: local-only change"', {
-        cwd: repoDir, stdio: 'ignore', shell: true as any,
-    });
+    commitAll(repoDir, 'fix: local-only change');
 
     return repoDir;
 }

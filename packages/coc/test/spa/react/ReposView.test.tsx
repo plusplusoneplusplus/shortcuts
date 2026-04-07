@@ -551,6 +551,54 @@ describe('AddRepoDialog', () => {
         const [secondUrl] = fetchMock.mock.calls[1];
         expect(String(secondUrl)).toContain(encodeURIComponent('D:\\projects\\my-repo'));
     });
+
+    it('renders browse roots and navigates to WSL home from the browser', async () => {
+        const wslHome = String.raw`\\wsl$\Ubuntu-24.04\home\georgeqiao`;
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({}),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    path: 'C:\\Users\\georgeqiao',
+                    parent: 'C:\\Users',
+                    entries: [],
+                    drives: ['C:\\', 'Q:\\'],
+                    browseRoots: [
+                        { label: 'WSL Home (Ubuntu-24.04)', path: wslHome },
+                        { label: 'C:\\', path: 'C:\\' },
+                        { label: 'Q:\\', path: 'Q:\\' },
+                    ],
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    path: wslHome,
+                    parent: String.raw`\\wsl$\Ubuntu-24.04\home`,
+                    entries: [{ name: 'Storage-BOSS', isGitRepo: true }],
+                    drives: ['C:\\', 'Q:\\'],
+                    browseRoots: [
+                        { label: 'WSL Home (Ubuntu-24.04)', path: wslHome },
+                        { label: 'C:\\', path: 'C:\\' },
+                        { label: 'Q:\\', path: 'Q:\\' },
+                    ],
+                }),
+            });
+        global.fetch = fetchMock as any;
+
+        render(<Wrap><AddRepoDialog open onClose={() => {}} repos={[]} onSuccess={() => {}} /></Wrap>);
+        fireEvent.click(screen.getByTestId('browse-btn'));
+
+        const wslButton = await screen.findByRole('button', { name: 'WSL Home (Ubuntu-24.04)' });
+        fireEvent.click(wslButton);
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+        const [secondUrl] = fetchMock.mock.calls[2];
+        expect(String(secondUrl)).toContain(encodeURIComponent(wslHome));
+    });
 });
 
 describe('RepoInfoTab', () => {

@@ -115,6 +115,48 @@ describe('RequestRunner.send() — non-streaming path', () => {
         expect(result.success).toBe(false);
         expect(result.error).toContain('No response received');
     });
+
+    it('translates WSL attachment paths before sending', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
+        const mockClient = { createSession: vi.fn().mockResolvedValue(mockSession), stop: vi.fn().mockResolvedValue(undefined) };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+        const workingDirectory = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
+        const attachmentPath = String.raw`\\wsl$\Ubuntu\home\tester\repo\README.md`;
+
+        await runner.send({
+            prompt: 'hi',
+            workingDirectory,
+            attachments: [{ type: 'file', path: attachmentPath }],
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(mockSession.sendAndWait).toHaveBeenCalledWith(
+            {
+                prompt: 'hi',
+                attachments: [{ type: 'file', path: '/home/tester/repo/README.md' }],
+            },
+            5000,
+        );
+    });
+
+    it('rejects WSL attachments outside the working directory', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
+        const mockClient = { createSession: vi.fn().mockResolvedValue(mockSession), stop: vi.fn().mockResolvedValue(undefined) };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+        const workingDirectory = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
+
+        const result = await runner.send({
+            prompt: 'hi',
+            workingDirectory,
+            attachments: [{ type: 'file', path: 'C:\\temp\\outside.txt' }],
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('only supports attachments inside the working directory');
+    });
 });
 
 // ============================================================================

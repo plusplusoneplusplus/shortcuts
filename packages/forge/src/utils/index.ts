@@ -35,7 +35,8 @@ export {
 
 // Exec utilities
 export {
-    execAsync
+    execAsync,
+    execFileAsync
 } from './exec-utils';
 
 // HTTP utilities
@@ -109,6 +110,12 @@ export {
 export {
     toForwardSlashes,
     toNativePath,
+    isWindowsDrivePath,
+    isLinuxAbsolutePath,
+    isWslUncPath,
+    parseWslUncPath,
+    trimTrailingPathSeparators,
+    windowsPathToWslPath,
 } from './path-utils';
 
 export {
@@ -127,6 +134,22 @@ export {
     cleanupAllStalePasteFiles,
 } from './paste-context-manager';
 export type { SeparatedContent, SavePasteResult } from './paste-context-manager';
+
+export {
+    WindowsExecutionContext,
+    WslExecutionContext,
+    WorkspaceExecutionContext,
+    getWslExecutablePath,
+    clearWorkspaceExecutionCaches,
+    getDefaultWslDistro,
+    resolveWorkspaceExecutionContext,
+    translatePathForExecution,
+    buildWslCommandArgs,
+    normalizeWslExecutionPath,
+    normalizeExecutionPath,
+    isWslExecutionContext,
+    isWslPath,
+} from './workspace-execution';
 
 // Template engine
 export {

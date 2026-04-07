@@ -22,6 +22,7 @@ interface BrowserResponse {
     parent?: string | null;
     entries?: BrowserEntry[];
     drives?: string[];
+    browseRoots?: Array<{ label: string; path: string }>;
 }
 
 interface DiscoveredRepo {
@@ -53,6 +54,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
     const [browserParent, setBrowserParent] = useState<string | null>(null);
     const [browserLoading, setBrowserLoading] = useState(false);
     const [browserDrives, setBrowserDrives] = useState<string[]>([]);
+    const [browseRoots, setBrowseRoots] = useState<Array<{ label: string; path: string }>>([]);
     const [browserError, setBrowserError] = useState<string | null>(null);
 
     // Checklist state
@@ -74,6 +76,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             setBrowserEntries([]);
             setBrowserParent(null);
             setBrowserDrives([]);
+            setBrowseRoots([]);
             setBrowserError(null);
             setRepos([]);
             setChecked(new Set());
@@ -96,9 +99,11 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             setBrowserParent(data.parent || null);
             setBrowserEntries(data.entries || []);
             setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
+            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
         } catch {
             setBrowserEntries([]);
             setBrowserParent(null);
+            setBrowseRoots([]);
             setBrowserError('Unable to browse this path');
         }
         setBrowserLoading(false);
@@ -249,7 +254,24 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
                         <div className="flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate" id="folder-breadcrumb">
                             {browserPath || '…'}
                         </div>
-                        {browserDrives.length > 1 && (
+                        {browseRoots.length > 0 && (
+                            <div className="mb-1 flex flex-wrap gap-1">
+                                {browseRoots.map(root => (
+                                    <button
+                                        key={root.path}
+                                        type="button"
+                                        className={`px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(root.path.toLowerCase())
+                                            ? 'border-[#0078d4] text-[#0078d4]'
+                                            : 'border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]'}`}
+                                        data-testid={`browse-root-${root.label}`}
+                                        onClick={() => navigateTo(root.path)}
+                                    >
+                                        {root.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {browseRoots.length === 0 && browserDrives.length > 1 && (
                             <div className="mb-1 flex flex-wrap gap-1">
                                 {browserDrives.map(drive => (
                                     <button

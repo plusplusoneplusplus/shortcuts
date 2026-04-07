@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as path from 'path';
-import { toForwardSlashes, toNativePath } from '../../src/utils/path-utils';
+import {
+    isWslUncPath,
+    parseWslUncPath,
+    toForwardSlashes,
+    toNativePath,
+    windowsPathToWslPath,
+} from '../../src/utils/path-utils';
 import { isWithinDirectory } from '../../src/utils/path-security';
 
 describe('toForwardSlashes', () => {
@@ -72,6 +78,29 @@ describe('toNativePath', () => {
 
     it('handles strings with no separators', () => {
         expect(toNativePath('file.txt')).toBe('file.txt');
+    });
+
+    it('normalizes WSL UNC paths to backslashes', () => {
+        expect(toNativePath(String.raw`\\wsl$\Ubuntu\home/user/repo`)).toBe(String.raw`\\wsl$\Ubuntu\home\user\repo`);
+    });
+});
+
+describe('WSL path helpers', () => {
+    it('detects WSL UNC paths', () => {
+        expect(isWslUncPath(String.raw`\\wsl$\Ubuntu\home\user\repo`)).toBe(true);
+        expect(isWslUncPath(String.raw`\\wsl.localhost\Ubuntu\home\user\repo`)).toBe(true);
+        expect(isWslUncPath('C:\\repo')).toBe(false);
+    });
+
+    it('parses WSL UNC paths into distro and Linux path', () => {
+        expect(parseWslUncPath(String.raw`\\wsl$\Ubuntu\home\user\repo`)).toEqual({
+            distro: 'Ubuntu',
+            linuxPath: '/home/user/repo',
+        });
+    });
+
+    it('converts Windows drive paths to WSL mount paths', () => {
+        expect(windowsPathToWslPath('C:\\Users\\tester\\.copilot')).toBe('/mnt/c/Users/tester/.copilot');
     });
 });
 

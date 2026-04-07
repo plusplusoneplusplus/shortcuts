@@ -7,7 +7,27 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+
+function runGit(repoDir: string, ...args: string[]): void {
+    execFileSync('git', args, { cwd: repoDir, stdio: 'ignore' });
+}
+
+function addLocalOrigin(tmpDir: string, repoDir: string): void {
+    const remoteDir = path.join(tmpDir, 'origin.git');
+    fs.mkdirSync(remoteDir, { recursive: true });
+    runGit(remoteDir, 'init', '--bare');
+    const currentBranch = execFileSync('git', ['branch', '--show-current'], {
+        cwd: repoDir,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    runGit(repoDir, 'remote', 'add', 'origin', remoteDir);
+    runGit(repoDir, 'push', '-u', 'origin', 'HEAD');
+    if (currentBranch) {
+        runGit(remoteDir, 'symbolic-ref', 'HEAD', `refs/heads/${currentBranch}`);
+    }
+}
 
 /**
  * Create a minimal repo fixture inside `tmpDir`.
@@ -61,13 +81,15 @@ export function createRepoFixture(tmpDir: string): string {
         ].join('\n') + '\n',
     );
 
-    // git init so git-info endpoint works
-    execSync('git init', { cwd: repoDir, stdio: 'ignore' });
-    execSync('git add -A', { cwd: repoDir, stdio: 'ignore' });
-    execSync('git -c user.name="test" -c user.email="test@test" commit -m "init" --allow-empty', {
-        cwd: repoDir,
-        stdio: 'ignore',
-    });
+    // Disable local line-ending conversion so fixture commits are stable on Windows hosts.
+    runGit(repoDir, 'init');
+    runGit(repoDir, 'config', 'user.name', 'test');
+    runGit(repoDir, 'config', 'user.email', 'test@test');
+    runGit(repoDir, 'config', 'core.autocrlf', 'false');
+    runGit(repoDir, 'config', 'core.safecrlf', 'false');
+    runGit(repoDir, 'add', '-A');
+    runGit(repoDir, 'commit', '-m', 'init', '--allow-empty');
+    addLocalOrigin(tmpDir, repoDir);
 
     return repoDir;
 }

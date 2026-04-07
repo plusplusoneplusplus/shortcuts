@@ -9,10 +9,17 @@ import * as url from 'url';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import { execFileSync } from 'child_process';
+import { getDefaultWslDistro, getWslExecutablePath } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../api-handler';
 import { handleAPIError, notFound } from '../errors';
 import { isWithinTrustedReadOnlyDir } from '../tasks-handler-utils';
+
+export interface BrowseRoot {
+    label: string;
+    path: string;
+}
 
 /** Enumerate available Windows drive roots (e.g., C:\, D:\). */
 function listWindowsDrives(): string[] {
@@ -27,6 +34,68 @@ function listWindowsDrives(): string[] {
         }
     }
     return drives;
+}
+
+function linuxPathToWslUnc(distro: string, linuxPath: string): string {
+    const base = `${path.win32.sep}${path.win32.sep}wsl$${path.win32.sep}${distro}`;
+    const segments = linuxPath.split('/').filter(Boolean);
+    return segments.length > 0 ? path.win32.join(base, ...segments) : base;
+}
+
+function getDefaultWslHomeRoot(): BrowseRoot | null {
+    if (process.platform !== 'win32') {
+        return null;
+    }
+
+    const distro = getDefaultWslDistro();
+    if (!distro) {
+        return null;
+    }
+
+    try {
+        const home = execFileSync(
+            getWslExecutablePath(),
+            ['-d', distro, '--', 'sh', '-lc', 'printf %s "$HOME"'],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+        ).trim();
+        if (!home.startsWith('/')) {
+            return null;
+        }
+        return {
+            label: `WSL Home (${distro})`,
+            path: linuxPathToWslUnc(distro, home),
+        };
+    } catch {
+        return null;
+    }
+}
+
+export function listBrowseRoots(): BrowseRoot[] {
+    if (process.platform !== 'win32') {
+        return [];
+    }
+
+    const roots: BrowseRoot[] = [];
+    const seen = new Set<string>();
+
+    const pushRoot = (root: BrowseRoot | null) => {
+        if (!root) {
+            return;
+        }
+        const key = root.path.toLowerCase();
+        if (seen.has(key)) {
+            return;
+        }
+        seen.add(key);
+        roots.push(root);
+    };
+
+    pushRoot(getDefaultWslHomeRoot());
+    for (const drive of listWindowsDrives()) {
+        pushRoot({ label: drive, path: drive });
+    }
+
+    return roots;
 }
 
 /** Browse a directory and return its entries (directories only) for repo path selection. */
@@ -127,10 +196,12 @@ export function registerApiFsRoutes(routes: Route[], options?: RegisterApiFsRout
                 parent: string | null;
                 entries: Array<{ name: string; type: 'directory'; isGitRepo: boolean }>;
                 drives?: string[];
+                browseRoots?: BrowseRoot[];
             } = { ...result };
 
             if (process.platform === 'win32') {
                 payload.drives = listWindowsDrives();
+                payload.browseRoots = listBrowseRoots();
             }
 
             sendJSON(res, 200, payload);

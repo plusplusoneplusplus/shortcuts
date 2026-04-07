@@ -2,7 +2,7 @@
  * Utility functions for executing shell commands
  */
 
-import { exec, ExecOptions } from 'child_process';
+import { exec, execFile, ExecFileOptions, ExecOptions } from 'child_process';
 
 /**
  * Execute a shell command asynchronously
@@ -25,6 +25,40 @@ export function execAsync(
             if (error) {
                 // Augment the error message with stderr when the process is killed
                 // (e.g. timeout/SIGTERM) and stderr is not already in the message.
+                const stderrStr = typeof stderr === 'string' ? stderr.trim() : '';
+                if (stderrStr && !error.message.includes(stderrStr)) {
+                    error.message += `\n${stderrStr}`;
+                }
+                reject(error);
+            } else {
+                resolve({ stdout: stdout as string, stderr: stderr as string });
+            }
+        });
+    });
+}
+
+/**
+ * Execute a binary asynchronously without shell parsing.
+ * @param file Executable path
+ * @param args Argument list
+ * @param options Execution options
+ * @returns Promise with stdout and stderr
+ */
+export function execFileAsync(
+    file: string,
+    args: readonly string[] = [],
+    options?: ExecFileOptions
+): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+        const defaultOptions: ExecFileOptions = {
+            timeout: 30000,
+            maxBuffer: 10 * 1024 * 1024,
+            windowsHide: true,
+            ...options,
+        };
+
+        execFile(file, args, { ...defaultOptions, encoding: 'utf-8' }, (error, stdout, stderr) => {
+            if (error) {
                 const stderrStr = typeof stderr === 'string' ? stderr.trim() : '';
                 if (stderrStr && !error.message.includes(stderrStr)) {
                     error.message += `\n${stderrStr}`;

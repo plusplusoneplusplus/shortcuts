@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import type { Page } from '@playwright/test';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, seedProcess, seedQueueTask, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
@@ -16,6 +17,17 @@ import {
     createMultiCommitRepo,
     navigateToGitTab,
 } from './fixtures/git-fixtures';
+
+function testWorkspacePath(name: string): string {
+    return path.join(os.tmpdir(), name);
+}
+
+async function openRepoTabContextMenu(page: Page, index = 0): Promise<void> {
+    const repoTab = page.locator('[data-testid="repo-tab"]').nth(index);
+    await repoTab.click();
+    await repoTab.click({ button: 'right' });
+    await expect(page.locator('[data-testid="repo-tab-context-menu"]')).toBeVisible();
+}
 
 test.describe('Repos tab', () => {
     test('shows empty state when no repos exist', async ({ page, serverUrl }) => {
@@ -267,17 +279,13 @@ test.describe('Edit Repo workflow', () => {
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Select the repo to show detail
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-        // Click Edit button
-        await page.click('#repo-edit-btn');
+        await openRepoTabContextMenu(page);
+        await page.click('[data-testid="repo-tab-context-edit"]');
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
 
         // Path should be read-only and pre-filled
         const pathInput = page.locator('#repo-path');
-        await expect(pathInput).toHaveValue('/tmp/original');
+        await expect(pathInput).toHaveValue(testWorkspacePath('original'));
         await expect(pathInput).toHaveAttribute('readonly', '');
 
         // Name and color should be pre-filled (verify Green #107c10 button is selected)
@@ -292,10 +300,8 @@ test.describe('Edit Repo workflow', () => {
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Select repo and open edit dialog
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-        await page.click('#repo-edit-btn');
+        await openRepoTabContextMenu(page);
+        await page.click('[data-testid="repo-tab-context-edit"]');
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
 
         // Change name and color to Green
@@ -319,10 +325,8 @@ test.describe('Edit Repo workflow', () => {
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Select repo and open edit dialog
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-        await page.click('#repo-edit-btn');
+        await openRepoTabContextMenu(page);
+        await page.click('[data-testid="repo-tab-context-edit"]');
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
 
         // Change name but cancel
@@ -347,14 +351,10 @@ test.describe('Remove Repo', () => {
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Select the repo to show detail with remove button
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-
         // Accept the upcoming window.confirm dialog
         page.on('dialog', dialog => dialog.accept());
-
-        await page.click('#repo-remove-btn');
+        await openRepoTabContextMenu(page);
+        await page.click('[data-testid="repo-tab-context-remove"]');
 
         // Repo should be gone from sidebar, empty state shown
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(0, { timeout: 10000 });
@@ -368,14 +368,10 @@ test.describe('Remove Repo', () => {
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Select the repo
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-        await expect(page.locator('#repo-detail-empty')).toBeHidden();
-
         // Accept the confirm dialog and remove
         page.on('dialog', dialog => dialog.accept());
-        await page.click('#repo-remove-btn');
+        await openRepoTabContextMenu(page);
+        await page.click('[data-testid="repo-tab-context-remove"]');
 
         // Detail panel should revert to empty state
         await expect(page.locator('#repo-detail-empty')).toBeVisible({ timeout: 10000 });
@@ -388,7 +384,7 @@ test.describe('Remove Repo', () => {
 // ================================================================
 
 test.describe('Sub-tab Navigation', () => {
-    test('default sub-tab is Info', async ({ page, serverUrl }) => {
+    test('default sub-tab is Settings', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-sub-1', 'info-repo', '/tmp/info-repo');
 
         await page.goto(serverUrl);
@@ -398,7 +394,7 @@ test.describe('Sub-tab Navigation', () => {
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
-        await expect(page.locator('button[data-subtab="info"]')).toHaveClass(/active/);
+        await expect(page.locator('button[data-subtab="settings"]')).toHaveClass(/active/);
         await expect(page.locator('.meta-grid')).toBeVisible();
     });
 
@@ -414,7 +410,7 @@ test.describe('Sub-tab Navigation', () => {
 
         await page.click('button[data-subtab="workflows"]');
         await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
-        await expect(page.locator('button[data-subtab="info"]')).not.toHaveClass(/active/);
+        await expect(page.locator('button[data-subtab="settings"]')).not.toHaveClass(/active/);
 
         const subContent = page.locator('#repo-sub-tab-content');
         await expect(subContent).toBeVisible();
@@ -449,7 +445,7 @@ test.describe('Sub-tab Navigation', () => {
 
         await page.click('button[data-subtab="activity"]');
         await expect(page.locator('button[data-subtab="activity"]')).toHaveClass(/active/);
-        await expect(page.locator('button[data-subtab="info"]')).not.toHaveClass(/active/);
+        await expect(page.locator('button[data-subtab="settings"]')).not.toHaveClass(/active/);
 
         await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
     });
@@ -485,7 +481,7 @@ test.describe('Sub-tab Navigation', () => {
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
 
         await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
-        await expect(page.locator('button[data-subtab="info"]')).not.toHaveClass(/active/);
+        await expect(page.locator('button[data-subtab="settings"]')).not.toHaveClass(/active/);
     });
 
     test('hash navigation works for Activity sub-tab', async ({ page, serverUrl }) => {
@@ -497,7 +493,7 @@ test.describe('Sub-tab Navigation', () => {
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
 
         await expect(page.locator('button[data-subtab="activity"]')).toHaveClass(/active/);
-        await expect(page.locator('button[data-subtab="info"]')).not.toHaveClass(/active/);
+        await expect(page.locator('button[data-subtab="settings"]')).not.toHaveClass(/active/);
         await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
     });
 });
@@ -521,7 +517,7 @@ test.describe('Info Tab Content', () => {
 
         // Verify path is displayed
         const pathCell = page.locator('.meta-path');
-        await expect(pathCell.first()).toContainText('/tmp/info-repo');
+        await expect(pathCell.first()).toContainText(testWorkspacePath('info-repo'));
 
         // Verify color dot and color value are shown (Green #107c10 — may render as hex or rgb)
         const colorItem = page.locator('.meta-item', { hasText: 'Color' });
@@ -903,11 +899,11 @@ test.describe('Repo Group Collapse/Expand', () => {
         // Seed two workspaces with the same remoteUrl
         await request(`${serverUrl}/api/workspaces`, {
             method: 'POST',
-            body: JSON.stringify({ id: 'ws-group-1a', name: 'group-repo-a', rootPath: '/tmp/group-a', remoteUrl }),
+            body: JSON.stringify({ id: 'ws-group-1a', name: 'group-repo-a', rootPath: testWorkspacePath('group-a'), remoteUrl }),
         });
         await request(`${serverUrl}/api/workspaces`, {
             method: 'POST',
-            body: JSON.stringify({ id: 'ws-group-1b', name: 'group-repo-b', rootPath: '/tmp/group-b', remoteUrl }),
+            body: JSON.stringify({ id: 'ws-group-1b', name: 'group-repo-b', rootPath: testWorkspacePath('group-b'), remoteUrl }),
         });
 
         await page.goto(serverUrl);
@@ -926,11 +922,11 @@ test.describe('Repo Group Collapse/Expand', () => {
 
         await request(`${serverUrl}/api/workspaces`, {
             method: 'POST',
-            body: JSON.stringify({ id: 'ws-group-2a', name: 'collapse-a', rootPath: '/tmp/collapse-a', remoteUrl }),
+            body: JSON.stringify({ id: 'ws-group-2a', name: 'collapse-a', rootPath: testWorkspacePath('collapse-a'), remoteUrl }),
         });
         await request(`${serverUrl}/api/workspaces`, {
             method: 'POST',
-            body: JSON.stringify({ id: 'ws-group-2b', name: 'collapse-b', rootPath: '/tmp/collapse-b', remoteUrl }),
+            body: JSON.stringify({ id: 'ws-group-2b', name: 'collapse-b', rootPath: testWorkspacePath('collapse-b'), remoteUrl }),
         });
 
         await page.goto(serverUrl);
@@ -960,7 +956,7 @@ test.describe('Hash Navigation — Remaining Sub-tabs', () => {
             await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
             await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
             await expect(page.locator('button[data-subtab="git"]')).toHaveClass(/active/);
-            await expect(page.locator('button[data-subtab="info"]')).not.toHaveClass(/active/);
+            await expect(page.locator('button[data-subtab="settings"]')).not.toHaveClass(/active/);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -1152,11 +1148,13 @@ test.describe('Workflows Tab — Add Workflow Dialog', () => {
             await page.click('button[data-subtab="workflows"]');
             await page.locator('[data-testid="workflows-section"]').getByRole('button', { name: '+ New' }).click();
 
-            // Wait for the dialog to open — the <select> template picker is always present
-            await expect(page.locator('select')).toBeVisible({ timeout: 5000 });
+            const templateSelect = page.getByTestId('dialog-overlay').locator('select');
 
-            // Select Custom (blank) template using selectOption on the <select> element
-            await page.locator('select').selectOption('custom');
+            // Wait for the dialog to open — the template picker is always present
+            await expect(templateSelect).toBeVisible({ timeout: 5000 });
+
+            // Select Custom (blank) template
+            await templateSelect.selectOption('custom');
 
             // Wait for the 'Create' button (shown when template is not ai-generated)
             await expect(page.getByRole('button', { name: 'Create' })).toBeVisible({ timeout: 3000 });

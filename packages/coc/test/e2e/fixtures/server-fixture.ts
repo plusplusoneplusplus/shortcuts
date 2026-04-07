@@ -23,8 +23,10 @@ import { createE2EMockSDKService, type E2EMockAIControls } from './mock-ai';
 /**
  * Windows-safe recursive directory removal.
  * On Windows, file handles may linger after server.close(), causing
- * ENOTEMPTY / EBUSY / EPERM.  Retries up to 5 times with 200-3200 ms
- * exponential back-off so CI runners have time to release handles.
+ * ENOTEMPTY / EBUSY / EPERM. Retries up to 5 times with 200-3200 ms
+ * exponential back-off so CI runners have time to release handles, then
+ * falls back to best-effort cleanup because temp-dir removal should not fail
+ * an otherwise successful UI test.
  */
 const RETRIABLE_CODES = new Set(['ENOTEMPTY', 'EBUSY', 'EPERM', 'EACCES']);
 export function safeRmSync(dir: string, maxRetries = 5): void {
@@ -35,7 +37,13 @@ export function safeRmSync(dir: string, maxRetries = 5): void {
         } catch (err: any) {
             const retriable = RETRIABLE_CODES.has(err.code);
             if (attempt === maxRetries || !retriable) {
-                if (err.code === 'ENOENT') return;
+                if (err.code === 'ENOENT') {
+                    return;
+                }
+                if (retriable) {
+                    console.warn(`safeRmSync: leaving locked temp path behind: ${dir} (${err.code})`);
+                    return;
+                }
                 throw err;
             }
             const delayMs = 200 * Math.pow(2, attempt);

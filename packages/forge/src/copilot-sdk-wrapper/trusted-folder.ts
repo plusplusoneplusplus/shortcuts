@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { getAIServiceLogger } from '../ai-logger';
+import { isLinuxAbsolutePath, isWslUncPath, toForwardSlashes, trimTrailingPathSeparators } from '../utils/path-utils';
 
 /** Config directory name under home */
 const CONFIG_DIR = '.copilot';
@@ -40,6 +41,13 @@ function getConfigDir(): string {
         return path.join(homeDirectoryOverride, CONFIG_DIR);
     }
     return process.env['XDG_CONFIG_HOME'] ?? path.join(os.homedir(), CONFIG_DIR);
+}
+
+/**
+ * Get the Copilot config directory path.
+ */
+export function getCopilotConfigDir(): string {
+    return getConfigDir();
 }
 
 /**
@@ -83,12 +91,11 @@ function writeConfig(configPath: string, config: Record<string, unknown>): void 
  * Resolves to absolute and removes trailing separators.
  */
 function normalizeFolderPath(folder: string): string {
-    let resolved = path.resolve(folder);
-    // Remove trailing separator (but not root like "/" or "C:\")
-    while (resolved.length > 1 && (resolved.endsWith(path.sep) || resolved.endsWith('/'))) {
-        resolved = resolved.slice(0, -1);
+    if (isWslUncPath(folder) || (process.platform === 'win32' && isLinuxAbsolutePath(folder))) {
+        return trimTrailingPathSeparators(toForwardSlashes(folder));
     }
-    return resolved;
+    let resolved = path.resolve(folder);
+    return trimTrailingPathSeparators(resolved);
 }
 
 /**

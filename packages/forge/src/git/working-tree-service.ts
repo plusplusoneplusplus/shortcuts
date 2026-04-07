@@ -9,9 +9,15 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execAsync } from '../utils/exec-utils';
+import { execFileAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
 import { GitChange, GitChangeStatus, GitChangeStage, GitOperationResult } from './types';
+import {
+    buildWslCommandArgs,
+    getWslExecutablePath,
+    resolveWorkspaceExecutionContext,
+    translatePathForExecution,
+} from '../utils/workspace-execution';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
@@ -22,22 +28,20 @@ interface GitExecOptions {
     timeout?: number;
 }
 
-/**
- * Wrap a filesystem path in double-quotes for use in a shell command string,
- * stripping any trailing path separator first.
- *
- * Without this, a Windows path like `C:\repo\dir\` would produce `"C:\repo\dir\"`
- * where the trailing backslash escapes the closing quote, corrupting the argument.
- */
-function q(p: string): string {
-    return `"${p.replace(/[/\\]+$/, '')}"`;
-}
+async function execGitAsync(args: string[], options: GitExecOptions): Promise<string> {
+    const executionContext = resolveWorkspaceExecutionContext(options.cwd);
+    if (executionContext.kind === 'wsl') {
+        const { stdout } = await execFileAsync(
+            getWslExecutablePath(),
+            buildWslCommandArgs(executionContext, ['git', ...args]),
+            { timeout: options.timeout ?? 30_000 },
+        );
+        return stdout;
+    }
 
-async function execGitAsync(command: string, options: GitExecOptions): Promise<string> {
-    const { stdout } = await execAsync(command, {
+    const { stdout } = await execFileAsync('git', args, {
         cwd: options.cwd,
         timeout: options.timeout ?? 30_000,
-        shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
     });
     return stdout;
 }
@@ -161,10 +165,9 @@ export class WorkingTreeService {
      */
     async getAllChanges(repoRoot: string): Promise<GitChange[]> {
         try {
-            const { stdout } = await execAsync(
-                `git -C ${q(repoRoot)} status --porcelain`,
-                { timeout: 15_000 }
-            );
+            const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+            const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
+            const stdout = await execGitAsync(['-C', execRepoRoot, 'status', '--porcelain'], { cwd: repoRoot, timeout: 15_000 });
             return parsePorcelain(stdout, repoRoot);
         } catch (error) {
             getLogger().error('Git', 'getAllChanges failed', error instanceof Error ? error : undefined);
@@ -177,7 +180,11 @@ export class WorkingTreeService {
      */
     async stageFile(repoRoot: string, filePath: string): Promise<GitOperationResult> {
         try {
-            await execGitAsync(`git -C ${q(repoRoot)} add -- ${q(filePath)}`, { cwd: repoRoot });
+            const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+            await execGitAsync(
+                ['-C', translatePathForExecution(repoRoot, executionContext), 'add', '--', translatePathForExecution(filePath, executionContext)],
+                { cwd: repoRoot },
+            );
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -193,13 +200,19 @@ export class WorkingTreeService {
     async stageFiles(repoRoot: string, filePaths: string[]): Promise<{ success: boolean; staged: number; errors: string[] }> {
         if (filePaths.length === 0) return { success: true, staged: 0, errors: [] };
         const errors: string[] = [];
+        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
         try {
-            const escaped = filePaths.map(f => q(f)).join(' ');
-            await execGitAsync(`git -C ${q(repoRoot)} add -- ${escaped}`, { cwd: repoRoot });
+            await execGitAsync(
+                ['-C', translatePathForExecution(repoRoot, executionContext), 'add', '--', ...filePaths.map(f => translatePathForExecution(f, executionContext))],
+                { cwd: repoRoot },
+            );
         } catch {
             for (const filePath of filePaths) {
                 try {
-                    await execGitAsync(`git -C ${q(repoRoot)} add -- ${q(filePath)}`, { cwd: repoRoot });
+                    await execGitAsync(
+                        ['-C', translatePathForExecution(repoRoot, executionContext), 'add', '--', translatePathForExecution(filePath, executionContext)],
+                        { cwd: repoRoot },
+                    );
                 } catch (e) {
                     errors.push(`${filePath}: ${e instanceof Error ? e.message : 'Unknown error'}`);
                 }
@@ -213,13 +226,20 @@ export class WorkingTreeService {
      * Falls back to `git rm --cached` for repos with no commits yet.
      */
     async unstageFile(repoRoot: string, filePath: string): Promise<GitOperationResult> {
+        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
         try {
-            await execGitAsync(`git -C ${q(repoRoot)} reset HEAD -- ${q(filePath)}`, { cwd: repoRoot });
+            await execGitAsync(
+                ['-C', translatePathForExecution(repoRoot, executionContext), 'reset', 'HEAD', '--', translatePathForExecution(filePath, executionContext)],
+                { cwd: repoRoot },
+            );
             return { success: true };
         } catch (firstError) {
             // No commits yet — fall back to `git rm --cached`
             try {
-                await execGitAsync(`git -C ${q(repoRoot)} rm --cached -- ${q(filePath)}`, { cwd: repoRoot });
+                await execGitAsync(
+                    ['-C', translatePathForExecution(repoRoot, executionContext), 'rm', '--cached', '--', translatePathForExecution(filePath, executionContext)],
+                    { cwd: repoRoot },
+                );
                 return { success: true };
             } catch (fallbackError) {
                 const errorMessage = fallbackError instanceof Error ? fallbackError.message : 'Unknown error';
@@ -236,16 +256,25 @@ export class WorkingTreeService {
     async unstageFiles(repoRoot: string, filePaths: string[]): Promise<{ success: boolean; unstaged: number; errors: string[] }> {
         if (filePaths.length === 0) return { success: true, unstaged: 0, errors: [] };
         const errors: string[] = [];
+        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
         try {
-            const escaped = filePaths.map(f => q(f)).join(' ');
-            await execGitAsync(`git -C ${q(repoRoot)} reset HEAD -- ${escaped}`, { cwd: repoRoot });
+            await execGitAsync(
+                ['-C', translatePathForExecution(repoRoot, executionContext), 'reset', 'HEAD', '--', ...filePaths.map(f => translatePathForExecution(f, executionContext))],
+                { cwd: repoRoot },
+            );
         } catch {
             for (const filePath of filePaths) {
                 try {
-                    await execGitAsync(`git -C ${q(repoRoot)} reset HEAD -- ${q(filePath)}`, { cwd: repoRoot });
+                    await execGitAsync(
+                        ['-C', translatePathForExecution(repoRoot, executionContext), 'reset', 'HEAD', '--', translatePathForExecution(filePath, executionContext)],
+                        { cwd: repoRoot },
+                    );
                 } catch {
                     try {
-                        await execGitAsync(`git -C ${q(repoRoot)} rm --cached -- ${q(filePath)}`, { cwd: repoRoot });
+                        await execGitAsync(
+                            ['-C', translatePathForExecution(repoRoot, executionContext), 'rm', '--cached', '--', translatePathForExecution(filePath, executionContext)],
+                            { cwd: repoRoot },
+                        );
                     } catch (e) {
                         errors.push(`${filePath}: ${e instanceof Error ? e.message : 'Unknown error'}`);
                     }
@@ -261,7 +290,11 @@ export class WorkingTreeService {
      */
     async discardChanges(repoRoot: string, filePath: string): Promise<GitOperationResult> {
         try {
-            await execGitAsync(`git -C ${q(repoRoot)} checkout -- ${q(filePath)}`, { cwd: repoRoot });
+            const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+            await execGitAsync(
+                ['-C', translatePathForExecution(repoRoot, executionContext), 'checkout', '--', translatePathForExecution(filePath, executionContext)],
+                { cwd: repoRoot },
+            );
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -278,9 +311,14 @@ export class WorkingTreeService {
      */
     async getFileDiff(repoRoot: string, filePath: string, staged: boolean): Promise<string> {
         try {
-            const flag = staged ? '--staged ' : '';
+            const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+            const args = ['-C', translatePathForExecution(repoRoot, executionContext), 'diff', '-U99999'];
+            if (staged) {
+                args.push('--staged');
+            }
+            args.push('--', translatePathForExecution(filePath, executionContext));
             return await execGitAsync(
-                `git -C ${q(repoRoot)} diff -U99999 ${flag}-- ${q(filePath)}`,
+                args,
                 { cwd: repoRoot }
             );
         } catch (error) {
