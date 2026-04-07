@@ -81,6 +81,16 @@ export function EnqueueDialog() {
     const [minimized, setMinimized] = useState(false);
     const [hooks, setHooks] = useState<HookEntry[]>([]);
 
+    const currentPostActions: PostAction[] = useMemo(() =>
+        hooks
+            .filter(h => h.timing === 'after' && ((h.type === 'script' && h.script.trim()) || (h.type === 'skill' && h.skillName)))
+            .map(h => {
+                if (h.type === 'script') return { type: 'script' as const, script: h.script.trim() };
+                return { type: 'skill' as const, skillName: h.skillName, ...(h.prompt.trim() ? { prompt: h.prompt.trim() } : {}) };
+            }),
+        [hooks],
+    );
+
     const addHook = () => setHooks(prev => [...prev, {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         timing: 'after',
@@ -573,6 +583,7 @@ export function EnqueueDialog() {
                     currentModel={model}
                     currentMode={isAskMode ? 'ask' : 'task'}
                     currentSkills={selectedSkills}
+                    currentPostActions={currentPostActions}
                     selectedTemplateId={selectedTemplateId}
                     onSelect={handleSelectTemplate}
                     onSave={handleSaveTemplate}

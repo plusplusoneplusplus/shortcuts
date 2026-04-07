@@ -7,6 +7,7 @@
 
 import React from 'react';
 import type { SkillTemplate } from '../hooks/useSkillTemplates';
+import type { PostAction } from '../../../task-types';
 
 interface TemplatesTabProps {
     templates: SkillTemplate[];
@@ -14,6 +15,7 @@ interface TemplatesTabProps {
     currentModel: string;
     currentMode: 'ask' | 'task';
     currentSkills: string[];
+    currentPostActions: PostAction[];
     selectedTemplateId: string | null;
     onSelect: (template: SkillTemplate) => void;
     onSave: () => void;
@@ -26,12 +28,13 @@ export function TemplatesTab({
     currentModel,
     currentMode,
     currentSkills,
+    currentPostActions,
     selectedTemplateId,
     onSelect,
     onSave,
     onDelete,
 }: TemplatesTabProps) {
-    const canSave = !!currentModel || currentSkills.length > 0;
+    const canSave = !!currentModel || currentSkills.length > 0 || currentPostActions.length > 0;
     const filteredTemplates = templates.filter(t => t.mode === currentMode);
 
     if (!loaded) {
@@ -133,6 +136,22 @@ export function TemplatesTab({
                                         >
                                             <span>⚡</span>
                                             <span>{s}</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Post-action chips */}
+                            {t.postActions && t.postActions.length > 0 && (
+                                <div className="flex flex-wrap gap-0.5 mt-0.5">
+                                    {t.postActions.map((action, i) => (
+                                        <span
+                                            key={i}
+                                            className="inline-flex items-center gap-0.5 text-[10px] px-1 py-0 rounded-full border border-[#e0e0e0] dark:border-[#555] bg-[#f9f9f9] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                        >
+                                            <span>{action.type === 'skill' ? '⚡' : '🔧'}</span>
+                                            <span>{action.type === 'skill' ? action.skillName : action.script}</span>
+                                            <span className="text-[#848484]">→ post</span>
                                         </span>
                                     ))}
                                 </div>

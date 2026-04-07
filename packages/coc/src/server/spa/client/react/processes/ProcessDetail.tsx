@@ -71,7 +71,7 @@ export function ProcessDetail() {
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
     const [pipelinePhases, setPipelinePhases] = useState<Array<{ phase: string; status: string; timestamp?: string; durationMs?: number; error?: string; itemCount?: number }>>([]);
     const [pipelineProgress, setPipelineProgress] = useState<{ phase: string; totalItems: number; completedItems: number; failedItems: number; percentage: number; message?: string } | null>(null);
-    const [hookSteps, setHookSteps] = useState<Array<{ step: string; status: string; script: string; output?: string; durationMs?: number }>>([]);
+    const [hookSteps, setHookSteps] = useState<Array<{ step: string; status: string; script: string; output?: string; durationMs?: number; index?: number; actionType?: 'script' | 'skill'; skillName?: string }>>([]);
     const [copiedHtml, setCopiedHtml] = useState(false);
 
     const process = processes.find((p: any) => p.id === selectedId);
@@ -186,8 +186,12 @@ export function ProcessDetail() {
             try {
                 const data = JSON.parse(e.data);
                 if (data.hookStep) {
+                    const stepKey = (s: { step: string; index?: number }) =>
+                        s.index != null ? `${s.step}-${s.index}` : s.step;
+
                     setHookSteps(prev => {
-                        const idx = prev.findIndex(s => s.step === data.hookStep.step);
+                        const key = stepKey(data.hookStep);
+                        const idx = prev.findIndex(s => stepKey(s) === key);
                         if (idx >= 0) {
                             const updated = [...prev];
                             updated[idx] = data.hookStep;
@@ -423,10 +427,17 @@ export function ProcessDetail() {
                 {hookSteps.length > 0 && (
                     <div className="flex flex-col gap-1 mb-3 text-sm">
                         {hookSteps.map(step => (
-                            <div key={step.step} className="flex items-center gap-2 text-[#848484]">
+                            <div
+                                key={step.index != null ? `${step.step}-${step.index}` : step.step}
+                                className="flex items-center gap-2 text-[#848484]"
+                            >
                                 <span>{step.status === 'done' ? '✅' : step.status === 'running' ? '⏳' : step.status === 'failed' ? '❌' : '○'}</span>
                                 <span className="font-medium capitalize">{step.step}</span>
-                                <span className="font-mono text-xs truncate max-w-[200px]" title={step.script}>{step.script}</span>
+                                {step.actionType === 'skill' ? (
+                                    <span className="text-xs">⚡ {step.skillName}</span>
+                                ) : (
+                                    <span className="font-mono text-xs truncate max-w-[200px]" title={step.script}>{step.script}</span>
+                                )}
                                 {step.durationMs != null && <span className="text-xs">({step.durationMs}ms)</span>}
                                 {step.output && (
                                     <details className="ml-2">

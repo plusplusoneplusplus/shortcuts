@@ -14,6 +14,7 @@ const defaultProps = {
     loaded: true,
     currentModel: 'gpt-4',
     currentSkills: [],
+    currentPostActions: [],
     selectedTemplateId: null,
     onSelect: vi.fn(),
     onSave: vi.fn(),
@@ -139,5 +140,79 @@ describe('TemplatesTab – mode filtering', () => {
         expect(emptyState.textContent).toContain('task');
         expect(emptyState.textContent).toContain('templates yet');
         expect(emptyState.textContent).not.toContain('Switch to');
+    });
+});
+
+describe('TemplatesTab – post-action chips', () => {
+    const TEMPLATE_WITH_POST_ACTIONS: SkillTemplate = {
+        id: 'pa-1',
+        name: 'With Hooks',
+        model: 'gpt-4',
+        mode: 'ask',
+        skills: [],
+        postActions: [
+            { type: 'script', script: './cleanup.sh' },
+            { type: 'skill', skillName: 'summarize' },
+        ],
+    };
+
+    it('renders post-action chips with correct icons and labels', () => {
+        render(
+            <TemplatesTab
+                {...defaultProps}
+                templates={[TEMPLATE_WITH_POST_ACTIONS]}
+                currentMode="ask"
+            />
+        );
+        const card = screen.getByTestId('template-card-pa-1');
+        expect(card.textContent).toContain('🔧');
+        expect(card.textContent).toContain('./cleanup.sh');
+        expect(card.textContent).toContain('⚡');
+        expect(card.textContent).toContain('summarize');
+        expect(card.textContent).toContain('→ post');
+    });
+
+    it('does not render post-action section when template has no postActions', () => {
+        render(
+            <TemplatesTab
+                {...defaultProps}
+                templates={[ASK_TEMPLATE]}
+                currentMode="ask"
+            />
+        );
+        const card = screen.getByTestId('template-card-ask-1');
+        expect(card.textContent).not.toContain('→ post');
+    });
+});
+
+describe('TemplatesTab – canSave with post-actions', () => {
+    it('canSave is true when only currentPostActions is non-empty', () => {
+        render(
+            <TemplatesTab
+                {...defaultProps}
+                templates={[]}
+                currentMode="ask"
+                currentModel=""
+                currentSkills={[]}
+                currentPostActions={[{ type: 'script', script: './test.sh' }]}
+            />
+        );
+        const btn = screen.getByTestId('save-template-btn');
+        expect(btn.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('canSave is false when model, skills, and postActions are all empty', () => {
+        render(
+            <TemplatesTab
+                {...defaultProps}
+                templates={[]}
+                currentMode="ask"
+                currentModel=""
+                currentSkills={[]}
+                currentPostActions={[]}
+            />
+        );
+        const btn = screen.getByTestId('save-template-btn');
+        expect(btn.hasAttribute('disabled')).toBe(true);
     });
 });
