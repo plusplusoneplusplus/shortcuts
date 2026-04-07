@@ -144,3 +144,58 @@ describe('error state', () => {
         await waitFor(() => expect(screen.getByText('Network error')).toBeTruthy());
     });
 });
+
+// ── 6. Non-git repo hides branch/sync rows ──────────────────────────────────
+
+describe('non-git repo display', () => {
+    const nonGitRepo = {
+        ...baseRepo,
+        gitInfo: { branch: null, dirty: false, isGitRepo: false, ahead: 0, behind: 0 },
+    };
+
+    it('hides Branch row for non-git repos', async () => {
+        await act(async () => { await renderTab(nonGitRepo); });
+        await waitFor(() => expect(screen.queryAllByText('Loading...').length).toBe(0));
+        expect(screen.queryByText('Branch')).toBeNull();
+    });
+
+    it('hides Sync row for non-git repos', async () => {
+        await act(async () => { await renderTab(nonGitRepo); });
+        await waitFor(() => expect(screen.queryAllByText('Loading...').length).toBe(0));
+        expect(screen.queryByText('Sync')).toBeNull();
+    });
+
+    it('shows "Not a git repository" indicator', async () => {
+        await act(async () => { await renderTab(nonGitRepo); });
+        await waitFor(() => expect(screen.queryAllByText('Loading...').length).toBe(0));
+        expect(screen.getByText('Not a git repository')).toBeTruthy();
+    });
+
+    it('still shows Branch/Sync for git repos', async () => {
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.queryAllByText('Loading...').length).toBe(0));
+        expect(screen.getByText('Branch')).toBeTruthy();
+        expect(screen.getByText('Sync')).toBeTruthy();
+    });
+});
+
+// ── 7. Non-git repo with undefined gitInfo ───────────────────────────────────
+
+describe('undefined gitInfo display', () => {
+    const undefinedGitInfoRepo = {
+        ...baseRepo,
+        gitInfo: undefined,
+    };
+
+    it('hides Branch row when gitInfo is undefined', async () => {
+        await act(async () => { await renderTab(undefinedGitInfoRepo); });
+        await waitFor(() => expect(screen.queryAllByText('Loading...').length).toBe(0));
+        expect(screen.queryByText('Branch')).toBeNull();
+    });
+
+    it('shows "Not a git repository" when gitInfo is undefined', async () => {
+        await act(async () => { await renderTab(undefinedGitInfoRepo); });
+        await waitFor(() => expect(screen.queryAllByText('Loading...').length).toBe(0));
+        expect(screen.getByText('Not a git repository')).toBeTruthy();
+    });
+});

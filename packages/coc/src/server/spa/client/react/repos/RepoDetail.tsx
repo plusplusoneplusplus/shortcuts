@@ -50,8 +50,8 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'wiki', label: 'Wiki', shortcut: 'Alt+I' },
 ];
 
-/** Tabs actually rendered in the UI — wiki is hidden behind a feature flag. */
-export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
+/** Base visible tabs — wiki is hidden behind a feature flag. Git filtering happens per-repo inside the component. */
+export const BASE_VISIBLE_SUB_TABS = SHOW_WIKI_TAB
     ? SUB_TABS
     : SUB_TABS.filter(t => t.key !== 'wiki');
 
@@ -87,6 +87,19 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const taskCount = repo.taskCount || 0;
     const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(ws.id);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
+    const isGitRepo = !!repo.gitInfo?.isGitRepo;
+
+    const visibleSubTabs = useMemo(
+        () => isGitRepo ? BASE_VISIBLE_SUB_TABS : BASE_VISIBLE_SUB_TABS.filter(t => t.key !== 'git' && t.key !== 'pull-requests'),
+        [isGitRepo],
+    );
+
+    // Redirect away from git/pull-requests tab when switching to a non-git repo
+    useEffect(() => {
+        if ((activeSubTab === 'git' || activeSubTab === 'pull-requests') && !isGitRepo) {
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        }
+    }, [activeSubTab, isGitRepo, dispatch]);
 
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
@@ -327,7 +340,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 style={{ WebkitOverflowScrolling: 'touch' }}
                                 data-testid="repo-sub-tab-strip"
                             >
-                            {VISIBLE_SUB_TABS.map(t => (
+                            {visibleSubTabs.map(t => (
                                 <button
                                     key={t.key}
                                     data-subtab={t.key}
@@ -443,7 +456,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 <MobileTabBar
                     activeTab={activeSubTab}
                     onTabChange={switchSubTab}
-                    tabs={VISIBLE_SUB_TABS}
+                    tabs={visibleSubTabs}
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                 />
@@ -466,18 +479,18 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     {activeSubTab === 'templates' && <TemplatesTab key={ws.id} repo={repo} />}
                     {activeSubTab === 'activity' && <RepoActivityTab key={ws.id} workspaceId={ws.id} />}
                     {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
-                    {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
+                    {activeSubTab === 'git' && isGitRepo && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                     {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                     <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                         <ExplorerPanel key={ws.id} workspaceId={ws.id} />
                     </div>
-                    <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                    {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                         <PullRequestsTab
                             repoId={ws.id}
                             workspaceId={ws.id}
                             remoteUrl={ws.remoteUrl ?? undefined}
                         />
-                    </div>
+                    </div>}
                     {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}
                 </div>
             </div>

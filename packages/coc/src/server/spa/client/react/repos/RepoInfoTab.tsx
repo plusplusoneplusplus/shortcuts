@@ -52,6 +52,7 @@ function hasSkillValue(val: string | string[] | undefined): boolean {
 export function RepoInfoTab({ repo }: RepoInfoTabProps) {
     const ws = repo.workspace;
     const color = ws.color || '#848484';
+    const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const branch = repo.gitInfo?.branch || 'n/a';
     const dirty = repo.gitInfo?.dirty ? ' (dirty)' : '';
     const ahead = repo.gitInfo?.ahead ?? 0;
@@ -104,9 +105,15 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
             <div className="meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
                 <MetaRow label="Path" value={ws.rootPath || ''} mono valueClass="meta-path" />
                 {tasksFolder && <MetaRow label="Plans Folder" value={tasksFolder} mono />}
-                <MetaRow label="Branch"value={branch + dirty} />
-                <MetaRow label="Sync" value={syncLabel} />
-                {remoteUrl && <MetaRow label="Remote" value={remoteUrl} mono />}
+                {isGitRepo ? (
+                    <>
+                        <MetaRow label="Branch"value={branch + dirty} />
+                        <MetaRow label="Sync" value={syncLabel} />
+                        {remoteUrl && <MetaRow label="Remote" value={remoteUrl} mono />}
+                    </>
+                ) : (
+                    <MetaRow label="Git" value="Not a git repository" />
+                )}
                 <MetaRow label="Color">
                     <span className="flex items-center gap-1.5">
                         <span className="repo-color-dot inline-block w-3 h-3 rounded-full" style={{ background: color }} />

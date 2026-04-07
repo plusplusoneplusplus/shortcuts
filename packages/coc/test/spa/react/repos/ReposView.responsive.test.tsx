@@ -368,6 +368,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
 
     const makeRepo = () => ({
         workspace: { id: 'repo-1', name: 'Test Repo', rootPath: '/test', color: '#ff0000' },
+        gitInfo: { branch: 'main', dirty: false, isGitRepo: true, ahead: 0, behind: 0 },
         pipelines: [],
         stats: { success: 0, failed: 0, running: 0 },
         taskCount: 0,
