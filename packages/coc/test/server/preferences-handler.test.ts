@@ -1023,6 +1023,17 @@ describe('validateGlobalPreferences', () => {
         expect(result).toEqual({ onboardingProgress: input });
     });
 
+    it('round-trips hasCompletedTour in onboardingProgress', () => {
+        const result = validateGlobalPreferences({ onboardingProgress: { hasCompletedTour: true } });
+        expect(result).toEqual({ onboardingProgress: { hasCompletedTour: true } });
+    });
+
+    it('validates hasCompletedTour alongside other onboarding fields', () => {
+        const input = { hasUsedChat: true, hasCompletedTour: false, dismissed: false };
+        const result = validateGlobalPreferences({ onboardingProgress: input });
+        expect(result).toEqual({ onboardingProgress: input });
+    });
+
     it('strips old/removed onboardingProgress keys', () => {
         const result = validateGlobalPreferences({ onboardingProgress: { repoAdded: true, firstChatSent: true, workflowsVisited: true } });
         expect(result.onboardingProgress).toBeUndefined();

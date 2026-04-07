@@ -325,6 +325,46 @@ describe('AppContext reducer', () => {
             vi.unstubAllGlobals();
         });
     });
+
+    describe('COMPLETE_TOUR', () => {
+        it('sets hasCompletedTour to true in onboardingProgress', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'COMPLETE_TOUR' });
+            expect(result.onboardingProgress.hasCompletedTour).toBe(true);
+        });
+
+        it('preserves other onboardingProgress fields', () => {
+            const state = makeState({
+                onboardingProgress: {
+                    hasRunWorkflow: true,
+                    hasOpenedWiki: false,
+                    hasUsedChat: true,
+                    settingsVisited: false,
+                    dismissed: false,
+                    hasCompletedTour: false,
+                },
+            });
+            const result = appReducer(state, { type: 'COMPLETE_TOUR' });
+            expect(result.onboardingProgress.hasRunWorkflow).toBe(true);
+            expect(result.onboardingProgress.hasUsedChat).toBe(true);
+            expect(result.onboardingProgress.hasCompletedTour).toBe(true);
+        });
+
+        it('fires a PATCH fetch with the merged onboardingProgress', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState();
+            appReducer(state, { type: 'COMPLETE_TOUR' });
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: expect.stringContaining('"hasCompletedTour":true'),
+                }),
+            );
+            vi.unstubAllGlobals();
+        });
+    });
 });
 
 // ── Provider integration tests ────────────────────────────────────────────────

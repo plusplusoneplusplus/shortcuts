@@ -10,6 +10,7 @@ vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
 import { AppProvider, useApp } from '../../../../src/server/spa/client/react/context/AppContext';
 import { WelcomeModal } from '../../../../src/server/spa/client/react/welcome/WelcomeModal';
 import { FeatureTip } from '../../../../src/server/spa/client/react/welcome/FeatureTip';
+import { ConceptTour } from '../../../../src/server/spa/client/react/welcome/ConceptTour';
 
 function PrefsLoader({ prefs, children }: { prefs: Record<string, unknown>; children: ReactNode }) {
     const { dispatch } = useApp();
@@ -61,5 +62,22 @@ describe('Feature flag gates (SHOW_WELCOME_TUTORIAL = false)', () => {
         });
         // FeatureTip should render nothing
         expect(container.innerHTML).toBe('');
+    });
+
+    it('ConceptTour does not render when flag is false', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({}),
+        }));
+        render(
+            <AppProvider>
+                <PrefsLoader prefs={{ hasSeenWelcome: true }}>
+                    <ConceptTour />
+                </PrefsLoader>
+            </AppProvider>,
+        );
+        await waitFor(() => {
+            expect(document.getElementById('concept-tour')).toBeNull();
+        });
     });
 });

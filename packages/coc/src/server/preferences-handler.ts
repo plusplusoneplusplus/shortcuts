@@ -93,6 +93,7 @@ export interface GlobalPreferences {
         hasOpenedWiki?: boolean;
         settingsVisited?: boolean;
         dismissed?: boolean;
+        hasCompletedTour?: boolean;
     };
 
     /** IDs of contextual tips the user has permanently dismissed. */
@@ -180,7 +181,7 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
     if (typeof obj.onboardingProgress === 'object' && obj.onboardingProgress !== null && !Array.isArray(obj.onboardingProgress)) {
         const raw = obj.onboardingProgress as Record<string, unknown>;
         const validated: NonNullable<GlobalPreferences['onboardingProgress']> = {};
-        for (const key of ['hasUsedChat', 'hasRunWorkflow', 'hasOpenedWiki', 'settingsVisited', 'dismissed'] as const) {
+        for (const key of ['hasUsedChat', 'hasRunWorkflow', 'hasOpenedWiki', 'settingsVisited', 'dismissed', 'hasCompletedTour'] as const) {
             if (typeof raw[key] === 'boolean') {
                 validated[key] = raw[key] as boolean;
             }

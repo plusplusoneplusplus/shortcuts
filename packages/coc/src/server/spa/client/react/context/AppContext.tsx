@@ -28,6 +28,7 @@ export interface OnboardingProgress {
     hasUsedChat: boolean;
     settingsVisited: boolean;
     dismissed: boolean;
+    hasCompletedTour: boolean;
 }
 
 export interface AppContextState {
@@ -127,7 +128,7 @@ const initialState: AppContextState = {
     repoSubTabNavState: {},
     settingsSection: 'info',
     hasSeenWelcome: false,
-    onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false },
+    onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false },
     dismissedTips: [],
     preferencesLoaded: false,
 };
@@ -197,7 +198,8 @@ export type AppAction =
     | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[] } }
     | { type: 'DISMISS_WELCOME' }
     | { type: 'UPDATE_ONBOARDING'; payload: Partial<OnboardingProgress> }
-    | { type: 'DISMISS_TIP'; payload: { tipId: string } };
+    | { type: 'DISMISS_TIP'; payload: { tipId: string } }
+    | { type: 'COMPLETE_TOUR' };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -468,6 +470,15 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 body: JSON.stringify({ dismissedTips: updated }),
             }).catch(() => {});
             return { ...state, dismissedTips: updated };
+        }
+        case 'COMPLETE_TOUR': {
+            const merged = { ...state.onboardingProgress, hasCompletedTour: true };
+            fetch(getApiBase() + '/preferences', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ onboardingProgress: merged }),
+            }).catch(() => {});
+            return { ...state, onboardingProgress: merged };
         }
         default:
             return state;

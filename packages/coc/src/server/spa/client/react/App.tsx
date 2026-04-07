@@ -28,6 +28,7 @@ import { RunScriptDialog } from './queue/RunScriptDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
 import { buildNotificationEntry } from './utils/build-notification-entry';
 import { WelcomeModal } from './welcome/WelcomeModal';
+import { ConceptTour } from './welcome/ConceptTour';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
 
 interface MarkdownReviewDialogState {
@@ -405,6 +406,7 @@ function AppInner() {
                 />
                 <MinimizedDialogsTray />
                 {SHOW_WELCOME_TUTORIAL && <WelcomeModal />}
+                {SHOW_WELCOME_TUTORIAL && <ConceptTour />}
             </ReposProvider>
         </ToastProvider>
     );
