@@ -93,9 +93,15 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
     // Apply per-repo WS updates
     useEffect(() => {
         if (!repoQueue) return;
-        setRunning(repoQueue.running);
+        const nextHistory = repoQueue.history.length > 0 ? repoQueue.history : undefined;
+        // Filter running tasks that already appear in history to prevent transient duplicates
+        const historyProcessIds = nextHistory ? new Set(nextHistory.map((t: any) => t.processId || t.id)) : undefined;
+        const filteredRunning = historyProcessIds
+            ? repoQueue.running.filter((t: any) => !historyProcessIds.has(t.processId || t.id))
+            : repoQueue.running;
+        setRunning(filteredRunning);
         setQueued(repoQueue.queued);
-        setHistory(prev => repoQueue.history.length > 0 ? repoQueue.history : prev);
+        setHistory(prev => nextHistory ?? prev);
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
             setPauseReason(repoQueue.stats.pauseReason);

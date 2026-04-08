@@ -91,7 +91,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         try { const proc = await this.store.getProcess(processId); if (proc?.sdkSessionId) { await this.aiService.abortSession(proc.sdkSessionId); } } catch { /* Non-fatal */ }
     }
 
-    async isSessionAlive(_processId: string): Promise<boolean> { return true; }
+    async isSessionAlive(processId: string): Promise<boolean> {
+        try {
+            const proc = await this.store.getProcess(processId);
+            return !!proc;
+        } catch {
+            return false;
+        }
+    }
 
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[]): Promise<void> {
         return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images);

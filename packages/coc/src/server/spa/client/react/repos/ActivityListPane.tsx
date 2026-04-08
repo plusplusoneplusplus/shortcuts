@@ -286,8 +286,16 @@ export function ActivityListPane({
         const runningChats = running.filter(isChat);
         const historyChats = history.filter(isChat);
         const all = [...runningChats, ...historyChats];
+        // Deduplicate by processId — running tasks take priority (appear first)
+        const seenProcessIds = new Set<string>();
+        const deduped = all.filter(t => {
+            const key = t.processId || t.id;
+            if (seenProcessIds.has(key)) return false;
+            seenProcessIds.add(key);
+            return true;
+        });
         // Sort by most recent activity (running first via startedAt, then completedAt)
-        all.sort((a, b) => {
+        deduped.sort((a, b) => {
             const timeA = a.completedAt || a.startedAt || a.createdAt || 0;
             const timeB = b.completedAt || b.startedAt || b.createdAt || 0;
             return new Date(timeB).getTime() - new Date(timeA).getTime();
@@ -296,7 +304,7 @@ export function ActivityListPane({
         const unpinned: any[] = [];
         const archived: any[] = [];
         const pinnedById = new Map<string, any>();
-        for (const t of all) {
+        for (const t of deduped) {
             if (archivedChatIds?.has(t.id)) { archived.push(t); continue; }
             if (pinnedChatIds?.has(t.id)) { pinnedById.set(t.id, t); continue; }
             unpinned.push(t);
