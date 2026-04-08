@@ -10,6 +10,7 @@ import { useResizablePanel } from '../hooks/useResizablePanel';
 import { WorkItemSection } from './WorkItemSection';
 import { WorkItemDetail } from './WorkItemDetail';
 import { WorkItemExecutionSession } from './WorkItemExecutionSession';
+import { CommitDetail } from './CommitDetail';
 import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import { useWorkItems } from '../context/WorkItemContext';
 
@@ -22,6 +23,7 @@ export interface WorkItemsTabProps {
 export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTabProps) {
     const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
     const [selectedSessionTaskId, setSelectedSessionTaskId] = useState<string | null>(null);
+    const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [createDialogType, setCreateDialogType] = useState<'work-item' | 'bug'>('work-item');
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
@@ -37,17 +39,27 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const handleSelectWorkItem = useCallback((id: string) => {
         setSelectedWorkItemId(id);
         setSelectedSessionTaskId(null);
+        setSelectedCommitHash(null);
         if (isMobile) setMobileShowDetail(true);
     }, [isMobile]);
 
     const handleBack = useCallback(() => {
         setSelectedWorkItemId(null);
         setSelectedSessionTaskId(null);
+        setSelectedCommitHash(null);
         setMobileShowDetail(false);
     }, []);
 
     const handleBackFromSession = useCallback(() => {
         setSelectedSessionTaskId(null);
+    }, []);
+
+    const handleViewCommit = useCallback((sha: string) => {
+        setSelectedCommitHash(sha);
+    }, []);
+
+    const handleBackFromCommit = useCallback(() => {
+        setSelectedCommitHash(null);
     }, []);
 
     const handleViewTask = useCallback((taskId: string) => {
@@ -58,6 +70,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
         setSelectedWorkItemId(item.id);
         setSelectedSessionTaskId(null);
+        setSelectedCommitHash(null);
         if (isMobile) setMobileShowDetail(true);
     }, [dispatch, workspaceId, isMobile]);
 
@@ -93,7 +106,25 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     );
 
     const detailPane = selectedWorkItemId ? (
-        selectedSessionTaskId ? (
+        selectedCommitHash ? (
+            <div className="flex flex-col h-full overflow-hidden" data-testid="work-item-commit-review">
+                <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#474749] flex items-center gap-2">
+                    <button
+                        onClick={handleBackFromCommit}
+                        className="text-sm text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] shrink-0"
+                        data-testid="commit-review-back-btn"
+                        aria-label="Back to work item"
+                    >
+                        ←
+                    </button>
+                    <span className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">Commit Review</span>
+                    <code className="text-xs text-[#848484] font-mono">{selectedCommitHash.slice(0, 7)}</code>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                    <CommitDetail workspaceId={workspaceId} hash={selectedCommitHash} />
+                </div>
+            </div>
+        ) : selectedSessionTaskId ? (
             <WorkItemExecutionSession
                 taskId={selectedSessionTaskId}
                 workspaceId={workspaceId}
@@ -106,6 +137,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 onBack={handleBack}
                 onExecuted={handleExecuted}
                 onViewTask={handleViewTask}
+                onViewCommit={handleViewCommit}
                 onNavigateToTasksTab={onNavigateToTasksTab}
             />
         )

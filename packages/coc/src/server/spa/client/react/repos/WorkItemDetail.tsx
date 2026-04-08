@@ -39,6 +39,8 @@ interface WorkItemDetailProps {
     onExecuted?: () => void;
     /** Called when the user clicks the execution session entry for a task. */
     onViewTask?: (taskId: string) => void;
+    /** Called when the user clicks a commit SHA to view its diff inline. */
+    onViewCommit?: (sha: string) => void;
     /** Called when the user wants to view a completed task in the Tasks tab. */
     onNavigateToTasksTab?: (taskId: string) => void;
 }
@@ -64,7 +66,7 @@ interface WorkItemFull {
     }>;
 }
 
-export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onNavigateToTasksTab }: WorkItemDetailProps) {
+export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab }: WorkItemDetailProps) {
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -414,9 +416,15 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                         <div className="flex items-center gap-1.5 text-[10px] pl-5" data-testid={`exec-commits-${i}`}>
                                             {exec.status === 'completed' && commits.length > 0 ? (
                                                 commits.map(c => (
-                                                    <a key={c.sha} href={`#commit/${c.sha}`} className="text-[#0078d4] hover:underline font-mono" title={c.message}>
-                                                        {c.sha.slice(0, 7)}
-                                                    </a>
+                                                    onViewCommit ? (
+                                                        <button key={c.sha} onClick={() => onViewCommit(c.sha)} className="text-[#0078d4] hover:underline font-mono bg-transparent border-none cursor-pointer p-0" title={c.message} data-testid={`exec-commit-${c.sha.slice(0, 7)}`}>
+                                                            {c.sha.slice(0, 7)}
+                                                        </button>
+                                                    ) : (
+                                                        <a key={c.sha} href={`#commit/${c.sha}`} className="text-[#0078d4] hover:underline font-mono" title={c.message}>
+                                                            {c.sha.slice(0, 7)}
+                                                        </a>
+                                                    )
                                                 ))
                                             ) : exec.status === 'completed' ? (
                                                 <span className="text-[#848484] italic">No commits</span>
@@ -465,7 +473,13 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                 <div className="space-y-0.5">
                                                     {change.commits.map(commit => (
                                                         <div key={commit.sha} className="flex items-start gap-1.5 text-[10px]">
-                                                            <code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>
+                                                            {onViewCommit ? (
+                                                                <button onClick={() => onViewCommit(commit.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={commit.message} data-testid={`change-commit-${commit.sha.slice(0, 7)}`}>
+                                                                    {commit.sha.slice(0, 7)}
+                                                                </button>
+                                                            ) : (
+                                                                <code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>
+                                                            )}
                                                             <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={commit.message}>{commit.message}</span>
                                                             {commit.author && <span className="text-[#848484] shrink-0">— {commit.author}</span>}
                                                         </div>

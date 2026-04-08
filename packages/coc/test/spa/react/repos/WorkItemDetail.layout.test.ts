@@ -3,6 +3,7 @@
  * - Delete button placement (header, next to Execute)
  * - Execution Session section position (after AI Review, before Execution History)
  * - Execution history entries with commit links
+ * - Inline commit review navigation via onViewCommit
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -11,6 +12,7 @@ import * as path from 'path';
 
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
 const WORK_ITEM_DETAIL_SRC_PATH = path.join(REACT_SRC, 'repos', 'WorkItemDetail.tsx');
+const WORK_ITEMS_TAB_SRC_PATH = path.join(REACT_SRC, 'repos', 'WorkItemsTab.tsx');
 
 describe('WorkItemDetail — layout', () => {
     let src: string;
@@ -93,7 +95,7 @@ describe('WorkItemDetail — layout', () => {
         });
 
         it('renders commit links for completed executions with commits', () => {
-            // Should link to #commit/<sha>
+            // Should link to #commit/<sha> as fallback when onViewCommit is not provided
             expect(src).toContain('href={`#commit/${c.sha}`}');
             expect(src).toContain('c.sha.slice(0, 7)');
         });
@@ -132,5 +134,104 @@ describe('WorkItemDetail — layout', () => {
             expect(processLinkPos).toBeGreaterThan(-1);
             expect(onViewTaskPos).toBeLessThan(processLinkPos);
         });
+    });
+
+    describe('Inline commit review navigation (onViewCommit)', () => {
+        it('accepts onViewCommit as an optional prop', () => {
+            expect(src).toContain('onViewCommit?: (sha: string) => void');
+        });
+
+        it('destructures onViewCommit from props', () => {
+            expect(src).toContain('onViewCommit');
+            // Should be in the destructured props list
+            expect(src).toMatch(/\{\s*[^}]*onViewCommit[^}]*\}\s*:\s*WorkItemDetailProps/);
+        });
+
+        it('uses onViewCommit button in execution history when provided', () => {
+            // When onViewCommit is provided, render a button instead of an anchor
+            expect(src).toContain('onViewCommit(c.sha)');
+            expect(src).toContain('data-testid={`exec-commit-${c.sha.slice(0, 7)}`}');
+        });
+
+        it('falls back to anchor link in execution history when onViewCommit is absent', () => {
+            // The fallback href should still exist
+            expect(src).toContain('href={`#commit/${c.sha}`}');
+        });
+
+        it('prefers onViewCommit button over anchor link in execution history commits', () => {
+            const onViewCommitPos = src.indexOf('onViewCommit(c.sha)');
+            const anchorPos = src.indexOf('href={`#commit/${c.sha}`}');
+            expect(onViewCommitPos).toBeGreaterThan(-1);
+            expect(anchorPos).toBeGreaterThan(-1);
+            expect(onViewCommitPos).toBeLessThan(anchorPos);
+        });
+
+        it('uses onViewCommit button in changes section when provided', () => {
+            expect(src).toContain('onViewCommit(commit.sha)');
+            expect(src).toContain('data-testid={`change-commit-${commit.sha.slice(0, 7)}`}');
+        });
+
+        it('falls back to plain code element in changes section when onViewCommit is absent', () => {
+            // The changes section should still have the plain <code> fallback
+            expect(src).toContain('<code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>');
+        });
+    });
+});
+
+describe('WorkItemsTab — commit review navigation', () => {
+    let tabSrc: string;
+
+    beforeAll(() => {
+        tabSrc = fs.readFileSync(WORK_ITEMS_TAB_SRC_PATH, 'utf-8');
+    });
+
+    it('has selectedCommitHash state', () => {
+        expect(tabSrc).toContain('selectedCommitHash');
+        expect(tabSrc).toContain('setSelectedCommitHash');
+    });
+
+    it('imports CommitDetail component', () => {
+        expect(tabSrc).toMatch(/import\s*\{[^}]*CommitDetail[^}]*\}\s*from\s*['"]\.\/(CommitDetail|\.\/CommitDetail)['"]/);
+    });
+
+    it('renders CommitDetail when selectedCommitHash is set', () => {
+        expect(tabSrc).toContain('data-testid="work-item-commit-review"');
+        expect(tabSrc).toContain('<CommitDetail');
+    });
+
+    it('has a back button to return from commit review', () => {
+        expect(tabSrc).toContain('data-testid="commit-review-back-btn"');
+        expect(tabSrc).toContain('handleBackFromCommit');
+    });
+
+    it('prioritises commit hash view over session task view', () => {
+        // selectedCommitHash branch should appear before selectedSessionTaskId branch
+        const commitPos = tabSrc.indexOf('selectedCommitHash ?');
+        const sessionPos = tabSrc.indexOf('selectedSessionTaskId ?');
+        expect(commitPos).toBeGreaterThan(-1);
+        expect(sessionPos).toBeGreaterThan(-1);
+        expect(commitPos).toBeLessThan(sessionPos);
+    });
+
+    it('clears selectedCommitHash when selecting a new work item', () => {
+        // handleSelectWorkItem should reset commit hash
+        const selectFn = tabSrc.indexOf('handleSelectWorkItem');
+        const clearInSelect = tabSrc.indexOf('setSelectedCommitHash(null)', selectFn);
+        expect(clearInSelect).toBeGreaterThan(selectFn);
+    });
+
+    it('clears selectedCommitHash when going back to list', () => {
+        // handleBack should reset commit hash
+        const backFn = tabSrc.indexOf('const handleBack');
+        const clearInBack = tabSrc.indexOf('setSelectedCommitHash(null)', backFn);
+        expect(clearInBack).toBeGreaterThan(backFn);
+    });
+
+    it('passes onViewCommit to WorkItemDetail', () => {
+        expect(tabSrc).toContain('onViewCommit={handleViewCommit}');
+    });
+
+    it('shows truncated commit hash in the review header', () => {
+        expect(tabSrc).toContain('selectedCommitHash.slice(0, 7)');
     });
 });
