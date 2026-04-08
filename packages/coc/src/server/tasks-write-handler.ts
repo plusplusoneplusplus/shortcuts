@@ -18,6 +18,7 @@ import { resolveCollision, getErrorMessage } from './shared/fs-utils';
 import type { Route } from './types';
 import { resolveTaskRoot, resolveAllTaskRoots } from './task-root-resolver';
 import { resolveAndValidatePath, copyRecursive, readTasksSettings } from './tasks-handler-utils';
+import { taskCache } from './task-cache';
 
 // ============================================================================
 // Write Route Registration
@@ -63,6 +64,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 try {
                     await fs.promises.mkdir(folderPath, { recursive: true });
                     const relPath = path.relative(tasksFolder, folderPath);
+                    taskCache.invalidateWorkspace(ws.id);
                     sendJSON(res, 201, { path: relPath, name: name.trim(), type: 'folder' });
                 } catch (err: any) {
                     return sendError(res, 500, 'Failed to create folder: ' + (err.message || 'Unknown error'));
@@ -97,6 +99,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     await fs.promises.mkdir(resolvedDir, { recursive: true });
                     await fs.promises.writeFile(filePath, frontmatter, 'utf-8');
                     const relPath = path.relative(tasksFolder, filePath);
+                    taskCache.invalidateWorkspace(ws.id);
                     sendJSON(res, 201, { path: relPath, name: sanitizedName, type: 'file' });
                 } catch (err: any) {
                     return sendError(res, 500, 'Failed to create task: ' + (err.message || 'Unknown error'));
@@ -147,6 +150,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
 
             try {
                 await fs.promises.writeFile(resolvedPath, content, 'utf-8');
+                taskCache.invalidateWorkspace(ws.id);
                 sendJSON(res, 200, { path: filePath, updated: true });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to write file: ' + (err.message || 'Unknown error'));
@@ -223,6 +227,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     }
 
                     await fs.promises.writeFile(resolvedPath, content, 'utf-8');
+                    taskCache.invalidateWorkspace(ws.id);
                     sendJSON(res, 200, { path: itemPath, status });
                 } catch (err: any) {
                     return sendError(res, 500, 'Failed to update status: ' + (err.message || 'Unknown error'));
@@ -261,6 +266,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
 
                         await fs.promises.rename(resolvedPath, newPath);
                         const relPath = path.relative(tasksFolder, newPath);
+                        taskCache.invalidateWorkspace(ws.id);
                         sendJSON(res, 200, { path: relPath, name: sanitizedName });
                     } else {
                         // Check if this is part of a document group
@@ -298,6 +304,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                             }
 
                             const relPath = path.relative(tasksFolder, path.join(dir, sanitizedName + docTypeParts.slice(1).map(p => '.' + p).join('') + ext));
+                            taskCache.invalidateWorkspace(ws.id);
                             sendJSON(res, 200, { path: relPath, name: sanitizedName });
                         } else {
                             // Single file rename
@@ -313,6 +320,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
 
                             await fs.promises.rename(resolvedPath, newPath);
                             const relPath = path.relative(tasksFolder, newPath);
+                            taskCache.invalidateWorkspace(ws.id);
                             sendJSON(res, 200, { path: relPath, name: sanitizedName });
                         }
                     }
@@ -361,6 +369,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 } else {
                     await fs.promises.unlink(resolvedPath);
                 }
+                taskCache.invalidateWorkspace(ws.id);
                 res.writeHead(204);
                 res.end();
             } catch (err: any) {
@@ -472,6 +481,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             try {
                 await fs.promises.rename(resolvedSource, finalTarget);
                 const newRelPath = path.relative(destTasksFolder, finalTarget);
+                taskCache.invalidateWorkspace(ws.id);
                 sendJSON(res, 200, { path: newRelPath, name: path.basename(finalTarget) });
             } catch (err: any) {
                 // EXDEV: cross-device rename not supported — fallback to copy + delete
@@ -480,6 +490,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                         await copyRecursive(resolvedSource, finalTarget);
                         await fs.promises.rm(resolvedSource, { recursive: true, force: true });
                         const newRelPath = path.relative(destTasksFolder, finalTarget);
+                        taskCache.invalidateWorkspace(ws.id);
                         sendJSON(res, 200, { path: newRelPath, name: path.basename(finalTarget) });
                     } catch (copyErr: any) {
                         return sendError(res, 500, 'Failed to move (cross-device): ' + (copyErr.message || 'Unknown error'));
@@ -570,6 +581,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     const undoFile = path.join(tasksFolder, ARCHIVE_UNDO_FILE);
                     await fs.promises.writeFile(undoFile, JSON.stringify(undoRecord, null, 2), 'utf-8');
 
+                    taskCache.invalidateWorkspace(ws.id);
                     sendJSON(res, 200, { path: newRelPath });
                 } else {
                     // Unarchive: move from archive/ back to tasks root
@@ -587,6 +599,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     const undoFile = path.join(tasksFolder, ARCHIVE_UNDO_FILE);
                     try { await fs.promises.unlink(undoFile); } catch { /* ignore if absent */ }
 
+                    taskCache.invalidateWorkspace(ws.id);
                     sendJSON(res, 200, { path: newRelPath });
                 }
             } catch (err: any) {
@@ -689,6 +702,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 await fs.promises.mkdir(path.dirname(originalAbsPath), { recursive: true });
                 await fs.promises.rename(archivedAbsPath, originalAbsPath);
                 await fs.promises.unlink(undoFile);
+                taskCache.invalidateWorkspace(ws.id);
                 sendJSON(res, 200, { success: true, restoredPath: record.originalPath });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to undo archive: ' + (err.message || 'Unknown error'));

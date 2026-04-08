@@ -18,6 +18,7 @@ import { DEFAULT_WORKFLOWS_FOLDER } from './workflow-constants';
 import { discoverAndEnrichWorkflows } from './workflow-utils';
 import { resolveTaskRoot, resolveAllTaskRoots } from './task-root-resolver';
 import { readTasksSettings, buildArchiveFolderNode, mergeTaskFoldersAsVirtualRoot } from './tasks-handler-utils';
+import { TaskCacheService, taskCache } from './task-cache';
 
 // ============================================================================
 // Helpers
@@ -47,6 +48,15 @@ async function resolveTasksForWorkspace(
     workspaceId: string,
     includeArchiveFolder: boolean,
 ): Promise<TaskFolder> {
+    // Check cache first
+    const cacheKey = TaskCacheService.key(workspaceId, rootPath);
+    const archiveSuffix = includeArchiveFolder ? ':archive' : '';
+    const fullCacheKey = cacheKey + archiveSuffix;
+    const cached = taskCache.get<TaskFolder>(fullCacheKey);
+    if (cached) {
+        return cached;
+    }
+
     const taskRootOpts = { dataDir, rootPath, workspaceId };
     const resolvedFolder = resolveTaskRoot(taskRootOpts).absolutePath;
 
@@ -86,13 +96,19 @@ async function resolveTasksForWorkspace(
             }),
         );
         const validFolders = scanned.filter((s): s is NonNullable<typeof s> => s !== null);
+        let result: TaskFolder;
         if (validFolders.length === 1) {
-            return validFolders[0].folder;
+            result = validFolders[0].folder;
+        } else {
+            result = mergeTaskFoldersAsVirtualRoot(validFolders);
         }
-        return mergeTaskFoldersAsVirtualRoot(validFolders);
+        taskCache.set(fullCacheKey, result);
+        return result;
     }
 
-    return scanFolder(resolvedFolder);
+    const result = await scanFolder(resolvedFolder);
+    taskCache.set(fullCacheKey, result);
+    return result;
 }
 
 // ============================================================================

@@ -18,6 +18,7 @@ import { resolveWorkspaceOrFail } from './shared/handler-utils';
 import type { Route } from './types';
 import { resolveTaskRoot } from './task-root-resolver';
 import { isWithinTrustedReadOnlyDir, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
+import { taskCache } from './task-cache';
 
 // ============================================================================
 // Route Registration
@@ -344,6 +345,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     }
 
                     await writeTasksSettings(dataDir, ws.id, { folderPaths });
+                    taskCache.invalidateWorkspace(ws.id);
 
                     // Notify UI via WebSocket
                     if (onTasksChanged) {

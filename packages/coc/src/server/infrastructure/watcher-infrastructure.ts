@@ -17,6 +17,7 @@ import { WorkflowWatcher } from '../workflow-watcher';
 import { TemplateWatcher } from '../template-watcher';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from '../task-migration';
+import { taskCache } from '../task-cache';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../websocket';
 import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
@@ -52,6 +53,7 @@ export async function createWatcherInfrastructure(
     bridge: MultiRepoQueueExecutorBridge,
 ): Promise<WatcherInfrastructure> {
     const taskWatcher = new TaskWatcher((workspaceId) => {
+        taskCache.invalidateWorkspace(workspaceId);
         wsServer.broadcastProcessEvent({ type: 'tasks-changed', workspaceId, timestamp: Date.now() });
     });
     const pipelineWatcher = new WorkflowWatcher((workspaceId) => {
