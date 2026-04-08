@@ -22,6 +22,7 @@
  *   git@ssh.dev.azure.com:v3/{org}/{project}/{repo}
  */
 export function normalizeRemoteUrl(rawUrl: string): string {
+    if (typeof rawUrl !== 'string') return '';
     let u = rawUrl.trim();
 
     // SSH shorthand: git@host:user/repo.git → host/user/repo
