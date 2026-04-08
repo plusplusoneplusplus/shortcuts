@@ -15,6 +15,8 @@ import { buildRows } from '../processes/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
+import { RenameDialog } from '../shared/RenameDialog';
+import { fetchApi } from '../hooks/useApi';
 import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 import { getDraft } from '../hooks/useDraftStore';
 import { useLongPress } from '../hooks/useLongPress';
@@ -155,6 +157,7 @@ export function ActivityListPane({
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
     const [summarizeDialogOpen, setSummarizeDialogOpen] = useState(false);
     const [summarizeDialogIds, setSummarizeDialogIds] = useState<string[]>([]);
+    const [renameTarget, setRenameTarget] = useState<{ taskId: string; title: string } | null>(null);
 
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
     const { taskCardDensity } = useDisplaySettings();
@@ -470,6 +473,20 @@ export function ActivityListPane({
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
+    const handleRenameConfirm = useCallback(async (newTitle: string) => {
+        if (!renameTarget) return;
+        const processId = `queue_${renameTarget.taskId}`;
+        setRenameTarget(null);
+        try {
+            await fetchApi(`/processes/${encodeURIComponent(processId)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: newTitle }),
+            });
+            fetchQueue();
+        } catch { /* WS will sync eventually */ }
+    }, [renameTarget, fetchQueue]);
+
     const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!contextMenu) return [];
         const { taskId, taskStatus } = contextMenu;
@@ -542,11 +559,16 @@ export function ActivityListPane({
             const isUnseen = unseenTaskIds?.has(taskId) ?? false;
             const isPinned = pinnedChatIds?.has(taskId) ?? false;
             const isArchived = archivedChatIds?.has(taskId) ?? false;
+            const task = history.find(t => t.id === taskId);
             return [
                 ...(isPinned && onUnpinChat ? [{ label: 'Unpin', icon: '📌', onClick: () => onUnpinChat(taskId) }] : []),
                 ...(!isPinned && onPinChat ? [{ label: 'Pin to top', icon: '📌', onClick: () => onPinChat(taskId) }] : []),
                 ...(isUnseen && onMarkRead ? [{ label: 'Mark as Read', icon: '✓', onClick: () => onMarkRead(taskId) }] : []),
                 ...(!isUnseen && onMarkUnread ? [{ label: 'Mark as Unread', icon: '●', onClick: () => onMarkUnread(taskId) }] : []),
+                { label: 'Rename', icon: '✏️', onClick: () => {
+                    setRenameTarget({ taskId, title: task?.displayName || task?.type || '' });
+                    closeContextMenu();
+                }},
                 ...(isArchived && onUnarchiveChat ? [{ label: 'Unarchive', icon: '📤', onClick: () => onUnarchiveChat(taskId) }] : []),
                 ...(!isArchived && onArchiveChat ? [{ label: 'Archive', icon: '📦', onClick: () => onArchiveChat(taskId) }] : []),
                 { label: '', icon: '', separator: true, onClick: () => {} },
@@ -1097,6 +1119,12 @@ export function ActivityListPane({
                 }
                 fetchQueue();
             }}
+        />
+        <RenameDialog
+            open={!!renameTarget}
+            currentTitle={renameTarget?.title ?? ''}
+            onConfirm={handleRenameConfirm}
+            onCancel={() => setRenameTarget(null)}
         />
     </>
     );
