@@ -423,104 +423,96 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 )}
 
                 {/* Execution history */}
-                {item.executionHistory && item.executionHistory.length > 0 && (
+                {((item.executionHistory && item.executionHistory.length > 0) || (item.changes && item.changes.some(c => !c.taskId || !item.executionHistory?.some(e => e.taskId === c.taskId)))) && (
                     <section>
                         <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution History</h3>
                         <div className="space-y-2">
-                            {item.executionHistory.map((exec, i) => {
+                            {item.executionHistory?.map((exec, i) => {
                                 const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
                                 const commits = matchingChange?.commits ?? [];
                                 return (
-                                    <div key={i} className="space-y-0.5" data-testid={`exec-entry-${i}`}>
-                                        <div className="flex items-center gap-2 text-[10px]">
+                                    <div key={i} className="rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-xs" data-testid={`exec-entry-${i}`}>
+                                        <div className="flex items-center gap-2 px-3 py-2">
                                             <span>{exec.status === 'running' ? '🔵' : exec.status === 'completed' ? '🟢' : exec.status === 'failed' ? '🔴' : '⚪'}</span>
-                                            <span className="text-[#606060] dark:text-[#aaa]">Run #{i + 1}</span>
-                                            {onViewTask ? (
-                                                <button onClick={() => onViewTask(exec.taskId)} className="text-[#0078d4] hover:underline bg-transparent border-none cursor-pointer p-0" data-testid={`exec-view-session-${i}`}>→</button>
-                                            ) : exec.processId ? (
-                                                <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline">→</a>
-                                            ) : null}
+                                            <span className="font-medium text-[#3c3c3c] dark:text-[#cccccc]">Run #{i + 1}</span>
                                             <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
-                                            {exec.error && <span className="text-red-500 truncate">{exec.error}</span>}
+                                            {exec.completedAt && <span className="text-[#848484]">· {formatRelativeTime(exec.completedAt)}</span>}
+                                            <span className="flex-1" />
+                                            {onViewTask ? (
+                                                <button onClick={() => onViewTask(exec.taskId)} className="text-[#0078d4] hover:underline bg-transparent border-none cursor-pointer p-0 text-xs" data-testid={`exec-view-session-${i}`}>→</button>
+                                            ) : exec.processId ? (
+                                                <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline text-xs">→</a>
+                                            ) : null}
                                         </div>
-                                        <div className="flex items-center gap-1.5 text-[10px] pl-5" data-testid={`exec-commits-${i}`}>
-                                            {exec.status === 'completed' && commits.length > 0 ? (
-                                                commits.map(c => (
-                                                    onViewCommit ? (
-                                                        <button key={c.sha} onClick={() => onViewCommit(c.sha)} className="text-[#0078d4] hover:underline font-mono bg-transparent border-none cursor-pointer p-0" title={c.message} data-testid={`exec-commit-${c.sha.slice(0, 7)}`}>
-                                                            {c.sha.slice(0, 7)}
-                                                        </button>
-                                                    ) : (
-                                                        <a key={c.sha} href={`#commit/${c.sha}`} className="text-[#0078d4] hover:underline font-mono" title={c.message}>
-                                                            {c.sha.slice(0, 7)}
-                                                        </a>
-                                                    )
-                                                ))
-                                            ) : exec.status === 'completed' ? (
-                                                <span className="text-[#848484] italic">No commits</span>
-                                            ) : (
+                                        {exec.error && (
+                                            <div className="px-3 pb-2 text-[10px] text-red-500 truncate">{exec.error}</div>
+                                        )}
+                                        {exec.status === 'completed' && commits.length > 0 ? (
+                                            <div className="px-3 pb-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 space-y-0.5" data-testid={`exec-commits-${i}`}>
+                                                {commits.map(c => (
+                                                    <div key={c.sha} className="flex items-start gap-1.5 text-[10px]">
+                                                        {onViewCommit ? (
+                                                            <button onClick={() => onViewCommit(c.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={c.message} data-testid={`exec-commit-${c.sha.slice(0, 7)}`}>
+                                                                {c.sha.slice(0, 7)}
+                                                            </button>
+                                                        ) : (
+                                                            <a href={`#commit/${c.sha}`} className="text-[#0078d4] hover:underline font-mono shrink-0" title={c.message}>
+                                                                {c.sha.slice(0, 7)}
+                                                            </a>
+                                                        )}
+                                                        <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={c.message}>{c.message}</span>
+                                                        {c.author && <span className="text-[#848484] shrink-0">— {c.author}</span>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : exec.status === 'completed' ? (
+                                            <div className="px-3 pb-2 text-[10px] text-[#848484] italic" data-testid={`exec-commits-${i}`}>No commits</div>
+                                        ) : (
+                                            <div className="px-3 pb-2 text-[10px]" data-testid={`exec-commits-${i}`}>
                                                 <span className="text-[#848484]">—</span>
-                                            )}
-                                        </div>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
-                        </div>
-                    </section>
-                )}
 
-                {/* Changes */}
-                {item.changes && item.changes.length > 0 && (
-                    <section data-testid="work-item-changes-section">
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-2">Changes</h3>
-                        <div className="space-y-2">
-                            {[...item.changes].reverse().map((change, i) => (
-                                <details key={change.id} className={cn(
+                            {/* Orphaned changes — plan edits not linked to any execution */}
+                            {item.changes?.filter(c => !c.taskId || !item.executionHistory?.some(e => e.taskId === c.taskId)).map(change => (
+                                <div key={change.id} className={cn(
                                     'rounded-md border text-xs',
                                     change.status === 'open'
                                         ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10'
                                         : 'border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]',
-                                )}>
-                                    <summary className="px-3 py-2 cursor-pointer flex items-center gap-2 select-none list-none [&::-webkit-details-marker]:hidden">
+                                )} data-testid={`orphaned-change-${change.id}`}>
+                                    <div className="flex items-center gap-2 px-3 py-2">
                                         <span>{change.status === 'open' ? '🔵' : '🟢'}</span>
-                                        <span className="font-medium">Change {item.changes!.length - i}</span>
-                                        <span className="text-[#848484]">plan v{change.planVersion}</span>
-                                        {change.commits.length > 0 && (
-                                            <span className="ml-auto text-[#848484]">{change.commits.length} commit{change.commits.length !== 1 ? 's' : ''}</span>
-                                        )}
+                                        <span className="font-medium text-[#3c3c3c] dark:text-[#cccccc]">Plan Change</span>
+                                        <span className="text-[#848484]">v{change.planVersion}</span>
+                                        <span className="text-[#848484]">{formatRelativeTime(change.startedAt)}</span>
                                         {change.status === 'open' && !change.completedAt && (
                                             <span className="ml-auto text-blue-600 dark:text-blue-400">In progress</span>
                                         )}
-                                    </summary>
-                                    <div className="px-3 pb-3 pt-1 space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
-                                        <div className="text-[10px] text-[#848484]">
-                                            Started: {formatRelativeTime(change.startedAt)}
-                                            {change.completedAt && <> · Completed: {formatRelativeTime(change.completedAt)}</>}
-                                        </div>
-                                        {change.commits.length > 0 ? (
-                                            <div>
-                                                <div className="text-[10px] font-medium text-[#606060] dark:text-[#aaa] mb-1">Commits</div>
-                                                <div className="space-y-0.5">
-                                                    {change.commits.map(commit => (
-                                                        <div key={commit.sha} className="flex items-start gap-1.5 text-[10px]">
-                                                            {onViewCommit ? (
-                                                                <button onClick={() => onViewCommit(commit.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={commit.message} data-testid={`change-commit-${commit.sha.slice(0, 7)}`}>
-                                                                    {commit.sha.slice(0, 7)}
-                                                                </button>
-                                                            ) : (
-                                                                <code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>
-                                                            )}
-                                                            <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={commit.message}>{commit.message}</span>
-                                                            {commit.author && <span className="text-[#848484] shrink-0">— {commit.author}</span>}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="text-[10px] italic text-[#848484]">No commits recorded</div>
-                                        )}
                                     </div>
-                                </details>
+                                    {change.commits.length > 0 ? (
+                                        <div className="px-3 pb-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 space-y-0.5">
+                                            {change.commits.map(commit => (
+                                                <div key={commit.sha} className="flex items-start gap-1.5 text-[10px]">
+                                                    {onViewCommit ? (
+                                                        <button onClick={() => onViewCommit(commit.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={commit.message} data-testid={`change-commit-${commit.sha.slice(0, 7)}`}>
+                                                            {commit.sha.slice(0, 7)}
+                                                        </button>
+                                                    ) : (
+                                                        <code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>
+                                                    )}
+                                                    <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={commit.message}>{commit.message}</span>
+                                                    {commit.author && <span className="text-[#848484] shrink-0">— {commit.author}</span>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="px-3 pb-2 text-[10px] italic text-[#848484]">No commits recorded</div>
+                                    )}
+                                </div>
                             ))}
                         </div>
                     </section>

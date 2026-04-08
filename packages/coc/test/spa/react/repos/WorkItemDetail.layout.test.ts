@@ -80,7 +80,7 @@ describe('WorkItemDetail — layout', () => {
         });
     });
 
-    describe('Execution history entries with commits', () => {
+    describe('Unified execution history with commits', () => {
         it('renders exec-entry data-testid for each execution entry', () => {
             expect(src).toContain('data-testid={`exec-entry-${i}`}');
         });
@@ -100,6 +100,12 @@ describe('WorkItemDetail — layout', () => {
             expect(src).toContain('c.sha.slice(0, 7)');
         });
 
+        it('shows commit message and author inline with each commit', () => {
+            expect(src).toContain('title={c.message}');
+            expect(src).toContain('{c.message}');
+            expect(src).toContain('{c.author');
+        });
+
         it('shows "No commits" for completed executions without commits', () => {
             expect(src).toContain('No commits');
         });
@@ -110,8 +116,25 @@ describe('WorkItemDetail — layout', () => {
             expect(dashPattern).toBe(true);
         });
 
-        it('sets commit message as title attribute on commit links', () => {
-            expect(src).toContain('title={c.message}');
+        it('renders each execution entry as a bordered card', () => {
+            expect(src).toContain("rounded-md border border-[#e0e0e0]");
+        });
+
+        it('shows completed-at timestamp when available', () => {
+            expect(src).toContain('exec.completedAt');
+            expect(src).toContain('formatRelativeTime(exec.completedAt)');
+        });
+
+        it('does NOT have a separate Changes section', () => {
+            expect(src).not.toContain('data-testid="work-item-changes-section"');
+            // The old "Changes" heading should be gone
+            expect(src).not.toContain('>Changes<');
+        });
+
+        it('renders orphaned changes for plan edits without matching execution', () => {
+            expect(src).toContain('Orphaned changes');
+            expect(src).toContain('data-testid={`orphaned-change-${change.id}`}');
+            expect(src).toContain('Plan Change');
         });
     });
 
@@ -166,13 +189,13 @@ describe('WorkItemDetail — layout', () => {
             expect(onViewCommitPos).toBeLessThan(anchorPos);
         });
 
-        it('uses onViewCommit button in changes section when provided', () => {
+        it('uses onViewCommit button for orphaned changes when provided', () => {
             expect(src).toContain('onViewCommit(commit.sha)');
             expect(src).toContain('data-testid={`change-commit-${commit.sha.slice(0, 7)}`}');
         });
 
-        it('falls back to plain code element in changes section when onViewCommit is absent', () => {
-            // The changes section should still have the plain <code> fallback
+        it('falls back to plain code element for orphaned changes when onViewCommit is absent', () => {
+            // The orphaned changes section should still have the plain <code> fallback
             expect(src).toContain('<code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>');
         });
     });
