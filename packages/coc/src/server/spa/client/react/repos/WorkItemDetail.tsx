@@ -254,6 +254,15 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     >
                         ▶ Execute
                     </Button>
+                    <Button variant="ghost" size="sm" className="text-red-500" data-testid="work-item-delete-btn"
+                        onClick={async () => {
+                            if (confirm('Delete this work item?')) {
+                                await fetchApi(basePath, { method: 'DELETE' });
+                                onBack?.();
+                            }
+                        }}>
+                        🗑
+                    </Button>
                 </div>
             </div>
 
@@ -264,62 +273,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         <span>{error}</span>
                         <button className="text-[10px] shrink-0" onClick={() => setError(null)}>✕</button>
                     </div>
-                )}
-
-                {/* Execution session entry — shown when a task has been queued/run */}
-                {item.taskId && (onViewTask || onNavigateToTasksTab) && ['executing', 'aiDone', 'aiFailed'].includes(item.status) && (
-                    <section>
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution Session</h3>
-                        {item.status === 'aiDone' && onNavigateToTasksTab ? (
-                            /* aiDone: navigate to Tasks tab to view the completed task */
-                            <button
-                                onClick={() => onNavigateToTasksTab(item.taskId!)}
-                                className={cn(
-                                    'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md border text-left transition-colors',
-                                    'border-purple-200 dark:border-purple-800',
-                                    'bg-purple-50 dark:bg-purple-900/10',
-                                    'hover:bg-purple-100 dark:hover:bg-purple-900/20',
-                                )}
-                                data-testid="view-task-in-tasks-tab-btn"
-                            >
-                                <span className="text-base select-none" aria-hidden="true">✅</span>
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">
-                                        AI Completed — Running Session
-                                    </div>
-                                    <div className="text-[10px] text-[#848484] truncate" title={item.taskId}>
-                                        Task: {item.taskId}
-                                    </div>
-                                </div>
-                                <span className="text-xs text-[#0078d4] shrink-0">Open in Tasks →</span>
-                            </button>
-                        ) : onViewTask ? (
-                            /* executing / aiFailed: inline session viewer */
-                            <button
-                                onClick={() => onViewTask(item.taskId!)}
-                                className={cn(
-                                    'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md border text-left transition-colors',
-                                    'border-[#e0e0e0] dark:border-[#3c3c3c]',
-                                    'bg-[#fafafa] dark:bg-[#252526]',
-                                    'hover:bg-[#f0f0f0] dark:hover:bg-[#2d2d2d]',
-                                )}
-                                data-testid="view-execution-session-btn"
-                            >
-                                <span className="text-base select-none" aria-hidden="true">
-                                    {item.status === 'executing' ? '⚡' : '❌'}
-                                </span>
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">
-                                        {item.status === 'executing' ? 'Executing…' : 'AI Failed'}
-                                    </div>
-                                    <div className="text-[10px] text-[#848484] truncate" title={item.taskId}>
-                                        Task: {item.taskId}
-                                    </div>
-                                </div>
-                                <span className="text-xs text-[#0078d4] shrink-0">View Session →</span>
-                            </button>
-                        ) : null}
-                    </section>
                 )}
 
                 {/* Description */}
@@ -383,37 +336,95 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </section>
                 )}
 
-                {/* Actions */}
-                <section>
-                    <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" className="text-red-500" data-testid="work-item-delete-btn"
-                            onClick={async () => {
-                                if (confirm('Delete this work item?')) {
-                                    await fetchApi(basePath, { method: 'DELETE' });
-                                    onBack?.();
-                                }
-                            }}>
-                            🗑 Delete
-                        </Button>
-                    </div>
-                </section>
+                {/* Execution session entry — shown when a task has been queued/run */}
+                {item.taskId && (onViewTask || onNavigateToTasksTab) && ['executing', 'aiDone', 'aiFailed'].includes(item.status) && (
+                    <section>
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution Session</h3>
+                        {item.status === 'aiDone' && onNavigateToTasksTab ? (
+                            <button
+                                onClick={() => onNavigateToTasksTab(item.taskId!)}
+                                className={cn(
+                                    'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md border text-left transition-colors',
+                                    'border-purple-200 dark:border-purple-800',
+                                    'bg-purple-50 dark:bg-purple-900/10',
+                                    'hover:bg-purple-100 dark:hover:bg-purple-900/20',
+                                )}
+                                data-testid="view-task-in-tasks-tab-btn"
+                            >
+                                <span className="text-base select-none" aria-hidden="true">✅</span>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">
+                                        AI Completed — Running Session
+                                    </div>
+                                    <div className="text-[10px] text-[#848484] truncate" title={item.taskId}>
+                                        Task: {item.taskId}
+                                    </div>
+                                </div>
+                                <span className="text-xs text-[#0078d4] shrink-0">Open in Tasks →</span>
+                            </button>
+                        ) : onViewTask ? (
+                            <button
+                                onClick={() => onViewTask(item.taskId!)}
+                                className={cn(
+                                    'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md border text-left transition-colors',
+                                    'border-[#e0e0e0] dark:border-[#3c3c3c]',
+                                    'bg-[#fafafa] dark:bg-[#252526]',
+                                    'hover:bg-[#f0f0f0] dark:hover:bg-[#2d2d2d]',
+                                )}
+                                data-testid="view-execution-session-btn"
+                            >
+                                <span className="text-base select-none" aria-hidden="true">
+                                    {item.status === 'executing' ? '⚡' : '❌'}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">
+                                        {item.status === 'executing' ? 'Executing…' : 'AI Failed'}
+                                    </div>
+                                    <div className="text-[10px] text-[#848484] truncate" title={item.taskId}>
+                                        Task: {item.taskId}
+                                    </div>
+                                </div>
+                                <span className="text-xs text-[#0078d4] shrink-0">View Session →</span>
+                            </button>
+                        ) : null}
+                    </section>
+                )}
 
                 {/* Execution history */}
                 {item.executionHistory && item.executionHistory.length > 0 && (
                     <section>
                         <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution History</h3>
-                        <div className="space-y-1">
-                            {item.executionHistory.map((exec, i) => (
-                                <div key={i} className="flex items-center gap-2 text-[10px]">
-                                    <span>{exec.status === 'running' ? '🔵' : exec.status === 'completed' ? '🟢' : exec.status === 'failed' ? '🔴' : '⚪'}</span>
-                                    <span className="text-[#606060] dark:text-[#aaa]">Run #{i + 1}</span>
-                                    {exec.processId && (
-                                        <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline">→</a>
-                                    )}
-                                    <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
-                                    {exec.error && <span className="text-red-500 truncate">{exec.error}</span>}
-                                </div>
-                            ))}
+                        <div className="space-y-2">
+                            {item.executionHistory.map((exec, i) => {
+                                const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
+                                const commits = matchingChange?.commits ?? [];
+                                return (
+                                    <div key={i} className="space-y-0.5" data-testid={`exec-entry-${i}`}>
+                                        <div className="flex items-center gap-2 text-[10px]">
+                                            <span>{exec.status === 'running' ? '🔵' : exec.status === 'completed' ? '🟢' : exec.status === 'failed' ? '🔴' : '⚪'}</span>
+                                            <span className="text-[#606060] dark:text-[#aaa]">Run #{i + 1}</span>
+                                            {exec.processId && (
+                                                <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline">→</a>
+                                            )}
+                                            <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
+                                            {exec.error && <span className="text-red-500 truncate">{exec.error}</span>}
+                                        </div>
+                                        <div className="flex items-center gap-1.5 text-[10px] pl-5" data-testid={`exec-commits-${i}`}>
+                                            {exec.status === 'completed' && commits.length > 0 ? (
+                                                commits.map(c => (
+                                                    <a key={c.sha} href={`#commit/${c.sha}`} className="text-[#0078d4] hover:underline font-mono" title={c.message}>
+                                                        {c.sha.slice(0, 7)}
+                                                    </a>
+                                                ))
+                                            ) : exec.status === 'completed' ? (
+                                                <span className="text-[#848484] italic">No commits</span>
+                                            ) : (
+                                                <span className="text-[#848484]">—</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </section>
                 )}
