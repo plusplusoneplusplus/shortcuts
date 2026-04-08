@@ -47,7 +47,7 @@ describe('TerminalPanel', () => {
 
     describe('xterm.js integration', () => {
         it('imports xterm Terminal', () => {
-            expect(source).toContain("from 'xterm'");
+            expect(source).toContain("from '@xterm/xterm'");
         });
 
         it('imports FitAddon', () => {
@@ -59,7 +59,7 @@ describe('TerminalPanel', () => {
         });
 
         it('imports xterm CSS', () => {
-            expect(source).toMatch(/import ['"]xterm\/css\/xterm\.css['"]/);
+            expect(source).toMatch(/import ['"]@xterm\/xterm\/css\/xterm\.css['"]/);
         });
     });
 

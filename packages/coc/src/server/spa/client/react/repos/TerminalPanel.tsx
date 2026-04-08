@@ -5,14 +5,14 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { Terminal } from 'xterm';
+import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import 'xterm/css/xterm.css';
+import '@xterm/xterm/css/xterm.css';
 
 import { useTerminalWebSocket } from '../hooks/useTerminalWebSocket';
 import { detectDarkMode } from '../utils/theme';
-import type { ITheme } from 'xterm';
+import type { ITheme } from '@xterm/xterm';
 
 export interface TerminalPanelProps {
     sessionId: string;
