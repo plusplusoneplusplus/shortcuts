@@ -5,6 +5,7 @@
 
 import * as path from 'path';
 import { safeReadDir, safeStats, safeExists } from '../utils/file-utils';
+import { safeReadDirAsync, safeStatsAsync, safeExistsAsync } from '../utils/file-utils';
 import { toForwardSlashes } from '../utils/path-utils';
 import { parseTaskStatus, parseFileName } from './task-parser';
 import { Task, TaskDocument, TaskDocumentGroup, TaskFolder } from './types';
@@ -353,6 +354,295 @@ export function buildTaskFolderHierarchy(
     // Scan context documents for each folder
     for (const [relPath, folder] of folderMap) {
         const contextDocs = scanContextDocumentsInFolder(folder.folderPath, relPath, folder.isArchived);
+        if (contextDocs.length > 0) {
+            folder.contextDocuments = contextDocs;
+        }
+    }
+
+    return { root: rootFolder, folderMap };
+}
+
+// ============================================================================
+// Async variants (using fs.promises)
+// ============================================================================
+
+/**
+ * Async version of scanTasksRecursively.
+ * Recursively walk a directory and return flat Task[] for each .md file found.
+ */
+export async function scanTasksRecursivelyAsync(dirPath: string, relativePath: string, isArchived: boolean): Promise<Task[]> {
+    const tasks: Task[] = [];
+
+    const readResult = await safeReadDirAsync(dirPath);
+    if (!readResult.success || !readResult.data) {
+        return tasks;
+    }
+
+    for (const item of readResult.data) {
+        const itemPath = path.join(dirPath, item);
+        const statsResult = await safeStatsAsync(itemPath);
+
+        if (!statsResult.success || !statsResult.data) {
+            continue;
+        }
+
+        if (statsResult.data.isDirectory()) {
+            if (!isArchived && item === archiveFolderName) {
+                continue;
+            }
+            const subRelativePath = toForwardSlashes(relativePath ? path.join(relativePath, item) : item);
+            const subTasks = await scanTasksRecursivelyAsync(itemPath, subRelativePath, isArchived);
+            tasks.push(...subTasks);
+        } else if (statsResult.data.isFile() && item.endsWith('.md') && !isContextFile(item)) {
+            const status = parseTaskStatus(itemPath);
+            tasks.push({
+                name: path.basename(item, '.md'),
+                filePath: itemPath,
+                modifiedTime: statsResult.data.mtime,
+                isArchived,
+                relativePath: relativePath || undefined,
+                status
+            });
+        }
+    }
+
+    return tasks;
+}
+
+/**
+ * Async version of scanDocumentsRecursively.
+ * Recursively walk a directory and return flat TaskDocument[] for each .md file found.
+ */
+export async function scanDocumentsRecursivelyAsync(dirPath: string, relativePath: string, isArchived: boolean): Promise<TaskDocument[]> {
+    const documents: TaskDocument[] = [];
+
+    const readResult = await safeReadDirAsync(dirPath);
+    if (!readResult.success || !readResult.data) {
+        return documents;
+    }
+
+    for (const item of readResult.data) {
+        const itemPath = path.join(dirPath, item);
+        const statsResult = await safeStatsAsync(itemPath);
+
+        if (!statsResult.success || !statsResult.data) {
+            continue;
+        }
+
+        if (statsResult.data.isDirectory()) {
+            if (!isArchived && item === archiveFolderName) {
+                continue;
+            }
+            const subRelativePath = toForwardSlashes(relativePath ? path.join(relativePath, item) : item);
+            const subDocuments = await scanDocumentsRecursivelyAsync(itemPath, subRelativePath, isArchived);
+            documents.push(...subDocuments);
+        } else if (statsResult.data.isFile() && item.endsWith('.md') && !isContextFile(item)) {
+            const { baseName, docType } = parseFileName(item);
+            const status = parseTaskStatus(itemPath);
+            documents.push({
+                baseName,
+                docType,
+                fileName: item,
+                filePath: itemPath,
+                modifiedTime: statsResult.data.mtime,
+                isArchived,
+                relativePath: relativePath || undefined,
+                status
+            });
+        }
+    }
+
+    return documents;
+}
+
+/**
+ * Async version of scanFoldersRecursively.
+ * Recursively scan directories to build folder structure.
+ */
+export async function scanFoldersRecursivelyAsync(
+    dirPath: string,
+    relativePath: string,
+    isArchived: boolean,
+    folderMap: Map<string, TaskFolder>,
+    parentFolder: TaskFolder
+): Promise<void> {
+    const readResult = await safeReadDirAsync(dirPath);
+    if (!readResult.success || !readResult.data) {
+        return;
+    }
+
+    for (const item of readResult.data) {
+        const itemPath = path.join(dirPath, item);
+        const statsResult = await safeStatsAsync(itemPath);
+
+        if (!statsResult.success || !statsResult.data) {
+            continue;
+        }
+
+        if (statsResult.data.isDirectory()) {
+            if (!isArchived && item === archiveFolderName) {
+                continue;
+            }
+
+            const folderRelativePath = toForwardSlashes(relativePath ? path.join(relativePath, item) : item);
+
+            if (!folderMap.has(folderRelativePath)) {
+                const newFolder: TaskFolder = {
+                    name: item,
+                    folderPath: itemPath,
+                    relativePath: folderRelativePath,
+                    isArchived,
+                    children: [],
+                    tasks: [],
+                    documentGroups: [],
+                    singleDocuments: []
+                };
+
+                folderMap.set(folderRelativePath, newFolder);
+                parentFolder.children.push(newFolder);
+
+                await scanFoldersRecursivelyAsync(itemPath, folderRelativePath, isArchived, folderMap, newFolder);
+            } else {
+                const existingFolder = folderMap.get(folderRelativePath)!;
+                await scanFoldersRecursivelyAsync(itemPath, folderRelativePath, isArchived, folderMap, existingFolder);
+            }
+        }
+    }
+}
+
+/**
+ * Async version of scanContextDocumentsInFolder.
+ * Scan a single directory for context/documentation .md files (non-recursive).
+ */
+export async function scanContextDocumentsInFolderAsync(dirPath: string, relativePath: string, isArchived: boolean): Promise<TaskDocument[]> {
+    const documents: TaskDocument[] = [];
+
+    const readResult = await safeReadDirAsync(dirPath);
+    if (!readResult.success || !readResult.data) {
+        return documents;
+    }
+
+    for (const item of readResult.data) {
+        if (!item.endsWith('.md') || !isContextFile(item)) {
+            continue;
+        }
+
+        const itemPath = path.join(dirPath, item);
+        const statsResult = await safeStatsAsync(itemPath);
+
+        if (!statsResult.success || !statsResult.data || !statsResult.data.isFile()) {
+            continue;
+        }
+
+        const { baseName, docType } = parseFileName(item);
+        documents.push({
+            baseName,
+            docType,
+            fileName: item,
+            filePath: itemPath,
+            modifiedTime: statsResult.data.mtime,
+            isArchived,
+            relativePath: relativePath || undefined,
+        });
+    }
+
+    return documents;
+}
+
+/**
+ * Async version of buildTaskFolderHierarchy.
+ * Build a hierarchical TaskFolder tree from documents.
+ */
+export async function buildTaskFolderHierarchyAsync(
+    rootPath: string,
+    documents: TaskDocument[],
+    scanArchive: boolean,
+    archivePath?: string
+): Promise<{ root: TaskFolder; folderMap: Map<string, TaskFolder> }> {
+    const { groups, singles } = groupTaskDocuments(documents);
+
+    const rootFolder: TaskFolder = {
+        name: '',
+        folderPath: rootPath,
+        relativePath: '',
+        isArchived: false,
+        children: [],
+        tasks: [],
+        documentGroups: [],
+        singleDocuments: []
+    };
+
+    const folderMap = new Map<string, TaskFolder>();
+    folderMap.set('', rootFolder);
+
+    // Scan active directory tree
+    await scanFoldersRecursivelyAsync(rootPath, '', false, folderMap, rootFolder);
+
+    // Scan archive directory tree if requested
+    if (scanArchive && archivePath && await safeExistsAsync(archivePath)) {
+        await scanFoldersRecursivelyAsync(archivePath, '', true, folderMap, rootFolder);
+    }
+
+    // Ensure intermediate folder nodes exist for every document's relativePath
+    const allDocuments = [
+        ...groups.flatMap(g => g.documents),
+        ...singles
+    ];
+
+    for (const doc of allDocuments) {
+        if (!doc.relativePath) {
+            continue;
+        }
+
+        const pathParts = doc.relativePath.split('/');
+        let currentPath = '';
+
+        for (const part of pathParts) {
+            const parentPath = currentPath;
+            currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+            if (!folderMap.has(currentPath)) {
+                const newFolder: TaskFolder = {
+                    name: part,
+                    folderPath: path.join(rootPath, currentPath),
+                    relativePath: currentPath,
+                    isArchived: doc.isArchived,
+                    children: [],
+                    tasks: [],
+                    documentGroups: [],
+                    singleDocuments: []
+                };
+
+                folderMap.set(currentPath, newFolder);
+
+                const parent = folderMap.get(parentPath);
+                if (parent) {
+                    parent.children.push(newFolder);
+                }
+            }
+        }
+    }
+
+    // Assign groups and singles to their folders
+    for (const group of groups) {
+        const folderPath = group.documents[0].relativePath || '';
+        const folder = folderMap.get(folderPath);
+        if (folder) {
+            folder.documentGroups.push(group);
+        }
+    }
+
+    for (const doc of singles) {
+        const folderPath = doc.relativePath || '';
+        const folder = folderMap.get(folderPath);
+        if (folder) {
+            folder.singleDocuments.push(doc);
+        }
+    }
+
+    // Scan context documents for each folder
+    for (const [relPath, folder] of folderMap) {
+        const contextDocs = await scanContextDocumentsInFolderAsync(folder.folderPath, relPath, folder.isArchived);
         if (contextDocs.length > 0) {
             folder.contextDocuments = contextDocs;
         }
