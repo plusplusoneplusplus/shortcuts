@@ -21,6 +21,9 @@ interface TerminalTab {
 export function TerminalView({ workspaceId }: TerminalViewProps) {
     const [terminals, setTerminals] = useState<TerminalTab[]>([]);
     const [activeId, setActiveId] = useState<string>('');
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editValue, setEditValue] = useState('');
+    const editInputRef = useRef<HTMLInputElement>(null);
     const counterRef = useRef(0);
 
     const createTerminal = useCallback(() => {
@@ -50,6 +53,34 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         );
     }, []);
 
+    const startRename = useCallback((tab: TerminalTab) => {
+        setEditingId(tab.id);
+        setEditValue(tab.title);
+    }, []);
+
+    const commitRename = useCallback(() => {
+        if (!editingId) return;
+        const trimmed = editValue.trim();
+        if (trimmed) {
+            setTerminals(prev =>
+                prev.map(t => t.id === editingId ? { ...t, title: trimmed } : t)
+            );
+        }
+        setEditingId(null);
+    }, [editingId, editValue]);
+
+    const cancelRename = useCallback(() => {
+        setEditingId(null);
+    }, []);
+
+    // Focus the rename input when it appears
+    useEffect(() => {
+        if (editingId && editInputRef.current) {
+            editInputRef.current.focus();
+            editInputRef.current.select();
+        }
+    }, [editingId]);
+
     // Auto-create first terminal on mount
     useEffect(() => {
         if (terminals.length === 0) {
@@ -77,7 +108,28 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
                             data-testid={`terminal-tab-${tab.id}`}
                         >
                             <span className="text-xs">⬛</span>
-                            <span>{tab.title}</span>
+                            {editingId === tab.id ? (
+                                <input
+                                    ref={editInputRef}
+                                    className="text-xs bg-transparent border border-blue-400 dark:border-blue-500 rounded px-1 py-0 outline-none w-24"
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                                        if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+                                    }}
+                                    onBlur={commitRename}
+                                    onClick={(e) => e.stopPropagation()}
+                                    data-testid={`terminal-tab-rename-input-${tab.id}`}
+                                />
+                            ) : (
+                                <span
+                                    onDoubleClick={(e) => { e.stopPropagation(); startRename(tab); }}
+                                    data-testid={`terminal-tab-title-${tab.id}`}
+                                >
+                                    {tab.title}
+                                </span>
+                            )}
                             <span
                                 className="ml-1 opacity-50 hover:opacity-100"
                                 onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id); }}
