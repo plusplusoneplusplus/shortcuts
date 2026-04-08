@@ -67,9 +67,7 @@ export function ProcessesSidebar() {
     const [now, setNow] = useState(Date.now());
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isClearLoading, setIsClearLoading] = useState(false);
-    const [enqueueMenuOpen, setEnqueueMenuOpen] = useState(false);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; processId: string } | null>(null);
-    const [renameTarget, setRenameTarget] = useState<{ id: string; title: string } | null>(null);
+
 
     // Long-press support for legacy process cards (mobile context menu)
     const processLongPressIdRef = useRef<string>('');
@@ -379,46 +377,6 @@ export function ProcessesSidebar() {
                     })}
                 </div>
             )}
-
-            {/* Enqueue button with dropdown */}
-            <div className="flex relative">
-                <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG' })}
-                >
-                    + Enqueue
-                </Button>
-                <button
-                    className="ml-1 px-1 text-xs rounded bg-[#0078d4] text-white hover:bg-[#106ebe] dark:bg-[#0e639c] dark:hover:bg-[#1177bb]"
-                    onClick={() => setEnqueueMenuOpen(v => !v)}
-                    data-testid="enqueue-dropdown-toggle"
-                    title="More enqueue options"
-                >
-                    ▾
-                </button>
-                {enqueueMenuOpen && (
-                    <div
-                        className="absolute top-full left-0 mt-1 z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg min-w-[160px]"
-                        data-testid="enqueue-dropdown-menu"
-                    >
-                        <button
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
-                            onClick={() => { setEnqueueMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG' }); }}
-                            data-testid="enqueue-chat-task"
-                        >
-                            💬 Chat Task
-                        </button>
-                        <button
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
-                            onClick={() => { setEnqueueMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG' }); }}
-                            data-testid="enqueue-run-script"
-                        >
-                            🛠️ Run Script
-                        </button>
-                    </div>
-                )}
-            </div>
 
             {/* History section */}
             <div className="min-h-0">
