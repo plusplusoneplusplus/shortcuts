@@ -316,6 +316,18 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
+     * Update the displayName of a queue task by its processId.
+     * Returns true if the task was found and updated.
+     */
+    updateTaskDisplayName(processId: string, displayName: string): boolean {
+        if (!processId.startsWith('queue_')) return false;
+        const taskId = processId.replace(/^queue_/, '');
+        const manager = this.findManagerForTask(taskId);
+        if (!manager) return false;
+        return manager.updateTask(taskId, { displayName });
+    }
+
+    /**
      * Drain all per-repo executors, waiting for running tasks to finish.
      * Returns the worst-case outcome ('timeout' if any timed out).
      */

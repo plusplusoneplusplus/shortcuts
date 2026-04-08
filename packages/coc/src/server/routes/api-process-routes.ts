@@ -255,8 +255,15 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (body.metadata !== undefined) { updates.metadata = body.metadata; }
             if (body.sdkSessionId !== undefined) { updates.sdkSessionId = body.sdkSessionId; }
             if (body.conversationTurns !== undefined) { updates.conversationTurns = body.conversationTurns; }
+            if (body.title !== undefined) { updates.title = body.title; }
 
             await store.updateProcess(id, updates);
+
+            // Sync queue task displayName when title is updated
+            if (body.title !== undefined && id.startsWith('queue_') && bridge) {
+                bridge.updateTaskDisplayName?.(id, body.title);
+            }
+
             const updated = await store.getProcess(id, wsId);
             sendJSON(res, 200, { process: updated });
         },
