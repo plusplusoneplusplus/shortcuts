@@ -45,8 +45,10 @@ export interface QueueExecutorBridge {
     enqueue?(input: CreateTaskInput): Promise<string>;
     /** Find a task by its processId. Used for steering (running tasks) and follow-up routing. */
     findTaskByProcessId?(processId: string): { id: string; type: string; status: string } | undefined;
-    /** Look up a queue task by its task ID. Used to synthesize process records for pre-execution tasks. */
-    getTask?(taskId: string): import('@plusplusoneplusplus/forge').QueuedTask | undefined;
+    /** Requeue an existing task for a follow-up message (reuses the parent task instead of creating a ghost child). */
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
+    /** Queue a follow-up behind a currently running task. The follow-up executes after the task completes. */
+    queueFollowUpBehindRunningTask?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
     /** Steer a running process by injecting an immediate message into its SDK session. */

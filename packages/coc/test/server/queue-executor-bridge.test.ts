@@ -3472,14 +3472,15 @@ describe('session tracking and conversation turns', () => {
         expect(updated?.status).toBe('completed');
     });
 
-    it('should always report session as alive (keepalive removed)', async () => {
+    it('should report session as alive when process exists in store', async () => {
         const executor = new CLITaskExecutor(store);
-        await expect(executor.isSessionAlive('any-process-id')).resolves.toBe(true);
+        store.processes.set('existing-proc', { id: 'existing-proc', status: 'running' } as any);
+        await expect(executor.isSessionAlive('existing-proc')).resolves.toBe(true);
     });
 
-    it('should return true for isSessionAlive regardless of session state', async () => {
+    it('should report session as dead when process does not exist in store', async () => {
         const executor = new CLITaskExecutor(store);
-        await expect(executor.isSessionAlive('nonexistent-proc')).resolves.toBe(true);
+        await expect(executor.isSessionAlive('nonexistent-proc')).resolves.toBe(false);
     });
 });
 
