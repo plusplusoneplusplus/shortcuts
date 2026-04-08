@@ -1157,6 +1157,27 @@ describe('ActivityListPane: New Chat button uses onNewChat', () => {
         expect(nearbyBlock).toContain('onOpenDialog');
         expect(nearbyBlock).not.toContain('onNewChat');
     });
+
+    it('chats empty-state shows "No chats yet" with New Chat button', () => {
+        expect(source).toContain('No chats yet');
+        expect(source).toContain('data-testid="new-chat-btn-empty"');
+        // Find the new-chat empty button line — it should reference onNewChat ?? onOpenDialog
+        const lines = source.split('\n');
+        const chatBtnLine = lines.findIndex(l => l.includes('new-chat-btn-empty'));
+        const nearbyBlock = lines.slice(Math.max(0, chatBtnLine - 5), chatBtnLine + 1).join('\n');
+        expect(nearbyBlock).toContain('onNewChat ?? onOpenDialog');
+    });
+
+    it('empty-state uses tab-filtered arrays instead of raw arrays', () => {
+        // The empty-state condition should check tabFiltered arrays, not raw running/queued/history
+        const lines = source.split('\n');
+        const emptyStateLine = lines.findIndex(l => l.includes('queue-empty-state'));
+        // Look at the condition a few lines before the empty state div
+        const conditionBlock = lines.slice(Math.max(0, emptyStateLine - 5), emptyStateLine).join('\n');
+        expect(conditionBlock).toContain('tabFilteredRunning');
+        expect(conditionBlock).toContain('tabFilteredQueued');
+        expect(conditionBlock).toContain('tabFilteredHistory');
+    });
 });
 
 // ── isChatTask: tab routing logic ─────────────────────────────────────────────

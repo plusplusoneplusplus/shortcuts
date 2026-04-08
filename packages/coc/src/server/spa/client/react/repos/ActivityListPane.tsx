@@ -613,13 +613,25 @@ export function ActivityListPane({
         ];
     }, [contextMenu, queued, running, history, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
 
-    if (running.length === 0 && queued.length === 0 && history.length === 0) {
+    if (tabFilteredRunning.length === 0 && tabFilteredQueued.length === 0 && tabFilteredHistory.length === 0) {
         return (
             <div className="p-4 text-center text-sm text-[#848484]" data-testid="queue-empty-state">
                 {isRefreshing && (
                     <div className="mb-2 animate-pulse" data-testid="queue-refreshing-indicator">Refreshing…</div>
                 )}
-                {isPaused ? (
+                {activeTab === 'chats' ? (
+                    <>
+                        <div className="mb-2">No chats yet</div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onNewChat ?? onOpenDialog}
+                            data-testid="new-chat-btn-empty"
+                        >
+                            💬 New Chat
+                        </Button>
+                    </>
+                ) : isPaused ? (
                     <>
                         <div className="mb-2">Queue is paused</div>
                         <Button
