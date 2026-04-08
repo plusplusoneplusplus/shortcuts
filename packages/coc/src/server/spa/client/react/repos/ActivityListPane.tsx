@@ -620,17 +620,7 @@ export function ActivityListPane({
                     <div className="mb-2 animate-pulse" data-testid="queue-refreshing-indicator">Refreshing…</div>
                 )}
                 {activeTab === 'chats' ? (
-                    <>
-                        <div className="mb-2">No chats yet</div>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={onNewChat ?? onOpenDialog}
-                            data-testid="new-chat-btn-empty"
-                        >
-                            💬 New Chat
-                        </Button>
-                    </>
+                    <div>No chats yet</div>
                 ) : isPaused ? (
                     <>
                         <div className="mb-2">Queue is paused</div>
@@ -645,17 +635,7 @@ export function ActivityListPane({
                         </Button>
                     </>
                 ) : (
-                    <>
-                        <div className="mb-2">{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={onOpenDialog}
-                            data-testid="repo-queue-task-btn-empty"
-                        >
-                            🤖 Queue Task
-                        </Button>
-                    </>
+                    <div>{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
                 )}
             </div>
         );
