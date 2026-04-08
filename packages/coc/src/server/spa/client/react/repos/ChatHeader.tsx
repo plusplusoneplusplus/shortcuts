@@ -167,7 +167,7 @@ export function ChatHeader({
                 </span>
                 {task && (
                     <Badge status={task.status}>
-                        {statusIcon(task.status)}{isWide ? ` ${statusLabel(task.status)}` : ''}
+                        {statusIcon(task.status)} {task.status === 'running' ? 'Thinking' : statusLabel(task.status)}
                     </Badge>
                 )}
                 {/* References, duration, Resume CLI, context window — only in wide tier */}
