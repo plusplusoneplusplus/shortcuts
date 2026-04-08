@@ -48,7 +48,17 @@ function getBundleJs(): string {
 let cachedETag: { hash: string; cssMtime: number; jsMtime: number } | null = null;
 
 /**
- * Compute a short SHA-256 ETag from the bundle CSS + JS content.
+ * Nonce unique to this server process.  Included in the ETag so that every
+ * server restart invalidates the browser's cached SPA HTML.  This prevents
+ * stale inline bundles from being served via 304 when the bundle files were
+ * rebuilt between restarts.
+ */
+const processNonce = crypto.randomBytes(4).toString('hex');
+
+/**
+ * Compute a short SHA-256 ETag from the bundle CSS + JS content plus a
+ * per-process nonce.  The nonce ensures that a server restart always
+ * invalidates the browser cache, even when the bundle files haven't changed.
  * Cached alongside mtime — only rehashed when files change on disk.
  */
 export function getBundleETag(): string {
@@ -57,7 +67,7 @@ export function getBundleETag(): string {
     if (cachedETag && cachedETag.cssMtime === css.mtime && cachedETag.jsMtime === js.mtime) {
         return cachedETag.hash;
     }
-    const hash = crypto.createHash('sha256').update(css.content).update(js.content).digest('hex').slice(0, 16);
+    const hash = crypto.createHash('sha256').update(css.content).update(js.content).update(processNonce).digest('hex').slice(0, 16);
     const etag = `"${hash}"`;
     cachedETag = { hash: etag, cssMtime: css.mtime, jsMtime: js.mtime };
     return etag;
