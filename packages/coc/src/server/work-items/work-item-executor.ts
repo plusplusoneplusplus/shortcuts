@@ -17,6 +17,8 @@ export interface ExecuteWorkItemOptions {
     mode?: 'ask' | 'plan' | 'autopilot';
     /** Git HEAD SHA captured immediately before execution enqueued. */
     headBefore?: string;
+    /** Whether this execution was triggered automatically after comment resolution. */
+    autoReExecuted?: boolean;
 }
 
 export interface EnqueueFunction {
@@ -102,6 +104,7 @@ export async function executeWorkItem(
         taskId,
         startedAt: new Date().toISOString(),
         status: 'running',
+        ...(options?.autoReExecuted ? { autoReExecuted: true } : {}),
     };
     await store.addExecution(workItemId, execution);
 

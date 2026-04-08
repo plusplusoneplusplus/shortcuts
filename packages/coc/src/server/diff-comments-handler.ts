@@ -110,6 +110,7 @@ export function registerDiffCommentsRoutes(
         oldRef: string,
         newRef: string,
         skills?: string[],
+        workItemId?: string,
     ): Promise<string | undefined> {
         const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
         bridge.getOrCreateBridge(wsRootPath);
@@ -124,6 +125,7 @@ export function registerDiffCommentsRoutes(
                 prompt,
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
+                ...(workItemId ? { workItemResolveContext: { workItemId, wsId } } : {}),
                 context: {
                     files: files.map(f => path.resolve(wsRootPath, f.filePath)),
                     resolveDiffCommentsMulti: {
@@ -535,7 +537,7 @@ export function registerDiffCommentsRoutes(
                 return sendError(res, 400, 'Invalid JSON');
             }
             try {
-                const { oldRef, newRef, filePath, commentId, userContext, skills: rawSkills } = body;
+                const { oldRef, newRef, filePath, commentId, userContext, skills: rawSkills, workItemId } = body;
                 const skills: string[] | undefined = Array.isArray(rawSkills) ? rawSkills : undefined;
                 if (!oldRef || !newRef) {
                     return sendError(res, 400, 'Missing required fields: oldRef, newRef');
@@ -609,7 +611,7 @@ export function registerDiffCommentsRoutes(
                 }
 
                 try {
-                    const taskId = await enqueueDiffResolveMultiTask(wsId, files, prompt, oldRef, newRef, skills);
+                    const taskId = await enqueueDiffResolveMultiTask(wsId, files, prompt, oldRef, newRef, skills, workItemId);
                     if (taskId) {
                         return sendJSON(res, 202, { taskId, totalCount: targetComments.length });
                     }
