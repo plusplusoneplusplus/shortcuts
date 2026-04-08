@@ -74,6 +74,7 @@ async function fetchOneGitInfo(workspaceId: string, store: ProcessStore): Promis
     };
 }
 
+
 export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
 
