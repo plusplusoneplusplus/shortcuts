@@ -295,57 +295,6 @@ describe('EnqueueDialog — document context mode', () => {
         });
     });
 
-    it('shows recent skills section when available', async () => {
-        // Override the preferences mock to return recent skills
-        mockFetch.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/preferences') && !url.includes('skill-usage')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: async () => ({
-                        recentFollowPrompts: [
-                            { name: 'impl', type: 'skill', timestamp: Date.now() },
-                            { name: 'test', type: 'skill', timestamp: Date.now() - 1000 },
-                        ],
-                    }),
-                });
-            }
-            if (typeof url === 'string' && url.includes('/models')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: async () => [{ id: 'gpt-4', enabled: true }],
-                });
-            }
-            if (typeof url === 'string' && url.includes('/skills/all')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: async () => ({ merged: [{ name: 'impl' }, { name: 'test' }] }),
-                });
-            }
-            if (typeof url === 'string' && url.includes('/summary')) {
-                return Promise.resolve({ ok: true, json: async () => ({ tasks: { name: 'root', relativePath: '', children: [] } }) });
-            }
-            return Promise.resolve({ ok: true, json: async () => ({}) });
-        });
-
-        render(
-            <Wrap>
-                <DialogOpener
-                    contextFiles={['/home/user/my-repo/tasks/feature.plan.md']}
-                    contextTaskName="feature"
-                    workspaceId="ws-1"
-                />
-                <EnqueueDialog />
-            </Wrap>,
-        );
-
-        await waitFor(() => {
-            expect(screen.getByTestId('recent-skills-section')).toBeTruthy();
-        });
-
-        const recentButtons = screen.getAllByTestId('recent-skill-button');
-        expect(recentButtons.length).toBeGreaterThanOrEqual(1);
-    });
-
     it('does not show bulk banner for single-file context', async () => {
         render(
             <Wrap>

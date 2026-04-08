@@ -10,7 +10,6 @@ import { Dialog, FloatingDialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/usePreferences';
-import { useRecentSkills } from '../hooks/useRecentSkills';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { ImagePreviews } from '../shared/ImagePreviews';
@@ -109,7 +108,6 @@ export function EnqueueDialog() {
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const richTextRef = useRef<RichTextInputHandle>(null);
     const slashCommands = useSlashCommands(skills);
-    const { recentItems, trackUsage: trackRecentUsage } = useRecentSkills(workspaceId || undefined);
     const [contextFiles, setContextFiles] = useState<string[]>([]);
     const isBulkMode = queueState.dialogBulkMode && contextFiles.length > 1;
     const hasContextFiles = contextFiles.length > 0;
@@ -382,9 +380,8 @@ export function EnqueueDialog() {
             setHooks([]);
             setContextFiles([]);
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
-            // Record skill usage for ordering + recent skills tracking
+            // Record skill usage for ordering
             for (const sk of effectiveSkills) {
-                trackRecentUsage(sk);
                 if (sk && workspaceId) {
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/preferences/skill-usage`, {
                         method: 'PATCH',
@@ -400,7 +397,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, trackRecentUsage, hooks]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, hooks]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
@@ -500,29 +497,6 @@ export function EnqueueDialog() {
                                 </span>
                             );
                         })}
-                    </div>
-                </div>
-            )}
-            {/* Recent skills quick-access */}
-            {recentItems.length > 0 && (
-                <div data-testid="recent-skills-section">
-                    <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Recent</div>
-                    <div className="flex flex-wrap gap-1">
-                        {recentItems.map(item => (
-                            <button
-                                key={`recent-${item.name}`}
-                                type="button"
-                                data-testid="recent-skill-button"
-                                data-name={item.name}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border border-[#e0e0e0] dark:border-[#555] hover:border-[#0078d4] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                                disabled={submitting}
-                                onClick={() => {
-                                    setSelectedSkills(prev => prev.includes(item.name) ? prev : [...prev, item.name]);
-                                }}
-                            >
-                                ⚡ {item.name}
-                            </button>
-                        ))}
                     </div>
                 </div>
             )}

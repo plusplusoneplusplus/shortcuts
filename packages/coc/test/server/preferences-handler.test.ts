@@ -335,34 +335,6 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs.lastSkills).toBeUndefined();
     });
 
-    it('round-trips recentFollowPrompts through write and read', () => {
-        const entries = [
-            { type: 'prompt' as const, name: 'review', path: 'review.prompt.md', timestamp: 1000 },
-            { type: 'skill' as const, name: 'impl', description: 'Implement', timestamp: 900 },
-        ];
-        writeRepoPreferences(tmpDir, 'r', { recentFollowPrompts: entries });
-        const loaded = readRepoPreferences(tmpDir, 'r');
-        expect(loaded.recentFollowPrompts).toEqual(entries);
-    });
-
-    it('strips invalid recentFollowPrompts entries on read', () => {
-        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
-        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
-        fs.writeFileSync(
-            repoPrefsPath,
-            JSON.stringify({
-                recentFollowPrompts: [
-                    { type: 'prompt', name: 'valid', timestamp: 1000 },
-                    { type: 'invalid', name: 'bad', timestamp: 900 },
-                ],
-            }),
-            'utf-8'
-        );
-        const prefs = readRepoPreferences(tmpDir, 'r');
-        expect(prefs.recentFollowPrompts!.length).toBe(1);
-        expect(prefs.recentFollowPrompts![0].name).toBe('valid');
-    });
-
     it('round-trips pinnedChats through write and read', () => {
         writeRepoPreferences(tmpDir, 'r', { pinnedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } });
         const loaded = readRepoPreferences(tmpDir, 'r');
@@ -560,153 +532,6 @@ describe('validatePreferences', () => {
     it('accepts lastSkills alongside other fields', () => {
         const result = validatePreferences({ lastModel: 'gpt-5.4', lastSkills: { task: ['go-deep'] } });
         expect(result).toEqual({ lastModel: 'gpt-5.4', lastSkills: { task: ['go-deep'] } });
-    });
-
-    // -- recentFollowPrompts field --
-
-    it('accepts valid recentFollowPrompts array', () => {
-        const entries = [
-            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
-            { type: 'skill', name: 'impl', description: 'Implement changes', timestamp: 900 },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts).toEqual(entries);
-    });
-
-    it('rejects non-array recentFollowPrompts', () => {
-        expect(validatePreferences({ recentFollowPrompts: 'not-array' })).toEqual({});
-        expect(validatePreferences({ recentFollowPrompts: 42 })).toEqual({});
-        expect(validatePreferences({ recentFollowPrompts: {} })).toEqual({});
-    });
-
-    it('filters out invalid entries from recentFollowPrompts', () => {
-        const entries = [
-            { type: 'prompt', name: 'valid', timestamp: 1000 },
-            { type: 'invalid', name: 'bad-type', timestamp: 900 },
-            { type: 'prompt', name: '', timestamp: 800 },  // empty name
-            { type: 'skill', timestamp: 700 },  // missing name
-            'not-an-object',
-            null,
-            { type: 'skill', name: 'also-valid', timestamp: 600 },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts).toEqual([
-            { type: 'prompt', name: 'valid', timestamp: 1000 },
-            { type: 'skill', name: 'also-valid', timestamp: 600 },
-        ]);
-    });
-
-    it('caps recentFollowPrompts at 10 entries', () => {
-        const entries = Array.from({ length: 15 }, (_, i) => ({
-            type: 'prompt',
-            name: `prompt-${i}`,
-            timestamp: 1000 - i,
-        }));
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts!.length).toBe(10);
-        expect(result.recentFollowPrompts![9].name).toBe('prompt-9');
-    });
-
-    it('strips unknown keys from recentFollowPrompts entries', () => {
-        const entries = [
-            { type: 'prompt', name: 'review', timestamp: 1000, extraKey: 'should-be-stripped' },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts).toEqual([
-            { type: 'prompt', name: 'review', timestamp: 1000 },
-        ]);
-        expect((result.recentFollowPrompts![0] as any).extraKey).toBeUndefined();
-    });
-
-    it('preserves optional path and description fields', () => {
-        const entries = [
-            { type: 'prompt', name: 'review', path: 'a/b.prompt.md', timestamp: 1000 },
-            { type: 'skill', name: 'impl', description: 'Some description', timestamp: 900 },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts![0].path).toBe('a/b.prompt.md');
-        expect(result.recentFollowPrompts![1].description).toBe('Some description');
-    });
-
-    it('preserves new prompt/skills/model/mode fields in recentFollowPrompts', () => {
-        const entries = [
-            {
-                type: 'prompt',
-                name: 'Fix auth bug…',
-                timestamp: 2000,
-                prompt: 'Fix the authentication bug in login',
-                skills: ['impl', 'code-review'],
-                model: 'gpt-4o',
-                mode: 'ask',
-            },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        const entry = result.recentFollowPrompts![0];
-        expect(entry.prompt).toBe('Fix the authentication bug in login');
-        expect(entry.skills).toEqual(['impl', 'code-review']);
-        expect(entry.model).toBe('gpt-4o');
-        expect(entry.mode).toBe('ask');
-    });
-
-    it('preserves mode=task in recentFollowPrompts', () => {
-        const entries = [
-            { type: 'prompt', name: 'refactor', timestamp: 3000, mode: 'task' },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts![0].mode).toBe('task');
-    });
-
-    it('omits skills array if empty after filtering in recentFollowPrompts', () => {
-        const entries = [
-            { type: 'prompt', name: 'test', timestamp: 4000, skills: [42, null, true] },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts![0].skills).toBeUndefined();
-    });
-
-    it('strips invalid model (empty string) from recentFollowPrompts', () => {
-        const entries = [
-            { type: 'prompt', name: 'test', timestamp: 5000, model: '' },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts![0].model).toBeUndefined();
-    });
-
-    it('strips invalid mode value from recentFollowPrompts', () => {
-        const entries = [
-            { type: 'prompt', name: 'test', timestamp: 6000, mode: 'autopilot' },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts![0].mode).toBeUndefined();
-    });
-
-    it('backward compat: old entries without new fields pass through unchanged', () => {
-        const entries = [
-            { type: 'skill', name: 'impl', path: 'skills/impl.md', timestamp: 1000 },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        const entry = result.recentFollowPrompts![0];
-        expect(entry.prompt).toBeUndefined();
-        expect(entry.skills).toBeUndefined();
-        expect(entry.model).toBeUndefined();
-        expect(entry.mode).toBeUndefined();
-    });
-
-    it('omits recentFollowPrompts when all entries are invalid', () => {
-        const entries = [
-            { type: 'invalid', name: 'bad', timestamp: 1000 },
-            null,
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts).toBeUndefined();
-    });
-
-    it('rejects entries with missing timestamp', () => {
-        const entries = [
-            { type: 'prompt', name: 'no-timestamp' },
-        ];
-        const result = validatePreferences({ recentFollowPrompts: entries });
-        expect(result.recentFollowPrompts).toBeUndefined();
     });
 
     // -- pinnedChats field --
@@ -1693,13 +1518,6 @@ describe('Per-Repo Preferences REST API', () => {
         const res = await patchJSON(repoUrl(repoId), { lastModels: { ask: 'claude-3' } });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body).lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3' });
-    });
-
-    it('PATCH persists recentFollowPrompts', async () => {
-        const entries = [{ type: 'prompt', name: 'review', path: 'r.md', timestamp: 1000 }];
-        const res = await patchJSON(repoUrl(repoId), { recentFollowPrompts: entries });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body).recentFollowPrompts).toEqual(entries);
     });
 
     // -- linkedRepoIds --

@@ -57,23 +57,6 @@ export interface SkillTemplateEntry {
     skills: string[];
 }
 
-/** A recently-used skill in the Run Skill dialog. */
-export interface RecentFollowPromptEntry {
-    type: 'prompt' | 'skill';
-    name: string;
-    path?: string;
-    description?: string;
-    timestamp: number;
-    /** Full prompt text at submission time. */
-    prompt?: string;
-    /** Selected skill names at submission time. */
-    skills?: string[];
-    /** Model id; omitted if default. */
-    model?: string;
-    /** Dialog mode at submission time. */
-    mode?: 'ask' | 'task';
-}
-
 /** Global (cross-repo) UI preferences. */
 export interface GlobalPreferences {
     /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
@@ -112,8 +95,6 @@ export interface PerRepoPreferences {
     lastEffort?: 'low' | 'medium' | 'high';
     /** Per-mode last-used skill names (task / ask / plan). */
     lastSkills?: LastSkillsByMode;
-    /** Recently-used skills in Run Skill dialog (max 10, newest first). */
-    recentFollowPrompts?: RecentFollowPromptEntry[];
     /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
     pinnedChats?: Record<string, string[]>;
     /** Archived chat session IDs per workspace. */
@@ -251,38 +232,6 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         }
         if (Object.keys(validated).length > 0) {
             result.lastSkills = validated;
-        }
-    }
-
-    if (Array.isArray(obj.recentFollowPrompts)) {
-        const validated: RecentFollowPromptEntry[] = [];
-        for (const entry of obj.recentFollowPrompts) {
-            if (
-                typeof entry === 'object' && entry !== null &&
-                (entry.type === 'prompt' || entry.type === 'skill') &&
-                typeof entry.name === 'string' && entry.name.length > 0 &&
-                typeof entry.timestamp === 'number'
-            ) {
-                const clean: RecentFollowPromptEntry = {
-                    type: entry.type,
-                    name: entry.name,
-                    timestamp: entry.timestamp,
-                };
-                if (typeof entry.path === 'string') clean.path = entry.path;
-                if (typeof entry.description === 'string') clean.description = entry.description;
-                if (typeof entry.prompt === 'string') clean.prompt = entry.prompt;
-                if (Array.isArray(entry.skills)) {
-                    const skills = entry.skills.filter((s: unknown): s is string => typeof s === 'string');
-                    if (skills.length > 0) clean.skills = skills;
-                }
-                if (typeof entry.model === 'string' && entry.model.length > 0) clean.model = entry.model;
-                if (entry.mode === 'ask' || entry.mode === 'task') clean.mode = entry.mode;
-                validated.push(clean);
-            }
-            if (validated.length >= 10) break;
-        }
-        if (validated.length > 0) {
-            result.recentFollowPrompts = validated;
         }
     }
 

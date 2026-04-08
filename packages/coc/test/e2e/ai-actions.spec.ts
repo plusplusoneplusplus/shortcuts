@@ -439,87 +439,6 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.11 Recent skills Last Used section renders and triggers submission', async ({ page, serverUrl }) => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
-        try {
-            await setupRepoWithAIActions(page, serverUrl, tmpDir);
-
-            // Pre-seed recent skills in preferences
-            await page.request.patch(`${serverUrl}/api/workspaces/ws-ai-actions/preferences`, {
-                data: {
-                    recentFollowPrompts: [
-                        { type: 'skill', name: 'impl', description: 'Implement feature', timestamp: Date.now() },
-                    ],
-                },
-            });
-
-            // Reload to pick up preferences
-            await page.reload();
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
-            await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
-
-            const queueResponsePromise = page.waitForResponse(res =>
-                res.url().includes('/api/queue') &&
-                !res.url().includes('/bulk') &&
-                res.request().method() === 'POST',
-            );
-
-            const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.click({ button: 'right' });
-            await page.locator('text=✨ Run Skill').click();
-            await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
-
-            // Last Used section should render with the seeded skill
-            const recentItem = page.locator('.fp-recent-item[data-name="impl"]');
-            await expect(recentItem).toBeVisible({ timeout: 10000 });
-
-            // Click the recent item — should submit directly
-            await recentItem.click();
-
-            const queueResponse = await queueResponsePromise;
-            const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
-            expect(reqBody.type).toBe('chat');
-            expect(reqBody.payload.context.skills).toContain('impl');
-
-            // Dialog should close
-            await expect(page.locator('#follow-prompt-submenu')).toHaveCount(0, { timeout: 5000 });
-        } finally {
-            safeRmSync(tmpDir);
-        }
-    });
-
-    test('7.12 Recent skill usage is tracked and persisted after submission', async ({ page, serverUrl, mockAI }) => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
-        try {
-            await setupRepoWithAIActions(page, serverUrl, tmpDir);
-
-            const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.click({ button: 'right' });
-            await page.locator('text=✨ Run Skill').click();
-            await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
-
-            // Submit the impl skill
-            await page.locator('.fp-item[data-name="impl"]').click();
-            await page.locator('[data-testid="fp-submit-skills"]').click();
-            await expect(page.locator('#follow-prompt-submenu')).toHaveCount(0, { timeout: 5000 });
-
-            // Wait for fire-and-forget PATCHes to complete
-            await page.waitForTimeout(1000);
-
-            // Verify recent usage was persisted
-            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-ai-actions/preferences`);
-            const prefs = await res.json();
-            expect(Array.isArray(prefs.recentFollowPrompts)).toBe(true);
-            expect(prefs.recentFollowPrompts.length).toBeGreaterThanOrEqual(1);
-            expect(prefs.recentFollowPrompts[0].name).toBe('impl');
-        } finally {
-            safeRmSync(tmpDir);
-        }
-    });
-
     test('7.13 No-skills empty state in Run Skill dialog', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
@@ -551,7 +470,7 @@ test.describe('AI Actions (007)', () => {
             await expect(page.locator('text=Create skills in .github/skills/')).toBeVisible();
 
             // No skill chips should be rendered
-            await expect(page.locator('.fp-item:not(.fp-recent-item)')).toHaveCount(0);
+            await expect(page.locator('.fp-item')).toHaveCount(0);
         } finally {
             safeRmSync(tmpDir);
         }
