@@ -9,7 +9,7 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { BranchService, GitRangeService, loadDefaultMcpConfig, detectRemoteUrl } from '@plusplusoneplusplus/forge';
+import { BranchService, GitRangeService, loadDefaultMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../api-handler';
 import { handleAPIError, missingFields, notFound, badRequest } from '../errors';
@@ -38,6 +38,14 @@ async function syncRemoteUrl(ws: WorkspaceInfo, store: ProcessStore): Promise<st
         await store.updateWorkspace(ws.id, { remoteUrl });
     }
     return remoteUrl;
+}
+
+function hasGitDirectory(rootPath: string): boolean {
+    try {
+        return fs.existsSync(resolvePathForHostFilesystem(rootPath, '.git'));
+    } catch {
+        return false;
+    }
 }
 
 export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
@@ -81,7 +89,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const workspaces = await store.getWorkspaces();
             const enriched = workspaces.map(ws => ({
                 ...ws,
-                isGitRepo: fs.existsSync(path.join(ws.rootPath, '.git')),
+                isGitRepo: hasGitDirectory(ws.rootPath),
             }));
             sendJSON(res, 200, { workspaces: enriched });
         },
