@@ -4,8 +4,15 @@
  * Uses `child_process.execSync` with `git -C <repoRoot>` to run git commands.
  */
 
-import { exec, execSync } from 'child_process';
+import { exec, execFileSync, execSync } from 'child_process';
+import { execFileAsync } from '../utils/exec-utils';
 import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
+import {
+    buildWslCommandArgs,
+    getWslExecutablePath,
+    resolveWorkspaceExecutionContext,
+    translatePathForExecution,
+} from '../utils/workspace-execution';
 
 /**
  * Options for `execGit`.
@@ -42,11 +49,29 @@ function createGitExecError(args: string[], err: unknown): Error {
  * Node.js event loop is not blocked while the git process runs.
  */
 export function execGitAsync(args: string[], repoRoot: string, options?: ExecGitOptions): Promise<string> {
-    const joined = ['git', '-C', repoRoot, ...args].join(' ');
-    const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
     return new Promise((resolve, reject) => {
         ensureGitSafeDirectoryAsync(repoRoot)
             .then(() => {
+                const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+                if (executionContext.kind === 'wsl') {
+                    const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
+                    execFileAsync(
+                        getWslExecutablePath(),
+                        buildWslCommandArgs(executionContext, ['git', '-C', execRepoRoot, ...args]),
+                        {
+                            maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
+                            timeout: options?.timeout ?? DEFAULT_TIMEOUT,
+                            cwd: options?.cwd,
+                            windowsHide: true,
+                        },
+                    )
+                        .then(({ stdout }) => resolve(stdout.replace(/\r?\n$/, '')))
+                        .catch(err => reject(createGitExecError(args, err)));
+                    return;
+                }
+
+                const joined = ['git', '-C', repoRoot, ...args].join(' ');
+                const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
                 exec(cmd, {
                     maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
                     timeout: options?.timeout ?? DEFAULT_TIMEOUT,
@@ -65,10 +90,27 @@ export function execGitAsync(args: string[], repoRoot: string, options?: ExecGit
 }
 
 export function execGit(args: string[], repoRoot: string, options?: ExecGitOptions): string {
-    const joined = ['git', '-C', repoRoot, ...args].join(' ');
-    const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
     try {
         ensureGitSafeDirectorySync(repoRoot);
+        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+        if (executionContext.kind === 'wsl') {
+            const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
+            const output = execFileSync(
+                getWslExecutablePath(),
+                buildWslCommandArgs(executionContext, ['git', '-C', execRepoRoot, ...args]),
+                {
+                    maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
+                    timeout: options?.timeout ?? DEFAULT_TIMEOUT,
+                    encoding: 'utf-8',
+                    cwd: options?.cwd,
+                    windowsHide: true,
+                },
+            );
+            return output.replace(/\r?\n$/, '');
+        }
+
+        const joined = ['git', '-C', repoRoot, ...args].join(' ');
+        const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
         const output = execSync(cmd, {
             maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
             timeout: options?.timeout ?? DEFAULT_TIMEOUT,
