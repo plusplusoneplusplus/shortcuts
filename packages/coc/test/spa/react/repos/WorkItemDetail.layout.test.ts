@@ -139,9 +139,24 @@ describe('WorkItemDetail — layout', () => {
     });
 
     describe('Execution history inline navigation', () => {
-        it('renders a button calling onViewTask for each execution entry when onViewTask is provided', () => {
+        it('renders "View Session →" as a labeled sub-line (not a bare arrow in the header)', () => {
+            expect(src).toContain('View Session →');
             expect(src).toContain('onViewTask(exec.taskId)');
             expect(src).toContain('data-testid={`exec-view-session-${i}`}');
+        });
+
+        it('session link is outside the header row, in its own wrapper div', () => {
+            // The session link should NOT be inside the flex header row that contains Run #
+            // It should be in a separate div below it
+            const execHistorySection = src.indexOf('{/* Execution history */}');
+            const viewSession = src.indexOf('View Session →', execHistorySection);
+            const runLabel = src.indexOf('Run #{i + 1}', execHistorySection);
+            // "View Session" should appear after "Run #" in the execution history
+            expect(viewSession).toBeGreaterThan(runLabel);
+            // The header row uses "flex items-center" — the session link should NOT be inside it
+            const headerFlexLine = src.lastIndexOf('flex items-center', viewSession);
+            const headerCloseDiv = src.indexOf('</div>', headerFlexLine);
+            expect(viewSession).toBeGreaterThan(headerCloseDiv);
         });
 
         it('falls back to process link when onViewTask is not provided', () => {

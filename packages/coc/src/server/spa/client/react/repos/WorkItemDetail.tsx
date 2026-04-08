@@ -437,11 +437,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                             <span className="font-medium text-[#3c3c3c] dark:text-[#cccccc]">Run #{i + 1}</span>
                                             <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
                                             {exec.completedAt && <span className="text-[#848484]">· {formatRelativeTime(exec.completedAt)}</span>}
-                                            <span className="flex-1" />
+                                        </div>
+                                        <div className="px-3 pb-1.5">
                                             {onViewTask ? (
-                                                <button onClick={() => onViewTask(exec.taskId)} className="text-[#0078d4] hover:underline bg-transparent border-none cursor-pointer p-0 text-xs" data-testid={`exec-view-session-${i}`}>→</button>
+                                                <button onClick={() => onViewTask(exec.taskId)} className="text-[#0078d4] hover:underline bg-transparent border-none cursor-pointer p-0 text-[10px]" data-testid={`exec-view-session-${i}`}>View Session →</button>
                                             ) : exec.processId ? (
-                                                <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline text-xs">→</a>
+                                                <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline text-[10px]" data-testid={`exec-view-session-${i}`}>View Session →</a>
                                             ) : null}
                                         </div>
                                         {exec.error && (
