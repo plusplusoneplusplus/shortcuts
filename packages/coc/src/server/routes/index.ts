@@ -103,7 +103,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
     const enqueueForWorkItems = bridge.enqueue.bind(bridge) as import('../work-items/work-item-executor').EnqueueFunction;
-    registerWorkItemRoutes({ routes, workItemStore, enqueue: enqueueForWorkItems, getWsServer });
+    registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });

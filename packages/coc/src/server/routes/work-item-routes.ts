@@ -15,6 +15,8 @@ import * as http from 'http';
 import * as url from 'url';
 import * as crypto from 'crypto';
 import type { Route } from '../types';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority, WorkItemType } from '../work-items/types';
@@ -30,12 +32,13 @@ const VALID_TYPES: Set<string> = new Set(['work-item', 'bug']);
 export interface WorkItemRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
+    processStore: ProcessStore;
     enqueue?: EnqueueFunction;
     getWsServer?: () => ProcessWebSocketServer;
 }
 
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
-    const { routes, workItemStore, enqueue, getWsServer } = ctx;
+    const { routes, workItemStore, processStore, enqueue, getWsServer } = ctx;
 
     // GET /api/workspaces/:id/work-items — List with optional filters
     routes.push({
@@ -197,7 +200,17 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             // Auto-execute if status transitioned to 'readyToExecute' and autoExecute is enabled
             if (updated.status === 'readyToExecute' && updated.autoExecute && enqueue) {
                 try {
-                    await executeWorkItem(workItemId, workItemStore, enqueue);
+                    // Capture git HEAD before execution for commit range tracking
+                    let headBefore: string | undefined;
+                    try {
+                        const workspaces = await processStore.getWorkspaces();
+                        const workspace = workspaces.find(w => w.id === repoId);
+                        if (workspace?.rootPath) {
+                            headBefore = execGit(['rev-parse', 'HEAD'], workspace.rootPath);
+                        }
+                    } catch { /* non-fatal */ }
+
+                    await executeWorkItem(workItemId, workItemStore, enqueue, { headBefore });
                     const afterExec = await workItemStore.getWorkItem(workItemId);
                     if (afterExec) {
                         getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: afterExec });
