@@ -3,7 +3,7 @@
  * in Whisper verbosity mode (level 3). Shows an aggregate header with tool call
  * and message counts. Expands to reveal Compact-level (level 1) rendering.
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { cn } from '../shared';
 import type { WhisperSummary } from './toolGroupUtils';
 import { groupConsecutiveToolChunks } from './toolGroupUtils';
@@ -11,6 +11,7 @@ import { ToolCallGroupView } from './ToolCallGroupView';
 import type { RenderToolCall } from './ToolCallGroupView';
 import { MarkdownView } from './MarkdownView';
 import { detectCommitsInToolGroup } from './commitDetection';
+import type { DetectedCommit } from './commitDetection';
 import { CommitStrip } from './CommitStrip';
 
 interface ToolLike {
@@ -51,6 +52,100 @@ function formatDuration(startTime?: number, endTime?: number): string {
     return `${(ms / 1000).toFixed(1)}s`;
 }
 
+// ---------------------------------------------------------------------------
+// CommitHoverPopover — shown when hovering over "N commits" / "N fixups"
+// ---------------------------------------------------------------------------
+
+interface CommitHoverPopoverProps {
+    commits: DetectedCommit[];
+    workspaceId?: string;
+    anchorRef: React.RefObject<HTMLSpanElement | null>;
+}
+
+function CommitHoverPopover({ commits, workspaceId, anchorRef }: CommitHoverPopoverProps) {
+    if (!anchorRef.current) return null;
+    const rect = anchorRef.current.getBoundingClientRect();
+
+    return (
+        <div
+            className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
+            style={{ top: rect.bottom + 4, left: rect.left }}
+            data-testid="commit-hover-popover"
+        >
+            {commits.map(commit => (
+                <div
+                    key={commit.shortHash}
+                    className={
+                        'flex items-center gap-2 px-2.5 py-1 text-xs ' +
+                        (commit.isFixup ? 'opacity-70 ' : '') +
+                        (workspaceId
+                            ? 'cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42]'
+                            : '')
+                    }
+                    data-testid={`commit-popover-row-${commit.shortHash}`}
+                    onClick={workspaceId ? (e) => {
+                        e.stopPropagation();
+                        const hash = commit.fullHash || commit.shortHash;
+                        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash;
+                    } : undefined}
+                    role={workspaceId ? 'link' : undefined}
+                >
+                    <span className="shrink-0">{commit.isFixup ? '🔧' : '🔀'}</span>
+                    <span className="font-mono shrink-0 text-[#f57c00] dark:text-[#ffb74d]">
+                        {commit.shortHash}
+                    </span>
+                    <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
+                        {commit.subject}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// CommitHoverSpan — a span that shows a popover on hover
+// ---------------------------------------------------------------------------
+
+interface CommitHoverSpanProps {
+    text: string;
+    commits: DetectedCommit[];
+    workspaceId?: string;
+    testId?: string;
+}
+
+function CommitHoverSpan({ text, commits, workspaceId, testId }: CommitHoverSpanProps) {
+    const [hovered, setHovered] = useState(false);
+    const anchorRef = useRef<HTMLSpanElement | null>(null);
+    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const showPopover = useCallback(() => {
+        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
+        setHovered(true);
+    }, []);
+
+    const hidePopover = useCallback(() => {
+        graceTimer.current = setTimeout(() => setHovered(false), 150);
+    }, []);
+
+    return (
+        <span
+            ref={anchorRef}
+            onMouseEnter={showPopover}
+            onMouseLeave={hidePopover}
+            className="underline decoration-dotted cursor-default"
+            data-testid={testId}
+        >
+            {text}
+            {hovered && commits.length > 0 && (
+                <span onMouseEnter={showPopover} onMouseLeave={hidePopover}>
+                    <CommitHoverPopover commits={commits} workspaceId={workspaceId} anchorRef={anchorRef} />
+                </span>
+            )}
+        </span>
+    );
+}
+
 export function WhisperCollapsedGroup({
     precedingChunks,
     summary,
@@ -64,7 +159,7 @@ export function WhisperCollapsedGroup({
 }: WhisperCollapsedGroupProps) {
     const [expanded, setExpanded] = useState(false);
 
-    const headerParts: Array<{ text: string; title?: string }> = [];
+    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' }> = [];
     if (summary.toolCallCount > 0) {
         headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
     }
@@ -72,10 +167,10 @@ export function WhisperCollapsedGroup({
         headerParts.push({ text: `${summary.messageCount} message${summary.messageCount !== 1 ? 's' : ''}` });
     }
     if (summary.commitCount && summary.commitCount > 0) {
-        headerParts.push({ text: `${summary.commitCount} commit${summary.commitCount !== 1 ? 's' : ''}` });
+        headerParts.push({ text: `${summary.commitCount} commit${summary.commitCount !== 1 ? 's' : ''}`, kind: 'commit' });
     }
     if (summary.fixupCommitCount && summary.fixupCommitCount > 0) {
-        headerParts.push({ text: `${summary.fixupCommitCount} fixup${summary.fixupCommitCount !== 1 ? 's' : ''}` });
+        headerParts.push({ text: `${summary.fixupCommitCount} fixup${summary.fixupCommitCount !== 1 ? 's' : ''}`, kind: 'fixup' });
     }
     if (summary.skillCount && summary.skillCount > 0) {
         headerParts.push({
@@ -89,11 +184,19 @@ export function WhisperCollapsedGroup({
     const headerElements: React.ReactNode[] = [];
     headerParts.forEach((part, idx) => {
         if (idx > 0) headerElements.push(<span key={`sep-${idx}`}> · </span>);
-        headerElements.push(
-            part.title
-                ? <span key={`part-${idx}`} title={part.title}>{part.text}</span>
-                : <span key={`part-${idx}`}>{part.text}</span>,
-        );
+        if (part.kind === 'commit' && summary.commits && summary.commits.length > 0) {
+            headerElements.push(
+                <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.commits} workspaceId={workspaceId} testId="whisper-commit-hover" />,
+            );
+        } else if (part.kind === 'fixup' && summary.fixupCommits && summary.fixupCommits.length > 0) {
+            headerElements.push(
+                <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.fixupCommits} workspaceId={workspaceId} testId="whisper-fixup-hover" />,
+            );
+        } else if (part.title) {
+            headerElements.push(<span key={`part-${idx}`} title={part.title}>{part.text}</span>);
+        } else {
+            headerElements.push(<span key={`part-${idx}`}>{part.text}</span>);
+        }
     });
     if (duration) {
         headerElements.push(<span key="duration"> ({duration})</span>);

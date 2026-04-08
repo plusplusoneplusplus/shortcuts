@@ -313,6 +313,10 @@ export interface WhisperSummary {
     commitCount?: number;
     /** Number of fixup/squash/amend commits detected. */
     fixupCommitCount?: number;
+    /** Non-fixup commits detected across all collapsed tool calls. */
+    commits?: DetectedCommit[];
+    /** Fixup/squash/amend commits detected across all collapsed tool calls. */
+    fixupCommits?: DetectedCommit[];
     /** Number of unique skill invocations. */
     skillCount?: number;
     /** Names of unique skills invoked. */
@@ -456,8 +460,8 @@ export function filterWhisperChunks(
     const summary: WhisperSummary = {
         toolCallCount,
         messageCount,
-        ...(commitCount > 0 ? { commitCount } : {}),
-        ...(fixupCommitCount > 0 ? { fixupCommitCount } : {}),
+        ...(commitCount > 0 ? { commitCount, commits: regularCommits } : {}),
+        ...(fixupCommitCount > 0 ? { fixupCommitCount, fixupCommits } : {}),
         ...(skillNameSet.size > 0 ? { skillCount: skillNameSet.size, skillNames: [...skillNameSet].sort() } : {}),
         startTime: startTimes.length ? Math.min(...startTimes) : undefined,
         endTime: allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
