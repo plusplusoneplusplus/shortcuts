@@ -215,10 +215,13 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
     const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
         const resolved = typeof next === 'function' ? next(turnsRef.current) : next;
+        // No-op: updater returned same reference — skip re-render and cache dispatch
+        if (resolved === turnsRef.current) return;
         turnsRef.current = resolved;
         setTurns(resolved);
-        if (taskId && !resolved.some(t => t.streaming)) {
-            appDispatch({ type: 'CACHE_CONVERSATION', processId: taskId, turns: resolved });
+        if (taskId) {
+            const dirty = resolved.some(t => t.streaming);
+            appDispatch({ type: 'CACHE_CONVERSATION', processId: taskId, turns: resolved, dirty });
         }
     }, [taskId, appDispatch]);
 
@@ -241,8 +244,15 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             if (version !== refreshVersionRef.current) return;
             setProcessDetails(data?.process || null);
             const refreshedTurns = getConversationTurns(data);
-            // Guard against stale data: skip if fetched turns are fewer than current
+            // Guard against stale data: skip if fetched data is less rich than current.
+            // Check turn count first (cheap), then total content length for same-count case
+            // where the server returned partial/unflushed content.
             if (refreshedTurns.length < turnsRef.current.length) return;
+            if (refreshedTurns.length === turnsRef.current.length) {
+                const fetchedLen = refreshedTurns.reduce((s, t) => s + (t.content?.length || 0), 0);
+                const currentLen = turnsRef.current.reduce((s, t) => s + (t.content?.length || 0), 0);
+                if (fetchedLen < currentLen) return;
+            }
             setTurnsAndRef(refreshedTurns);
             // Sync queued follow-ups from server state
             const serverPending: any[] = data?.process?.pendingMessages ?? [];
@@ -420,26 +430,34 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
                 // Check shared conversation cache
                 const cached = appState.conversationCache[taskId];
-                if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
-                    setTask(loadedTask);
+                const cacheUsable = cached && (cached.dirty || Date.now() - cached.cachedAt < CACHE_TTL_MS);
+                if (cacheUsable) {
                     setTurnsAndRef(cached.turns);
-                    // Background-refresh metadata
+                    // Background-refresh both metadata AND turns
+                    // (critical when cache is dirty from interrupted streaming)
                     fetchApi(`/processes/${encodeURIComponent(pid)}`)
                         .then((data: any) => {
+                            if (loadCounterRef.current !== loadId) return;
                             setProcessDetails(data?.process || null);
                             const processMode = data?.process?.metadata?.mode;
                             if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
                                 setSelectedMode(processMode);
                             }
-                            // Sync queued follow-ups from server
-                            const serverPending: any[] = data?.process?.pendingMessages ?? [];
-                            setPendingQueue(serverPending.map((m: any) => ({
-                                id: m.id,
-                                content: m.content,
-                                status: 'queued' as const,
-                            })));
+                            // Refresh turns to catch any missed during streaming
+                            const refreshedTurns = getConversationTurns(data);
+                            if (refreshedTurns.length > 0) {
+                                setTurnsAndRef(prev => {
+                                    if (refreshedTurns.length < prev.length) return prev;
+                                    if (refreshedTurns.length === prev.length) {
+                                        const fetchedLen = refreshedTurns.reduce((s: number, t: ClientConversationTurn) => s + (t.content?.length || 0), 0);
+                                        const currentLen = prev.reduce((s, t) => s + (t.content?.length || 0), 0);
+                                        if (fetchedLen < currentLen) return prev;
+                                    }
+                                    return refreshedTurns;
+                                });
+                            }
                         })
-                        .catch(() => { /* metadata refresh is best-effort */ });
+                        .catch(() => { /* background refresh is best-effort */ });
                 } else {
                     const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
                     if (loadCounterRef.current !== loadId) return;

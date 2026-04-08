@@ -187,7 +187,7 @@ export type AppAction =
     | { type: 'WIKI_REBUILDING'; wikiId: string }
     | { type: 'WIKI_ERROR'; wikiId: string; error: string }
     | { type: 'TOGGLE_GROUP'; key: string }
-    | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[] }
+    | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[]; dirty?: boolean }
     | { type: 'APPEND_TURN'; processId: string; turn: any }
     | { type: 'INVALIDATE_CONVERSATION'; processId: string }
     | { type: 'SET_SELECTED_WORKFLOW'; name: string | null }
@@ -369,10 +369,16 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'CACHE_CONVERSATION': {
             const now = Date.now();
             const cache = { ...state.conversationCache };
-            // Guard against cache poisoning: never overwrite with fewer turns
+            // Guard against cache poisoning: never overwrite with fewer turns,
+            // or same turn count but less total content (stale/partial data)
             const existing = cache[action.processId];
-            if (existing && action.turns.length < existing.turns.length) {
-                return state;
+            if (existing) {
+                if (action.turns.length < existing.turns.length) return state;
+                if (action.turns.length === existing.turns.length) {
+                    const newLen = action.turns.reduce((s: number, t: any) => s + (t.content?.length || 0), 0);
+                    const oldLen = existing.turns.reduce((s: number, t: any) => s + (t.content?.length || 0), 0);
+                    if (newLen < oldLen) return state;
+                }
             }
             // Evict expired
             for (const key of Object.keys(cache)) {
@@ -391,7 +397,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 }
                 delete cache[oldestKey];
             }
-            cache[action.processId] = { turns: action.turns, cachedAt: now };
+            cache[action.processId] = { turns: action.turns, cachedAt: now, dirty: action.dirty ?? false };
             return { ...state, conversationCache: cache };
         }
         case 'APPEND_TURN': {

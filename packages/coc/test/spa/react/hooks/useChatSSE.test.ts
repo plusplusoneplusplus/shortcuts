@@ -157,7 +157,7 @@ describe('useChatSSE', () => {
         expect(MockEventSource.last.url).toContain('pid-2');
     });
 
-    it('calls setTurnsAndRef on conversation-snapshot event', () => {
+    it('calls setTurnsAndRef with updater on conversation-snapshot event', () => {
         const setTurnsAndRef = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
         act(() => {
@@ -165,7 +165,88 @@ describe('useChatSSE', () => {
                 turns: [{ role: 'user', content: 'hi' }],
             });
         });
-        expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
+        // conversation-snapshot now uses an updater function for stale-data guarding
+        expect(setTurnsAndRef).toHaveBeenCalledWith(expect.any(Function));
+        // With empty prev (initial), updater returns the snapshot
+        const updater = setTurnsAndRef.mock.calls[0][0];
+        expect(updater([])).toEqual([{ role: 'user', content: 'hi' }]);
+    });
+
+    it('conversation-snapshot guard: skips snapshot with fewer turns than current', () => {
+        const setTurnsAndRef = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+        act(() => {
+            MockEventSource.last._emit('conversation-snapshot', {
+                turns: [{ role: 'user', content: 'hi' }],
+            });
+        });
+        const updater = setTurnsAndRef.mock.calls[0][0];
+        const current = [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'hello there' },
+        ];
+        // Snapshot has fewer turns — should return current (unchanged)
+        expect(updater(current)).toBe(current);
+    });
+
+    it('conversation-snapshot guard: skips snapshot with same count but less content', () => {
+        const setTurnsAndRef = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+        act(() => {
+            MockEventSource.last._emit('conversation-snapshot', {
+                turns: [
+                    { role: 'user', content: 'hi' },
+                    { role: 'assistant', content: '' },
+                ],
+            });
+        });
+        const updater = setTurnsAndRef.mock.calls[0][0];
+        const current = [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'full response text' },
+        ];
+        // Same count but stale snapshot has less content — keep current
+        expect(updater(current)).toBe(current);
+    });
+
+    it('conversation-snapshot guard: applies snapshot with more turns', () => {
+        const setTurnsAndRef = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+        const snapshotTurns = [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'hello' },
+            { role: 'user', content: 'follow-up' },
+        ];
+        act(() => {
+            MockEventSource.last._emit('conversation-snapshot', { turns: snapshotTurns });
+        });
+        const updater = setTurnsAndRef.mock.calls[0][0];
+        const current = [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'hello' },
+        ];
+        // Snapshot has more turns — should return snapshot
+        expect(updater(current)).toEqual(snapshotTurns);
+    });
+
+    it('conversation-snapshot guard: rejects snapshot with more turns but stale shared content', () => {
+        const setTurnsAndRef = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+        const snapshotTurns = [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'he' }, // stale: less content than in-memory streaming
+            { role: 'user', content: 'follow-up' },
+        ];
+        act(() => {
+            MockEventSource.last._emit('conversation-snapshot', { turns: snapshotTurns });
+        });
+        const updater = setTurnsAndRef.mock.calls[0][0];
+        const current = [
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'hello there, how are you doing?' }, // richer streaming content
+        ];
+        // Snapshot has more turns but shared turn has less content — keep current
+        expect(updater(current)).toBe(current);
     });
 
     it('calls setIsStreaming(false) and refreshConversation on done event', async () => {
@@ -271,5 +352,32 @@ describe('useChatSSE', () => {
         const updater = setTask.mock.calls.find(([arg]) => typeof arg === 'function')?.[0];
         expect(updater).toBeDefined();
         expect(updater({ status: 'running' })).toEqual({ status: 'failed' });
+    });
+
+    it('finish() dedup: onerror after done does not call refreshConversation twice', async () => {
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        const onSendComplete = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ refreshConversation, onSendComplete })));
+        const es = MockEventSource.last;
+        // Fire 'done' first (triggers finish())
+        await act(async () => { es._emit('done', {}); });
+        expect(refreshConversation).toHaveBeenCalledTimes(1);
+        expect(onSendComplete).toHaveBeenCalledTimes(1);
+        // Then fire onerror (should be suppressed by finished guard)
+        act(() => { es._emitError(); });
+        expect(refreshConversation).toHaveBeenCalledTimes(1); // still 1, not 2
+        expect(onSendComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('finish() dedup: done after status event does not double-fire', async () => {
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
+        const es = MockEventSource.last;
+        // Fire 'status failed' first
+        await act(async () => { es._emit('status', { status: 'failed' }); });
+        expect(refreshConversation).toHaveBeenCalledTimes(1);
+        // Then fire 'done' (should be suppressed)
+        await act(async () => { es._emit('done', {}); });
+        expect(refreshConversation).toHaveBeenCalledTimes(1);
     });
 });

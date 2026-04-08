@@ -82,7 +82,25 @@ export function useChatSSE({
         es.addEventListener('conversation-snapshot', (event: Event) => {
             try {
                 const data = JSON.parse((event as MessageEvent).data);
-                if (data.turns) setTurnsAndRef(data.turns);
+                if (data.turns) {
+                    // Guard: don't overwrite richer in-memory state with a stale snapshot
+                    // (can happen on SSE reconnection before the server has flushed latest turns)
+                    setTurnsAndRef(prev => {
+                        const snapshot = data.turns as ClientConversationTurn[];
+                        if (prev.length === 0) return snapshot;
+                        if (snapshot.length < prev.length) return prev;
+                        // Per-turn identity check: reject snapshot if ANY shared turn
+                        // has less content than in-memory (handles both same-length and
+                        // more-turns cases where server hasn't flushed latest chunks)
+                        const shared = Math.min(snapshot.length, prev.length);
+                        for (let i = 0; i < shared; i++) {
+                            const prevContent = prev[i].content?.length || 0;
+                            const snapContent = (snapshot[i].content as string)?.length || 0;
+                            if (snapContent < prevContent) return prev;
+                        }
+                        return snapshot;
+                    });
+                }
                 if (typeof data.sessionTokenLimit === 'number') setSessionTokenLimit(data.sessionTokenLimit);
                 if (typeof data.sessionCurrentTokens === 'number') setSessionCurrentTokens(data.sessionCurrentTokens);
             } catch { /* ignore */ }
@@ -177,18 +195,25 @@ export function useChatSSE({
             setIsStreaming(false);
         };
 
+        // Guard: prevent finish() from running twice if both 'done' and onerror fire
+        let finished = false;
+
         const finish = (finalStatus: 'completed' | 'failed' | 'cancelled' = 'completed') => {
+            if (finished) return;
+            finished = true;
             closeSSE();
             setBackgroundTasks(null);
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
             if (queueDispatch && workspaceId) {
                 queueDispatch({ type: 'REPO_TASK_COMPLETED_OPTIMISTIC', repoId: workspaceId, taskId, status: finalStatus });
             }
-            void refreshConversation(processId);
-            // Server drains one pending message on task completion; sync
-            // the queued section from the refreshed process data.
-            setPendingQueue([]);
-            onSendComplete();
+            setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
+            // Await refreshConversation before signalling completion to prevent
+            // flushQueueRef from adding optimistic turns that refreshConversation
+            // would then overwrite with stale server data.
+            refreshConversation(processId).finally(() => {
+                onSendComplete();
+            });
         };
 
         es.addEventListener('done', () => finish('completed'));
@@ -205,6 +230,8 @@ export function useChatSSE({
         });
 
         es.onerror = () => {
+            if (finished) return; // finish() already handled completion
+            finished = true;
             closeSSE();
             // Unblock any sendFollowUp awaiting completion so sending/Stop-button resets.
             onSendComplete();
