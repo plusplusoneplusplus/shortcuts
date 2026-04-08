@@ -54,7 +54,7 @@ async function renderSchedulesTab() {
     );
     // Wait for loading state to resolve
     await waitFor(() => {
-        expect(screen.queryByText('Loading schedules...')).toBeNull();
+        expect(screen.queryByText('Loading jobs...')).toBeNull();
     });
     return result;
 }
@@ -667,7 +667,7 @@ describe('Split-panel layout', () => {
         fireEvent.click(screen.getByText('+ New'));
 
         await waitFor(() => {
-            expect(screen.getByText('New Schedule')).toBeTruthy();
+            expect(screen.getByText('New Job')).toBeTruthy();
             expect(screen.getByText(MOCK_SCHEDULE.name)).toBeTruthy();
         });
     });
