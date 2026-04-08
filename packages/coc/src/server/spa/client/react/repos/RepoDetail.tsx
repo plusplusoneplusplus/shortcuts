@@ -50,7 +50,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
-    { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
+    { key: 'schedules', label: 'Jobs', shortcut: 'Alt+S' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'tasks', label: 'Tasks', shortcut: 'Alt+T' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },

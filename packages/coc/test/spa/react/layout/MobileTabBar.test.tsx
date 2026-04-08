@@ -15,7 +15,7 @@ const ALL_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'tasks', label: 'Tasks' },
     { key: 'work-items', label: 'Work Items' },
     { key: 'workflows', label: 'Workflows' },
-    { key: 'schedules', label: 'Schedules' },
+    { key: 'schedules', label: 'Jobs' },
     { key: 'copilot', label: 'Copilot' },
 ];
 

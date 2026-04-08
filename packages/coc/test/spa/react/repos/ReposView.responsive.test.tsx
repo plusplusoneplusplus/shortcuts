@@ -85,7 +85,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoDetail', () => ({
         { key: 'work-items', label: 'Work Items' },
         { key: 'pull-requests', label: 'Pull Requests' },
         { key: 'workflows', label: 'Workflows' },
-        { key: 'schedules', label: 'Schedules' },
+        { key: 'schedules', label: 'Jobs' },
         { key: 'explorer', label: 'Explorer' },
         { key: 'settings', label: 'Settings' },
     ],
