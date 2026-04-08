@@ -153,8 +153,9 @@ describe('WorkItemDetail — layout', () => {
             const runLabel = src.indexOf('Run #{i + 1}', execHistorySection);
             // "View Session" should appear after "Run #" in the execution history
             expect(viewSession).toBeGreaterThan(runLabel);
-            // The header row uses "flex items-center" — the session link should NOT be inside it
-            const headerFlexLine = src.lastIndexOf('flex items-center', viewSession);
+            // The header row line starts with 'flex items-center gap-2 px-3 py-2'
+            const headerFlexLine = src.lastIndexOf('flex items-center gap-2 px-3 py-2', viewSession);
+            expect(headerFlexLine).toBeGreaterThan(-1);
             const headerCloseDiv = src.indexOf('</div>', headerFlexLine);
             expect(viewSession).toBeGreaterThan(headerCloseDiv);
         });

@@ -55,9 +55,11 @@ interface WorkItemFull {
     createdAt: string; updatedAt: string; completedAt?: string;
     plan?: { version: number; content: string; updatedAt: string; resolvedBy?: string };
     taskId?: string; processId?: string;
-    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string }>;
+    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean }>;
     tags?: string[];
     autoExecute?: boolean;
+    autoResolveAndReExecute?: boolean;
+    autoReExecuteCycles?: number;
     reviewComments?: Array<{ id: string; text: string; createdAt: string; resolved?: boolean }>;
     changes?: Array<{
         id: string;
@@ -79,6 +81,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [requestingChanges, setRequestingChanges] = useState(false);
     const [acceptingDone, setAcceptingDone] = useState(false);
     const [resolvingDiffComments, setResolvingDiffComments] = useState(false);
+    const [resolvingCommitSha, setResolvingCommitSha] = useState<string | null>(null);
 
     const basePath = `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}`;
 
@@ -259,6 +262,30 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     };
 
+    /** Enqueue a per-commit AI resolve task via POST /api/diff-comments/:wsId/resolve-with-ai. */
+    const handlePerCommitResolve = async (sha: string) => {
+        if (!item) return;
+        setResolvingCommitSha(sha);
+        try {
+            const result = await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}/resolve-with-ai`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    oldRef: `${sha}^`,
+                    newRef: sha,
+                    workItemId: item.id,
+                }),
+            });
+            if (result.taskId && onNavigateToTasksTab) {
+                onNavigateToTasksTab(result.taskId);
+            }
+        } catch (err: any) {
+            setError(err.message || 'Failed to enqueue resolve task');
+        } finally {
+            setResolvingCommitSha(null);
+        }
+    };
+
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
     }
@@ -349,6 +376,26 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             className="rounded"
                         />
                         Auto
+                    </label>
+                    <label className="flex items-center gap-1 text-[10px] cursor-pointer" title="Auto-resolve diff comments and re-execute when all are resolved" data-testid="work-item-auto-resolve-toggle">
+                        <input
+                            type="checkbox"
+                            checked={item.autoResolveAndReExecute ?? false}
+                            onChange={async (e) => {
+                                try {
+                                    await fetchApi(basePath, {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ autoResolveAndReExecute: e.target.checked }),
+                                    });
+                                    await fetchItem();
+                                } catch (err: any) {
+                                    setError(err.message || 'Failed to update');
+                                }
+                            }}
+                            className="rounded"
+                        />
+                        Auto-resolve
                     </label>
                     <Button
                         variant="primary" size="sm"
@@ -503,12 +550,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             {item.executionHistory?.map((exec, i) => {
                                 const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
                                 const commits = matchingChange?.commits ?? [];
-                                const execOpenCommentCount = commits.reduce((sum, c) => sum + (commentTotals.get(c.sha) ?? 0), 0);
+                                const execOpenCommentCount = commits.reduce((sum, c) => sum + (commentTotals.get(c.sha)?.open ?? 0), 0);
                                 return (
                                     <div key={i} className="rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-xs" data-testid={`exec-entry-${i}`}>
                                         <div className="flex items-center gap-2 px-3 py-2">
                                             <span>{exec.status === 'running' ? '🔵' : exec.status === 'completed' ? '🟢' : exec.status === 'failed' ? '🔴' : '⚪'}</span>
                                             <span className="font-medium text-[#3c3c3c] dark:text-[#cccccc]">Run #{i + 1}</span>
+                                            {exec.autoReExecuted && (
+                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[9px]" data-testid={`exec-auto-reexecute-badge-${i}`}>
+                                                    🔄 Auto re-executed
+                                                </span>
+                                            )}
                                             <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
                                             {exec.completedAt && <span className="text-[#848484]">· {formatRelativeTime(exec.completedAt)}</span>}
                                         </div>
@@ -542,7 +594,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                         {exec.status === 'completed' && commits.length > 0 ? (
                                             <div className="px-3 pb-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 space-y-0.5" data-testid={`exec-commits-${i}`}>
                                                 {commits.map(c => {
-                                                    const openCount = commentTotals.get(c.sha) ?? 0;
+                                                    const ct = commentTotals.get(c.sha);
+                                                    const openCount = ct?.open ?? 0;
+                                                    const resolvedCount = ct?.resolved ?? 0;
                                                     return (
                                                         <div key={c.sha} className="flex items-start gap-1.5 text-[10px]">
                                                             {onViewCommit ? (
@@ -554,10 +608,33 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                                     {c.sha.slice(0, 7)}
                                                                 </a>
                                                             )}
+                                                            {resolvedCount > 0 && (
+                                                                <span className="inline-flex items-center gap-0.5 px-1 py-px rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[9px] shrink-0" data-testid={`commit-resolved-badge-${c.sha.slice(0, 7)}`}>
+                                                                    ✅ {resolvedCount}
+                                                                </span>
+                                                            )}
                                                             {openCount > 0 && (
                                                                 <span className="inline-flex items-center gap-0.5 px-1 py-px rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] shrink-0" data-testid={`commit-comment-badge-${c.sha.slice(0, 7)}`}>
                                                                     💬 {openCount}
                                                                 </span>
+                                                            )}
+                                                            {isAiDone && openCount > 0 && (
+                                                                <button
+                                                                    onClick={() => handlePerCommitResolve(c.sha)}
+                                                                    disabled={resolvingCommitSha === c.sha}
+                                                                    className={cn(
+                                                                        'inline-flex items-center gap-0.5 px-1 py-px rounded text-[9px] border transition-colors shrink-0',
+                                                                        'border-violet-300 dark:border-violet-700',
+                                                                        'bg-violet-50 dark:bg-violet-900/20',
+                                                                        'text-violet-700 dark:text-violet-400',
+                                                                        'hover:bg-violet-100 dark:hover:bg-violet-900/40',
+                                                                        'disabled:opacity-50 disabled:cursor-not-allowed',
+                                                                    )}
+                                                                    data-testid={`commit-resolve-btn-${c.sha.slice(0, 7)}`}
+                                                                    title="Enqueue AI resolve task for this commit"
+                                                                >
+                                                                    {resolvingCommitSha === c.sha ? '⏳' : '🔧'} Resolve
+                                                                </button>
                                                             )}
                                                             <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={c.message}>{c.message}</span>
                                                             {c.author && <span className="text-[#848484] shrink-0">— {c.author}</span>}
