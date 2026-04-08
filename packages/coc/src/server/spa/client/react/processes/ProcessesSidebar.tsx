@@ -8,6 +8,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { Card, Badge, Button, cn } from '../shared';
+import { RenameDialog } from '../shared/RenameDialog';
+import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
+import { fetchApi } from '../hooks/useApi';
 import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '../utils/format';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import { getApiBase } from '../utils/config';
@@ -63,11 +66,26 @@ export function ProcessesSidebar() {
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isClearLoading, setIsClearLoading] = useState(false);
     const [enqueueMenuOpen, setEnqueueMenuOpen] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; processId: string } | null>(null);
+    const [renameTarget, setRenameTarget] = useState<{ id: string; title: string } | null>(null);
 
     const navigateToRepo = useCallback((e: React.MouseEvent, workspaceId: string) => {
         e.stopPropagation();
         location.hash = '#repos/' + encodeURIComponent(workspaceId);
     }, []);
+
+    const handleRename = useCallback(async (newTitle: string) => {
+        if (!renameTarget) return;
+        setRenameTarget(null);
+        try {
+            await fetchApi(`/processes/${encodeURIComponent(renameTarget.id)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: newTitle }),
+            });
+            dispatch({ type: 'PROCESS_UPDATED', process: { id: renameTarget.id, title: newTitle } });
+        } catch { /* WS will sync eventually */ }
+    }, [renameTarget, dispatch]);
 
     // Queue task filtering
     const filteredRunning = useMemo(
@@ -277,6 +295,12 @@ export function ProcessesSidebar() {
                                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
                                     }
                                 }}
+                                onContextMenu={(e: React.MouseEvent) => {
+                                    if (['completed', 'failed', 'cancelled'].includes(p.status)) {
+                                        e.preventDefault();
+                                        setContextMenu({ x: e.clientX, y: e.clientY, processId: p.id });
+                                    }
+                                }}
                                 className={cn(
                                     'p-2.5 process-item',
                                     isActive && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]'
@@ -376,6 +400,31 @@ export function ProcessesSidebar() {
                     </div>
                 )}
             </div>
+
+            {contextMenu && (
+                <ContextMenu
+                    position={{ x: contextMenu.x, y: contextMenu.y }}
+                    items={[
+                        {
+                            label: 'Rename',
+                            icon: '✏️',
+                            onClick: () => {
+                                const p = state.processes.find((proc: any) => proc.id === contextMenu.processId);
+                                setRenameTarget({ id: contextMenu.processId, title: p?.title || p?.promptPreview || '' });
+                                setContextMenu(null);
+                            },
+                        },
+                    ]}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
+
+            <RenameDialog
+                open={!!renameTarget}
+                currentTitle={renameTarget?.title ?? ''}
+                onConfirm={handleRename}
+                onCancel={() => setRenameTarget(null)}
+            />
         </div>
     );
 }
