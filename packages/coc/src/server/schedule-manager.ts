@@ -538,6 +538,13 @@ export class ScheduleManager extends EventEmitter {
                 return;
             }
 
+            // Timer may fire slightly early due to JS timer imprecision.
+            // If we haven't reached the target time yet, reschedule.
+            if (Date.now() < next.getTime()) {
+                this.scheduleNextRun(repoId, current);
+                return;
+            }
+
             // Skip if previous run still active
             if (this.runningSchedules.has(schedule.id)) {
                 process.stderr.write(`[ScheduleManager] Skipped ${schedule.name}: previous run still active\n`);
