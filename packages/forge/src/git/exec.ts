@@ -5,6 +5,7 @@
  */
 
 import { exec, execSync } from 'child_process';
+import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
 
 /**
  * Options for `execGit`.
@@ -39,23 +40,28 @@ export function execGitAsync(args: string[], repoRoot: string, options?: ExecGit
     const joined = ['git', '-C', repoRoot, ...args].join(' ');
     const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
     return new Promise((resolve, reject) => {
-        exec(cmd, {
-            maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
-            timeout: options?.timeout ?? DEFAULT_TIMEOUT,
-            encoding: 'utf-8',
-            cwd: options?.cwd,
-        }, (error, stdout, stderr) => {
-            if (error) {
-                const stderrStr = typeof stderr === 'string' ? stderr.trim() : '';
-                reject(new Error(`git ${args.join(' ')} failed: ${stderrStr}`));
-            } else {
-                resolve((stdout as string).replace(/\r?\n$/, ''));
-            }
-        });
+        ensureGitSafeDirectoryAsync(repoRoot)
+            .then(() => {
+                exec(cmd, {
+                    maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
+                    timeout: options?.timeout ?? DEFAULT_TIMEOUT,
+                    encoding: 'utf-8',
+                    cwd: options?.cwd,
+                }, (error, stdout, stderr) => {
+                    if (error) {
+                        const stderrStr = typeof stderr === 'string' ? stderr.trim() : '';
+                        reject(new Error(`git ${args.join(' ')} failed: ${stderrStr}`));
+                    } else {
+                        resolve((stdout as string).replace(/\r?\n$/, ''));
+                    }
+                });
+            })
+            .catch(reject);
     });
 }
 
 export function execGit(args: string[], repoRoot: string, options?: ExecGitOptions): string {
+    ensureGitSafeDirectorySync(repoRoot);
     const joined = ['git', '-C', repoRoot, ...args].join(' ');
     const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
     try {

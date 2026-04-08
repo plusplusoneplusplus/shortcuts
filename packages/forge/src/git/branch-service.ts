@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
+import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
 import {
     BranchStatus,
     GitBranch,
@@ -42,6 +43,7 @@ export class BranchService {
      * Used by branch management operations (create, switch, delete, etc.).
      */
     private execGitSync(command: string, options: GitExecOptions): string {
+        ensureGitSafeDirectorySync(options.cwd);
         return execSync(command, {
             cwd: options.cwd,
             encoding: options.encoding || 'utf-8',
@@ -55,6 +57,7 @@ export class BranchService {
      * Execute a git command asynchronously via execAsync.
      */
     private async execGit(command: string, options: GitExecOptions): Promise<string> {
+        await ensureGitSafeDirectoryAsync(options.cwd);
         const { stdout } = await execAsync(command, {
             cwd: options.cwd,
             timeout: options.timeout || 30000,
