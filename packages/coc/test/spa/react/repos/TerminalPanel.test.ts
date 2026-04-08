@@ -99,12 +99,21 @@ describe('TerminalPanel', () => {
     });
 
     describe('message handling', () => {
+        it('handles terminal-created message', () => {
+            expect(source).toContain('terminal-created');
+        });
+
         it('handles terminal-output message', () => {
             expect(source).toContain('terminal-output');
         });
 
         it('handles terminal-exit message', () => {
             expect(source).toContain('terminal-exit');
+        });
+
+        it('reads exitCode from terminal-exit (not code)', () => {
+            expect(source).toContain('msg.exitCode');
+            expect(source).not.toContain('msg.code');
         });
 
         it('handles terminal-error message', () => {

@@ -11,19 +11,30 @@ import { getWsPath } from '../utils/config';
 export type { WsStatus } from './useWebSocket';
 type WsStatus = 'connecting' | 'open' | 'closed';
 
-// Client → Server
+// Client → Server (aligned with packages/coc/src/server/terminal/types.ts)
 export type TerminalClientMessage =
-    | { type: 'terminal-input'; data: string }
-    | { type: 'terminal-resize'; cols: number; rows: number }
-    | { type: 'terminal-close' }
+    | { type: 'terminal-create'; workspaceId: string; cols?: number; rows?: number }
+    | { type: 'terminal-input'; sessionId: string; data: string }
+    | { type: 'terminal-resize'; sessionId: string; cols: number; rows: number }
+    | { type: 'terminal-close'; sessionId: string }
     | { type: 'ping' };
 
-// Server → Client
+// Server → Client (aligned with packages/coc/src/server/terminal/types.ts)
+export interface TerminalSessionInfo {
+    id: string;
+    workspaceId: string;
+    cols: number;
+    rows: number;
+    createdAt: number;
+    lastActivity: number;
+    pid: number;
+}
+
 export type TerminalServerMessage =
-    | { type: 'terminal-created'; sessionId: string; cols: number; rows: number }
-    | { type: 'terminal-output'; data: string }
-    | { type: 'terminal-exit'; code: number }
-    | { type: 'terminal-error'; message: string }
+    | { type: 'terminal-created'; session: TerminalSessionInfo }
+    | { type: 'terminal-output'; sessionId: string; data: string }
+    | { type: 'terminal-exit'; sessionId: string; exitCode: number; signal?: number }
+    | { type: 'terminal-error'; sessionId: string | null; message: string }
     | { type: 'pong' };
 
 export interface UseTerminalWebSocketOptions {
@@ -47,6 +58,7 @@ export function useTerminalWebSocket({
 }: UseTerminalWebSocketOptions): UseTerminalWebSocketReturn {
     const [status, setStatus] = useState<WsStatus>('closed');
     const wsRef = useRef<WebSocket | null>(null);
+    const sessionIdRef = useRef<string | null>(null);
     const reconnectDelayRef = useRef(1000);
     const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -78,6 +90,7 @@ export function useTerminalWebSocket({
         if (!params) return;
 
         cleanup();
+        sessionIdRef.current = null;
         if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
             wsRef.current.close();
         }
@@ -93,6 +106,13 @@ export function useTerminalWebSocket({
         ws.onopen = () => {
             reconnectDelayRef.current = 1000;
             setStatus('open');
+            // Spawn a PTY session on the server
+            ws.send(JSON.stringify({
+                type: 'terminal-create',
+                workspaceId: params.workspaceId,
+                cols: params.cols,
+                rows: params.rows,
+            }));
             pingIntervalRef.current = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'ping' }));
@@ -104,6 +124,9 @@ export function useTerminalWebSocket({
         ws.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
+                if (msg.type === 'terminal-created' && msg.session?.id) {
+                    sessionIdRef.current = msg.session.id;
+                }
                 onMessageRef.current(msg);
             } catch { /* ignore parse errors */ }
         };
@@ -136,21 +159,25 @@ export function useTerminalWebSocket({
         manualCloseRef.current = true;
         cleanup();
         if (wsRef.current) {
+            if (wsRef.current.readyState === WebSocket.OPEN && sessionIdRef.current) {
+                wsRef.current.send(JSON.stringify({ type: 'terminal-close', sessionId: sessionIdRef.current }));
+            }
             wsRef.current.close();
             wsRef.current = null;
         }
+        sessionIdRef.current = null;
         setStatus('closed');
     }, [cleanup]);
 
     const sendInput = useCallback((data: string) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'terminal-input', data }));
+        if (wsRef.current?.readyState === WebSocket.OPEN && sessionIdRef.current) {
+            wsRef.current.send(JSON.stringify({ type: 'terminal-input', sessionId: sessionIdRef.current, data }));
         }
     }, []);
 
     const sendResize = useCallback((cols: number, rows: number) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'terminal-resize', cols, rows }));
+        if (wsRef.current?.readyState === WebSocket.OPEN && sessionIdRef.current) {
+            wsRef.current.send(JSON.stringify({ type: 'terminal-resize', sessionId: sessionIdRef.current, cols, rows }));
         }
     }, []);
 

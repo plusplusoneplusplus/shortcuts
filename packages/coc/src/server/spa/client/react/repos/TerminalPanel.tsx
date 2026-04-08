@@ -83,12 +83,15 @@ export function TerminalPanel({ sessionId, workspaceId, isActive, onExit, onTitl
             if (!term) return;
 
             switch (msg.type) {
+                case 'terminal-created':
+                    // Session created — hook stores sessionId internally
+                    break;
                 case 'terminal-output':
                     term.write(msg.data);
                     break;
                 case 'terminal-exit':
                     term.write('\r\n\x1b[90m[Process exited]\x1b[0m\r\n');
-                    onExit?.(msg.code);
+                    onExit?.(msg.exitCode);
                     break;
                 case 'terminal-error':
                     term.write(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m\r\n`);

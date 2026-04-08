@@ -109,48 +109,122 @@ describe('useTerminalWebSocket', () => {
         expect(result.current.status).toBe('open');
     });
 
-    it('sendInput sends JSON message when connected', () => {
+    it('sends terminal-create message on open', () => {
         const { result } = renderHook(() =>
             useTerminalWebSocket({ onMessage: vi.fn() }),
         );
         act(() => { result.current.connect('ws-123', 80, 24); });
         act(() => { MockWebSocket.last._open(); });
 
-        act(() => { result.current.sendInput('hello'); });
+        // First send call should be terminal-create
         expect(MockWebSocket.last.send).toHaveBeenCalledWith(
-            JSON.stringify({ type: 'terminal-input', data: 'hello' })
+            JSON.stringify({ type: 'terminal-create', workspaceId: 'ws-123', cols: 80, rows: 24 })
         );
     });
 
-    it('sendInput is no-op when disconnected', () => {
+    it('stores sessionId from terminal-created response', () => {
+        const onMessage = vi.fn();
+        const { result } = renderHook(() =>
+            useTerminalWebSocket({ onMessage }),
+        );
+        act(() => { result.current.connect('ws-123', 80, 24); });
+        act(() => { MockWebSocket.last._open(); });
+
+        // Simulate server terminal-created response
+        act(() => {
+            MockWebSocket.last._message({
+                type: 'terminal-created',
+                session: { id: 'sess-abc', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234 },
+            });
+        });
+
+        // onMessage should still receive the message
+        expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'terminal-created' }));
+
+        // Now sendInput should include sessionId
+        act(() => { result.current.sendInput('hello'); });
+        expect(MockWebSocket.last.send).toHaveBeenCalledWith(
+            JSON.stringify({ type: 'terminal-input', sessionId: 'sess-abc', data: 'hello' })
+        );
+    });
+
+    it('sendInput sends JSON message with sessionId when connected', () => {
         const { result } = renderHook(() =>
             useTerminalWebSocket({ onMessage: vi.fn() }),
         );
+        act(() => { result.current.connect('ws-123', 80, 24); });
+        act(() => { MockWebSocket.last._open(); });
+        act(() => {
+            MockWebSocket.last._message({
+                type: 'terminal-created',
+                session: { id: 'sess-abc', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234 },
+            });
+        });
+
+        act(() => { result.current.sendInput('hello'); });
+        expect(MockWebSocket.last.send).toHaveBeenCalledWith(
+            JSON.stringify({ type: 'terminal-input', sessionId: 'sess-abc', data: 'hello' })
+        );
+    });
+
+    it('sendInput is no-op when no session exists', () => {
+        const { result } = renderHook(() =>
+            useTerminalWebSocket({ onMessage: vi.fn() }),
+        );
+        // No connect, no session
         act(() => { result.current.sendInput('hello'); });
         expect(MockWebSocket.instances).toHaveLength(0);
     });
 
-    it('sendResize sends JSON message', () => {
+    it('sendInput is no-op before terminal-created', () => {
         const { result } = renderHook(() =>
             useTerminalWebSocket({ onMessage: vi.fn() }),
         );
         act(() => { result.current.connect('ws-123', 80, 24); });
         act(() => { MockWebSocket.last._open(); });
+        MockWebSocket.last.send.mockClear();
+
+        // sendInput before terminal-created should be no-op (no sessionId)
+        act(() => { result.current.sendInput('hello'); });
+        expect(MockWebSocket.last.send).not.toHaveBeenCalled();
+    });
+
+    it('sendResize sends JSON message with sessionId', () => {
+        const { result } = renderHook(() =>
+            useTerminalWebSocket({ onMessage: vi.fn() }),
+        );
+        act(() => { result.current.connect('ws-123', 80, 24); });
+        act(() => { MockWebSocket.last._open(); });
+        act(() => {
+            MockWebSocket.last._message({
+                type: 'terminal-created',
+                session: { id: 'sess-abc', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234 },
+            });
+        });
 
         act(() => { result.current.sendResize(120, 40); });
         expect(MockWebSocket.last.send).toHaveBeenCalledWith(
-            JSON.stringify({ type: 'terminal-resize', cols: 120, rows: 40 })
+            JSON.stringify({ type: 'terminal-resize', sessionId: 'sess-abc', cols: 120, rows: 40 })
         );
     });
 
-    it('disconnect() closes WebSocket and prevents reconnect', () => {
+    it('disconnect() sends terminal-close then closes WebSocket', () => {
         const { result } = renderHook(() =>
             useTerminalWebSocket({ onMessage: vi.fn() }),
         );
         act(() => { result.current.connect('ws-123', 80, 24); });
         act(() => { MockWebSocket.last._open(); });
+        act(() => {
+            MockWebSocket.last._message({
+                type: 'terminal-created',
+                session: { id: 'sess-abc', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234 },
+            });
+        });
 
         act(() => { result.current.disconnect(); });
+        expect(MockWebSocket.last.send).toHaveBeenCalledWith(
+            JSON.stringify({ type: 'terminal-close', sessionId: 'sess-abc' })
+        );
         expect(result.current.status).toBe('closed');
 
         act(() => { vi.advanceTimersByTime(5000); });
