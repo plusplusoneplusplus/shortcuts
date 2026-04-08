@@ -22,6 +22,11 @@ export interface ExecGitOptions {
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024; // 10 MB
 const DEFAULT_TIMEOUT = 30_000;               // 30 s
 
+function createGitExecError(args: string[], err: unknown): Error {
+    const stderr = (err as { stderr?: string | Buffer })?.stderr?.toString().trim() ?? '';
+    return new Error(`git ${args.join(' ')} failed: ${stderr}`);
+}
+
 /**
  * Execute a git command synchronously.
  *
@@ -49,22 +54,21 @@ export function execGitAsync(args: string[], repoRoot: string, options?: ExecGit
                     cwd: options?.cwd,
                 }, (error, stdout, stderr) => {
                     if (error) {
-                        const stderrStr = typeof stderr === 'string' ? stderr.trim() : '';
-                        reject(new Error(`git ${args.join(' ')} failed: ${stderrStr}`));
+                        reject(createGitExecError(args, { stderr }));
                     } else {
                         resolve((stdout as string).replace(/\r?\n$/, ''));
                     }
                 });
             })
-            .catch(reject);
+            .catch(err => reject(createGitExecError(args, err)));
     });
 }
 
 export function execGit(args: string[], repoRoot: string, options?: ExecGitOptions): string {
-    ensureGitSafeDirectorySync(repoRoot);
     const joined = ['git', '-C', repoRoot, ...args].join(' ');
     const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
     try {
+        ensureGitSafeDirectorySync(repoRoot);
         const output = execSync(cmd, {
             maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
             timeout: options?.timeout ?? DEFAULT_TIMEOUT,
@@ -74,7 +78,6 @@ export function execGit(args: string[], repoRoot: string, options?: ExecGitOptio
         // Strip trailing newline(s)
         return output.replace(/\r?\n$/, '');
     } catch (err: unknown) {
-        const stderr = (err as { stderr?: string | Buffer })?.stderr?.toString().trim() ?? '';
-        throw new Error(`git ${args.join(' ')} failed: ${stderr}`);
+        throw createGitExecError(args, err);
     }
 }

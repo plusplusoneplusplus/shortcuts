@@ -4,6 +4,7 @@ import { getDefaultWslDistro } from '../utils/workspace-execution';
 import { isLinuxAbsolutePath, parseWslUncPath, toForwardSlashes, trimTrailingPathSeparators } from '../utils/path-utils';
 
 const ensuredSafeDirectories = new Set<string>();
+const inFlightSafeDirectoryEnsures = new Map<string, Promise<void>>();
 
 function normalizeLinuxPath(linuxPath: string): string {
     const normalized = trimTrailingPathSeparators(toForwardSlashes(linuxPath));
@@ -81,6 +82,7 @@ async function isSafeDirectoryConfiguredAsync(safeDirectory: string): Promise<bo
 
 export function clearGitSafeDirectoryCache(): void {
     ensuredSafeDirectories.clear();
+    inFlightSafeDirectoryEnsures.clear();
 }
 
 export function ensureGitSafeDirectorySync(repoRoot: string): void {
@@ -106,11 +108,24 @@ export async function ensureGitSafeDirectoryAsync(repoRoot: string): Promise<voi
         return;
     }
 
-    if (!(await isSafeDirectoryConfiguredAsync(safeDirectory))) {
-        await execFileAsync('git', ['config', '--global', '--add', 'safe.directory', safeDirectory], {
-            windowsHide: true,
-        });
+    const inFlightEnsure = inFlightSafeDirectoryEnsures.get(safeDirectory);
+    if (inFlightEnsure) {
+        await inFlightEnsure;
+        return;
     }
 
-    ensuredSafeDirectories.add(safeDirectory);
+    const ensurePromise = (async () => {
+        if (!(await isSafeDirectoryConfiguredAsync(safeDirectory))) {
+            await execFileAsync('git', ['config', '--global', '--add', 'safe.directory', safeDirectory], {
+                windowsHide: true,
+            });
+        }
+
+        ensuredSafeDirectories.add(safeDirectory);
+    })().finally(() => {
+        inFlightSafeDirectoryEnsures.delete(safeDirectory);
+    });
+
+    inFlightSafeDirectoryEnsures.set(safeDirectory, ensurePromise);
+    await ensurePromise;
 }

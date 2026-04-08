@@ -121,4 +121,52 @@ describe('safe-directory', () => {
             Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
         }
     });
+
+    it('deduplicates concurrent async ensure operations for the same repo', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+
+        let resolveConfigured: ((value: { stdout: string; stderr: string }) => void) | undefined;
+        const configuredPromise = new Promise<{ stdout: string; stderr: string }>(resolve => {
+            resolveConfigured = resolve;
+        });
+        let resolveAdd: ((value: { stdout: string; stderr: string }) => void) | undefined;
+        const addPromise = new Promise<{ stdout: string; stderr: string }>(resolve => {
+            resolveAdd = resolve;
+        });
+
+        mockedExecFileAsync
+            .mockImplementationOnce(() => configuredPromise)
+            .mockImplementationOnce(() => addPromise);
+
+        try {
+            const repoRoot = '\\\\wsl$\\Ubuntu-24.04\\home\\georgeqiao\\repo';
+            const first = ensureGitSafeDirectoryAsync(repoRoot);
+            const second = ensureGitSafeDirectoryAsync(repoRoot);
+
+            expect(mockedExecFileAsync).toHaveBeenCalledTimes(1);
+
+            resolveConfigured?.({ stdout: '', stderr: '' });
+            await Promise.resolve();
+            resolveAdd?.({ stdout: '', stderr: '' });
+            await Promise.all([first, second]);
+            await ensureGitSafeDirectoryAsync(repoRoot);
+
+            expect(mockedExecFileAsync).toHaveBeenCalledTimes(2);
+            expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
+                1,
+                'git',
+                ['config', '--global', '--get-all', 'safe.directory'],
+                expect.objectContaining({ windowsHide: true }),
+            );
+            expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
+                2,
+                'git',
+                ['config', '--global', '--add', 'safe.directory', '%(prefix)///wsl$/Ubuntu-24.04/home/georgeqiao/repo'],
+                expect.objectContaining({ windowsHide: true }),
+            );
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+        }
+    });
 });
