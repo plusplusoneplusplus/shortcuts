@@ -345,7 +345,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             return (
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between text-xs text-[#616161] dark:text-[#999]">
-                        <span>Found <strong>{repos.length}</strong> repository{repos.length !== 1 ? 'ies' : 'y'} in <span className="font-mono">{browserPath}</span></span>
+                        <span>Found <strong>{repos.length}</strong> repositor{repos.length !== 1 ? 'ies' : 'y'} in <span className="font-mono">{browserPath}</span></span>
                         {repos.length > 0 && (
                             <button
                                 type="button"

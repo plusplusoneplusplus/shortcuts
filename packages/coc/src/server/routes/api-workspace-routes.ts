@@ -129,6 +129,15 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             );
 
             const repos: Array<{ path: string; name: string }> = [];
+
+            // Check if the scanned directory itself is a git repo
+            if (fs.existsSync(path.join(resolvedPath, '.git'))) {
+                if (!registeredPaths.has(resolvedPath)) {
+                    repos.push({ path: resolvedPath, name: path.basename(resolvedPath) });
+                }
+            }
+
+            // Scan direct child directories for git repos
             for (const entry of entries) {
                 if (!entry.isDirectory()) continue;
                 const childPath = path.join(resolvedPath, entry.name);
