@@ -186,6 +186,53 @@ describe('AppContext reducer', () => {
             const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns: newTurns } as AppAction);
             expect(result.conversationCache['p1'].turns).toEqual(newTurns);
         });
+
+        it('rejects stale data with same turn count but less total content', () => {
+            const existingTurns = [
+                { role: 'user', content: 'hi' },
+                { role: 'assistant', content: 'This is a complete response with lots of detail.' },
+            ];
+            const state = makeState({
+                conversationCache: { 'p1': { turns: existingTurns, cachedAt: Date.now() } },
+            });
+            const staleTurns = [
+                { role: 'user', content: 'hi' },
+                { role: 'assistant', content: '' }, // stale: content not flushed yet
+            ];
+            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns: staleTurns } as AppAction);
+            expect(result.conversationCache['p1'].turns).toEqual(existingTurns);
+            expect(result).toBe(state);
+        });
+
+        it('accepts data with same turn count but equal or more content', () => {
+            const existingTurns = [
+                { role: 'user', content: 'hi' },
+                { role: 'assistant', content: 'hello' },
+            ];
+            const state = makeState({
+                conversationCache: { 'p1': { turns: existingTurns, cachedAt: Date.now() - 1000 } },
+            });
+            const newTurns = [
+                { role: 'user', content: 'hi' },
+                { role: 'assistant', content: 'hello, how are you?' }, // more content
+            ];
+            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns: newTurns } as AppAction);
+            expect(result.conversationCache['p1'].turns).toEqual(newTurns);
+        });
+
+        it('stores dirty flag from action', () => {
+            const turns = [{ role: 'user', content: 'hi' }];
+            const state = makeState({});
+            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns, dirty: true } as AppAction);
+            expect(result.conversationCache['p1'].dirty).toBe(true);
+        });
+
+        it('defaults dirty to false when not provided', () => {
+            const turns = [{ role: 'user', content: 'hi' }];
+            const state = makeState({});
+            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns } as AppAction);
+            expect(result.conversationCache['p1'].dirty).toBe(false);
+        });
     });
 });
 
