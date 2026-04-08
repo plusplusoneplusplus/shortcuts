@@ -145,10 +145,6 @@ export {
     safeRename,
     safeRemove,
     getFileErrorMessage,
-    safeExistsAsync,
-    safeStatsAsync,
-    safeReadDirAsync,
-    safeReadFileAsync,
     // Glob utilities
     glob,
     getFilesWithExtension,
@@ -830,12 +826,6 @@ export {
     scanFoldersRecursively,
     groupTaskDocuments,
     buildTaskFolderHierarchy,
-    // Async scanner variants
-    scanTasksRecursivelyAsync,
-    scanDocumentsRecursivelyAsync,
-    scanFoldersRecursivelyAsync,
-    scanContextDocumentsInFolderAsync,
-    buildTaskFolderHierarchyAsync,
     // Task CRUD operations
     createTask,
     createFeature,

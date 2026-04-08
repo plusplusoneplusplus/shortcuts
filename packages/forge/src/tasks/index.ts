@@ -63,12 +63,6 @@ export {
     groupTaskDocuments,
     buildTaskFolderHierarchy,
     isContextFile,
-    // Async variants
-    scanTasksRecursivelyAsync,
-    scanDocumentsRecursivelyAsync,
-    scanFoldersRecursivelyAsync,
-    scanContextDocumentsInFolderAsync,
-    buildTaskFolderHierarchyAsync,
 } from './task-scanner';
 
 export {

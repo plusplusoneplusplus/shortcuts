@@ -7,12 +7,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import {
-    scanTasksRecursivelyAsync,
-    scanDocumentsRecursivelyAsync,
-    scanFoldersRecursivelyAsync,
-    scanContextDocumentsInFolderAsync,
+    scanTasksRecursively,
+    scanDocumentsRecursively,
+    scanFoldersRecursively,
+    scanContextDocumentsInFolder,
     groupTaskDocuments,
-    buildTaskFolderHierarchyAsync,
+    buildTaskFolderHierarchy,
     isContextFile,
 } from '../../src/tasks/task-scanner';
 import { TaskDocument, TaskFolder } from '../../src/tasks/types';
@@ -95,7 +95,7 @@ describe('isContextFile', () => {
 
 describe('scanTasksRecursively', () => {
     it('returns empty array for empty directory', async () => {
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         expect(result).toEqual([]);
     });
 
@@ -103,7 +103,7 @@ describe('scanTasksRecursively', () => {
         createMd('task-a.md');
         createMd('task-b.md');
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         expect(result).toHaveLength(2);
         expect(result.map(t => t.name).sort()).toEqual(['task-a', 'task-b']);
     });
@@ -113,7 +113,7 @@ describe('scanTasksRecursively', () => {
         createMd('nested.md', 'sub1');
         createMd('deep.md', path.join('sub1', 'sub2'));
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         expect(result).toHaveLength(3);
 
         const deep = result.find(t => t.name === 'deep');
@@ -125,7 +125,7 @@ describe('scanTasksRecursively', () => {
         createMd('active.md');
         createMd('archived.md', 'archive');
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].name).toBe('active');
     });
@@ -133,7 +133,7 @@ describe('scanTasksRecursively', () => {
     it('includes archive contents when isArchived=true', async () => {
         createMd('archived.md');
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', true);
+        const result = await scanTasksRecursively(tmpDir, '', true);
         expect(result).toHaveLength(1);
         expect(result[0].isArchived).toBe(true);
     });
@@ -143,13 +143,13 @@ describe('scanTasksRecursively', () => {
         createFile('console.log("hi")', 'script.js');
         createFile('hello', 'readme.txt');
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].name).toBe('task');
     });
 
     it('handles unreadable directories gracefully', async () => {
-        const result = await scanTasksRecursivelyAsync(path.join(tmpDir, 'nonexistent'), '', false);
+        const result = await scanTasksRecursively(path.join(tmpDir, 'nonexistent'), '', false);
         expect(result).toEqual([]);
     });
 
@@ -157,7 +157,7 @@ describe('scanTasksRecursively', () => {
         createMd('a.md', 'feature1');
         createMd('b.md', path.join('feature1', 'backlog'));
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         const a = result.find(t => t.name === 'a')!;
         const b = result.find(t => t.name === 'b')!;
 
@@ -170,7 +170,7 @@ describe('scanTasksRecursively', () => {
         createMd('done-task.md', undefined, 'done');
         createMd('no-status.md');
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         const pending = result.find(t => t.name === 'pending-task')!;
         const done = result.find(t => t.name === 'done-task')!;
         const noStatus = result.find(t => t.name === 'no-status')!;
@@ -183,7 +183,7 @@ describe('scanTasksRecursively', () => {
     it('root-level files have undefined relativePath', async () => {
         createMd('root.md');
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         expect(result[0].relativePath).toBeUndefined();
     });
 
@@ -196,7 +196,7 @@ describe('scanTasksRecursively', () => {
         createMd('index.md');
         createMd('context.md');
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].name).toBe('task');
     });
@@ -207,7 +207,7 @@ describe('scanTasksRecursively', () => {
         createMd('README.MD');
         createMd('Claude.md');
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].name).toBe('task');
     });
@@ -218,7 +218,7 @@ describe('scanTasksRecursively', () => {
         createMd('actual-task.md', path.join('feature1', 'sub'));
         createMd('CLAUDE.md', path.join('feature1', 'sub'));
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         expect(result).toHaveLength(2);
         expect(result.map(t => t.name).sort()).toEqual(['actual-task', 'task']);
     });
@@ -228,7 +228,7 @@ describe('scanTasksRecursively', () => {
         createMd('b.md', path.join('feature1', 'sub'));
         createMd('c.md', path.join('feature1', 'sub', 'deep'));
 
-        const result = await scanTasksRecursivelyAsync(tmpDir, '', false);
+        const result = await scanTasksRecursively(tmpDir, '', false);
         const a = result.find(t => t.name === 'a')!;
         const b = result.find(t => t.name === 'b')!;
         const c = result.find(t => t.name === 'c')!;
@@ -251,7 +251,7 @@ describe('scanTasksRecursively', () => {
 
 describe('scanDocumentsRecursively', () => {
     it('returns empty array for empty directory', async () => {
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         expect(result).toEqual([]);
     });
 
@@ -260,7 +260,7 @@ describe('scanDocumentsRecursively', () => {
         createMd('task1.spec.md');
         createMd('simple.md');
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         expect(result).toHaveLength(3);
 
         const plan = result.find(d => d.fileName === 'task1.plan.md')!;
@@ -275,7 +275,7 @@ describe('scanDocumentsRecursively', () => {
     it('scans nested subdirectories', async () => {
         createMd('task.md', 'sub');
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].relativePath).toBe('sub');
     });
@@ -284,14 +284,14 @@ describe('scanDocumentsRecursively', () => {
         createMd('active.md');
         createMd('archived.md', 'archive');
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         expect(result).toHaveLength(1);
     });
 
     it('includes archive contents when isArchived=true', async () => {
         createMd('archived.md');
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', true);
+        const result = await scanDocumentsRecursively(tmpDir, '', true);
         expect(result).toHaveLength(1);
         expect(result[0].isArchived).toBe(true);
     });
@@ -300,19 +300,19 @@ describe('scanDocumentsRecursively', () => {
         createFile('hello', 'readme.txt');
         createMd('task.md');
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         expect(result).toHaveLength(1);
     });
 
     it('parses status from frontmatter', async () => {
         createMd('task.md', undefined, 'in-progress');
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         expect(result[0].status).toBe('in-progress');
     });
 
     it('handles unreadable directories gracefully', async () => {
-        const result = await scanDocumentsRecursivelyAsync(path.join(tmpDir, 'nonexistent'), '', false);
+        const result = await scanDocumentsRecursively(path.join(tmpDir, 'nonexistent'), '', false);
         expect(result).toEqual([]);
     });
 
@@ -320,7 +320,7 @@ describe('scanDocumentsRecursively', () => {
         createMd('a.plan.md', 'feature1');
         createMd('b.md', path.join('feature1', 'backlog'));
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         const a = result.find(d => d.fileName === 'a.plan.md')!;
         const b = result.find(d => d.fileName === 'b.md')!;
 
@@ -335,7 +335,7 @@ describe('scanDocumentsRecursively', () => {
         createMd('LICENSE.md');
         createMd('index.md');
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].fileName).toBe('task.plan.md');
     });
@@ -345,7 +345,7 @@ describe('scanDocumentsRecursively', () => {
         createMd('readme.md');
         createMd('Claude.md');
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].fileName).toBe('task.md');
     });
@@ -356,7 +356,7 @@ describe('scanDocumentsRecursively', () => {
         createMd('actual-task.spec.md', path.join('feature1', 'sub'));
         createMd('CLAUDE.md', path.join('feature1', 'sub'));
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         expect(result).toHaveLength(2);
         expect(result.map(d => d.fileName).sort()).toEqual(['actual-task.spec.md', 'task.md']);
     });
@@ -366,7 +366,7 @@ describe('scanDocumentsRecursively', () => {
         createMd('b.spec.md', path.join('feature1', 'sub'));
         createMd('c.md', path.join('feature1', 'sub', 'deep'));
 
-        const result = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
+        const result = await scanDocumentsRecursively(tmpDir, '', false);
         const a = result.find(d => d.fileName === 'a.plan.md')!;
         const b = result.find(d => d.fileName === 'b.spec.md')!;
         const c = result.find(d => d.fileName === 'c.md')!;
@@ -395,7 +395,7 @@ describe('scanFoldersRecursively', () => {
         const root = makeRootFolder();
         folderMap.set('', root);
 
-        await scanFoldersRecursivelyAsync(tmpDir, '', false, folderMap, root);
+        await scanFoldersRecursively(tmpDir, '', false, folderMap, root);
         expect(root.children).toHaveLength(2);
         expect(root.children.map(c => c.name).sort()).toEqual(['feature1', 'feature2']);
     });
@@ -408,7 +408,7 @@ describe('scanFoldersRecursively', () => {
         const root = makeRootFolder();
         folderMap.set('', root);
 
-        await scanFoldersRecursivelyAsync(tmpDir, '', false, folderMap, root);
+        await scanFoldersRecursively(tmpDir, '', false, folderMap, root);
         expect(folderMap.has('a')).toBe(true);
         expect(folderMap.has('a/b')).toBe(true);
     });
@@ -421,7 +421,7 @@ describe('scanFoldersRecursively', () => {
         const root = makeRootFolder();
         folderMap.set('', root);
 
-        await scanFoldersRecursivelyAsync(tmpDir, '', false, folderMap, root);
+        await scanFoldersRecursively(tmpDir, '', false, folderMap, root);
         expect(root.children).toHaveLength(1);
         expect(root.children[0].name).toBe('feature');
     });
@@ -434,7 +434,7 @@ describe('scanFoldersRecursively', () => {
         const root = makeRootFolder();
         folderMap.set('', root);
 
-        await scanFoldersRecursivelyAsync(tmpDir, '', true, folderMap, root);
+        await scanFoldersRecursively(tmpDir, '', true, folderMap, root);
         expect(root.children).toHaveLength(2);
     });
 
@@ -444,7 +444,7 @@ describe('scanFoldersRecursively', () => {
         const root = makeRootFolder();
         folderMap.set('', root);
 
-        await scanFoldersRecursivelyAsync(tmpDir, '', false, folderMap, root);
+        await scanFoldersRecursively(tmpDir, '', false, folderMap, root);
         expect(root.children).toHaveLength(0);
     });
 
@@ -455,7 +455,7 @@ describe('scanFoldersRecursively', () => {
         const root = makeRootFolder();
         folderMap.set('', root);
 
-        await scanFoldersRecursivelyAsync(tmpDir, '', false, folderMap, root);
+        await scanFoldersRecursively(tmpDir, '', false, folderMap, root);
 
         expect(folderMap.has('a')).toBe(true);
         expect(folderMap.has('a/b')).toBe(true);
@@ -472,7 +472,7 @@ describe('scanFoldersRecursively', () => {
         const root = makeRootFolder();
         folderMap.set('', root);
 
-        await scanFoldersRecursivelyAsync(path.join(tmpDir, 'nonexistent'), '', false, folderMap, root);
+        await scanFoldersRecursively(path.join(tmpDir, 'nonexistent'), '', false, folderMap, root);
         expect(root.children).toHaveLength(0);
     });
 
@@ -483,7 +483,7 @@ describe('scanFoldersRecursively', () => {
         const root = makeRootFolder();
         folderMap.set('', root);
 
-        await scanFoldersRecursivelyAsync(tmpDir, '', false, folderMap, root);
+        await scanFoldersRecursively(tmpDir, '', false, folderMap, root);
 
         for (const [key, folder] of folderMap) {
             if (key) {
@@ -588,7 +588,7 @@ describe('groupTaskDocuments', () => {
 
 describe('buildTaskFolderHierarchy', () => {
     it('root folder has correct structure', async () => {
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, [], false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, [], false);
         expect(root.name).toBe('');
         expect(root.folderPath).toBe(tmpDir);
         expect(root.relativePath).toBe('');
@@ -606,7 +606,7 @@ describe('buildTaskFolderHierarchy', () => {
             makeDocWithPath('task', undefined, 'feature1', false, path.join(tmpDir, 'feature1', 'task.md')),
         ];
 
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, false);
         expect(root.children).toHaveLength(1);
         expect(root.children[0].name).toBe('feature1');
         expect(root.children[0].singleDocuments).toHaveLength(1);
@@ -618,7 +618,7 @@ describe('buildTaskFolderHierarchy', () => {
             makeDocWithPath('task', undefined, 'a/b', false, path.join(tmpDir, 'a', 'b', 'task.md')),
         ];
 
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, false);
 
         // 'a' is auto-created as intermediate
         const a = root.children.find(c => c.name === 'a');
@@ -639,7 +639,7 @@ describe('buildTaskFolderHierarchy', () => {
         ];
 
         // scanArchive=false → no archive folders
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, false);
         const archiveChild = root.children.find(c => c.name === 'archive');
         expect(archiveChild).toBeUndefined();
     });
@@ -652,7 +652,7 @@ describe('buildTaskFolderHierarchy', () => {
 
         const docs: TaskDocument[] = [];
 
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, true, archiveDir);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, true, archiveDir);
         // Should have both 'feature' from active scan and folders from archive scan
         expect(root.children.length).toBeGreaterThanOrEqual(1);
     });
@@ -660,7 +660,7 @@ describe('buildTaskFolderHierarchy', () => {
     it('empty folders included from directory scan', async () => {
         createDir('empty-folder');
 
-        const { root, folderMap } = await buildTaskFolderHierarchyAsync(tmpDir, [], false);
+        const { root, folderMap } = await buildTaskFolderHierarchy(tmpDir, [], false);
         expect(folderMap.has('empty-folder')).toBe(true);
         expect(root.children).toHaveLength(1);
         expect(root.children[0].name).toBe('empty-folder');
@@ -676,7 +676,7 @@ describe('buildTaskFolderHierarchy', () => {
             makeDocWithPath('task', 'spec', 'feature', false, path.join(tmpDir, 'feature', 'task.spec.md')),
         ];
 
-        const { folderMap } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const { folderMap } = await buildTaskFolderHierarchy(tmpDir, docs, false);
         expect(folderMap.has('')).toBe(true);
         expect(folderMap.has('feature')).toBe(true);
 
@@ -692,7 +692,7 @@ describe('buildTaskFolderHierarchy', () => {
             makeDocWithPath('root-task', undefined, '', false, path.join(tmpDir, 'root-task.md')),
         ];
 
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, false);
         expect(root.singleDocuments).toHaveLength(1);
     });
 
@@ -704,7 +704,7 @@ describe('buildTaskFolderHierarchy', () => {
             makeDocWithPath('task', 'spec', 'sub', false, path.join(tmpDir, 'sub', 'task.spec.md')),
         ];
 
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, false);
         const sub = root.children.find(c => c.name === 'sub')!;
         expect(sub.documentGroups).toHaveLength(1);
         expect(sub.singleDocuments).toHaveLength(0);
@@ -717,14 +717,14 @@ describe('buildTaskFolderHierarchy', () => {
 
 describe('scanContextDocumentsInFolder', () => {
     it('returns empty array for empty directory', async () => {
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result).toEqual([]);
     });
 
     it('finds CONTEXT.md in a directory', async () => {
         createMd('CONTEXT.md');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].fileName).toBe('CONTEXT.md');
     });
@@ -732,7 +732,7 @@ describe('scanContextDocumentsInFolder', () => {
     it('finds README.md in a directory', async () => {
         createMd('README.md');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].fileName).toBe('README.md');
     });
@@ -742,7 +742,7 @@ describe('scanContextDocumentsInFolder', () => {
         createMd('README.md');
         createMd('CLAUDE.md');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result).toHaveLength(3);
         const fileNames = result.map(d => d.fileName).sort();
         expect(fileNames).toEqual(['CLAUDE.md', 'CONTEXT.md', 'README.md']);
@@ -753,7 +753,7 @@ describe('scanContextDocumentsInFolder', () => {
         createMd('feature-plan.md');
         createMd('CONTEXT.md');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].fileName).toBe('CONTEXT.md');
     });
@@ -763,7 +763,7 @@ describe('scanContextDocumentsInFolder', () => {
         createFile('some content', '.gitattributes');
         createMd('CONTEXT.md');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].fileName).toBe('CONTEXT.md');
     });
@@ -771,7 +771,7 @@ describe('scanContextDocumentsInFolder', () => {
     it('is case-insensitive for matching', async () => {
         createMd('context.md');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].fileName).toBe('context.md');
     });
@@ -780,7 +780,7 @@ describe('scanContextDocumentsInFolder', () => {
         createMd('CONTEXT.md');
         createMd('CONTEXT.md', 'subfolder');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result).toHaveLength(1);
         expect(result[0].fileName).toBe('CONTEXT.md');
     });
@@ -788,22 +788,22 @@ describe('scanContextDocumentsInFolder', () => {
     it('sets relativePath correctly', async () => {
         createMd('CONTEXT.md');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, 'feature1', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, 'feature1', false);
         expect(result[0].relativePath).toBe('feature1');
     });
 
     it('sets isArchived correctly', async () => {
         createMd('CONTEXT.md');
 
-        const activeResult = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const activeResult = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(activeResult[0].isArchived).toBe(false);
 
-        const archivedResult = await scanContextDocumentsInFolderAsync(tmpDir, '', true);
+        const archivedResult = await scanContextDocumentsInFolder(tmpDir, '', true);
         expect(archivedResult[0].isArchived).toBe(true);
     });
 
     it('handles nonexistent directory gracefully', async () => {
-        const result = await scanContextDocumentsInFolderAsync(path.join(tmpDir, 'nonexistent'), '', false);
+        const result = await scanContextDocumentsInFolder(path.join(tmpDir, 'nonexistent'), '', false);
         expect(result).toEqual([]);
     });
 
@@ -811,14 +811,14 @@ describe('scanContextDocumentsInFolder', () => {
         createMd('task.md');
         createMd('feature.plan.md');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result).toEqual([]);
     });
 
     it('sets baseName from parseFileName', async () => {
         createMd('CONTEXT.md');
 
-        const result = await scanContextDocumentsInFolderAsync(tmpDir, '', false);
+        const result = await scanContextDocumentsInFolder(tmpDir, '', false);
         expect(result[0].baseName).toBeDefined();
     });
 });
@@ -832,8 +832,8 @@ describe('buildTaskFolderHierarchy contextDocuments', () => {
         createMd('CONTEXT.md');
         createMd('task.md');
 
-        const docs = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const docs = await scanDocumentsRecursively(tmpDir, '', false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, false);
 
         expect(root.contextDocuments).toBeDefined();
         expect(root.contextDocuments).toHaveLength(1);
@@ -845,8 +845,8 @@ describe('buildTaskFolderHierarchy contextDocuments', () => {
         createMd('CONTEXT.md', 'feature1');
         createMd('task.md', 'feature1');
 
-        const docs = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const docs = await scanDocumentsRecursively(tmpDir, '', false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, false);
 
         const feature1 = root.children.find(c => c.name === 'feature1');
         expect(feature1).toBeDefined();
@@ -859,8 +859,8 @@ describe('buildTaskFolderHierarchy contextDocuments', () => {
         createDir('feature1');
         createMd('task.md', 'feature1');
 
-        const docs = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const docs = await scanDocumentsRecursively(tmpDir, '', false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, false);
 
         const feature1 = root.children.find(c => c.name === 'feature1');
         expect(feature1).toBeDefined();
@@ -872,8 +872,8 @@ describe('buildTaskFolderHierarchy contextDocuments', () => {
         createMd('README.md');
         createMd('task.md');
 
-        const docs = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
-        const { root } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const docs = await scanDocumentsRecursively(tmpDir, '', false);
+        const { root } = await buildTaskFolderHierarchy(tmpDir, docs, false);
 
         expect(root.singleDocuments).toHaveLength(1);
         expect(root.singleDocuments[0].fileName).toBe('task.md');
@@ -892,8 +892,8 @@ describe('buildTaskFolderHierarchy contextDocuments', () => {
         createMd('CONTEXT.md', 'feature1');
         createMd('README.md', 'feature2');
 
-        const docs = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
-        const { root, folderMap } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const docs = await scanDocumentsRecursively(tmpDir, '', false);
+        const { root, folderMap } = await buildTaskFolderHierarchy(tmpDir, docs, false);
 
         expect(root.contextDocuments).toHaveLength(1);
         expect(root.contextDocuments![0].fileName).toBe('CONTEXT.md');
@@ -913,8 +913,8 @@ describe('buildTaskFolderHierarchy contextDocuments', () => {
         createMd('CONTEXT.md', path.join('a', 'b'));
         createMd('task.md', path.join('a', 'b'));
 
-        const docs = await scanDocumentsRecursivelyAsync(tmpDir, '', false);
-        const { folderMap } = await buildTaskFolderHierarchyAsync(tmpDir, docs, false);
+        const docs = await scanDocumentsRecursively(tmpDir, '', false);
+        const { folderMap } = await buildTaskFolderHierarchy(tmpDir, docs, false);
 
         const ab = folderMap.get('a/b');
         expect(ab).toBeDefined();

@@ -366,11 +366,3 @@ export async function buildTaskFolderHierarchy(
     return { root: rootFolder, folderMap };
 }
 
-// Backward-compat aliases
-export {
-    scanTasksRecursively as scanTasksRecursivelyAsync,
-    scanDocumentsRecursively as scanDocumentsRecursivelyAsync,
-    scanFoldersRecursively as scanFoldersRecursivelyAsync,
-    scanContextDocumentsInFolder as scanContextDocumentsInFolderAsync,
-    buildTaskFolderHierarchy as buildTaskFolderHierarchyAsync,
-};
