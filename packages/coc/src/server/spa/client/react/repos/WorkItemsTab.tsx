@@ -3,8 +3,9 @@
  * Replaces the Plans tab with a list + detail split view.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button, cn } from '../shared';
+import { Spinner } from '../shared';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { WorkItemSection } from './WorkItemSection';
@@ -13,6 +14,10 @@ import { WorkItemExecutionSession } from './WorkItemExecutionSession';
 import { CommitDetail } from './CommitDetail';
 import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import { useWorkItems } from '../context/WorkItemContext';
+import { fetchApi } from '../hooks/useApi';
+import { buildFileTree, compactFolders, FileTreeView } from './FileTree';
+import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
+import { computeDiffCommentKey } from '../../diff-comment-utils';
 
 export interface WorkItemsTabProps {
     workspaceId: string;
@@ -24,6 +29,10 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
     const [selectedSessionTaskId, setSelectedSessionTaskId] = useState<string | null>(null);
     const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
+    const [selectedCommitFile, setSelectedCommitFile] = useState<string | null>(null);
+    const [commitFiles, setCommitFiles] = useState<{ status: string; path: string }[]>([]);
+    const [commitFilesLoading, setCommitFilesLoading] = useState(false);
+    const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>(undefined);
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [createDialogType, setCreateDialogType] = useState<'work-item' | 'bug'>('work-item');
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
@@ -36,10 +45,60 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         storageKey: 'work-items-left-panel-width',
     });
 
+    // Fetch changed files when a commit is selected
+    useEffect(() => {
+        if (!selectedCommitHash) {
+            setCommitFiles([]);
+            return;
+        }
+        setCommitFilesLoading(true);
+        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${selectedCommitHash}/files`)
+            .then((data: { files?: { status: string; path: string }[] }) => {
+                setCommitFiles(data.files ?? []);
+            })
+            .catch(() => setCommitFiles([]))
+            .finally(() => setCommitFilesLoading(false));
+    }, [workspaceId, selectedCommitHash]);
+
+    // Fetch comment counts for the selected commit's files
+    const commentCounts = useFileCommentCounts(
+        workspaceId,
+        selectedCommitHash ? `${selectedCommitHash}^` : null,
+        selectedCommitHash,
+    );
+
+    const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
+
+    useEffect(() => {
+        if (commentCounts.size === 0 || !selectedCommitHash || commitFiles.length === 0) {
+            setFileCommentMap(new Map());
+            return;
+        }
+        let cancelled = false;
+        const oldRef = `${selectedCommitHash}^`;
+        const computeMap = async () => {
+            const map = new Map<string, number>();
+            for (const file of commitFiles) {
+                const key = await computeDiffCommentKey(workspaceId, oldRef, selectedCommitHash, file.path);
+                const count = commentCounts.get(key) ?? 0;
+                if (count > 0) map.set(file.path, count);
+            }
+            if (!cancelled) setFileCommentMap(map);
+        };
+        void computeMap();
+        return () => { cancelled = true; };
+    }, [commitFiles, selectedCommitHash, commentCounts, workspaceId]);
+
+    const commitFilePaths = useMemo(
+        () => commitFiles.map(f => f.path).sort(),
+        [commitFiles],
+    );
+
     const handleSelectWorkItem = useCallback((id: string) => {
         setSelectedWorkItemId(id);
         setSelectedSessionTaskId(null);
         setSelectedCommitHash(null);
+        setSelectedCommitFile(null);
         if (isMobile) setMobileShowDetail(true);
     }, [isMobile]);
 
@@ -47,6 +106,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         setSelectedWorkItemId(null);
         setSelectedSessionTaskId(null);
         setSelectedCommitHash(null);
+        setSelectedCommitFile(null);
         setMobileShowDetail(false);
     }, []);
 
@@ -56,10 +116,27 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
 
     const handleViewCommit = useCallback((sha: string) => {
         setSelectedCommitHash(sha);
+        setSelectedCommitFile(null);
+        setHunkTarget(undefined);
     }, []);
 
     const handleBackFromCommit = useCallback(() => {
-        setSelectedCommitHash(null);
+        if (selectedCommitFile) {
+            setSelectedCommitFile(null);
+            setHunkTarget(undefined);
+        } else {
+            setSelectedCommitHash(null);
+        }
+    }, [selectedCommitFile]);
+
+    const handleCommitFileSelect = useCallback((filePath: string) => {
+        setSelectedCommitFile(filePath);
+        setHunkTarget(undefined);
+    }, []);
+
+    const handleNavigateToFile = useCallback((filePath: string, target: 'first' | 'last') => {
+        setSelectedCommitFile(filePath);
+        setHunkTarget(target);
     }, []);
 
     const handleViewTask = useCallback((taskId: string) => {
@@ -71,6 +148,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         setSelectedWorkItemId(item.id);
         setSelectedSessionTaskId(null);
         setSelectedCommitHash(null);
+        setSelectedCommitFile(null);
         if (isMobile) setMobileShowDetail(true);
     }, [dispatch, workspaceId, isMobile]);
 
@@ -113,15 +191,61 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                         onClick={handleBackFromCommit}
                         className="text-sm text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] shrink-0"
                         data-testid="commit-review-back-btn"
-                        aria-label="Back to work item"
+                        aria-label={selectedCommitFile ? 'Back to file list' : 'Back to work item'}
                     >
                         ←
                     </button>
-                    <span className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">Commit Review</span>
+                    <span className="text-xs font-medium text-[#3c3c3c] dark:text-[#cccccc]">
+                        {selectedCommitFile ? 'File Diff' : 'Commit Review'}
+                    </span>
                     <code className="text-xs text-[#848484] font-mono">{selectedCommitHash.slice(0, 7)}</code>
+                    {selectedCommitFile && (
+                        <span className="text-[11px] text-[#616161] dark:text-[#999] truncate" title={selectedCommitFile}>
+                            — {selectedCommitFile.split('/').pop()}
+                        </span>
+                    )}
                 </div>
-                <div className="flex-1 overflow-hidden">
-                    <CommitDetail workspaceId={workspaceId} hash={selectedCommitHash} />
+                <div className="flex flex-1 min-h-0 overflow-hidden">
+                    {/* File list sidebar */}
+                    <div
+                        className="w-56 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto bg-[#f8f8f8] dark:bg-[#1e1e1e]"
+                        data-testid="commit-file-sidebar"
+                    >
+                        <div className="px-2 py-2">
+                            <div className="text-[11px] font-medium text-[#616161] dark:text-[#999] mb-1.5 px-1">
+                                Changed Files {!commitFilesLoading && commitFiles.length > 0 && `(${commitFiles.length})`}
+                            </div>
+                            {commitFilesLoading ? (
+                                <div className="flex items-center gap-2 text-[11px] text-[#848484] px-1" data-testid="commit-files-loading">
+                                    <Spinner size="sm" /> Loading...
+                                </div>
+                            ) : commitFiles.length > 0 ? (
+                                <FileTreeView
+                                    nodes={compactFolders(buildFileTree(commitFiles))}
+                                    commitHash={selectedCommitHash}
+                                    selectedFile={selectedCommitFile ? { hash: selectedCommitHash, filePath: selectedCommitFile } : null}
+                                    onFileSelect={(_hash, filePath) => handleCommitFileSelect(filePath)}
+                                    fileCommentMap={fileCommentMap}
+                                    commentBadgeTestIdPrefix="wi-commit-file-comment-badge"
+                                    fileTestIdPrefix="wi-commit-file"
+                                />
+                            ) : (
+                                <div className="text-[11px] text-[#848484] px-1">No files changed</div>
+                            )}
+                        </div>
+                    </div>
+                    {/* CommitDetail with optional filePath */}
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                        <CommitDetail
+                            key={selectedCommitFile ? `${selectedCommitHash}-${selectedCommitFile}` : selectedCommitHash}
+                            workspaceId={workspaceId}
+                            hash={selectedCommitHash}
+                            filePath={selectedCommitFile ?? undefined}
+                            commitFiles={commitFilePaths}
+                            onNavigateToFile={handleNavigateToFile}
+                            initialHunkTarget={hunkTarget}
+                        />
+                    </div>
                 </div>
             </div>
         ) : selectedSessionTaskId ? (
