@@ -148,6 +148,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 if (!updatedItem) return;
 
                 // Collect git commits for the just-closed change
+                let commitsAttached = false;
                 const changes = updatedItem.changes ?? [];
                 const justClosed = changes.find(
                     c => c.taskId === task.id && c.status === 'closed' && c.headBefore,
@@ -159,14 +160,20 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                         const commits = collectWorkItemCommits(workspace.rootPath, justClosed.headBefore);
                         if (commits.length > 0) {
                             await workItemStore.updateChange(workItemId, justClosed.id, { commits }).catch(() => {});
+                            commitsAttached = true;
                         }
                     }
                 }
 
+                // Re-fetch after commit attachment so the broadcast includes commits
+                const itemToSend = commitsAttached
+                    ? (await workItemStore.getWorkItem(workItemId).catch(() => updatedItem)) ?? updatedItem
+                    : updatedItem;
+
                 getWsServer?.()?.broadcastProcessEvent({
                     type: 'work-item-updated',
-                    workspaceId: updatedItem.repoId,
-                    item: updatedItem,
+                    workspaceId: itemToSend.repoId,
+                    item: itemToSend,
                 });
             } catch {
                 // Non-fatal
