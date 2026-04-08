@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Badge, Button, Spinner, linkifyFilePaths } from '../shared';
+import { RenameDialog } from '../shared/RenameDialog';
 import { ConversationTurnBubble } from './ConversationTurnBubble';
 import { ConversationMiniMap } from './ConversationMiniMap';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from './ConversationMetadataPopover';
@@ -73,6 +74,8 @@ export function ProcessDetail() {
     const [pipelineProgress, setPipelineProgress] = useState<{ phase: string; totalItems: number; completedItems: number; failedItems: number; percentage: number; message?: string } | null>(null);
     const [hookSteps, setHookSteps] = useState<Array<{ step: string; status: string; script: string; output?: string; durationMs?: number; index?: number; actionType?: 'script' | 'skill'; skillName?: string }>>([]);
     const [copiedHtml, setCopiedHtml] = useState(false);
+    const [renameOpen, setRenameOpen] = useState(false);
+    const [wasRenamed, setWasRenamed] = useState(false);
 
     const process = processes.find((p: any) => p.id === selectedId);
 
@@ -92,6 +95,7 @@ export function ProcessDetail() {
             setPipelinePhases([]);
             setPipelineProgress(null);
             setHookSteps([]);
+            setWasRenamed(false);
             return;
         }
 
@@ -250,6 +254,22 @@ export function ProcessDetail() {
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, [turns]);
 
+    const isRenameable = ['completed', 'failed', 'cancelled'].includes(process?.status ?? '');
+
+    const handleRename = useCallback(async (newTitle: string) => {
+        if (!selectedId) return;
+        setRenameOpen(false);
+        try {
+            await fetchApi(`/processes/${encodeURIComponent(selectedId)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: newTitle }),
+            });
+            dispatch({ type: 'PROCESS_UPDATED', process: { id: selectedId, title: newTitle } });
+            setWasRenamed(true);
+        } catch { /* WS will sync eventually */ }
+    }, [selectedId, dispatch]);
+
     if (!selectedId || !process) {
         return (
             <div id="detail-empty" className="flex-1 flex flex-col items-center justify-center text-[#848484]">
@@ -394,10 +414,24 @@ export function ProcessDetail() {
                         </div>
                     )}
                     {process.title && (
-                        <div className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">
+                        <div className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1 flex items-center gap-1">
                             {process.title}
-                            <span className="ml-1 text-[11px] font-normal text-[#848484]">✦ AI title</span>
+                            {!wasRenamed && <span className="text-[11px] font-normal text-[#848484]">✦ AI title</span>}
+                            {isRenameable && (
+                                <button
+                                    onClick={() => setRenameOpen(true)}
+                                    className="ml-1 text-[11px] text-[#848484] hover:text-[#0078d4] transition-colors"
+                                    title="Rename chat"
+                                >✏️</button>
+                            )}
                         </div>
+                    )}
+                    {!process.title && isRenameable && (
+                        <button
+                            onClick={() => setRenameOpen(true)}
+                            className="text-xs text-[#848484] hover:text-[#0078d4] mb-1 transition-colors"
+                            title="Set a title for this chat"
+                        >✏️ Add title</button>
                     )}
                     <div
                         className="text-sm text-[#1e1e1e] dark:text-[#cccccc] break-words"
@@ -488,6 +522,13 @@ export function ProcessDetail() {
                 scrollContainerRef={scrollContainerRef}
                 turnsContainerRef={turnsContainerRef}
                 isStreaming={process.status === 'running'}
+            />
+
+            <RenameDialog
+                open={renameOpen}
+                currentTitle={process.title || process.promptPreview || ''}
+                onConfirm={handleRename}
+                onCancel={() => setRenameOpen(false)}
             />
         </div>
     );
