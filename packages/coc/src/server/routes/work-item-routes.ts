@@ -260,8 +260,12 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             // Build new plan version incorporating the comments
             const now = new Date().toISOString();
             const currentPlan = item.plan?.content || '';
+            const source: string | undefined = body.source; // 'diff-comments' | undefined
             const commentBlock = comments.map((c: string, i: number) => `${i + 1}. ${c}`).join('\n');
-            const newContent = currentPlan + '\n\n## Review Comments (to address)\n\n' + commentBlock;
+            const heading = source === 'diff-comments'
+                ? '## Diff Review Comments (to address)'
+                : '## Review Comments (to address)';
+            const newContent = currentPlan + '\n\n' + heading + '\n\n' + commentBlock;
             const newVersion = (item.plan?.version ?? 0) + 1;
 
             const planVersion = {
@@ -269,7 +273,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 content: newContent,
                 createdAt: now,
                 resolvedBy: 'user' as const,
-                summary: `Incorporated ${comments.length} review comment(s)`,
+                summary: source === 'diff-comments'
+                    ? `Incorporated ${comments.length} diff review comment(s)`
+                    : `Incorporated ${comments.length} review comment(s)`,
             };
 
             await workItemStore.savePlanVersion(workItemId, planVersion);
