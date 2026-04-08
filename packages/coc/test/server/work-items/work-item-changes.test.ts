@@ -380,6 +380,54 @@ describe('handleWorkItemTaskComplete — closes Change', () => {
 // ============================================================================
 
 describe('change commits', () => {
+    it('re-fetching after updateChange includes attached commits (regression: stale broadcast)', async () => {
+        // This test reproduces the bug where a work item was fetched before
+        // updateChange() wrote commits, causing the broadcast to send empty commits.
+        const item = makeWorkItem({ id: 'wi-stale-broadcast', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-stale-broadcast', {
+            taskId: 'task-stale',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+        });
+        await store.addChange('wi-stale-broadcast', makeChange({
+            id: 'chg-stale',
+            planVersion: 1,
+            status: 'open',
+            taskId: 'task-stale',
+            headBefore: 'aaa111',
+        }));
+
+        // Step 1: handleWorkItemTaskComplete closes the change
+        await handleWorkItemTaskComplete('wi-stale-broadcast', 'task-stale', { status: 'completed' }, store);
+
+        // Step 2: Fetch work item (simulates what the old code did before the fix)
+        const staleItem = await store.getWorkItem('wi-stale-broadcast');
+        expect(staleItem).toBeDefined();
+        const closedChange = staleItem!.changes!.find(c => c.id === 'chg-stale');
+        expect(closedChange!.status).toBe('closed');
+        // At this point, commits are empty — they haven't been attached yet
+        expect(closedChange!.commits).toEqual([]);
+
+        // Step 3: Attach commits (simulates collectWorkItemCommits result)
+        const commits = [
+            { sha: 'commit1', message: 'feat: implement feature', author: 'Dev', date: '2026-01-01T13:00:00Z' },
+            { sha: 'commit2', message: 'test: add tests', author: 'Dev', date: '2026-01-01T13:05:00Z' },
+        ];
+        await store.updateChange('wi-stale-broadcast', 'chg-stale', { commits });
+
+        // Step 4: staleItem still has empty commits (it's a stale snapshot)
+        const staleChange = staleItem!.changes!.find(c => c.id === 'chg-stale');
+        expect(staleChange!.commits).toEqual([]);
+
+        // Step 5: Re-fetching after updateChange yields correct data
+        const freshItem = await store.getWorkItem('wi-stale-broadcast');
+        const freshChange = freshItem!.changes!.find(c => c.id === 'chg-stale');
+        expect(freshChange!.commits).toHaveLength(2);
+        expect(freshChange!.commits[0].sha).toBe('commit1');
+        expect(freshChange!.commits[1].sha).toBe('commit2');
+    });
+
     it('stores and retrieves commit data on a change', async () => {
         const item = makeWorkItem({ id: 'wi-commits' });
         await store.addWorkItem(item);
