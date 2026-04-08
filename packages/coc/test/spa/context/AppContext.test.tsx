@@ -146,6 +146,47 @@ describe('AppContext reducer', () => {
             expect(result.wsStatus).toBe('open');
         });
     });
+
+    describe('CACHE_CONVERSATION', () => {
+        it('caches conversation turns', () => {
+            const state = makeState();
+            const turns = [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello' }];
+            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns } as AppAction);
+            expect(result.conversationCache['p1']).toBeDefined();
+            expect(result.conversationCache['p1'].turns).toEqual(turns);
+        });
+
+        it('rejects stale data with fewer turns than existing cache (cache poisoning guard)', () => {
+            const existingTurns = [
+                { role: 'user', content: 'hi' },
+                { role: 'assistant', content: 'hello' },
+                { role: 'user', content: 'follow-up' },
+                { role: 'assistant', content: 'response' },
+            ];
+            const state = makeState({
+                conversationCache: { 'p1': { turns: existingTurns, cachedAt: Date.now() } },
+            });
+            const staleTurns = [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello' }];
+            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns: staleTurns } as AppAction);
+            // Should preserve existing cache, not overwrite with stale data
+            expect(result.conversationCache['p1'].turns).toEqual(existingTurns);
+            expect(result).toBe(state);
+        });
+
+        it('accepts update with same or more turns than existing cache', () => {
+            const existingTurns = [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello' }];
+            const state = makeState({
+                conversationCache: { 'p1': { turns: existingTurns, cachedAt: Date.now() - 1000 } },
+            });
+            const newTurns = [
+                { role: 'user', content: 'hi' },
+                { role: 'assistant', content: 'hello' },
+                { role: 'user', content: 'more' },
+            ];
+            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns: newTurns } as AppAction);
+            expect(result.conversationCache['p1'].turns).toEqual(newTurns);
+        });
+    });
 });
 
 // ── Provider integration tests ────────────────────────────────────────────────
