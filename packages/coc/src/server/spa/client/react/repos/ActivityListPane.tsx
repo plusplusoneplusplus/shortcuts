@@ -623,34 +623,48 @@ export function ActivityListPane({
 
     if (tabFilteredRunning.length === 0 && tabFilteredQueued.length === 0 && tabFilteredHistory.length === 0) {
         return (
-            <div className="p-4 text-center text-sm text-[#848484]" data-testid="queue-empty-state">
-                {isRefreshing && (
-                    <div className="mb-2 animate-pulse" data-testid="queue-refreshing-indicator">Refreshing…</div>
-                )}
-                {activeTab === 'chats' ? (
-                    <div>No chats yet</div>
-                ) : isPaused ? (
-                    <>
-                        <div className="mb-2">Queue is paused</div>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={isPauseResumeLoading}
-                            onClick={onPauseResume}
-                            data-testid="repo-pause-resume-btn-empty"
-                        >
-                            ▶ Resume
-                        </Button>
-                    </>
-                ) : (
-                    <div>{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
+            <div className="relative flex-1 flex flex-col overflow-hidden">
+                <div className="p-4 text-center text-sm text-[#848484] flex-1" data-testid="queue-empty-state">
+                    {isRefreshing && (
+                        <div className="mb-2 animate-pulse" data-testid="queue-refreshing-indicator">Refreshing…</div>
+                    )}
+                    {activeTab === 'chats' ? (
+                        <div>No chats yet</div>
+                    ) : isPaused ? (
+                        <>
+                            <div className="mb-2">Queue is paused</div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={isPauseResumeLoading}
+                                onClick={onPauseResume}
+                                data-testid="repo-pause-resume-btn-empty"
+                            >
+                                ▶ Resume
+                            </Button>
+                        </>
+                    ) : (
+                        <div>{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
+                    )}
+                </div>
+                {isMobile && onNewChat && (
+                    <button
+                        className="mobile-fab"
+                        onClick={onNewChat}
+                        data-testid="mobile-new-chat-fab"
+                        aria-label="New chat"
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                        </svg>
+                    </button>
                 )}
             </div>
         );
     }
 
     return (
-        <>
+        <div className="relative flex-1 flex flex-col overflow-hidden">
             <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
                 {activeTab === 'chats' && (
                     <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className="self-start" data-testid="new-chat-btn">
@@ -1255,7 +1269,19 @@ export function ActivityListPane({
                 fetchQueue();
             }}
         />
-    </>
+        {isMobile && onNewChat && (
+            <button
+                className="mobile-fab"
+                onClick={onNewChat}
+                data-testid="mobile-new-chat-fab"
+                aria-label="New chat"
+            >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                </svg>
+            </button>
+        )}
+    </div>
     );
 }
 

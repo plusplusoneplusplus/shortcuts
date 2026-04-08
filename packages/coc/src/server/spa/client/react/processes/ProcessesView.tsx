@@ -226,6 +226,7 @@ export function ProcessesView() {
             onPauseResume={handlePauseResume}
             onRefresh={handleRefresh}
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG' })}
+            onNewChat={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null })}
             fetchQueue={fetchQueue}
         />
     );
