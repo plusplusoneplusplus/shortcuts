@@ -8,6 +8,7 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { NotificationProvider } from '../../../src/server/spa/client/react/context/NotificationContext';
 import {
     normalizeRemoteUrl,
     remoteUrlLabel,
@@ -32,13 +33,23 @@ vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({
     ReposProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+// Mock heavy tab components that have side effects (API calls, context deps) when always-mounted via display:none
+vi.mock('../../../src/server/spa/client/react/repos/RepoGitTab', () => ({
+    RepoGitTab: () => null,
+}));
+vi.mock('../../../src/server/spa/client/react/repos/RepoActivityTab', () => ({
+    RepoActivityTab: () => null,
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>
             <QueueProvider>
-                <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
-                    {children}
-                </ToastProvider>
+                <NotificationProvider>
+                    <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                        {children}
+                    </ToastProvider>
+                </NotificationProvider>
             </QueueProvider>
         </AppProvider>
     );

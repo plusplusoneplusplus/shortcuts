@@ -89,7 +89,8 @@ describe('RepoDetail BASE_VISIBLE_SUB_TABS', () => {
 
 describe('RepoDetail Activity tab rendering', () => {
     it('activity sub-tab renders RepoActivityTab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity' && <RepoActivityTab");
+        expect(REPO_DETAIL_SOURCE).toContain("display: activeSubTab === 'activity' ? undefined : 'none'");
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={ws.id}');
     });
 
     it('activity is in SUB_TABS (visible in tab strip)', () => {

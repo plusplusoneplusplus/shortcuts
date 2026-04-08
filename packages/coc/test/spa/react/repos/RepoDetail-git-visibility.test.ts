@@ -96,7 +96,7 @@ describe('Tab fallback on repo switch', () => {
 
 describe('RepoGitTab not mounted for non-git repos', () => {
     it('guards RepoGitTab render with isGitRepo', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'git' && isGitRepo && <RepoGitTab");
+        expect(REPO_DETAIL_SOURCE).toContain("isGitRepo && <div style={{ display: activeSubTab === 'git'");
     });
 });
 

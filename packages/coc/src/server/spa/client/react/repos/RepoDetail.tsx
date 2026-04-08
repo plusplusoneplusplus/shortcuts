@@ -490,9 +490,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 <div style={{ display: activeSubTab !== 'tasks' ? undefined : 'none' }} className={cn("h-full min-w-0", isMobile && "pb-12", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' ? "overflow-hidden" : "overflow-y-auto")}>
                     {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                     {activeSubTab === 'templates' && <TemplatesTab key={ws.id} repo={repo} />}
-                    {activeSubTab === 'activity' && <RepoActivityTab key={ws.id} workspaceId={ws.id} />}
+                    <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        <RepoActivityTab key={ws.id} workspaceId={ws.id} />
+                    </div>
                     {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
-                    {activeSubTab === 'git' && isGitRepo && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
+                    {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        <RepoGitTab key={ws.id} workspaceId={ws.id} />
+                    </div>}
                     {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                     <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                         <ExplorerPanel key={ws.id} workspaceId={ws.id} />
