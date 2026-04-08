@@ -112,4 +112,25 @@ describe('WorkItemDetail — layout', () => {
             expect(src).toContain('title={c.message}');
         });
     });
+
+    describe('Execution history inline navigation', () => {
+        it('renders a button calling onViewTask for each execution entry when onViewTask is provided', () => {
+            expect(src).toContain('onViewTask(exec.taskId)');
+            expect(src).toContain('data-testid={`exec-view-session-${i}`}');
+        });
+
+        it('falls back to process link when onViewTask is not provided', () => {
+            // When onViewTask is absent, the anchor link to #process/ should still render
+            expect(src).toContain('href={`#process/${exec.processId}`}');
+        });
+
+        it('prefers onViewTask over process link', () => {
+            // onViewTask branch should come before the process link fallback
+            const onViewTaskPos = src.indexOf('onViewTask(exec.taskId)');
+            const processLinkPos = src.indexOf('href={`#process/${exec.processId}`}');
+            expect(onViewTaskPos).toBeGreaterThan(-1);
+            expect(processLinkPos).toBeGreaterThan(-1);
+            expect(onViewTaskPos).toBeLessThan(processLinkPos);
+        });
+    });
 });

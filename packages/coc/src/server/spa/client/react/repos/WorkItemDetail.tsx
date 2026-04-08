@@ -403,9 +403,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                         <div className="flex items-center gap-2 text-[10px]">
                                             <span>{exec.status === 'running' ? '🔵' : exec.status === 'completed' ? '🟢' : exec.status === 'failed' ? '🔴' : '⚪'}</span>
                                             <span className="text-[#606060] dark:text-[#aaa]">Run #{i + 1}</span>
-                                            {exec.processId && (
+                                            {onViewTask ? (
+                                                <button onClick={() => onViewTask(exec.taskId)} className="text-[#0078d4] hover:underline bg-transparent border-none cursor-pointer p-0" data-testid={`exec-view-session-${i}`}>→</button>
+                                            ) : exec.processId ? (
                                                 <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline">→</a>
-                                            )}
+                                            ) : null}
                                             <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
                                             {exec.error && <span className="text-red-500 truncate">{exec.error}</span>}
                                         </div>
