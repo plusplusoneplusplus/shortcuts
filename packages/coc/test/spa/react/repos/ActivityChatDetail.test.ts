@@ -1132,8 +1132,8 @@ describe('ActivityChatDetail', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="agent-responding-indicator"');
         });
 
-        it('indicator shows "Agent is responding..." text', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('Agent is responding...');
+        it('indicator shows "Agent is thinking..." text', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('Agent is thinking...');
         });
 
         it('indicator has animate-pulse for visual feedback', () => {

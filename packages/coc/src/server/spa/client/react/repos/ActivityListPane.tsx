@@ -286,8 +286,16 @@ export function ActivityListPane({
         const runningChats = running.filter(isChat);
         const historyChats = history.filter(isChat);
         const all = [...runningChats, ...historyChats];
+        // Deduplicate by processId — running tasks take priority (appear first)
+        const seenProcessIds = new Set<string>();
+        const deduped = all.filter(t => {
+            const key = t.processId || t.id;
+            if (seenProcessIds.has(key)) return false;
+            seenProcessIds.add(key);
+            return true;
+        });
         // Sort by most recent activity (running first via startedAt, then completedAt)
-        all.sort((a, b) => {
+        deduped.sort((a, b) => {
             const timeA = a.completedAt || a.startedAt || a.createdAt || 0;
             const timeB = b.completedAt || b.startedAt || b.createdAt || 0;
             return new Date(timeB).getTime() - new Date(timeA).getTime();
@@ -296,7 +304,7 @@ export function ActivityListPane({
         const unpinned: any[] = [];
         const archived: any[] = [];
         const pinnedById = new Map<string, any>();
-        for (const t of all) {
+        for (const t of deduped) {
             if (archivedChatIds?.has(t.id)) { archived.push(t); continue; }
             if (pinnedChatIds?.has(t.id)) { pinnedById.set(t.id, t); continue; }
             unpinned.push(t);
@@ -613,13 +621,15 @@ export function ActivityListPane({
         ];
     }, [contextMenu, queued, running, history, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
 
-    if (running.length === 0 && queued.length === 0 && history.length === 0) {
+    if (tabFilteredRunning.length === 0 && tabFilteredQueued.length === 0 && tabFilteredHistory.length === 0) {
         return (
             <div className="p-4 text-center text-sm text-[#848484]" data-testid="queue-empty-state">
                 {isRefreshing && (
                     <div className="mb-2 animate-pulse" data-testid="queue-refreshing-indicator">Refreshing…</div>
                 )}
-                {isPaused ? (
+                {activeTab === 'chats' ? (
+                    <div>No chats yet</div>
+                ) : isPaused ? (
                     <>
                         <div className="mb-2">Queue is paused</div>
                         <Button
@@ -633,17 +643,7 @@ export function ActivityListPane({
                         </Button>
                     </>
                 ) : (
-                    <>
-                        <div className="mb-2">{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={onOpenDialog}
-                            data-testid="repo-queue-task-btn-empty"
-                        >
-                            🤖 Queue Task
-                        </Button>
-                    </>
+                    <div>{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
                 )}
             </div>
         );

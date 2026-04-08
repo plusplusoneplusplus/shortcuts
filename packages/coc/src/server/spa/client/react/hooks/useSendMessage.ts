@@ -252,7 +252,10 @@ export function useSendMessage({
             setSending(false);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-            void refreshConversation(processId);
+            // Note: refreshConversation is NOT called here — useChatSSE.finish() already
+            // triggers it when the SSE 'done' event fires. Calling it again here would
+            // create a race where two concurrent fetches overwrite each other, potentially
+            // replacing richer in-memory state with stale server data.
             setTimeout(() => { flushQueueRef.current?.(); }, 0);
         }
     }, [processId, taskId, inputDisabled, sending, selectedMode, images, toPayload, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps

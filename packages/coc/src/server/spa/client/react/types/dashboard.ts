@@ -82,6 +82,8 @@ export interface ClientConversationTurn {
 export interface ConversationCacheEntry {
     turns: ClientConversationTurn[];
     cachedAt: number;
+    /** When true, cached turns included streaming state and must be refreshed from server on re-mount. */
+    dirty?: boolean;
 }
 
 /** Summary of a chat session for sidebar display */

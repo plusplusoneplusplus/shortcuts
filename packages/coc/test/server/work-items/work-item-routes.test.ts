@@ -15,7 +15,7 @@ let baseUrl: string;
 
 function makeServer(): http.Server {
     const routes: Route[] = [];
-    registerWorkItemRoutes({ routes, workItemStore: store });
+    registerWorkItemRoutes({ routes, workItemStore: store, processStore: { getWorkspaces: async () => [] } as any });
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }

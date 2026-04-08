@@ -494,8 +494,8 @@ describe('ActivityListPane: shared list component', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('ContextMenu');
     });
 
-    it('has empty state with queue task button', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="repo-queue-task-btn-empty"');
+    it('empty state no longer has queue task button', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).not.toContain('data-testid="repo-queue-task-btn-empty"');
     });
 
     it('has empty state with paused resume button', () => {

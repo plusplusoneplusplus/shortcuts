@@ -300,7 +300,7 @@ describe('ScheduleDetail — action toolbar', () => {
                 <ScheduleDetail {...renderDetail()} />
             </Wrap>,
         );
-        const btn = screen.getByRole('button', { name: /run schedule now/i });
+        const btn = screen.getByRole('button', { name: /run job now/i });
         expect(btn).toBeTruthy();
     });
 
@@ -311,7 +311,7 @@ describe('ScheduleDetail — action toolbar', () => {
                 <ScheduleDetail {...renderDetail(MOCK_SCHEDULE_RUNNING)} />
             </Wrap>,
         );
-        const btn = screen.getByRole('button', { name: /run schedule now/i }) as HTMLButtonElement;
+        const btn = screen.getByRole('button', { name: /run job now/i }) as HTMLButtonElement;
         expect(btn.disabled).toBe(true);
     });
 
@@ -322,7 +322,7 @@ describe('ScheduleDetail — action toolbar', () => {
                 <ScheduleDetail {...renderDetail()} />
             </Wrap>,
         );
-        const btn = screen.getByRole('button', { name: /run schedule now/i }) as HTMLButtonElement;
+        const btn = screen.getByRole('button', { name: /run job now/i }) as HTMLButtonElement;
         expect(btn.disabled).toBe(false);
     });
 
@@ -334,7 +334,7 @@ describe('ScheduleDetail — action toolbar', () => {
                 <ScheduleDetail {...renderDetail(MOCK_SCHEDULE, [], { onRunNow })} />
             </Wrap>,
         );
-        fireEvent.click(screen.getByRole('button', { name: /run schedule now/i }));
+        fireEvent.click(screen.getByRole('button', { name: /run job now/i }));
         expect(onRunNow).toHaveBeenCalledWith('sched-1');
     });
 
@@ -345,7 +345,7 @@ describe('ScheduleDetail — action toolbar', () => {
                 <ScheduleDetail {...renderDetail()} />
             </Wrap>,
         );
-        expect(screen.getByRole('button', { name: /pause schedule/i })).toBeTruthy();
+        expect(screen.getByRole('button', { name: /pause job/i })).toBeTruthy();
     });
 
     it('Resume button shown for paused schedule', async () => {
@@ -355,7 +355,7 @@ describe('ScheduleDetail — action toolbar', () => {
                 <ScheduleDetail {...renderDetail(MOCK_SCHEDULE_PAUSED)} />
             </Wrap>,
         );
-        expect(screen.getByRole('button', { name: /resume schedule/i })).toBeTruthy();
+        expect(screen.getByRole('button', { name: /resume job/i })).toBeTruthy();
     });
 
     it('calls onPauseResume when Pause clicked', async () => {
@@ -366,7 +366,7 @@ describe('ScheduleDetail — action toolbar', () => {
                 <ScheduleDetail {...renderDetail(MOCK_SCHEDULE, [], { onPauseResume })} />
             </Wrap>,
         );
-        fireEvent.click(screen.getByRole('button', { name: /pause schedule/i }));
+        fireEvent.click(screen.getByRole('button', { name: /pause job/i }));
         expect(onPauseResume).toHaveBeenCalledWith(MOCK_SCHEDULE);
     });
 
@@ -408,7 +408,7 @@ describe('ScheduleDetail — action toolbar', () => {
                 <ScheduleDetail {...renderDetail()} />
             </Wrap>,
         );
-        expect(screen.getByRole('button', { name: /delete schedule/i })).toBeTruthy();
+        expect(screen.getByRole('button', { name: /delete job/i })).toBeTruthy();
     });
 });
 

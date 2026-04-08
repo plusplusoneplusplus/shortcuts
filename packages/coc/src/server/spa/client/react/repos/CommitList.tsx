@@ -408,16 +408,31 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                         <div className="flex items-start gap-2">
                                             <span className={`font-mono text-xs flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
                                             {(() => {
-                                                const count = commitTotals.get(commit.hash) ?? 0;
-                                                return count > 0 ? (
-                                                    <span
-                                                        className="text-xs text-[#848484] flex-shrink-0"
-                                                        title={`${count} active comment${count > 1 ? 's' : ''}`}
-                                                        data-testid={`commit-comment-badge-${commit.hash}`}
-                                                    >
-                                                        💬{count}
-                                                    </span>
-                                                ) : null;
+                                                const ct = commitTotals.get(commit.hash);
+                                                const openCount = ct?.open ?? 0;
+                                                const resolvedCount = ct?.resolved ?? 0;
+                                                return (
+                                                    <>
+                                                        {resolvedCount > 0 && (
+                                                            <span
+                                                                className="text-xs text-green-600 dark:text-green-400 flex-shrink-0"
+                                                                title={`${resolvedCount} resolved comment${resolvedCount > 1 ? 's' : ''}`}
+                                                                data-testid={`commit-resolved-badge-${commit.hash}`}
+                                                            >
+                                                                ✅{resolvedCount}
+                                                            </span>
+                                                        )}
+                                                        {openCount > 0 && (
+                                                            <span
+                                                                className="text-xs text-[#848484] flex-shrink-0"
+                                                                title={`${openCount} active comment${openCount > 1 ? 's' : ''}`}
+                                                                data-testid={`commit-comment-badge-${commit.hash}`}
+                                                            >
+                                                                💬{openCount}
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                );
                                             })()}
                                             <span className="text-xs text-[#1e1e1e] dark:text-[#ccc] break-words min-w-0">{commit.subject}</span>
                                         </div>

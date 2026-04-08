@@ -200,6 +200,7 @@ export async function handleProcessStream(
                 turnIndex: event.turnIndex,
                 deliveryMode: event.deliveryMode,
                 queuePosition: event.queuePosition,
+                ...(event.optimisticId !== undefined ? { optimisticId: event.optimisticId } : {}),
             });
         } else if (event.type === 'message-steering') {
             sendEvent(res, 'message-steering', {

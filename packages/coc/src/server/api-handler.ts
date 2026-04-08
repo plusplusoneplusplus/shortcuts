@@ -46,6 +46,8 @@ export interface QueueExecutorBridge {
     findTaskByProcessId?(processId: string): { id: string; type: string; status: string } | undefined;
     /** Requeue an existing task for a follow-up message (reuses the parent task instead of creating a ghost child). */
     requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
+    /** Queue a follow-up behind a currently running task. The follow-up executes after the task completes. */
+    queueFollowUpBehindRunningTask?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
 }

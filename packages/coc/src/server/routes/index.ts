@@ -45,8 +45,9 @@ import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
-import { handleWorkItemTaskComplete } from '../work-items/work-item-executor';
+import { handleWorkItemTaskComplete, executeWorkItem } from '../work-items/work-item-executor';
 import type { WorkItem } from '../work-items/types';
+import { DiffCommentsManager } from '../diff-comments-manager';
 import { execGit } from '@plusplusoneplusplus/forge';
 import { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile } from '../../config';
 
@@ -99,7 +100,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
     const enqueueForWorkItems = bridge.enqueue.bind(bridge) as import('../work-items/work-item-executor').EnqueueFunction;
-    registerWorkItemRoutes({ routes, workItemStore, enqueue: enqueueForWorkItems, getWsServer });
+    registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
@@ -148,6 +149,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 if (!updatedItem) return;
 
                 // Collect git commits for the just-closed change
+                let commitsAttached = false;
                 const changes = updatedItem.changes ?? [];
                 const justClosed = changes.find(
                     c => c.taskId === task.id && c.status === 'closed' && c.headBefore,
@@ -159,14 +161,20 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                         const commits = collectWorkItemCommits(workspace.rootPath, justClosed.headBefore);
                         if (commits.length > 0) {
                             await workItemStore.updateChange(workItemId, justClosed.id, { commits }).catch(() => {});
+                            commitsAttached = true;
                         }
                     }
                 }
 
+                // Re-fetch after commit attachment so the broadcast includes commits
+                const itemToSend = commitsAttached
+                    ? (await workItemStore.getWorkItem(workItemId).catch(() => updatedItem)) ?? updatedItem
+                    : updatedItem;
+
                 getWsServer?.()?.broadcastProcessEvent({
                     type: 'work-item-updated',
-                    workspaceId: updatedItem.repoId,
-                    item: updatedItem,
+                    workspaceId: itemToSend.repoId,
+                    item: itemToSend,
                 });
             } catch {
                 // Non-fatal
@@ -174,6 +182,84 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }).catch(() => {
             // Non-fatal: don't crash the server on work item update failure
         });
+    });
+
+    // Wire resolve-task completion → auto re-execute work item when all comments resolved.
+    // When a diff-comment resolve task that is linked to a work item completes,
+    // check whether all open comments for that work item's latest change commits
+    // are now resolved. If so, transition the work item to readyToExecute and
+    // auto-execute it.
+    const MAX_AUTO_REEXECUTE_CYCLES = 3;
+    const diffCommentsManager = new DiffCommentsManager(dataDir);
+
+    bridge.on('queueChange', (event: { type: string; task?: any }) => {
+        if (event.type !== 'updated' || !event.task) return;
+        const task = event.task;
+        if (task.status !== 'completed') return;
+
+        const resolveCtx = task.payload?.workItemResolveContext as { workItemId: string; wsId: string } | undefined;
+        if (!resolveCtx) return;
+
+        const { workItemId, wsId } = resolveCtx;
+
+        // Async: check if all comments are resolved and trigger re-execute
+        (async () => {
+            try {
+                const item = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
+                if (!item) return;
+                // Only auto re-execute if the feature is enabled and item is in aiDone status
+                if (!item.autoResolveAndReExecute) return;
+                if (item.status !== 'aiDone') return;
+
+                // Loop guard: max N cycles
+                const cycles = item.autoReExecuteCycles ?? 0;
+                if (cycles >= MAX_AUTO_REEXECUTE_CYCLES) return;
+
+                // Get all commit SHAs from the latest change
+                const changes = item.changes ?? [];
+                const latestChange = [...changes].reverse().find(c => c.status === 'closed');
+                if (!latestChange) return;
+                const commitShas = latestChange.commits.map(c => c.sha);
+                if (commitShas.length === 0) return;
+
+                // Check if there are still open comments
+                const totals = await diffCommentsManager.getCommentTotals(wsId, commitShas, { statuses: ['open'] });
+                const totalOpen = Object.values(totals as Record<string, number>).reduce((s, v) => s + v, 0);
+                if (totalOpen > 0) return;
+
+                // All comments resolved — transition and re-execute
+                await workItemStore.updateWorkItem(workItemId, {
+                    status: 'readyToExecute',
+                    autoReExecuteCycles: cycles + 1,
+                });
+
+                // Capture git HEAD before execution
+                let headBefore: string | undefined;
+                try {
+                    const workspaces = await store.getWorkspaces();
+                    const workspace = workspaces.find(w => w.id === item.repoId);
+                    if (workspace?.rootPath) {
+                        headBefore = execGit(['rev-parse', 'HEAD'], workspace.rootPath);
+                    }
+                } catch { /* non-fatal */ }
+
+                const result = await executeWorkItem(workItemId, workItemStore, enqueueForWorkItems, {
+                    headBefore,
+                    autoReExecuted: true,
+                });
+
+                const updatedItem = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
+                if (updatedItem) {
+                    getWsServer?.()?.broadcastProcessEvent({
+                        type: 'work-item-updated',
+                        workspaceId: item.repoId,
+                        item: updatedItem,
+                    });
+                }
+            } catch {
+                // Non-fatal: auto re-execute is best-effort
+            }
+        })();
     });
 
     const repoTreeService = new RepoTreeService(dataDir);

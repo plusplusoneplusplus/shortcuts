@@ -1146,16 +1146,25 @@ describe('ActivityListPane: New Chat button uses onNewChat', () => {
         expect(source).toContain('data-testid="new-chat-btn"');
     });
 
-    it('empty-state Queue Task button still uses onOpenDialog', () => {
-        // The empty-state "Queue Task" button should continue to use onOpenDialog
-        expect(source).toContain('data-testid="repo-queue-task-btn-empty"');
-        // Find the queue-task button line — it should reference onOpenDialog directly
+    it('empty-state Queue Task button was removed', () => {
+        // The empty-state "Queue Task" button has been removed — no task queueing from empty state
+        expect(source).not.toContain('data-testid="repo-queue-task-btn-empty"');
+    });
+
+    it('chats empty-state shows "No chats yet" without a button', () => {
+        expect(source).toContain('No chats yet');
+        expect(source).not.toContain('data-testid="new-chat-btn-empty"');
+    });
+
+    it('empty-state uses tab-filtered arrays instead of raw arrays', () => {
+        // The empty-state condition should check tabFiltered arrays, not raw running/queued/history
         const lines = source.split('\n');
-        const queueBtnLine = lines.findIndex(l => l.includes('repo-queue-task-btn-empty'));
-        // The nearby onClick should reference onOpenDialog (not onNewChat)
-        const nearbyBlock = lines.slice(Math.max(0, queueBtnLine - 5), queueBtnLine + 1).join('\n');
-        expect(nearbyBlock).toContain('onOpenDialog');
-        expect(nearbyBlock).not.toContain('onNewChat');
+        const emptyStateLine = lines.findIndex(l => l.includes('queue-empty-state'));
+        // Look at the condition a few lines before the empty state div
+        const conditionBlock = lines.slice(Math.max(0, emptyStateLine - 5), emptyStateLine).join('\n');
+        expect(conditionBlock).toContain('tabFilteredRunning');
+        expect(conditionBlock).toContain('tabFilteredQueued');
+        expect(conditionBlock).toContain('tabFilteredHistory');
     });
 });
 

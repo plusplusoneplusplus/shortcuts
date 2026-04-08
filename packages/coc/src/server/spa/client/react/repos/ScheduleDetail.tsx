@@ -87,7 +87,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             size="sm"
                             disabled={schedule.isRunning}
                             onClick={() => onRunNow(schedule.id)}
-                            aria-label="Run schedule now"
+                            aria-label="Run job now"
                         >
                             ▶ Run Now
                         </Button>
@@ -96,7 +96,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             variant="secondary"
                             size="sm"
                             onClick={() => onPauseResume(schedule)}
-                            aria-label={schedule.status === 'active' ? 'Pause schedule' : 'Resume schedule'}
+                            aria-label={schedule.status === 'active' ? 'Pause job' : 'Resume job'}
                         >
                             {schedule.status === 'active' ? '⏸ Pause' : '▶ Resume'}
                         </Button>
@@ -107,7 +107,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                                     size="sm"
                                     disabled={schedule.isRunning}
                                     onClick={() => onEdit(schedule.id)}
-                                    aria-label="Edit schedule"
+                                    aria-label="Edit job"
                                     data-testid="edit-btn"
                                 >
                                     ✏ Edit
@@ -116,7 +116,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                                     variant="secondary"
                                     size="sm"
                                     onClick={() => onDuplicate(schedule)}
-                                    aria-label="Duplicate schedule"
+                                    aria-label="Duplicate job"
                                     data-testid="duplicate-btn"
                                 >
                                     ⧉ Duplicate
@@ -125,7 +125,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                                     variant="danger"
                                     size="sm"
                                     onClick={() => onDelete(schedule.id)}
-                                    aria-label="Delete schedule"
+                                    aria-label="Delete job"
                                 >
                                     🗑 Delete
                                 </Button>

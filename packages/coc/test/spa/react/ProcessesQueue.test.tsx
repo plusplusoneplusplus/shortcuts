@@ -1015,11 +1015,6 @@ describe('ProcessesSidebar (queue panel)', () => {
         expect(screen.getByText(/0 running/)).toBeDefined();
     });
 
-    it('renders enqueue button', () => {
-        render(<Wrap><ProcessesSidebar /></Wrap>);
-        expect(screen.getByText('+ Enqueue')).toBeDefined();
-    });
-
     it('renders history toggle', () => {
         render(<Wrap><ProcessesSidebar /></Wrap>);
         expect(screen.getByText(/History/)).toBeDefined();

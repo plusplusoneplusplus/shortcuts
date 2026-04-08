@@ -427,9 +427,16 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (bridge.enqueue) {
                 const displayName = truncateDisplayName(messageContent.trim());
                 const parentTask = bridge.findTaskByProcessId?.(id);
-                if (parentTask && parentTask.status === 'completed' && bridge.requeueForFollowUp) {
+                if (parentTask && parentTask.status === 'running' && bridge.queueFollowUpBehindRunningTask) {
+                    // Task is currently executing — defer follow-up until it completes
+                    await bridge.queueFollowUpBehindRunningTask(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages);
+                } else if (parentTask && parentTask.status === 'queued') {
+                    // Task is already queued — message is persisted in conversation, no new task needed
+                } else if (parentTask && bridge.requeueForFollowUp) {
+                    // Task is in history (completed/failed/cancelled) — requeue
                     await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages);
                 } else {
+                    // No parent task found (pruned) or no requeue support — create new task
                     await bridge.enqueue({
                         type: 'chat',
                         priority: 'normal',

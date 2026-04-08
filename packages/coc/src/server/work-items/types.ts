@@ -88,6 +88,8 @@ export interface WorkItemExecution {
     status: 'running' | 'completed' | 'failed' | 'cancelled';
     /** Error message if execution failed. */
     error?: string;
+    /** Whether this execution was triggered automatically after comment resolution. */
+    autoReExecuted?: boolean;
 }
 
 // ============================================================================
@@ -181,6 +183,10 @@ export interface WorkItem {
     priority?: WorkItemPriority;
     /** Whether to auto-execute when status reaches 'readyToExecute'. */
     autoExecute?: boolean;
+    /** Whether to auto-resolve diff comments via AI and re-execute when all are resolved. */
+    autoResolveAndReExecute?: boolean;
+    /** Number of auto-resolve-then-re-execute cycles completed in the current change. Used as a loop guard. */
+    autoReExecuteCycles?: number;
 
     // Review
     /** Review comments for the AIDone state. */

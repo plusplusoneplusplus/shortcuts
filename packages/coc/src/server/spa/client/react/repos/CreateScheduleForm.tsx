@@ -144,7 +144,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
             }
             onCreated();
         } catch (err) {
-            setError(err instanceof Error ? err.message : `Failed to ${formMode === 'edit' ? 'update' : 'create'} schedule`);
+            setError(err instanceof Error ? err.message : `Failed to ${formMode === 'edit' ? 'update' : 'create'} job`);
         } finally {
             setSubmitting(false);
         }
@@ -152,7 +152,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-            <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">{formMode === 'edit' ? 'Edit Schedule' : 'New Schedule'}</div>
+            <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">{formMode === 'edit' ? 'Edit Job' : 'New Job'}</div>
 
                 {/* Template picker (create mode only) */}
                 {formMode !== 'edit' && (

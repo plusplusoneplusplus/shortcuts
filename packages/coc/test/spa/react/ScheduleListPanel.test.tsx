@@ -1,5 +1,5 @@
 /**
- * Tests for ScheduleListPanel two-section UI (MY SCHEDULES / REPO SCHEDULES).
+ * Tests for ScheduleListPanel two-section UI (MY JOBS / REPO JOBS).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -65,16 +65,16 @@ function renderPanel(schedules: Schedule[], selectedId: string | null = null) {
 describe('ScheduleListPanel — two-section UI', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('renders MY SCHEDULES section header', () => {
+    it('renders MY JOBS section header', () => {
         renderPanel([USER_SCHEDULE]);
         expect(screen.getByTestId('my-schedules-header')).toBeTruthy();
-        expect(screen.getByTestId('my-schedules-header').textContent).toContain('MY SCHEDULES');
+        expect(screen.getByTestId('my-schedules-header').textContent).toContain('MY JOBS');
     });
 
-    it('renders REPO SCHEDULES section header', () => {
+    it('renders REPO JOBS section header', () => {
         renderPanel([]);
         expect(screen.getByTestId('repo-schedules-header')).toBeTruthy();
-        expect(screen.getByTestId('repo-schedules-header').textContent).toContain('REPO SCHEDULES');
+        expect(screen.getByTestId('repo-schedules-header').textContent).toContain('REPO JOBS');
     });
 
     it('shows .github/schedules/ path label in repo section', () => {
@@ -82,13 +82,13 @@ describe('ScheduleListPanel — two-section UI', () => {
         expect(screen.getByTestId('repo-schedules-path').textContent).toContain('.github/schedules/');
     });
 
-    it('user schedules appear under MY SCHEDULES list', () => {
+    it('user schedules appear under MY JOBS list', () => {
         renderPanel([USER_SCHEDULE]);
         const list = screen.getByTestId('user-schedules-list');
         expect(list.textContent).toContain('My User Schedule');
     });
 
-    it('repo schedules appear under REPO SCHEDULES list', () => {
+    it('repo schedules appear under REPO JOBS list', () => {
         renderPanel([REPO_SCHEDULE]);
         const list = screen.getByTestId('repo-schedules-list');
         expect(list.textContent).toContain('Daily Cleanup');
@@ -106,17 +106,17 @@ describe('ScheduleListPanel — two-section UI', () => {
         expect(repoList.textContent).not.toContain('My User Schedule');
     });
 
-    it('shows count in MY SCHEDULES header when user schedules exist', () => {
+    it('shows count in MY JOBS header when user schedules exist', () => {
         renderPanel([USER_SCHEDULE]);
         expect(screen.getByTestId('my-schedules-header').textContent).toContain('(1)');
     });
 
-    it('shows count in REPO SCHEDULES header when repo schedules exist', () => {
+    it('shows count in REPO JOBS header when repo schedules exist', () => {
         renderPanel([REPO_SCHEDULE]);
         expect(screen.getByTestId('repo-schedules-header').textContent).toContain('(1)');
     });
 
-    it('shows no count in MY SCHEDULES when empty', () => {
+    it('shows no count in MY JOBS when empty', () => {
         renderPanel([]);
         const header = screen.getByTestId('my-schedules-header');
         expect(header.textContent).not.toContain('(');
@@ -145,14 +145,14 @@ describe('ScheduleListPanel — two-section UI', () => {
         expect(screen.getByTestId('new-schedule-btn')).toBeTruthy();
     });
 
-    it('clicking MY SCHEDULES header collapses user section', () => {
+    it('clicking MY JOBS header collapses user section', () => {
         renderPanel([USER_SCHEDULE]);
         const header = screen.getByTestId('my-schedules-header');
         fireEvent.click(header);
         expect(screen.queryByTestId('user-schedules-list')).toBeNull();
     });
 
-    it('clicking REPO SCHEDULES header collapses repo section', () => {
+    it('clicking REPO JOBS header collapses repo section', () => {
         renderPanel([REPO_SCHEDULE]);
         const header = screen.getByTestId('repo-schedules-header');
         fireEvent.click(header);
@@ -162,12 +162,12 @@ describe('ScheduleListPanel — two-section UI', () => {
     it('shows empty state for user section when no user schedules', () => {
         renderPanel([REPO_SCHEDULE]);
         // User section shows empty state text
-        expect(screen.getByText(/No schedules yet/)).toBeTruthy();
+        expect(screen.getByText(/No jobs yet/)).toBeTruthy();
     });
 
     it('shows empty state for repo section when no repo schedules', () => {
         renderPanel([USER_SCHEDULE]);
-        expect(screen.getByText('No repo schedules found.')).toBeTruthy();
+        expect(screen.getByText('No repo jobs found.')).toBeTruthy();
     });
 
     it('renders refresh button when onRefresh is provided', () => {
