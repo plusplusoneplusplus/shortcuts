@@ -419,6 +419,88 @@ export function safeRemove(
     }
 }
 
+// ============================================================================
+// Async variants (fs.promises)
+// ============================================================================
+
+/**
+ * Async version of safeExists — checks if a file or directory exists.
+ */
+export async function safeExistsAsync(filePath: string): Promise<boolean> {
+    try {
+        await fs.promises.access(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Async version of safeStats — gets file stats.
+ */
+export async function safeStatsAsync(filePath: string): Promise<FileOperationResult<fs.Stats>> {
+    try {
+        const stats = await fs.promises.stat(filePath);
+        return { success: true, data: stats };
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        const errorCode = extractErrorCode(err);
+        return { success: false, error: err, errorCode };
+    }
+}
+
+/**
+ * Async version of safeReadDir — reads a directory and returns its entries.
+ */
+export async function safeReadDirAsync(
+    dirPath: string
+): Promise<FileOperationResult<string[]>>;
+export async function safeReadDirAsync(
+    dirPath: string,
+    withFileTypes: true
+): Promise<FileOperationResult<fs.Dirent[]>>;
+export async function safeReadDirAsync(
+    dirPath: string,
+    withFileTypes: false
+): Promise<FileOperationResult<string[]>>;
+export async function safeReadDirAsync(
+    dirPath: string,
+    withFileTypes?: boolean
+): Promise<FileOperationResult<string[] | fs.Dirent[]>> {
+    try {
+        if (withFileTypes) {
+            const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+            return { success: true, data: entries };
+        } else {
+            const entries = await fs.promises.readdir(dirPath);
+            return { success: true, data: entries };
+        }
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        const errorCode = extractErrorCode(err);
+        return { success: false, error: err, errorCode };
+    }
+}
+
+/**
+ * Async version of safeReadFile — reads a file and returns its contents.
+ */
+export async function safeReadFileAsync(
+    filePath: string,
+    options: ReadFileOptions = {}
+): Promise<FileOperationResult<string>> {
+    const { encoding = 'utf8' } = options;
+
+    try {
+        const data = await fs.promises.readFile(filePath, encoding);
+        return { success: true, data };
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        const errorCode = extractErrorCode(err);
+        return { success: false, error: err, errorCode };
+    }
+}
+
 /**
  * Extracts error code from a Node.js error.
  * 

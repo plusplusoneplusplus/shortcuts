@@ -24,7 +24,11 @@ export {
     safeCopyFile,
     safeRename,
     safeRemove,
-    getFileErrorMessage
+    getFileErrorMessage,
+    safeExistsAsync,
+    safeStatsAsync,
+    safeReadDirAsync,
+    safeReadFileAsync,
 } from './file-utils';
 
 // Glob utilities

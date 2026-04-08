@@ -145,6 +145,10 @@ export {
     safeRename,
     safeRemove,
     getFileErrorMessage,
+    safeExistsAsync,
+    safeStatsAsync,
+    safeReadDirAsync,
+    safeReadFileAsync,
     // Glob utilities
     glob,
     getFilesWithExtension,
