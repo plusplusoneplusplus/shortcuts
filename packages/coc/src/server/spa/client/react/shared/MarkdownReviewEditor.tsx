@@ -35,6 +35,7 @@ import { getLanguageFromFileName } from '../repos/useSyntaxHighlight';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
+import { isAbsolutePath } from '../utils/path-resolution';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
@@ -644,9 +645,11 @@ export function MarkdownReviewEditor({
 
     const handleCopyWithContext = useCallback(async () => {
         const text = savedSelection?.text || rawContent;
-        const absolutePath = workspaceRootPath
-            ? toForwardSlashes(workspaceRootPath + '/' + filePath)
-            : filePath || '(unknown file)';
+        const absolutePath = isAbsolutePath(filePath)
+            ? toForwardSlashes(filePath)
+            : workspaceRootPath
+                ? toForwardSlashes(workspaceRootPath + '/' + filePath)
+                : filePath || '(unknown file)';
         const pathLabel = absolutePath || '(unknown file)';
         const formatted = `${pathLabel}\n\`\`\`\n${text}\n\`\`\``;
         try {
@@ -766,9 +769,11 @@ export function MarkdownReviewEditor({
                                             data-testid="task-preview-follow-prompt"
                                             title="Run Skill"
                                             onClick={() => {
-                                                const absPath = workspaceRootPath
-                                                    ? toForwardSlashes(workspaceRootPath + '/' + filePath)
-                                                    : filePath;
+                                                const absPath = isAbsolutePath(filePath)
+                                                    ? toForwardSlashes(filePath)
+                                                    : workspaceRootPath
+                                                        ? toForwardSlashes(workspaceRootPath + '/' + filePath)
+                                                        : filePath;
                                                 queueDispatch({
                                                     type: 'OPEN_DIALOG',
                                                     workspaceId: wsId,
