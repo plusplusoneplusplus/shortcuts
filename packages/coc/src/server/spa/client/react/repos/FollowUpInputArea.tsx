@@ -104,7 +104,7 @@ export function FollowUpInputArea({
             {(sending || task?.status === 'running') && (
                 <div className="flex items-center gap-2 text-xs text-[#848484] dark:text-[#999]" data-testid="agent-responding-indicator">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />
-                    Agent is responding...
+                    Agent is thinking...
                 </div>
             )}
             {resumeFeedback && (

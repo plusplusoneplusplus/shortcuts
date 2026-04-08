@@ -93,7 +93,7 @@ export function ChatHeader({
                 <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">{title ?? 'Chat'}</span>
                 {task && (
                     <Badge status={task.status}>
-                        {statusIcon(task.status)} {statusLabel(task.status)}
+                        {statusIcon(task.status)} {task.status === 'running' ? 'Thinking' : statusLabel(task.status)}
                     </Badge>
                 )}
                 <ReferencesDropdown planPath={planPath} files={createdFiles} />
