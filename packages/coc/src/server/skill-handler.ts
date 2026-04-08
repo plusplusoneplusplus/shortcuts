@@ -15,6 +15,10 @@ import {
     getBundledSkills,
     DEFAULT_SKILLS_SETTINGS,
     isWithinDirectory,
+    normalizeExecutionPath,
+    resolvePathForHostFilesystem,
+    resolvePathInExecutionContext,
+    resolveWorkspaceExecutionContext,
 } from '@plusplusoneplusplus/forge';
 import { sendJSON } from './api-handler';
 import { handleAPIError, notFound, badRequest } from './errors';
@@ -31,7 +35,25 @@ import type { Route } from './types';
 const RESERVED_SKILL_NAMES = new Set(['bundled', 'scan', 'install', 'all']);
 
 function getSkillsInstallPath(workspaceRoot: string): string {
-    return path.join(workspaceRoot, DEFAULT_SKILLS_SETTINGS.installPath);
+    return resolvePathForHostFilesystem(workspaceRoot, DEFAULT_SKILLS_SETTINGS.installPath);
+}
+
+function getSkillsSourcePath(workspaceRoot: string): string {
+    return resolvePathInExecutionContext(workspaceRoot, DEFAULT_SKILLS_SETTINGS.installPath);
+}
+
+function resolveExtraSkillFolderSourcePath(workspaceRoot: string, folder: string): string {
+    if (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl') {
+        return folder;
+    }
+    return resolvePathInExecutionContext(workspaceRoot, folder);
+}
+
+function resolveExtraSkillFolderInstallPath(workspaceRoot: string, folder: string): string {
+    if (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl') {
+        return resolvePathForHostFilesystem(folder);
+    }
+    return resolvePathForHostFilesystem(workspaceRoot, folder);
 }
 
 /**
@@ -273,10 +295,11 @@ async function loadSkillsForWorkspace(
 ): Promise<SkillInfo[]> {
     const id = ws.id;
     const installPath = getSkillsInstallPath(ws.rootPath);
+    const sourceInstallPath = getSkillsSourcePath(ws.rootPath);
     const localSkills = listInstalledSkills(installPath);
     for (const skill of localSkills) {
         skill.source = 'repo';
-        skill.folderPath = installPath;
+        skill.folderPath = sourceInstallPath;
     }
     const localNames = new Set(localSkills.map(s => s.name));
 
@@ -297,20 +320,25 @@ async function loadSkillsForWorkspace(
     const extraSkillFolders: string[] = ws.extraSkillFolders ?? [];
     const extraSkills: SkillInfo[] = [];
     for (const folder of extraSkillFolders) {
-        const folderSkills = listInstalledSkills(folder);
+        const folderSourcePath = resolveExtraSkillFolderSourcePath(ws.rootPath, folder);
+        const folderInstallPath = resolveExtraSkillFolderInstallPath(ws.rootPath, folder);
+        const folderSkills = listInstalledSkills(folderInstallPath);
         let sourceRepoId: string | undefined;
         if (allWorkspaces === null) {
             try { allWorkspaces = await store.getWorkspaces(); } catch { allWorkspaces = []; }
         }
         for (const otherWs of allWorkspaces) {
-            if (otherWs.id !== id && path.resolve(getSkillsInstallPath(otherWs.rootPath)) === path.resolve(folder)) {
+            if (
+                otherWs.id !== id
+                && normalizeExecutionPath(getSkillsSourcePath(otherWs.rootPath)) === normalizeExecutionPath(folderSourcePath)
+            ) {
                 sourceRepoId = otherWs.id;
                 break;
             }
         }
         for (const skill of folderSkills) {
             if (localNames.has(skill.name) || globalNames.has(skill.name)) continue;
-            skill.folderPath = folder;
+            skill.folderPath = folderSourcePath;
             if (sourceRepoId) {
                 skill.source = 'linked-repo';
                 skill.sourceRepoId = sourceRepoId;

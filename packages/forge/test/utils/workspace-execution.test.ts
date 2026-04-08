@@ -1,14 +1,19 @@
+import * as path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     buildWslCommandArgs,
     clearWorkspaceExecutionCaches,
+    getDefaultWslDistro,
     getWslExecutablePath,
     isWslExecutionContext,
     isWslPath,
     normalizeExecutionPath,
     normalizeWslExecutionPath,
+    resolvePathForHostFilesystem,
+    resolvePathInExecutionContext,
     resolveWorkspaceExecutionContext,
     translatePathForExecution,
+    translatePathForHostFilesystem,
     type WslExecutionContext,
 } from '../../src/utils/workspace-execution';
 
@@ -74,9 +79,12 @@ describe('workspace-execution', () => {
         });
 
         it.runIf(process.platform === 'win32')('returns wsl context for bare Linux path on Windows', () => {
+            clearWorkspaceExecutionCaches();
+            const expectedDistro = getDefaultWslDistro();
             const ctx = resolveWorkspaceExecutionContext('/home/user/repo');
             expect(ctx.kind).toBe('wsl');
             if (ctx.kind === 'wsl') {
+                expect(ctx.distro).toBe(expectedDistro);
                 expect(ctx.linuxWorkingDirectory).toBe('/home/user/repo');
             }
         });
@@ -157,6 +165,51 @@ describe('workspace-execution', () => {
         });
     });
 
+    describe('translatePathForHostFilesystem', () => {
+        const wslContext: WslExecutionContext = {
+            kind: 'wsl',
+            linuxWorkingDirectory: '/home/user/repo',
+            distro: 'Ubuntu',
+            originalWorkingDirectory: '\\\\wsl$\\Ubuntu\\home\\user\\repo',
+        };
+
+        it('returns path unchanged for windows context', () => {
+            expect(translatePathForHostFilesystem('C:\\some\\path', { kind: 'windows', workingDirectory: 'C:\\repo' })).toBe('C:\\some\\path');
+        });
+
+        it.runIf(process.platform === 'win32')('translates WSL UNC paths to Windows host filesystem paths', () => {
+            expect(translatePathForHostFilesystem('\\\\wsl$\\Ubuntu\\home\\user\\file.txt', wslContext))
+                .toBe('\\\\wsl$\\Ubuntu\\home\\user\\file.txt');
+        });
+
+        it.runIf(process.platform === 'win32')('translates Linux paths to WSL UNC paths when distro is known', () => {
+            expect(translatePathForHostFilesystem('/home/user/file.txt', wslContext))
+                .toBe('\\\\wsl$\\Ubuntu\\home\\user\\file.txt');
+        });
+    });
+
+    describe('resolvePathInExecutionContext', () => {
+        it('uses native path resolution for Windows paths', () => {
+            expect(resolvePathInExecutionContext('C:\\repo', '.github', 'skills')).toBe(path.win32.resolve('C:\\repo', '.github', 'skills'));
+        });
+
+        it('builds Linux paths for WSL namespaces', () => {
+            expect(resolvePathInExecutionContext('\\\\wsl$\\Ubuntu\\home\\user\\repo', '.github', 'skills'))
+                .toBe('/home/user/repo/.github/skills');
+        });
+    });
+
+    describe('resolvePathForHostFilesystem', () => {
+        it('uses native filesystem paths for Windows roots', () => {
+            expect(resolvePathForHostFilesystem('C:\\repo', '.github', 'skills')).toBe(path.win32.resolve('C:\\repo', '.github', 'skills'));
+        });
+
+        it.runIf(process.platform === 'win32')('converts Linux roots to WSL UNC paths for host filesystem access', () => {
+            const result = resolvePathForHostFilesystem('\\\\wsl$\\Ubuntu\\home\\user\\repo', '.github', 'skills');
+            expect(result).toBe('\\\\wsl$\\Ubuntu\\home\\user\\repo\\.github\\skills');
+        });
+    });
+
     describe('buildWslCommandArgs', () => {
         it('builds args with distro', () => {
             const ctx: WslExecutionContext = {
@@ -224,6 +277,13 @@ describe('workspace-execution', () => {
         it.runIf(process.platform === 'win32')('lowercases on Windows', () => {
             const result = normalizeExecutionPath('C:\\Users\\TEST\\Repo');
             expect(result).toBe(result.toLowerCase());
+        });
+
+        it.runIf(process.platform === 'win32')('uses default distro for bare Linux paths on Windows', () => {
+            clearWorkspaceExecutionCaches();
+            const expectedDistro = (getDefaultWslDistro() ?? 'default').toLowerCase();
+            const result = normalizeExecutionPath('/home/user/repo');
+            expect(result).toBe(`wsl://${expectedDistro}/home/user/repo`);
         });
     });
 

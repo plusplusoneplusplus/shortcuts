@@ -405,6 +405,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 }
             }
             const deliveryMode: 'immediate' | 'enqueue' = (body.deliveryMode === 'immediate') ? 'immediate' : 'enqueue';
+            const requestedSkillNames = Array.isArray(body.skillNames) ? body.skillNames as unknown[] : undefined;
+            const selectedSkillNames: string[] | undefined = requestedSkillNames
+                ? [...new Set(requestedSkillNames.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))]
+                : undefined;
 
             // Read optional client-provided optimistic ID for reconciliation
             const optimisticId: string | undefined = typeof body.optimisticId === 'string' ? body.optimisticId : undefined;
@@ -439,7 +443,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     const displayName = truncateDisplayName(messageContent.trim());
                     const parentTask = bridge.findTaskByProcessId?.(id);
                     if (parentTask && parentTask.status === 'completed' && bridge.requeueForFollowUp) {
-                        await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages);
+                        await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages, selectedSkillNames);
                     } else {
                         await bridge.enqueue({
                             type: 'chat',
@@ -453,6 +457,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                                 images: validatedImages,
                                 workingDirectory: proc.workingDirectory,
                                 readonly: (proc as any).payload?.readonly,
+                                ...(selectedSkillNames && selectedSkillNames.length > 0 ? { context: { skills: selectedSkillNames } } : {}),
                                 ...(modeOverride ? { mode: modeOverride } : {}),
                                 deliveryMode,
                             },
@@ -461,7 +466,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         });
                     }
                 } else {
-                    bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode, validatedImages).catch(() => {
+                    bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames).catch(() => {
                     }).finally(() => {
                         if (imageTempDir) { cleanupTempDir(imageTempDir); }
                     });

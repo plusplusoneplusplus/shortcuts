@@ -248,7 +248,7 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined, undefined, 'enqueue', undefined);
+            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined, undefined, 'enqueue', undefined, undefined);
             expect((bridgeWithRequeue.enqueue as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
@@ -275,9 +275,11 @@ describe('POST /api/processes/:id/message', () => {
             expect(res.status).toBe(202);
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             expect(enqueueFn).toHaveBeenCalledTimes(1);
-            const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
+            const payload = enqueueFn.mock.calls[0][0].payload;
+            const sentContent = payload.prompt;
             // /impl must be preserved so the AI SDK sees the skill invocation
             expect(sentContent).toBe('/impl analyze auth module');
+            expect(payload.context.skills).toEqual(['impl']);
         });
 
         it('should pass raw content unchanged when skillNames present', async () => {
@@ -299,8 +301,10 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
-            const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
+            const payload = enqueueFn.mock.calls[0][0].payload;
+            const sentContent = payload.prompt;
             expect(sentContent).toBe('/impl analyze auth module');
+            expect(payload.context.skills).toEqual(['impl']);
         });
 
         it('should preserve multiple /skill tokens in prompt', async () => {
@@ -322,10 +326,12 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
-            const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
+            const payload = enqueueFn.mock.calls[0][0].payload;
+            const sentContent = payload.prompt;
             expect(sentContent).toContain('/unknown-skill');
             expect(sentContent).toContain('/impl');
             expect(sentContent).toBe('/impl /unknown-skill analyze');
+            expect(payload.context.skills).toEqual(['impl']);
         });
 
         it('should not alter prompt when skillNames is empty', async () => {
@@ -349,6 +355,7 @@ describe('POST /api/processes/:id/message', () => {
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
             expect(sentContent).toBe('plain question');
+            expect(enqueueFn.mock.calls[0][0].payload.context).toBeUndefined();
         });
 
         it('should not alter prompt when skillNames is not provided', async () => {
@@ -371,6 +378,7 @@ describe('POST /api/processes/:id/message', () => {
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
             expect(sentContent).toBe('another question');
+            expect(enqueueFn.mock.calls[0][0].payload.context).toBeUndefined();
         });
 
         it('should not produce empty prompt when only /skill is sent (regression)', async () => {
@@ -392,10 +400,12 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
-            const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
+            const payload = enqueueFn.mock.calls[0][0].payload;
+            const sentContent = payload.prompt;
             // Must NOT be empty — the /impl token is the user's full intent
             expect(sentContent).toBe('/impl');
             expect(sentContent.length).toBeGreaterThan(0);
+            expect(payload.context.skills).toEqual(['impl']);
         });
     });
 
@@ -488,7 +498,7 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            expect(requeueSpy).toHaveBeenCalledWith('parent-mode-1', 'plan this', undefined, undefined, 'plan', 'enqueue', undefined);
+            expect(requeueSpy).toHaveBeenCalledWith('parent-mode-1', 'plan this', undefined, undefined, 'plan', 'enqueue', undefined, undefined);
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
         });

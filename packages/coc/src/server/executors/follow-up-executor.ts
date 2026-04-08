@@ -35,6 +35,7 @@ import {
     withRepoInstructions,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
+    prependSelectedSkillsDirective,
 } from './prompt-builder';
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
@@ -118,6 +119,7 @@ export class FollowUpExecutor extends BaseExecutor {
         mode?: ChatMode,
         deliveryMode?: string,
         images?: string[],
+        selectedSkillNames?: string[],
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -178,7 +180,10 @@ export class FollowUpExecutor extends BaseExecutor {
             // only needs to handle the AI call and assistant turn.
 
             const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
-            const followUpMessage = followUpSuffix ? `${message}${followUpSuffix}` : message;
+            const followUpMessage = prependSelectedSkillsDirective(
+                followUpSuffix ? `${message}${followUpSuffix}` : message,
+                selectedSkillNames,
+            );
             const agentMode = toAgentMode(currentMode);
 
             const historySystemMessage: SystemMessageConfig | undefined = historyContext

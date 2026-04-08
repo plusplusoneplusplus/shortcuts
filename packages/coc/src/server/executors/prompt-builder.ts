@@ -206,6 +206,31 @@ export function applySkillContent(prompt: string, _task: QueuedTask): string {
     return prompt;
 }
 
+/**
+ * Preserve explicit slash-selected skill intent without eagerly injecting
+ * the skill bodies. The native runtime still resolves the skill content on demand.
+ */
+export function prependSelectedSkillsDirective(prompt: string, selectedSkills?: string[]): string {
+    if (!selectedSkills || selectedSkills.length === 0) {
+        return prompt;
+    }
+
+    const uniqueSkills = [...new Set(selectedSkills.filter(skill => typeof skill === 'string' && skill.trim().length > 0))];
+    if (uniqueSkills.length === 0) {
+        return prompt;
+    }
+
+    const directive = [
+        '<selected_skills>',
+        `The user explicitly selected these skills: ${uniqueSkills.join(', ')}.`,
+        'Use the native skill system and invoke each selected skill immediately before proceeding with the request.',
+        'Do not inline or restate the skill bodies yourself.',
+        '</selected_skills>',
+    ].join('\n');
+
+    return `${directive}\n\n${prompt}`;
+}
+
 // ============================================================================
 // Conversation History
 // ============================================================================

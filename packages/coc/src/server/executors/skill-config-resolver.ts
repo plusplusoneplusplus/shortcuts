@@ -11,7 +11,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { DEFAULT_SKILLS_SETTINGS } from '@plusplusoneplusplus/forge';
+import {
+    DEFAULT_SKILLS_SETTINGS,
+    resolvePathForHostFilesystem,
+    resolvePathInExecutionContext,
+    resolveWorkspaceExecutionContext,
+    translatePathForExecution,
+} from '@plusplusoneplusplus/forge';
 
 export async function resolveSkillConfig(
     store: ProcessStore,
@@ -55,42 +61,47 @@ export async function resolveSkillConfig(
 
     const dirs: string[] = [];
     const root = workingDirectory;
+    const sessionContext = resolveWorkspaceExecutionContext(root);
 
-    if (root) {
-        const skillsDir = path.join(root, DEFAULT_SKILLS_SETTINGS.installPath);
+    async function tryAddSkillDirectory(sourcePath: string, hostPath: string): Promise<void> {
         try {
-            if (await fs.promises.access(skillsDir).then(() => true).catch(() => false)) {
-                dirs.push(skillsDir);
+            if (!await fs.promises.access(hostPath).then(() => true).catch(() => false)) {
+                return;
             }
         } catch {
-            // Non-fatal
+            return;
         }
+
+        try {
+            dirs.push(sessionContext.kind === 'wsl'
+                ? translatePathForExecution(sourcePath, sessionContext)
+                : hostPath);
+        } catch {
+            // Non-fatal: skip skill folders that the active session namespace cannot access
+        }
+    }
+
+    if (root) {
+        const skillsDir = resolvePathInExecutionContext(root, DEFAULT_SKILLS_SETTINGS.installPath);
+        const hostSkillsDir = resolvePathForHostFilesystem(root, DEFAULT_SKILLS_SETTINGS.installPath);
+        await tryAddSkillDirectory(skillsDir, hostSkillsDir);
     }
 
     if (dataDir) {
         const globalSkillsDir = path.join(dataDir, 'skills');
-        try {
-            if (await fs.promises.access(globalSkillsDir).then(() => true).catch(() => false)) {
-                dirs.push(globalSkillsDir);
-            }
-        } catch {
-            // Non-fatal
-        }
+        await tryAddSkillDirectory(globalSkillsDir, globalSkillsDir);
     }
 
     if (extraSkillFolders) {
         for (const folder of extraSkillFolders) {
-            const resolved = path.isAbsolute(folder)
+            const sourcePath = (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl')
                 ? folder
-                : (root ? path.resolve(root, folder) : null);
-            if (resolved) {
-                try {
-                    if (await fs.promises.access(resolved).then(() => true).catch(() => false)) {
-                        dirs.push(resolved);
-                    }
-                } catch {
-                    // Non-fatal
-                }
+                : (root ? resolvePathInExecutionContext(root, folder) : null);
+            const hostPath = (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl')
+                ? resolvePathForHostFilesystem(folder)
+                : (root ? resolvePathForHostFilesystem(root, folder) : null);
+            if (sourcePath && hostPath) {
+                await tryAddSkillDirectory(sourcePath, hostPath);
             }
         }
     }

@@ -36,8 +36,6 @@ import {
     getLogger,
     LogCategory,
     mergeConsecutiveContentItems,
-    resolveSkill,
-    SkillResolverError,
     TASK_FILTER,
     ToolCallCapture,
     rewriteLargePrompt,
@@ -46,6 +44,7 @@ import type { ChatPayload } from '../task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
+import { prependSelectedSkillsDirective } from './prompt-builder';
 
 // ============================================================================
 // Types
@@ -220,42 +219,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
             const taskWorkspaceId = payload.workspaceId;
             const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(taskWorkspaceId, workingDirectory);
-
-            // Inject skill content for context.skills
-            const contextSkills = (payload as ChatPayload).context?.skills;
-            if (contextSkills?.length) {
-                const skillParts: string[] = [];
-                for (const skillName of contextSkills) {
-                    let content: string | undefined;
-                    // 1. Try workspace-local .github/skills/
-                    if (workingDirectory) {
-                        try {
-                            content = await resolveSkill(skillName, workingDirectory);
-                        } catch (err) {
-                            if (!(err instanceof SkillResolverError)) throw err;
-                        }
-                    }
-                    // 2. Fall back to other skill directories (global, extra folders)
-                    if (!content && skillDirectories) {
-                        for (const dir of skillDirectories) {
-                            const skillMdPath = path.join(dir, skillName, 'SKILL.md');
-                            if (fs.existsSync(skillMdPath)) {
-                                content = fs.readFileSync(skillMdPath, 'utf-8')
-                                    .replace(/^---[\s\S]*?---\s*/m, '').trim();
-                                break;
-                            }
-                        }
-                    }
-                    if (content) {
-                        skillParts.push(`<skill name="${skillName}">\n${content}\n</skill>`);
-                    } else {
-                        getLogger().warn(LogCategory.AI, `[ChatModeExecutor] Skill not found: ${skillName}`);
-                    }
-                }
-                if (skillParts.length > 0) {
-                    effectivePrompt = `${skillParts.join('\n\n')}\n\n${effectivePrompt}`;
-                }
-            }
+            effectivePrompt = prependSelectedSkillsDirective(
+                effectivePrompt,
+                (payload as ChatPayload).context?.skills,
+            );
 
             let captureHandler: ((event: ToolEvent) => void) | undefined;
             try {

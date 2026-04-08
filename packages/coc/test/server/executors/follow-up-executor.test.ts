@@ -44,6 +44,10 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
     withRepoInstructions: (...args: any[]) => mockWithRepoInstructions(...args),
     buildConversationHistoryContext: (...args: any[]) => mockBuildConversationHistoryContext(...args),
     buildFollowUpSuggestionsAddon: (...args: any[]) => mockBuildFollowUpSuggestionsAddon(...args),
+    prependSelectedSkillsDirective: (prompt: string, selectedSkills?: string[]) =>
+        selectedSkills && selectedSkills.length > 0
+            ? `<selected_skills>\nThe user explicitly selected these skills: ${selectedSkills.join(', ')}.\nUse the native skill system and invoke each selected skill immediately before proceeding with the request.\nDo not inline or restate the skill bodies yourself.\n</selected_skills>\n\n${prompt}`
+            : prompt,
 }));
 
 const mockEmitMessageSteering = vi.fn();
@@ -171,6 +175,23 @@ describe('FollowUpExecutor', () => {
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(
             expect.objectContaining({ sessionId: 'sdk-session-abc' }),
         );
+    });
+
+    it('prepends a selected-skills directive without inlining skill bodies', async () => {
+        const proc = makeProcess({ id: 'proc-skills', sdkSessionId: 'sdk-session-skills' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-skills', 'msg', undefined, undefined, undefined, undefined, ['impl', 'review']);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: expect.stringContaining('<selected_skills>'),
+            }),
+        );
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(call.prompt).toContain('The user explicitly selected these skills: impl, review.');
+        expect(call.prompt).not.toContain('<skill name=');
     });
 
     // -------------------------------------------------------------------------
