@@ -4,11 +4,12 @@
  * execution history, and action buttons.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';
+import { useWorkItems } from '../context/WorkItemContext';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -91,6 +92,35 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     }, [basePath]);
 
     useEffect(() => { fetchItem(); }, [fetchItem]);
+
+    /* ── Auto-refresh via WorkItemContext (WebSocket events) ── */
+    const { state: workItemState } = useWorkItems();
+    const contextItems = workItemState.workItemsByRepo[workspaceId] || [];
+    const contextItem = contextItems.find(i => i.id === workItemId);
+
+    const lastContextUpdatedAt = useRef<string | undefined>();
+    const contextItemWasPresent = useRef(false);
+
+    // Re-fetch full detail when the context item updates (work-item-updated)
+    useEffect(() => {
+        if (!contextItem) return;
+
+        contextItemWasPresent.current = true;
+        const prev = lastContextUpdatedAt.current;
+        lastContextUpdatedAt.current = contextItem.updatedAt;
+
+        // Only re-fetch when updatedAt actually changes (skip initial observation)
+        if (prev !== undefined && prev !== contextItem.updatedAt) {
+            fetchItem();
+        }
+    }, [contextItem?.updatedAt, fetchItem]);
+
+    // Navigate back when the item is deleted externally (work-item-removed)
+    useEffect(() => {
+        if (contextItemWasPresent.current && !contextItem) {
+            onBack?.();
+        }
+    }, [contextItem, onBack]);
 
     const handleExecute = async () => {
         setExecuting(true);
