@@ -688,49 +688,51 @@ export function EnqueueDialog() {
                     </button>
                 </div>
             </details>
-            <div>
-                <label className="block text-xs font-medium text-[#848484] mb-1">Model</label>
-                <select
-                    value={model}
-                    onChange={e => handleModelChange(e.target.value)}
-                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                >
-                    <option value="">Default</option>
-                    {models.map(m => (
-                        <option key={m} value={m}>{m}</option>
-                    ))}
-                </select>
+            <div className="flex flex-row gap-2">
+                <div className="flex-1 min-w-0">
+                    <label className="block text-xs font-medium text-[#848484] mb-1">Model</label>
+                    <select
+                        value={model}
+                        onChange={e => handleModelChange(e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                    >
+                        <option value="">Default</option>
+                        {models.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                        ))}
+                    </select>
+                </div>
+                {appState.workspaces.length > 0 && (
+                    <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-[#848484] mb-1">Workspace</label>
+                        <select
+                            value={workspaceId}
+                            onChange={e => setWorkspaceId(e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                        >
+                            <option value="">None</option>
+                            {appState.workspaces.map((ws: any, i: number) => (
+                                <option key={`${ws.id}::${i}`} value={ws.id}>{ws.name || ws.path || ws.id}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+                {workspaceId && folders.length > 0 && (
+                    <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-[#848484] mb-1">Folder</label>
+                        <select
+                            value={folderPath}
+                            onChange={e => setFolderPath(e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                            data-testid="folder-select"
+                        >
+                            {folders.map((f, i) => (
+                                <option key={`${f.value}::${i}`} value={f.value}>{f.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
             </div>
-            {appState.workspaces.length > 0 && (
-                <div>
-                    <label className="block text-xs font-medium text-[#848484] mb-1">Workspace</label>
-                    <select
-                        value={workspaceId}
-                        onChange={e => setWorkspaceId(e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                    >
-                        <option value="">None</option>
-                        {appState.workspaces.map((ws: any, i: number) => (
-                            <option key={`${ws.id}::${i}`} value={ws.id}>{ws.name || ws.path || ws.id}</option>
-                        ))}
-                    </select>
-                </div>
-            )}
-            {workspaceId && folders.length > 0 && (
-                <div>
-                    <label className="block text-xs font-medium text-[#848484] mb-1">Folder</label>
-                    <select
-                        value={folderPath}
-                        onChange={e => setFolderPath(e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                        data-testid="folder-select"
-                    >
-                        {folders.map((f, i) => (
-                            <option key={`${f.value}::${i}`} value={f.value}>{f.label}</option>
-                        ))}
-                    </select>
-                </div>
-            )}
             </>
             )}
         </div>
