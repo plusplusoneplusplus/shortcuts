@@ -58,8 +58,8 @@ export const DEFAULT_SETTINGS: TasksViewerSettings = {
  * as a navigable folder in the SPA's Miller columns.
  * Files inside get relativePath prefixed with 'archive/'.
  */
-export function buildArchiveFolderNode(archiveDir: string): TaskFolder {
-    const docs = scanDocumentsRecursively(archiveDir, 'archive', true);
+export async function buildArchiveFolderNode(archiveDir: string): Promise<TaskFolder> {
+    const docs = await scanDocumentsRecursively(archiveDir, 'archive', true);
     const { groups, singles } = groupTaskDocuments(docs);
 
     const archiveNode: TaskFolder = {
@@ -76,7 +76,7 @@ export function buildArchiveFolderNode(archiveDir: string): TaskFolder {
     // Scan sub-folders inside archive
     const folderMap = new Map<string, TaskFolder>();
     folderMap.set('archive', archiveNode);
-    scanFoldersRecursively(archiveDir, 'archive', true, folderMap, archiveNode);
+    await scanFoldersRecursively(archiveDir, 'archive', true, folderMap, archiveNode);
 
     return archiveNode;
 }

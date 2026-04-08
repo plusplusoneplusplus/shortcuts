@@ -12,7 +12,7 @@
  */
 
 import * as path from 'path';
-import { ensureDirectoryExists, safeExists, safeReadDir, safeStats } from '../utils';
+import { ensureDirectoryExists, safeExists, safeReadDirAsync, safeStatsAsync } from '../utils';
 import { toForwardSlashes } from '../utils/path-utils';
 import {
     Task,
@@ -102,12 +102,12 @@ export class TaskManager {
         const tasks: Task[] = [];
         const tasksFolder = this.getTasksFolder();
 
-        const activeTasks = scanTasksRecursively(tasksFolder, '', false);
+        const activeTasks = await scanTasksRecursively(tasksFolder, '', false);
         tasks.push(...activeTasks);
 
         if (this.settings.showArchived) {
             const archiveFolder = this.getArchiveFolder();
-            const archivedTasks = scanTasksRecursively(archiveFolder, '', true);
+            const archivedTasks = await scanTasksRecursively(archiveFolder, '', true);
             tasks.push(...archivedTasks);
         }
 
@@ -118,12 +118,12 @@ export class TaskManager {
         const documents: TaskDocument[] = [];
         const tasksFolder = this.getTasksFolder();
 
-        const activeDocuments = scanDocumentsRecursively(tasksFolder, '', false);
+        const activeDocuments = await scanDocumentsRecursively(tasksFolder, '', false);
         documents.push(...activeDocuments);
 
         if (this.settings.showArchived) {
             const archiveFolder = this.getArchiveFolder();
-            const archivedDocuments = scanDocumentsRecursively(archiveFolder, '', true);
+            const archivedDocuments = await scanDocumentsRecursively(archiveFolder, '', true);
             documents.push(...archivedDocuments);
         }
 
@@ -138,7 +138,7 @@ export class TaskManager {
     async getTaskFolderHierarchy(): Promise<TaskFolder> {
         const documents = await this.getTaskDocuments();
 
-        const { root, folderMap } = buildTaskFolderHierarchy(
+        const { root, folderMap } = await buildTaskFolderHierarchy(
             this.getTasksFolder(),
             documents,
             this.settings.showArchived,
@@ -348,7 +348,7 @@ export class TaskManager {
         folders: Array<{ path: string; displayName: string; relativePath: string }>
     ): Promise<void> {
         const archiveFolderName = 'archive';
-        const readResult = safeReadDir(dirPath);
+        const readResult = await safeReadDirAsync(dirPath);
 
         if (!readResult.success || !readResult.data) {
             return;
@@ -360,7 +360,7 @@ export class TaskManager {
             }
 
             const itemPath = path.join(dirPath, item);
-            const statsResult = safeStats(itemPath);
+            const statsResult = await safeStatsAsync(itemPath);
 
             if (!statsResult.success || !statsResult.data || !statsResult.data.isDirectory()) {
                 continue;

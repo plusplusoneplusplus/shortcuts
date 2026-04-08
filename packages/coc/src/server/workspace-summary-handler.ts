@@ -61,7 +61,7 @@ async function resolveTasksForWorkspace(
             try {
                 const stat = await fs.promises.stat(archiveDir);
                 if (stat.isDirectory()) {
-                    const archiveNode = buildArchiveFolderNode(archiveDir);
+                    const archiveNode = await buildArchiveFolderNode(archiveDir);
                     annotateTaskRootPath(archiveNode, folderPath);
                     hierarchy.children = hierarchy.children || [];
                     hierarchy.children.push(archiveNode);

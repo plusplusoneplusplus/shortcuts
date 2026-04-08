@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, safeWriteFile } from '../utils';
+import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, safeWriteFile, safeReadDirAsync, safeStatsAsync } from '../utils';
 import { toForwardSlashes } from '../utils/path-utils';
 import { parseFileName, sanitizeFileName } from './task-parser';
 import type {
@@ -539,7 +539,7 @@ export async function importTask(sourcePath: string, tasksFolder: string, newNam
     }
 
     // Copy file content (not move, to preserve original)
-    const content = fs.readFileSync(sourcePath, 'utf-8');
+    const content = await fs.promises.readFile(sourcePath, 'utf-8');
     safeWriteFile(targetPath, content);
 
     return targetPath;
@@ -654,10 +654,10 @@ export async function getAllTasks(
     tasksFolder: string,
     showArchived: boolean = false
 ): Promise<Task[]> {
-    const tasks: Task[] = scanTasksRecursively(tasksFolder, '', false);
+    const tasks: Task[] = await scanTasksRecursively(tasksFolder, '', false);
     if (showArchived) {
         const archiveFolder = path.join(tasksFolder, 'archive');
-        tasks.push(...scanTasksRecursively(archiveFolder, '', true));
+        tasks.push(...await scanTasksRecursively(archiveFolder, '', true));
     }
     return tasks;
 }
@@ -669,10 +669,10 @@ export async function getAllDocuments(
     tasksFolder: string,
     showArchived: boolean = false
 ): Promise<TaskDocument[]> {
-    const documents: TaskDocument[] = scanDocumentsRecursively(tasksFolder, '', false);
+    const documents: TaskDocument[] = await scanDocumentsRecursively(tasksFolder, '', false);
     if (showArchived) {
         const archiveFolder = path.join(tasksFolder, 'archive');
-        documents.push(...scanDocumentsRecursively(archiveFolder, '', true));
+        documents.push(...await scanDocumentsRecursively(archiveFolder, '', true));
     }
     return documents;
 }
@@ -702,7 +702,7 @@ export async function getFullTaskHierarchy(
     const documents = await getAllDocuments(tasksFolder, showArchived);
     const archiveFolder = path.join(tasksFolder, 'archive');
 
-    const { root, folderMap } = buildTaskFolderHierarchy(
+    const { root, folderMap } = await buildTaskFolderHierarchy(
         tasksFolder,
         documents,
         showArchived,
@@ -739,7 +739,7 @@ async function collectFeatureFoldersRecursively(
     folders: Array<{ path: string; displayName: string; relativePath: string }>
 ): Promise<void> {
     const archiveFolderName = 'archive';
-    const readResult = safeReadDir(dirPath);
+    const readResult = await safeReadDirAsync(dirPath);
 
     if (!readResult.success || !readResult.data) {
         return;
@@ -751,7 +751,7 @@ async function collectFeatureFoldersRecursively(
         }
 
         const itemPath = path.join(dirPath, item);
-        const statsResult = safeStats(itemPath);
+        const statsResult = await safeStatsAsync(itemPath);
 
         if (!statsResult.success || !statsResult.data || !statsResult.data.isDirectory()) {
             continue;
