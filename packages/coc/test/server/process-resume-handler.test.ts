@@ -17,6 +17,22 @@ import type { Route } from '@plusplusoneplusplus/coc-server';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes, launchResumeCommandInTerminal, launchFreshChatInTerminal } from '../../src/server/process-resume-handler';
 import { spawn } from 'child_process';
 
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
+    return {
+        ...actual,
+        resolveWorkspaceExecutionContext: vi.fn((cwd?: string) => cwd && (cwd.startsWith('/home/') || cwd.startsWith(String.raw`\\wsl$`))
+            ? { kind: 'wsl', distro: 'Ubuntu', linuxWorkingDirectory: '/home/tester/repo', originalWorkingDirectory: cwd }
+            : actual.resolveWorkspaceExecutionContext(cwd)),
+        translatePathForHostFilesystem: vi.fn((targetPath: string) => {
+            if (targetPath === '/home/tester/repo') {
+                return String.raw`\\wsl$\Ubuntu\home\tester\repo`;
+            }
+            return actual.translatePathForHostFilesystem(targetPath);
+        }),
+    };
+});
+
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal<typeof import('child_process')>();
     return { ...actual, spawn: vi.fn(actual.spawn) };
@@ -292,6 +308,17 @@ describe('launchResumeCommandInTerminal – Windows spawn arguments', () => {
         expect((opts as any).detached).toBe(true);
     });
 
+    it('translates Linux-style WSL working directories before spawning PowerShell', async () => {
+        await launchResumeCommandInTerminal({
+            sessionId: 'sess-wsl-1',
+            workingDirectory: '/home/tester/repo',
+        });
+
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).toContain('/D "\\\\wsl$\\Ubuntu\\home\\tester\\repo"');
+        expect(startLine).toContain('--resume "sess-wsl-1"');
+    });
+
     it('quotes session IDs and paths containing spaces', async () => {
         await launchResumeCommandInTerminal({
             sessionId: 'sess with spaces',
@@ -479,6 +506,16 @@ describe('launchFreshChatInTerminal – Windows spawn arguments', () => {
 
         expect((opts as any).windowsVerbatimArguments).toBe(true);
         expect((opts as any).detached).toBe(true);
+    });
+
+    it('translates Linux-style WSL working directories before launching fresh chat', async () => {
+        await launchFreshChatInTerminal({
+            workingDirectory: '/home/tester/repo',
+        });
+
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).toContain('/D "\\\\wsl$\\Ubuntu\\home\\tester\\repo"');
+        expect(startLine).toContain('powershell.exe -NoExit -Command copilot --yolo');
     });
 
     it('does not include --resume in the spawn arguments', async () => {

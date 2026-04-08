@@ -20,15 +20,18 @@ setLogger(nullLogger);
 
 vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', () => ({
     ensureFolderTrusted: vi.fn(),
-    getCopilotConfigDir: vi.fn().mockReturnValue('C:\\Users\\tester\\.copilot'),
 }));
 
 vi.mock('../../src/utils/workspace-execution', () => ({
-    resolveWorkspaceExecutionContext: vi.fn((cwd?: string) => cwd && cwd.startsWith(String.raw`\\wsl$`)
+    resolveWorkspaceExecutionContext: vi.fn((cwd?: string) => cwd && (cwd.startsWith(String.raw`\\wsl$`) || cwd.startsWith('/home/tester/'))
         ? { kind: 'wsl', distro: 'Ubuntu', linuxWorkingDirectory: '/home/tester/repo', originalWorkingDirectory: cwd }
         : { kind: 'windows', workingDirectory: cwd }),
-    getWslExecutablePath: vi.fn().mockReturnValue('C:\\Windows\\System32\\wsl.exe'),
-    buildWslCommandArgs: vi.fn((_context: unknown, argv: string[]) => ['-d', 'Ubuntu', '--cd', '/home/tester/repo', '--', ...argv]),
+    translatePathForHostFilesystem: vi.fn((targetPath: string) => {
+        if (targetPath.startsWith('/home/tester/')) {
+            return String.raw`\\wsl$\Ubuntu` + targetPath.replace(/\//g, '\\');
+        }
+        return targetPath;
+    }),
 }));
 
 vi.mock('fs', async () => {
@@ -146,19 +149,38 @@ describe('createSdkClient', () => {
         expect(fs.existsSync).not.toHaveBeenCalled();
     });
 
-    it('routes WSL working directories through wsl.exe and Linux trust paths', () => {
+    it('routes WSL working directories to the host filesystem for the Windows Copilot CLI', () => {
         const cwd = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
         createSdkClient({ cwd });
 
         expect(workspaceExecution.resolveWorkspaceExecutionContext).toHaveBeenCalledWith(cwd);
-        expect(capturedOptions[0].cwd).toBeUndefined();
-        expect(capturedOptions[0].cliPath).toBe('C:\\Windows\\System32\\wsl.exe');
-        expect(capturedOptions[0].cliArgs).toEqual(['-d', 'Ubuntu', '--cd', '/home/tester/repo', '--', 'copilot']);
-        expect(capturedOptions[0].env).toEqual(expect.objectContaining({
-            COPILOT_HOME: '/mnt/c/Users/tester/.copilot',
-            XDG_CONFIG_HOME: '/mnt/c/Users/tester/.copilot',
-        }));
-        expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith('/home/tester/repo');
-        expect(fs.existsSync).not.toHaveBeenCalled();
+        expect(workspaceExecution.translatePathForHostFilesystem).toHaveBeenCalledWith(
+            cwd,
+            expect.objectContaining({
+                kind: 'wsl',
+                linuxWorkingDirectory: '/home/tester/repo',
+            }),
+        );
+        expect(capturedOptions[0].cwd).toBe(cwd);
+        expect(capturedOptions[0].cliPath).toBeUndefined();
+        expect(capturedOptions[0].cliArgs).toBeUndefined();
+        expect(capturedOptions[0].env).toBeUndefined();
+        expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(cwd);
+        expect(fs.existsSync).toHaveBeenCalledWith(cwd);
+    });
+
+    it('translates Linux-style WSL working directories to host UNC paths', () => {
+        createSdkClient({ cwd: '/home/tester/repo' });
+
+        expect(workspaceExecution.translatePathForHostFilesystem).toHaveBeenCalledWith(
+            '/home/tester/repo',
+            expect.objectContaining({
+                kind: 'wsl',
+                linuxWorkingDirectory: '/home/tester/repo',
+            }),
+        );
+        expect(capturedOptions[0].cwd).toBe(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
+        expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
+        expect(fs.existsSync).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
     });
 });

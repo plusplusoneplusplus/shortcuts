@@ -9,6 +9,7 @@ import { spawn, type SpawnOptions } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { resolveWorkspaceExecutionContext, translatePathForHostFilesystem } from '@plusplusoneplusplus/forge';
 import { sendError, sendJSON, parseBody } from './api-handler';
 import type { Route } from './types';
 
@@ -125,7 +126,10 @@ async function resolveWorkingDirectory(store: ProcessStore, processRecord: any):
 
     for (const candidate of candidates) {
         try {
-            const resolved = path.resolve(candidate);
+            const executionContext = resolveWorkspaceExecutionContext(candidate);
+            const resolved = executionContext.kind === 'wsl'
+                ? translatePathForHostFilesystem(candidate, executionContext)
+                : path.resolve(candidate);
             if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
                 return resolved;
             }
@@ -185,7 +189,10 @@ async function tryLinuxTerminalLaunchers(
 
 export async function launchResumeCommandInTerminal(input: LaunchResumeInput): Promise<LaunchResumeResult> {
     const platform = process.platform;
-    const command = buildResumeCommand(input.sessionId, input.workingDirectory, platform);
+    const terminalWorkingDirectory = platform === 'win32'
+        ? translatePathForHostFilesystem(input.workingDirectory)
+        : input.workingDirectory;
+    const command = buildResumeCommand(input.sessionId, terminalWorkingDirectory, platform);
 
     if (platform === 'darwin') {
         const scriptBody = escapeAppleScriptString(command);
@@ -209,7 +216,7 @@ export async function launchResumeCommandInTerminal(input: LaunchResumeInput): P
         // as its own command separator, so `start` only receives the `cd /d` part.
         // `windowsVerbatimArguments` prevents Node.js from C-runtime-escaping quotes.
         const resumeCmd = `copilot --yolo --resume ${quoteWindows(input.sessionId)}`;
-        const startLine = `/c start "" /D ${quoteWindows(input.workingDirectory)} powershell.exe -NoExit -Command ${resumeCmd}`;
+        const startLine = `/c start "" /D ${quoteWindows(terminalWorkingDirectory)} powershell.exe -NoExit -Command ${resumeCmd}`;
         await spawnDetached('cmd.exe', [startLine], { windowsVerbatimArguments: true });
         return {
             launched: true,
@@ -241,7 +248,10 @@ function buildFreshChatCommand(
 
 export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Promise<LaunchResumeResult> {
     const platform = process.platform;
-    const command = buildFreshChatCommand(input.workingDirectory, platform);
+    const terminalWorkingDirectory = platform === 'win32'
+        ? translatePathForHostFilesystem(input.workingDirectory)
+        : input.workingDirectory;
+    const command = buildFreshChatCommand(terminalWorkingDirectory, platform);
 
     if (platform === 'darwin') {
         const scriptBody = escapeAppleScriptString(command);
@@ -256,7 +266,7 @@ export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Pr
 
     if (platform === 'win32') {
         const freshCmd = `copilot --yolo`;
-        const startLine = `/c start "" /D ${quoteWindows(input.workingDirectory)} powershell.exe -NoExit -Command ${freshCmd}`;
+        const startLine = `/c start "" /D ${quoteWindows(terminalWorkingDirectory)} powershell.exe -NoExit -Command ${freshCmd}`;
         await spawnDetached('cmd.exe', [startLine], { windowsVerbatimArguments: true });
         return { launched: true, command, terminal: 'powershell' };
     }

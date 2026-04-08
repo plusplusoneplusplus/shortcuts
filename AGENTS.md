@@ -143,7 +143,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 
 **Terminal layer:** `TerminalWebSocketServer` in `terminal/terminal-ws-server.ts` manages WebSocket connections at `/ws/terminal?workspaceId=X`. Each connection is workspace-scoped; clients send `terminal-create` messages to spawn PTY sessions, then `terminal-input`/`terminal-resize`/`terminal-close` to interact. Multiple sessions per connection are supported. PTY management is delegated to `TerminalSessionManager`. Instantiated only when `resolvedConfig.terminal.enabled` is true. Cleaned up via `closeAll()` during server shutdown.
 
-**WSL repos:** Repo-root discovery accepts WSL UNC and Linux-style paths. Keep Windows-hosted trust/config/session storage, but route repo execution through the shared forge workspace-execution helpers rather than adding ad hoc `wsl.exe` spawning in server code.
+**WSL repos:** Repo-root discovery accepts WSL UNC and Linux-style paths. Keep Windows-hosted trust/config/session storage, but route repo execution through the shared forge workspace-execution helpers rather than adding ad hoc `wsl.exe` spawning in server code. For Copilot SDK and interactive terminal launches on Windows, translate WSL repo roots to host UNC paths and run the Windows-hosted CLI instead of assuming `copilot` exists inside WSL.
 
 **Module decomposition:** Large handler files are split into focused sub-modules with thin re-export aggregators for backward compatibility:
 - `schedule-manager.ts` → cron utilities in `cron-utils.ts` (parseCron, nextCronTime, describeCron, slugifyName)

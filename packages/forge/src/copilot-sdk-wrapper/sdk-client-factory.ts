@@ -6,37 +6,14 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import type { CopilotClient, CopilotClientOptions } from '@github/copilot-sdk';
-import { ensureFolderTrusted, getCopilotConfigDir } from './trusted-folder';
+import { ensureFolderTrusted } from './trusted-folder';
 import { getAIServiceLogger } from '../ai-logger';
 import { getCachedCopilotSdk } from './sdk-esm-loader';
 import {
-    buildWslCommandArgs,
-    getWslExecutablePath,
     resolveWorkspaceExecutionContext,
+    translatePathForHostFilesystem,
 } from '../utils/workspace-execution';
-import { windowsPathToWslPath } from '../utils/path-utils';
-
-function wslConfigEnvironment(existingEnv: Record<string, string | undefined> | undefined): Record<string, string | undefined> {
-    const configDir = getCopilotConfigDir();
-    const translatedConfigDir = windowsPathToWslPath(path.resolve(configDir));
-    if (!translatedConfigDir) {
-        const aiLog = getAIServiceLogger();
-        aiLog.warn(
-            { configDir },
-            'Cannot translate Copilot config path to WSL mount path. ' +
-            'COPILOT_HOME will not be set in the WSL environment.',
-        );
-        return existingEnv ?? {};
-    }
-
-    return {
-        ...existingEnv,
-        COPILOT_HOME: translatedConfigDir,
-        XDG_CONFIG_HOME: translatedConfigDir,
-    };
-}
 
 /**
  * Spawn a new `CopilotClient`.
@@ -59,13 +36,18 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
     if (cwd) {
         const executionContext = resolveWorkspaceExecutionContext(cwd);
         if (executionContext.kind === 'wsl') {
-            clientOptions.cliPath = getWslExecutablePath();
-            // COPILOT_WSL_CLI_COMMAND: override the CLI binary name invoked inside WSL (dev/test escape hatch)
-            clientOptions.cliArgs = buildWslCommandArgs(executionContext, [process.env['COPILOT_WSL_CLI_COMMAND'] || 'copilot']);
-            clientOptions.cwd = undefined;
-            clientOptions.env = wslConfigEnvironment(options.env);
+            const hostWorkingDirectory = translatePathForHostFilesystem(cwd, executionContext);
+            if (!fs.existsSync(hostWorkingDirectory)) {
+                aiLog.warn(
+                    { cwd, hostWorkingDirectory },
+                    'Translated WSL working directory does not exist on the host filesystem. ' +
+                    'The SDK will fail with ERR_STREAM_DESTROYED because child_process.spawn ' +
+                    'requires an existing cwd. Ensure the caller passes a valid directory.',
+                );
+            }
+            clientOptions.cwd = hostWorkingDirectory;
             try {
-                ensureFolderTrusted(executionContext.linuxWorkingDirectory);
+                ensureFolderTrusted(hostWorkingDirectory);
             } catch {
                 // Non-fatal: trust dialog will appear if this fails
             }
