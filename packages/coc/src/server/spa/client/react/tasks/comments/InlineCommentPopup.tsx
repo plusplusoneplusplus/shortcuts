@@ -26,7 +26,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const popupRef = useRef<HTMLDivElement>(null);
     const { isMobile } = useBreakpoint();
-    const { position: clampedPos, isDraggingRef, handleMouseDown: handleDragStart } = useDraggable(position, popupRef);
+    const { position: clampedPos, handleMouseDown: handleDragStart } = useDraggable(position, popupRef);
 
     useEffect(() => {
         setText('');
@@ -47,23 +47,6 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
         return () => document.removeEventListener('keydown', handler);
     }, [text]);
 
-    // Click outside closes — but not if the user is mid-drag
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (isDraggingRef.current) return;
-            if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-                onCancel();
-            }
-        };
-        // Delay to avoid immediate close from the same click that opened popup
-        const timer = setTimeout(() => {
-            document.addEventListener('mousedown', handler);
-        }, 0);
-        return () => {
-            clearTimeout(timer);
-            document.removeEventListener('mousedown', handler);
-        };
-    }, [onCancel, isDraggingRef]);
 
     const handleSubmit = () => {
         const trimmed = text.trim();

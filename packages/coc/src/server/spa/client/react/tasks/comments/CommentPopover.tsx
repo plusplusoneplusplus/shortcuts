@@ -75,20 +75,6 @@ export function CommentPopover({
         return () => document.removeEventListener('keydown', handler);
     }, [onClose]);
 
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-                onClose();
-            }
-        };
-        const timer = setTimeout(() => {
-            document.addEventListener('mousedown', handler);
-        }, 0);
-        return () => {
-            clearTimeout(timer);
-            document.removeEventListener('mousedown', handler);
-        };
-    }, [onClose]);
 
     const handleSave = () => {
         const trimmed = editText.trim();

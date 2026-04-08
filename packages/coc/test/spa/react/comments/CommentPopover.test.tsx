@@ -269,6 +269,25 @@ describe('CommentPopover', () => {
         expect(onClose).toHaveBeenCalledOnce();
     });
 
+    it('does not close on click outside', () => {
+        const onClose = vi.fn();
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={onClose}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+            />,
+        );
+
+        // Click outside the popover
+        fireEvent.mouseDown(document.body);
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
     it('shows category icon', () => {
         render(
             <CommentPopover

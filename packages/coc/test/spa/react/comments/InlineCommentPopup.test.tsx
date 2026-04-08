@@ -375,6 +375,23 @@ describe('InlineCommentPopup', () => {
         expect(generalChip.className).not.toContain('bg-[#0078d4]');
     });
 
+    it('does not close on click outside', () => {
+        const onCancel = vi.fn();
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={onCancel}
+            />
+        );
+
+        // Click outside the popup
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        });
+        expect(onCancel).not.toHaveBeenCalled();
+    });
+
     it('category chips show icon and label', () => {
         render(
             <InlineCommentPopup
