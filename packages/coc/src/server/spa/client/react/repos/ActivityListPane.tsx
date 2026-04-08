@@ -881,13 +881,30 @@ export function ActivityListPane({
 
                 {(filteredPinned.length > 0 || pinnedRunningCount > 0) && (
                     <div>
-                        <button
-                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
-                            onClick={() => setShowPinned(!showPinned)}
-                            data-testid="pinned-chats-section-toggle"
-                        >
-                            {showPinned ? '▼' : '▶'} 📌 Pinned ({filteredPinned.length + pinnedRunningCount})
-                        </button>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                                className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
+                                onClick={() => setShowPinned(!showPinned)}
+                                data-testid="pinned-chats-section-toggle"
+                            >
+                                {showPinned ? '▼' : '▶'} 📌 Pinned ({filteredPinned.length + pinnedRunningCount})
+                                {unseenTaskIds && (() => {
+                                    const count = filteredPinned.filter(t => unseenTaskIds.has(t.id)).length;
+                                    return count > 0 ? (
+                                        <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-pinned-count-badge">{count}</span>
+                                    ) : null;
+                                })()}
+                            </button>
+                            {onMarkAllRead && unseenTaskIds && filteredPinned.some(t => unseenTaskIds.has(t.id)) && (
+                                <button
+                                    className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
+                                    onClick={() => onMarkAllRead(filteredPinned)}
+                                    data-testid="mark-all-read-pinned-btn"
+                                >
+                                    Mark all read
+                                </button>
+                            )}
+                        </div>
                         {showPinned && (
                             <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                                 {filteredPinned.map(task => {
@@ -1039,13 +1056,30 @@ export function ActivityListPane({
                 )}
             {filteredArchived.length > 0 && (
                 <div>
-                    <button
-                        className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
-                        onClick={() => setShowArchived(!showArchived)}
-                        data-testid="archived-chats-section-toggle"
-                    >
-                        {showArchived ? '▼' : '▶'} 📦 Archived ({filteredArchived.length})
-                    </button>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
+                            onClick={() => setShowArchived(!showArchived)}
+                            data-testid="archived-chats-section-toggle"
+                        >
+                            {showArchived ? '▼' : '▶'} 📦 Archived ({filteredArchived.length})
+                            {unseenTaskIds && (() => {
+                                const count = filteredArchived.filter(t => unseenTaskIds.has(t.id)).length;
+                                return count > 0 ? (
+                                    <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-archived-count-badge">{count}</span>
+                                ) : null;
+                            })()}
+                        </button>
+                        {onMarkAllRead && unseenTaskIds && filteredArchived.some(t => unseenTaskIds.has(t.id)) && (
+                            <button
+                                className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
+                                onClick={() => onMarkAllRead(filteredArchived)}
+                                data-testid="mark-all-read-archived-btn"
+                            >
+                                Mark all read
+                            </button>
+                        )}
+                    </div>
                     {showArchived && (
                         <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                             {filteredArchived.map(task => {
@@ -1070,6 +1104,7 @@ export function ActivityListPane({
                                     >
                                         <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                                             <span className="flex items-center gap-1 min-w-0 truncate">
+                                                {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
                                                 <span className="shrink-0">
                                                     {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                                 </span>
@@ -1081,7 +1116,7 @@ export function ActivityListPane({
                                                 {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                             </span>
                                         </div>
-                                        {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb]" title={p}>{p}</div> : null; })()}
+                                        {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
                                     </Card>
                                     </SwipeableHistoryItem>
                                 );

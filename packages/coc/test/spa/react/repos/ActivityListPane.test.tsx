@@ -398,7 +398,7 @@ describe('ActivityListPane', () => {
             mockPinnedChatIds = new Set(['h-1']);
             renderPane({ history: [makeHistoryTask()] });
             const toggle = screen.getByTestId('pinned-chats-section-toggle');
-            const section = toggle.parentElement!;
+            const section = toggle.parentElement!.parentElement!;
             expect(section.querySelector('[data-task-id="h-1"]')).toBeTruthy();
         });
 
@@ -495,7 +495,7 @@ describe('ActivityListPane', () => {
             renderPane({ history: [makeHistoryTask({ id: 'h-a' })] });
             fireEvent.click(screen.getByTestId('archived-chats-section-toggle'));
             const toggle = screen.getByTestId('archived-chats-section-toggle');
-            const section = toggle.parentElement!;
+            const section = toggle.parentElement!.parentElement!;
             expect(section.querySelector('[data-task-id="h-a"]')).toBeTruthy();
         });
     });
@@ -909,6 +909,116 @@ describe('ActivityListPane', () => {
                 onMarkAllRead: vi.fn(),
             });
             expect(screen.getByTestId('mark-all-read-btn')).toBeTruthy();
+        });
+
+        it('unseen dot shown on archived task', () => {
+            mockArchivedChatIds = new Set(['h-1']);
+            renderPane({
+                history: [makeHistoryTask()],
+                unseenTaskIds: new Set(['h-1']),
+            });
+            // Expand the archived section
+            fireEvent.click(screen.getByTestId('archived-chats-section-toggle'));
+            expect(screen.getByTestId('unseen-dot')).toBeTruthy();
+        });
+    });
+
+    // ── Pinned section mark all read ──────────────────────────────────
+    describe('Pinned section mark all read', () => {
+        it('mark all read button appears when unseen pinned items exist', () => {
+            mockPinnedChatIds = new Set(['h-1']);
+            renderPane({
+                history: [makeHistoryTask()],
+                unseenTaskIds: new Set(['h-1']),
+                onMarkAllRead: vi.fn(),
+            });
+            expect(screen.getByTestId('mark-all-read-pinned-btn')).toBeTruthy();
+        });
+
+        it('clicking mark all read calls onMarkAllRead with pinned tasks', () => {
+            mockPinnedChatIds = new Set(['h-1']);
+            const onMarkAllRead = vi.fn();
+            renderPane({
+                history: [makeHistoryTask()],
+                unseenTaskIds: new Set(['h-1']),
+                onMarkAllRead,
+            });
+            fireEvent.click(screen.getByTestId('mark-all-read-pinned-btn'));
+            expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+            expect(onMarkAllRead.mock.calls[0][0]).toEqual([expect.objectContaining({ id: 'h-1' })]);
+        });
+
+        it('mark all read button hidden when no unseen pinned items', () => {
+            mockPinnedChatIds = new Set(['h-1']);
+            renderPane({
+                history: [makeHistoryTask()],
+                unseenTaskIds: new Set(),
+                onMarkAllRead: vi.fn(),
+            });
+            expect(screen.queryByTestId('mark-all-read-pinned-btn')).toBeNull();
+        });
+
+        it('unseen badge shows correct count for pinned section', () => {
+            mockPinnedChatIds = new Set(['p-1', 'p-2']);
+            renderPane({
+                history: [
+                    makeHistoryTask({ id: 'p-1', displayName: 'Pinned 1' }),
+                    makeHistoryTask({ id: 'p-2', displayName: 'Pinned 2' }),
+                ],
+                unseenTaskIds: new Set(['p-1', 'p-2']),
+            });
+            expect(screen.getByTestId('unseen-pinned-count-badge')).toBeTruthy();
+            expect(screen.getByTestId('unseen-pinned-count-badge').textContent).toBe('2');
+        });
+    });
+
+    // ── Archived section mark all read ────────────────────────────────
+    describe('Archived section mark all read', () => {
+        it('mark all read button appears when unseen archived items exist', () => {
+            mockArchivedChatIds = new Set(['h-1']);
+            renderPane({
+                history: [makeHistoryTask()],
+                unseenTaskIds: new Set(['h-1']),
+                onMarkAllRead: vi.fn(),
+            });
+            expect(screen.getByTestId('mark-all-read-archived-btn')).toBeTruthy();
+        });
+
+        it('clicking mark all read calls onMarkAllRead with archived tasks', () => {
+            mockArchivedChatIds = new Set(['h-1']);
+            const onMarkAllRead = vi.fn();
+            renderPane({
+                history: [makeHistoryTask()],
+                unseenTaskIds: new Set(['h-1']),
+                onMarkAllRead,
+            });
+            fireEvent.click(screen.getByTestId('mark-all-read-archived-btn'));
+            expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+            expect(onMarkAllRead.mock.calls[0][0]).toEqual([expect.objectContaining({ id: 'h-1' })]);
+        });
+
+        it('mark all read button hidden when no unseen archived items', () => {
+            mockArchivedChatIds = new Set(['h-1']);
+            renderPane({
+                history: [makeHistoryTask()],
+                unseenTaskIds: new Set(),
+                onMarkAllRead: vi.fn(),
+            });
+            expect(screen.queryByTestId('mark-all-read-archived-btn')).toBeNull();
+        });
+
+        it('unseen badge shows correct count for archived section', () => {
+            mockArchivedChatIds = new Set(['a-1', 'a-2', 'a-3']);
+            renderPane({
+                history: [
+                    makeHistoryTask({ id: 'a-1', displayName: 'Archived 1' }),
+                    makeHistoryTask({ id: 'a-2', displayName: 'Archived 2' }),
+                    makeHistoryTask({ id: 'a-3', displayName: 'Archived 3' }),
+                ],
+                unseenTaskIds: new Set(['a-1', 'a-3']),
+            });
+            expect(screen.getByTestId('unseen-archived-count-badge')).toBeTruthy();
+            expect(screen.getByTestId('unseen-archived-count-badge').textContent).toBe('2');
         });
     });
 
