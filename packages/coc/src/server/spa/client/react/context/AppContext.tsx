@@ -369,6 +369,11 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'CACHE_CONVERSATION': {
             const now = Date.now();
             const cache = { ...state.conversationCache };
+            // Guard against cache poisoning: never overwrite with fewer turns
+            const existing = cache[action.processId];
+            if (existing && action.turns.length < existing.turns.length) {
+                return state;
+            }
             // Evict expired
             for (const key of Object.keys(cache)) {
                 if (now - cache[key].cachedAt > CACHE_TTL_MS) delete cache[key];

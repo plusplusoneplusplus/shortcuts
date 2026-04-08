@@ -256,7 +256,9 @@ describe('useSendMessage', () => {
         expect(setTask).not.toHaveBeenCalled();
     });
 
-    it('calls refreshConversation in finally block after successful send', async () => {
+    it('calls refreshConversation via waitForSendCompletion fallback (no EventSource)', async () => {
+        // With EventSource stubbed to undefined, waitForSendCompletion falls through
+        // to `return refreshConversation(pid)` — so it is still called once.
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
         const refreshConversation = vi.fn().mockResolvedValue(undefined);
         const opts = makeOptions({ refreshConversation });
@@ -267,7 +269,10 @@ describe('useSendMessage', () => {
         expect(refreshConversation).toHaveBeenCalledWith('pid-1');
     });
 
-    it('calls refreshConversation in finally block even after error', async () => {
+    it('does not call refreshConversation in finally block (deduplication)', async () => {
+        // refreshConversation is intentionally NOT called from the finally block
+        // to avoid racing with useChatSSE.finish() which already triggers a refresh.
+        // In this test (no EventSource), the only call comes from waitForSendCompletion fallback.
         fetchMock.mockRejectedValue(new Error('network'));
         const refreshConversation = vi.fn().mockResolvedValue(undefined);
         const opts = makeOptions({ refreshConversation });
@@ -275,7 +280,9 @@ describe('useSendMessage', () => {
 
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp(); });
-        expect(refreshConversation).toHaveBeenCalledWith('pid-1');
+        // fetch throws before waitForSendCompletion is reached, so refreshConversation
+        // should NOT be called (the finally block no longer calls it)
+        expect(refreshConversation).not.toHaveBeenCalled();
     });
 
     // ── Paste content composition tests ─────────────────────────────────

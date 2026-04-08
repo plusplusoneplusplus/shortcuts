@@ -229,11 +229,20 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         });
     }, [setTurnsAndRef]);
 
+    // Monotonic counter to deduplicate concurrent refreshConversation calls.
+    // Only the latest in-flight fetch applies its result; earlier ones are discarded.
+    const refreshVersionRef = useRef(0);
+
     const refreshConversation = useCallback(async (pid: string) => {
+        const version = ++refreshVersionRef.current;
         try {
             const data = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+            // Discard stale response — a newer refresh was issued while we were in flight
+            if (version !== refreshVersionRef.current) return;
             setProcessDetails(data?.process || null);
             const refreshedTurns = getConversationTurns(data);
+            // Guard against stale data: skip if fetched turns are fewer than current
+            if (refreshedTurns.length < turnsRef.current.length) return;
             setTurnsAndRef(refreshedTurns);
             // Sync queued follow-ups from server state
             const serverPending: any[] = data?.process?.pendingMessages ?? [];
