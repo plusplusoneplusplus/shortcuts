@@ -1,5 +1,5 @@
-import { isTerminalEnabled } from '../utils/config';
+import { useDisplaySettings } from './useDisplaySettings';
 
 export function useTerminalEnabled(): boolean {
-    return isTerminalEnabled();
+    return useDisplaySettings().terminalEnabled;
 }
