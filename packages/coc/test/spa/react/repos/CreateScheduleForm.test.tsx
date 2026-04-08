@@ -99,7 +99,7 @@ describe('CreateScheduleForm — template application', () => {
 });
 
 describe('CreateScheduleForm — edit mode', () => {
-    it('shows "Edit Schedule" heading in edit mode', async () => {
+    it('shows "Edit Job" heading in edit mode', async () => {
         await renderForm({
             mode: 'edit',
             scheduleId: 'sched-1',
@@ -110,7 +110,7 @@ describe('CreateScheduleForm — edit mode', () => {
                 cron: '0 9 * * *',
             },
         });
-        expect(screen.getByText('Edit Schedule')).toBeTruthy();
+        expect(screen.getByText('Edit Job')).toBeTruthy();
     });
 
     it('pre-populates name from initialValues in edit mode', async () => {
