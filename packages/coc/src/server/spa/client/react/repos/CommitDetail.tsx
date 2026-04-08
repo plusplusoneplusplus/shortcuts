@@ -18,7 +18,8 @@ import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { CommitChatPanel } from './CommitChatPanel';
 import { useResizablePanel } from '../hooks/useResizablePanel';
-import { ResolveContextDialog, shouldSkipResolveDialog } from '../shared/ResolveContextDialog';
+import { shouldSkipResolveDialog } from '../shared/ResolveContextDialog';
+import { useQueue } from '../context/QueueContext';
 import type { DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
 import type { GitCommitItem } from './CommitList';
@@ -81,39 +82,46 @@ export function CommitDetail({ workspaceId, hash, commit }: CommitDetailProps) {
         clearAiError: clearCommitAiError,
     } = useAllCommitComments(workspaceId, hash ?? '');
 
-    const [resolveDialogState, setResolveDialogState] = useState<{
-        open: boolean;
-        mode: 'commit-batch' | 'commit-fix';
-        commentId?: string;
-    }>({ open: false, mode: 'commit-batch' });
+    const { dispatch: queueDispatch } = useQueue();
 
     const handleResolveAllCommitWithAI = useCallback(() => {
         if (shouldSkipResolveDialog()) {
             void commitResolveWithAI();
             return;
         }
-        setResolveDialogState({ open: true, mode: 'commit-batch' });
-    }, [commitResolveWithAI]);
+        const openCount = allCommitComments.filter(c => c.status === 'open').length;
+        queueDispatch({
+            type: 'OPEN_DIALOG',
+            workspaceId,
+            mode: 'resolve',
+            resolveContext: {
+                title: 'Resolve with AI',
+                commentCount: openCount,
+                onSubmit: (ctx: string, sk: string[]) => {
+                    void commitResolveWithAI(ctx || undefined, sk.length > 0 ? sk : undefined);
+                },
+            },
+        });
+    }, [commitResolveWithAI, allCommitComments, queueDispatch, workspaceId]);
 
     const handleFixCommitWithAI = useCallback((id: string) => {
         if (shouldSkipResolveDialog()) {
             void commitFixWithAI(id);
             return;
         }
-        setResolveDialogState({ open: true, mode: 'commit-fix', commentId: id });
-    }, [commitFixWithAI]);
-
-    const handleResolveDialogSubmit = useCallback((userContext: string, skills: string[]) => {
-        const { mode, commentId } = resolveDialogState;
-        setResolveDialogState(s => ({ ...s, open: false }));
-        const ctx = userContext || undefined;
-        const sk = skills.length > 0 ? skills : undefined;
-        if (mode === 'commit-batch') {
-            void commitResolveWithAI(ctx, sk);
-        } else if (mode === 'commit-fix' && commentId) {
-            void commitFixWithAI(commentId, ctx, sk);
-        }
-    }, [resolveDialogState, commitResolveWithAI, commitFixWithAI]);
+        queueDispatch({
+            type: 'OPEN_DIALOG',
+            workspaceId,
+            mode: 'resolve',
+            resolveContext: {
+                title: 'Fix with AI',
+                commentCount: 1,
+                onSubmit: (ctx: string, sk: string[]) => {
+                    void commitFixWithAI(id, ctx || undefined, sk.length > 0 ? sk : undefined);
+                },
+            },
+        });
+    }, [commitFixWithAI, queueDispatch, workspaceId]);
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
         const dc = comment as DiffComment;
@@ -344,19 +352,6 @@ export function CommitDetail({ workspaceId, hash, commit }: CommitDetailProps) {
                     </>
                 )}
             </div>
-
-            <ResolveContextDialog
-                open={resolveDialogState.open}
-                onClose={() => setResolveDialogState(s => ({ ...s, open: false }))}
-                onSubmit={handleResolveDialogSubmit}
-                commentCount={
-                    resolveDialogState.mode === 'commit-fix'
-                        ? 1
-                        : allCommitComments.filter(c => c.status === 'open').length
-                }
-                title={resolveDialogState.mode === 'commit-fix' ? 'Fix with AI' : 'Resolve with AI'}
-                wsId={workspaceId}
-            />
         </div>
     );
 }

@@ -118,10 +118,10 @@ export function MarkdownReviewEditor({
     const [aiDialogType, setAiDialogType] = useState<'update-document' | null>(null);
     const [resolveDialogState, setResolveDialogState] = useState<{
         open: boolean;
-        mode: 'batch' | 'fix' | 'custom-ask';
+        mode: 'custom-ask';
         commentId?: string;
         title?: string;
-    }>({ open: false, mode: 'batch' });
+    }>({ open: false, mode: 'custom-ask' });
     const [taskStatus, setTaskStatus] = useState<string | undefined>(undefined);
     const taskName = filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? filePath;
 
@@ -584,8 +584,24 @@ export function MarkdownReviewEditor({
             }
             return;
         }
-        setResolveDialogState({ open: true, mode: 'batch', title: 'Resolve with AI' });
-    }, [comments, resolveWithAI, rawContent, filePath, addToast]);
+        queueDispatch({
+            type: 'OPEN_DIALOG',
+            workspaceId: wsId,
+            mode: 'resolve',
+            resolveContext: {
+                title: 'Resolve with AI',
+                commentCount: openCount,
+                onSubmit: async (ctx: string, sk: string[]) => {
+                    try {
+                        const result = await resolveWithAI(rawContent, filePath, ctx || undefined, sk.length > 0 ? sk : undefined);
+                        addToast(`Batch resolve queued for ${result.totalCount} open comment(s).`, 'info');
+                    } catch (err) {
+                        addToast(`Batch resolve failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+                    }
+                },
+            },
+        });
+    }, [comments, resolveWithAI, rawContent, filePath, addToast, queueDispatch, wsId]);
 
     const handleFixWithAI = useCallback(async (id: string) => {
         if (shouldSkipResolveDialog()) {
@@ -597,8 +613,24 @@ export function MarkdownReviewEditor({
             }
             return;
         }
-        setResolveDialogState({ open: true, mode: 'fix', commentId: id, title: 'Fix with AI' });
-    }, [fixWithAI, rawContent, filePath, addToast]);
+        queueDispatch({
+            type: 'OPEN_DIALOG',
+            workspaceId: wsId,
+            mode: 'resolve',
+            resolveContext: {
+                title: 'Fix with AI',
+                commentCount: 1,
+                onSubmit: async (ctx: string, sk: string[]) => {
+                    try {
+                        await fixWithAI(id, rawContent, filePath, ctx || undefined, sk.length > 0 ? sk : undefined);
+                        addToast('Fix with AI queued.', 'info');
+                    } catch (err) {
+                        addToast(`Fix failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+                    }
+                },
+            },
+        });
+    }, [fixWithAI, rawContent, filePath, addToast, queueDispatch, wsId]);
 
     const handleCopyPrompt = useCallback(() => {
         copyResolvePrompt(rawContent, filePath);
@@ -606,32 +638,9 @@ export function MarkdownReviewEditor({
     }, [copyResolvePrompt, rawContent, filePath, addToast]);
 
     const handleResolveDialogSubmit = useCallback(async (userContext: string, skills: string[]) => {
-        const { mode, commentId } = resolveDialogState;
         setResolveDialogState(s => ({ ...s, open: false }));
-        const ctx = userContext || undefined;
-        const sk = skills.length > 0 ? skills : undefined;
-
-        if (mode === 'custom-ask') {
-            await handleCustomAskSubmit(userContext, skills);
-            return;
-        }
-
-        if (mode === 'batch') {
-            try {
-                const result = await resolveWithAI(rawContent, filePath, ctx, sk);
-                addToast(`Batch resolve queued for ${result.totalCount} open comment(s).`, 'info');
-            } catch (err) {
-                addToast(`Batch resolve failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-            }
-        } else if (mode === 'fix' && commentId) {
-            try {
-                await fixWithAI(commentId, rawContent, filePath, ctx, sk);
-                addToast('Fix with AI queued.', 'info');
-            } catch (err) {
-                addToast(`Fix failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-            }
-        }
-    }, [resolveDialogState, resolveWithAI, fixWithAI, rawContent, filePath, addToast, handleCustomAskSubmit]);
+        await handleCustomAskSubmit(userContext, skills);
+    }, [handleCustomAskSubmit]);
 
     const handleCopyWithContext = useCallback(async () => {
         const text = savedSelection?.text || rawContent;
@@ -949,7 +958,7 @@ export function MarkdownReviewEditor({
                 open={resolveDialogState.open}
                 onClose={() => setResolveDialogState(s => ({ ...s, open: false }))}
                 onSubmit={handleResolveDialogSubmit}
-                commentCount={resolveDialogState.mode === 'fix' ? 1 : comments.filter(c => c.status === 'open').length}
+                commentCount={0}
                 title={resolveDialogState.title}
                 wsId={wsId}
             />

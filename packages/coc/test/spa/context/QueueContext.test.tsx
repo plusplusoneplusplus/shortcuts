@@ -26,6 +26,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         dialogContextFiles: null,
         dialogContextTaskName: null,
         dialogBulkMode: false,
+        dialogResolveContext: null,
         showScriptDialog: false,
         scriptDialogWorkspaceId: null,
         showHistory: false,

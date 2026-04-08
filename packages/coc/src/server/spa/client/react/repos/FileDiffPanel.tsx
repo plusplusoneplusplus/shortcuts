@@ -20,7 +20,7 @@ import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../context/QueueContext';
 import { useCrossFileNav } from './useCrossFileNav';
-import { ResolveContextDialog, shouldSkipResolveDialog } from '../shared/ResolveContextDialog';
+import { shouldSkipResolveDialog } from '../shared/ResolveContextDialog';
 import { buildDiffContext } from '../../diff-context-utils';
 import { copyToClipboard } from '../utils/format';
 import { CommitChatPanel } from './CommitChatPanel';
@@ -82,12 +82,6 @@ export function FileDiffPanel({
         clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
         resolveWithAI, fixWithAI,
     } = useDiffComments(workspaceId, diffContext);
-
-    const [resolveDialogState, setResolveDialogState] = useState<{
-        open: boolean;
-        mode: 'batch' | 'fix';
-        commentId?: string;
-    }>({ open: false, mode: 'batch' });
 
     // ── Cross-file navigation ──
     const [fetchedFiles, setFetchedFiles] = useState<string[]>([]);
@@ -194,28 +188,39 @@ export function FileDiffPanel({
             void resolveWithAI();
             return;
         }
-        setResolveDialogState({ open: true, mode: 'batch' });
-    }, [resolveWithAI]);
+        const openCount = comments.filter(c => c.status === 'open').length;
+        queueDispatch({
+            type: 'OPEN_DIALOG',
+            workspaceId,
+            mode: 'resolve',
+            resolveContext: {
+                title: 'Resolve with AI',
+                commentCount: openCount,
+                onSubmit: (ctx: string, sk: string[]) => {
+                    void resolveWithAI(ctx || undefined, sk.length > 0 ? sk : undefined);
+                },
+            },
+        });
+    }, [resolveWithAI, comments, queueDispatch, workspaceId]);
 
     const handleFixWithAI = useCallback((id: string) => {
         if (shouldSkipResolveDialog()) {
             void fixWithAI(id);
             return;
         }
-        setResolveDialogState({ open: true, mode: 'fix', commentId: id });
-    }, [fixWithAI]);
-
-    const handleResolveDialogSubmit = useCallback((userContext: string, skills: string[]) => {
-        const { mode, commentId } = resolveDialogState;
-        setResolveDialogState(s => ({ ...s, open: false }));
-        const ctx = userContext || undefined;
-        const sk = skills.length > 0 ? skills : undefined;
-        if (mode === 'batch') {
-            void resolveWithAI(ctx, sk);
-        } else if (mode === 'fix' && commentId) {
-            void fixWithAI(commentId, ctx, sk);
-        }
-    }, [resolveDialogState, resolveWithAI, fixWithAI]);
+        queueDispatch({
+            type: 'OPEN_DIALOG',
+            workspaceId,
+            mode: 'resolve',
+            resolveContext: {
+                title: 'Fix with AI',
+                commentCount: 1,
+                onSubmit: (ctx: string, sk: string[]) => {
+                    void fixWithAI(id, ctx || undefined, sk.length > 0 ? sk : undefined);
+                },
+            },
+        });
+    }, [fixWithAI, queueDispatch, workspaceId]);
 
     const handleAskAIDiff = useCallback(
         (selection: DiffCommentSelection, selectedText: string) => {
@@ -471,18 +476,6 @@ export function FileDiffPanel({
                     isDeleting={deletingIds.has(activePopoverComment.id)}
                 />
             )}
-            <ResolveContextDialog
-                open={resolveDialogState.open}
-                onClose={() => setResolveDialogState(s => ({ ...s, open: false }))}
-                onSubmit={handleResolveDialogSubmit}
-                commentCount={
-                    resolveDialogState.mode === 'fix'
-                        ? 1
-                        : comments.filter(c => c.status === 'open').length
-                }
-                title={resolveDialogState.mode === 'fix' ? 'Fix with AI' : 'Resolve with AI'}
-                wsId={workspaceId}
-            />
         </div>
     );
 }

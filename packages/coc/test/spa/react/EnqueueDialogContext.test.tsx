@@ -47,7 +47,7 @@ interface DialogOpenerProps {
     contextTaskName?: string;
     bulkMode?: boolean;
     workspaceId?: string;
-    mode?: 'task' | 'ask';
+    mode?: 'task' | 'ask' | 'resolve';
 }
 
 function DialogOpener({

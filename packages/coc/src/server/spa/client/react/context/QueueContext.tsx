@@ -36,8 +36,9 @@ export interface QueueContextState {
     dialogInitialWorkspaceId: string | null;
     /** Pre-filled prompt text seeded into EnqueueDialog when it opens. */
     dialogInitialPrompt: string | null;
-    /** When 'ask', the dialog creates a read-only chat instead of a follow-prompt task. */
-    dialogMode: 'task' | 'ask';
+    /** When 'ask', the dialog creates a read-only chat instead of a follow-prompt task.
+     *  When 'resolve', the dialog submits via the resolve callback instead of the queue API. */
+    dialogMode: 'task' | 'ask' | 'resolve';
     /** Controls post-submit behaviour: 'floating-chat' opens the result as an overlay; 'default' enqueues normally. */
     dialogLaunchMode: 'default' | 'floating-chat';
     /** Absolute paths to task files — injected into payload.context.files on submit. */
@@ -46,6 +47,15 @@ export interface QueueContextState {
     dialogContextTaskName: string | null;
     /** When true, EnqueueDialog submits one task per file in dialogContextFiles. */
     dialogBulkMode: boolean;
+    /** Resolve-mode context: carries data needed to call the resolve/fix APIs instead of the queue. */
+    dialogResolveContext: {
+        /** Title for the dialog header. */
+        title: string;
+        /** Number of comments being resolved (displayed in info text). */
+        commentCount: number;
+        /** Callback invoked on submit instead of the queue API. Receives prompt text, skills, and selected model. */
+        onSubmit: (context: string, skills: string[], model: string) => void;
+    } | null;
     /** Whether the Run Script dialog is shown. */
     showScriptDialog: boolean;
     /** Pre-selected workspace for the Run Script dialog (null = use default first workspace). */
@@ -103,6 +113,7 @@ const initialState: QueueContextState = {
     dialogContextFiles: null,
     dialogContextTaskName: null,
     dialogBulkMode: false,
+    dialogResolveContext: null,
     showScriptDialog: false,
     scriptDialogWorkspaceId: null,
     showHistory: false,
@@ -130,7 +141,7 @@ export type QueueAction =
     | { type: 'DRAIN_COMPLETE' }
     | { type: 'DRAIN_TIMEOUT' }
     | { type: 'TOGGLE_DIALOG' }
-    | { type: 'OPEN_DIALOG'; folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask'; initialPrompt?: string | null; launchMode?: 'default' | 'floating-chat'; contextFiles?: string[] | null; contextTaskName?: string | null; bulkMode?: boolean }
+    | { type: 'OPEN_DIALOG'; folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' | 'resolve'; initialPrompt?: string | null; launchMode?: 'default' | 'floating-chat'; contextFiles?: string[] | null; contextTaskName?: string | null; bulkMode?: boolean; resolveContext?: QueueContextState['dialogResolveContext'] }
     | { type: 'CLOSE_DIALOG' }
     | { type: 'TOGGLE_HISTORY' }
     | { type: 'SET_FOLLOW_UP_STREAMING'; value: boolean; turnIndex: number | null }
@@ -138,7 +149,7 @@ export type QueueAction =
     | { type: 'REFRESH_SELECTED_QUEUE_TASK' }
     | { type: 'CHAT_STREAMING_STARTED'; workspaceId: string }
     | { type: 'CHAT_STREAMING_STOPPED'; workspaceId: string }
-    | { type: 'SET_DIALOG_MODE'; mode: 'task' | 'ask' }
+    | { type: 'SET_DIALOG_MODE'; mode: 'task' | 'ask' | 'resolve' }
     | { type: 'OPEN_SCRIPT_DIALOG'; workspaceId?: string | null }
     | { type: 'CLOSE_SCRIPT_DIALOG' }
     | { type: 'SET_TASK_SUBMITTING'; value: boolean };
@@ -203,9 +214,9 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
         case 'TOGGLE_DIALOG':
             return { ...state, showDialog: !state.showDialog };
         case 'OPEN_DIALOG':
-            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null, dialogInitialWorkspaceId: action.workspaceId ?? null, dialogInitialPrompt: action.initialPrompt ?? null, dialogMode: action.mode ?? 'task', dialogLaunchMode: action.launchMode ?? 'default', dialogContextFiles: action.contextFiles ?? null, dialogContextTaskName: action.contextTaskName ?? null, dialogBulkMode: action.bulkMode ?? false };
+            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null, dialogInitialWorkspaceId: action.workspaceId ?? null, dialogInitialPrompt: action.initialPrompt ?? null, dialogMode: action.mode ?? 'task', dialogLaunchMode: action.launchMode ?? 'default', dialogContextFiles: action.contextFiles ?? null, dialogContextTaskName: action.contextTaskName ?? null, dialogBulkMode: action.bulkMode ?? false, dialogResolveContext: action.resolveContext ?? null };
         case 'CLOSE_DIALOG':
-            return { ...state, showDialog: false, dialogInitialFolderPath: null, dialogInitialWorkspaceId: null, dialogInitialPrompt: null, dialogMode: 'task', dialogLaunchMode: 'default', dialogContextFiles: null, dialogContextTaskName: null, dialogBulkMode: false };
+            return { ...state, showDialog: false, dialogInitialFolderPath: null, dialogInitialWorkspaceId: null, dialogInitialPrompt: null, dialogMode: 'task', dialogLaunchMode: 'default', dialogContextFiles: null, dialogContextTaskName: null, dialogBulkMode: false, dialogResolveContext: null };
         case 'TOGGLE_HISTORY':
             return { ...state, showHistory: !state.showHistory };
         case 'SET_FOLLOW_UP_STREAMING':

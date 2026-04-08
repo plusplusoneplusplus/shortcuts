@@ -60,7 +60,7 @@ function WorkspaceSetter({ workspaces }: { workspaces: any[] }) {
 }
 
 // Helper to open dialog via dispatch
-function DialogOpener({ folderPath, workspaceId, mode }: { folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' }) {
+function DialogOpener({ folderPath, workspaceId, mode }: { folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' | 'resolve' }) {
     const { dispatch } = useQueue();
     useEffect(() => {
         dispatch({ type: 'OPEN_DIALOG', folderPath, workspaceId, mode });

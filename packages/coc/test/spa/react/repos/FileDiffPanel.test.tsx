@@ -135,7 +135,6 @@ vi.mock('../../../../src/server/spa/client/react/repos/useCrossFileNav', () => (
 
 // Mock shared/ResolveContextDialog
 vi.mock('../../../../src/server/spa/client/react/shared/ResolveContextDialog', () => ({
-    ResolveContextDialog: ({ open }: any) => open ? <div data-testid="resolve-dialog" /> : null,
     shouldSkipResolveDialog: () => false,
 }));
 

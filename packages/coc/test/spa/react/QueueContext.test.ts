@@ -22,6 +22,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         dialogContextFiles: null,
         dialogContextTaskName: null,
         dialogBulkMode: false,
+        dialogResolveContext: null,
         showScriptDialog: false,
         scriptDialogWorkspaceId: null,
         showHistory: false,
@@ -333,6 +334,24 @@ describe('QueueContext reducer', () => {
             });
             expect(result.dialogBulkMode).toBe(true);
         });
+
+        it('sets dialogMode to resolve and stores resolveContext', () => {
+            const onSubmit = () => {};
+            const result = queueReducer(makeState(), {
+                type: 'OPEN_DIALOG',
+                workspaceId: 'ws1',
+                mode: 'resolve',
+                resolveContext: { title: 'Resolve with AI', commentCount: 3, onSubmit },
+            });
+            expect(result.showDialog).toBe(true);
+            expect(result.dialogMode).toBe('resolve');
+            expect(result.dialogResolveContext).toEqual({ title: 'Resolve with AI', commentCount: 3, onSubmit });
+        });
+
+        it('defaults dialogResolveContext to null when not provided', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', workspaceId: 'ws1' });
+            expect(result.dialogResolveContext).toBeNull();
+        });
     });
 
     // ── Dialog and history toggles ─────────────────────────────────
@@ -369,11 +388,13 @@ describe('QueueContext reducer', () => {
                 dialogContextFiles: ['/a.md'],
                 dialogContextTaskName: 'feature',
                 dialogBulkMode: true,
+                dialogResolveContext: { title: 'Resolve', commentCount: 1, onSubmit: () => {} },
             });
             const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
             expect(result.dialogContextFiles).toBeNull();
             expect(result.dialogContextTaskName).toBeNull();
             expect(result.dialogBulkMode).toBe(false);
+            expect(result.dialogResolveContext).toBeNull();
         });
 
         it('TOGGLE_HISTORY toggles showHistory', () => {

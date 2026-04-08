@@ -66,7 +66,7 @@ function WorkspaceSetter({ workspaces }: { workspaces: any[] }) {
     return null;
 }
 
-function DialogOpener({ mode, workspaceId }: { mode?: 'task' | 'ask'; workspaceId?: string | null }) {
+function DialogOpener({ mode, workspaceId }: { mode?: 'task' | 'ask' | 'resolve'; workspaceId?: string | null }) {
     const { dispatch } = useQueue();
     useEffect(() => {
         dispatch({ type: 'OPEN_DIALOG', folderPath: null, workspaceId: workspaceId ?? null, mode: mode ?? 'task' });
@@ -89,7 +89,7 @@ function setupFetchWithSkills() {
     });
 }
 
-function renderDialogWithSkills(mode: 'task' | 'ask' = 'task') {
+function renderDialogWithSkills(mode: 'task' | 'ask' | 'resolve' = 'task') {
     setupFetchWithSkills();
     return render(
         <Wrap workspaces={[{ id: 'ws-1', name: 'Test Workspace', rootPath: '/tmp/test' }]}>
@@ -99,7 +99,7 @@ function renderDialogWithSkills(mode: 'task' | 'ask' = 'task') {
     );
 }
 
-function renderDialog(mode: 'task' | 'ask' = 'task') {
+function renderDialog(mode: 'task' | 'ask' | 'resolve' = 'task') {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(MODELS_RESPONSE) });
     return render(
         <Wrap>

@@ -57,6 +57,7 @@ export function EnqueueDialog() {
     const { isMobile } = useBreakpoint();
     const { floatChat } = useFloatingChats();
     const isAskMode = queueState.dialogMode === 'ask';
+    const isResolveMode = queueState.dialogMode === 'resolve';
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
@@ -242,7 +243,20 @@ export function EnqueueDialog() {
         const effectiveSkills = [...new Set([...selectedSkills, ...slashSkills])];
         const effectivePrompt = rawText.trim();
 
-        if (effectiveSkills.length === 0 && !effectivePrompt) return;
+        if (effectiveSkills.length === 0 && !effectivePrompt && !isResolveMode) return;
+
+        // Resolve mode: delegate to the resolve callback instead of the queue API
+        if (isResolveMode && queueState.dialogResolveContext) {
+            queueState.dialogResolveContext.onSubmit(effectivePrompt, effectiveSkills, model);
+            setPrompt('');
+            richTextRef.current?.setValue('');
+            setSelectedSkills([]);
+            setHooks([]);
+            clearImages();
+            queueDispatch({ type: 'CLOSE_DIALOG' });
+            return;
+        }
+
         setSubmitting(true);
         queueDispatch({ type: 'SET_TASK_SUBMITTING', value: true });
         try {
@@ -397,7 +411,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, hooks]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
@@ -500,9 +514,15 @@ export function EnqueueDialog() {
                     </div>
                 </div>
             )}
+            {/* Resolve mode info */}
+            {isResolveMode && queueState.dialogResolveContext && (
+                <div className="text-xs text-[#848484]" data-testid="resolve-info">
+                    ℹ️ Resolving {queueState.dialogResolveContext.commentCount} open comment{queueState.dialogResolveContext.commentCount !== 1 ? 's' : ''}
+                </div>
+            )}
             {/* Prompt — always visible */}
             <div>
-                <label className="block text-xs font-medium text-[#848484] mb-1">Prompt</label>
+                <label className="block text-xs font-medium text-[#848484] mb-1">{isResolveMode ? 'Additional context (optional)' : 'Prompt'}</label>
                 <div className="relative">
                     <RichTextInput
                         ref={richTextRef}
@@ -514,7 +534,7 @@ export function EnqueueDialog() {
                         onPaste={submitting ? undefined : addFromPaste}
                         onKeyDown={handleKeyDown}
                         disabled={submitting}
-                        placeholder={selectedSkills.length > 0 ? `Additional context for ${selectedSkills.join(', ')} (optional)` : 'Enter your prompt… Type / for skills'}
+                        placeholder={isResolveMode ? 'Additional context… Type / for skills' : selectedSkills.length > 0 ? `Additional context for ${selectedSkills.join(', ')} (optional)` : 'Enter your prompt… Type / for skills'}
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] min-h-[6rem]"
                         data-testid="prompt-input"
                     />
@@ -712,8 +732,10 @@ export function EnqueueDialog() {
         </div>
     );
 
-    const dialogTitle = isAskMode ? 'Ask AI (Read-only)' : hasContextFiles ? 'Run Skill' : 'Enqueue AI Task';
-    const submitLabel = isAskMode ? 'Ask' : isBulkMode ? `Enqueue ${contextFiles.length} Tasks` : 'Enqueue';
+    const dialogTitle = isResolveMode
+        ? (queueState.dialogResolveContext?.title ?? 'Resolve with AI')
+        : isAskMode ? 'Ask AI (Read-only)' : hasContextFiles ? 'Run Skill' : 'Enqueue AI Task';
+    const submitLabel = isResolveMode ? '▶ Resolve' : isAskMode ? 'Ask' : isBulkMode ? `Enqueue ${contextFiles.length} Tasks` : 'Enqueue';
 
     const footer = (
         <>
@@ -725,9 +747,11 @@ export function EnqueueDialog() {
                 onClick={handleSubmit}
                 loading={submitting}
                 disabled={
-                    activeTab === 'templates'
-                        ? selectedTemplateId === null
-                        : selectedSkills.length === 0 && !prompt.trim()
+                    isResolveMode
+                        ? false
+                        : activeTab === 'templates'
+                            ? selectedTemplateId === null
+                            : selectedSkills.length === 0 && !prompt.trim()
                 }
                 title="Ctrl+Enter"
             >

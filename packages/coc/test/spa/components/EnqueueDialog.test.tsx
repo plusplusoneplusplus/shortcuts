@@ -47,7 +47,7 @@ function Wrap({ children }: { children: ReactNode }) {
     );
 }
 
-function DialogOpener({ mode }: { mode?: 'task' | 'ask' }) {
+function DialogOpener({ mode }: { mode?: 'task' | 'ask' | 'resolve' }) {
     const { dispatch } = useQueue();
     useEffect(() => {
         dispatch({ type: 'OPEN_DIALOG', folderPath: null, workspaceId: null, mode: mode ?? 'task' });
@@ -55,10 +55,27 @@ function DialogOpener({ mode }: { mode?: 'task' | 'ask' }) {
     return null;
 }
 
-function renderDialog(mode: 'task' | 'ask' = 'task') {
+function ResolveDialogOpener({ resolveContext }: { resolveContext: { title: string; commentCount: number; onSubmit: (ctx: string, sk: string[], model: string) => void } }) {
+    const { dispatch } = useQueue();
+    useEffect(() => {
+        dispatch({ type: 'OPEN_DIALOG', workspaceId: null, mode: 'resolve', resolveContext });
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return null;
+}
+
+function renderDialog(mode: 'task' | 'ask' | 'resolve' = 'task') {
     return render(
         <Wrap>
             <DialogOpener mode={mode} />
+            <EnqueueDialog />
+        </Wrap>
+    );
+}
+
+function renderResolveDialog(resolveContext: { title: string; commentCount: number; onSubmit: (ctx: string, sk: string[], model: string) => void }) {
+    return render(
+        <Wrap>
+            <ResolveDialogOpener resolveContext={resolveContext} />
             <EnqueueDialog />
         </Wrap>
     );
@@ -308,6 +325,60 @@ describe('EnqueueDialog', () => {
             if (enqueueBtn) {
                 expect(enqueueBtn).toHaveProperty('disabled', true);
             }
+        });
+    });
+
+    // ── Resolve mode tests ──
+
+    it('shows resolve title when opened in resolve mode', async () => {
+        const onSubmit = vi.fn();
+        renderResolveDialog({ title: 'Resolve with AI', commentCount: 3, onSubmit });
+        await waitFor(() => {
+            expect(screen.getByText('Resolve with AI')).toBeDefined();
+        });
+    });
+
+    it('shows resolve info text with comment count', async () => {
+        const onSubmit = vi.fn();
+        renderResolveDialog({ title: 'Resolve with AI', commentCount: 5, onSubmit });
+        await waitFor(() => {
+            const info = screen.getByTestId('resolve-info');
+            expect(info.textContent).toContain('5 open comments');
+        });
+    });
+
+    it('shows singular "comment" for count of 1', async () => {
+        const onSubmit = vi.fn();
+        renderResolveDialog({ title: 'Fix with AI', commentCount: 1, onSubmit });
+        await waitFor(() => {
+            const info = screen.getByTestId('resolve-info');
+            expect(info.textContent).toContain('1 open comment');
+            expect(info.textContent).not.toContain('comments');
+        });
+    });
+
+    it('shows "▶ Resolve" submit button label in resolve mode', async () => {
+        const onSubmit = vi.fn();
+        renderResolveDialog({ title: 'Resolve with AI', commentCount: 2, onSubmit });
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: /Resolve/i })).toBeDefined();
+        });
+    });
+
+    it('resolve mode submit button is not disabled even with empty prompt', async () => {
+        const onSubmit = vi.fn();
+        renderResolveDialog({ title: 'Resolve with AI', commentCount: 2, onSubmit });
+        await waitFor(() => {
+            const btn = screen.getByRole('button', { name: /Resolve/i });
+            expect(btn).toHaveProperty('disabled', false);
+        });
+    });
+
+    it('shows "Additional context (optional)" label in resolve mode', async () => {
+        const onSubmit = vi.fn();
+        renderResolveDialog({ title: 'Resolve with AI', commentCount: 2, onSubmit });
+        await waitFor(() => {
+            expect(screen.getByText('Additional context (optional)')).toBeDefined();
         });
     });
 });
