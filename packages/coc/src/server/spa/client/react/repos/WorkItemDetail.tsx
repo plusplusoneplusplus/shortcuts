@@ -4,12 +4,15 @@
  * execution history, and action buttons.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';
 import { useWorkItems } from '../context/WorkItemContext';
+import { useCommitCommentTotals } from '../hooks/useCommitCommentTotals';
+import type { DiffComment } from '../../diff-comment-types';
+import { computeStorageKey, patchDiffComment } from '../utils/diffCommentApi';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -75,6 +78,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [reviewComment, setReviewComment] = useState('');
     const [requestingChanges, setRequestingChanges] = useState(false);
     const [acceptingDone, setAcceptingDone] = useState(false);
+    const [resolvingDiffComments, setResolvingDiffComments] = useState(false);
 
     const basePath = `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}`;
 
@@ -92,6 +96,18 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     }, [basePath]);
 
     useEffect(() => { fetchItem(); }, [fetchItem]);
+
+    /* ── Collect all commit SHAs for comment count badges ── */
+    const allCommitShas = useMemo(() => {
+        if (!item) return [];
+        const shas = new Set<string>();
+        for (const change of item.changes ?? []) {
+            for (const c of change.commits) shas.add(c.sha);
+        }
+        return [...shas];
+    }, [item]);
+
+    const commentTotals = useCommitCommentTotals(workspaceId, allCommitShas);
 
     /* ── Auto-refresh via WorkItemContext (WebSocket events) ── */
     const { state: workItemState } = useWorkItems();
@@ -183,6 +199,63 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             setError(err.message || 'Failed to request changes');
         } finally {
             setRequestingChanges(false);
+        }
+    };
+
+    /** Collect open diff comments from commits, feed into plan, batch-resolve them. */
+    const handleResolveDiffComments = async (commitShas: string[]) => {
+        if (!item || commitShas.length === 0) return;
+        setResolvingDiffComments(true);
+        try {
+            // Fetch open diff comments for each commit
+            const allComments: DiffComment[] = [];
+            for (const sha of commitShas) {
+                const params = new URLSearchParams({ oldRef: `${sha}^`, newRef: sha });
+                const data = await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}?${params}`);
+                const comments: DiffComment[] = data.comments ?? [];
+                allComments.push(...comments.filter(c => c.status === 'open'));
+            }
+
+            if (allComments.length === 0) {
+                setError('No open comments to resolve');
+                return;
+            }
+
+            // Format comments as review feedback
+            const byFile = new Map<string, DiffComment[]>();
+            for (const c of allComments) {
+                const fp = c.context.filePath;
+                if (!byFile.has(fp)) byFile.set(fp, []);
+                byFile.get(fp)!.push(c);
+            }
+
+            const formatted = [...byFile.entries()].flatMap(([filePath, cs]) =>
+                cs.map(c =>
+                    `[${filePath}:${c.selection.diffLineStart}] ${c.comment}`
+                    + (c.selectedText ? ` (code: \`${c.selectedText.slice(0, 100)}\`)` : '')
+                )
+            );
+
+            // Call request-changes with diff-comments source
+            await fetchApi(basePath + '/request-changes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ comments: formatted, source: 'diff-comments' }),
+            });
+
+            // Batch-resolve the open diff comments
+            await Promise.all(
+                allComments.map(async (c) => {
+                    const storageKey = await computeStorageKey(c.context);
+                    await patchDiffComment(workspaceId, storageKey, c.id, { status: 'resolved' });
+                })
+            );
+
+            await fetchItem();
+        } catch (err: any) {
+            setError(err.message || 'Failed to resolve diff comments');
+        } finally {
+            setResolvingDiffComments(false);
         }
     };
 
@@ -430,6 +503,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             {item.executionHistory?.map((exec, i) => {
                                 const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
                                 const commits = matchingChange?.commits ?? [];
+                                const execOpenCommentCount = commits.reduce((sum, c) => sum + (commentTotals.get(c.sha) ?? 0), 0);
                                 return (
                                     <div key={i} className="rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-xs" data-testid={`exec-entry-${i}`}>
                                         <div className="flex items-center gap-2 px-3 py-2">
@@ -438,33 +512,58 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                             <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>
                                             {exec.completedAt && <span className="text-[#848484]">· {formatRelativeTime(exec.completedAt)}</span>}
                                         </div>
-                                        <div className="px-3 pb-1.5">
+                                        <div className="px-3 pb-1.5 flex items-center gap-2 flex-wrap">
                                             {onViewTask ? (
                                                 <button onClick={() => onViewTask(exec.taskId)} className="text-[#0078d4] hover:underline bg-transparent border-none cursor-pointer p-0 text-[10px]" data-testid={`exec-view-session-${i}`}>View Session →</button>
                                             ) : exec.processId ? (
                                                 <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline text-[10px]" data-testid={`exec-view-session-${i}`}>View Session →</a>
                                             ) : null}
+                                            {isAiDone && exec.status === 'completed' && execOpenCommentCount > 0 && (
+                                                <button
+                                                    onClick={() => handleResolveDiffComments(commits.map(c => c.sha))}
+                                                    disabled={resolvingDiffComments}
+                                                    className={cn(
+                                                        'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-colors',
+                                                        'border-amber-300 dark:border-amber-700',
+                                                        'bg-amber-50 dark:bg-amber-900/20',
+                                                        'text-amber-800 dark:text-amber-300',
+                                                        'hover:bg-amber-100 dark:hover:bg-amber-900/40',
+                                                        'disabled:opacity-50 disabled:cursor-not-allowed',
+                                                    )}
+                                                    data-testid={`exec-resolve-comments-${i}`}
+                                                >
+                                                    {resolvingDiffComments ? '⏳ Resolving…' : `💬 Resolve ${execOpenCommentCount} Comment${execOpenCommentCount !== 1 ? 's' : ''}`}
+                                                </button>
+                                            )}
                                         </div>
                                         {exec.error && (
                                             <div className="px-3 pb-2 text-[10px] text-red-500 truncate">{exec.error}</div>
                                         )}
                                         {exec.status === 'completed' && commits.length > 0 ? (
                                             <div className="px-3 pb-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 space-y-0.5" data-testid={`exec-commits-${i}`}>
-                                                {commits.map(c => (
-                                                    <div key={c.sha} className="flex items-start gap-1.5 text-[10px]">
-                                                        {onViewCommit ? (
-                                                            <button onClick={() => onViewCommit(c.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={c.message} data-testid={`exec-commit-${c.sha.slice(0, 7)}`}>
-                                                                {c.sha.slice(0, 7)}
-                                                            </button>
-                                                        ) : (
-                                                            <a href={`#commit/${c.sha}`} className="text-[#0078d4] hover:underline font-mono shrink-0" title={c.message}>
-                                                                {c.sha.slice(0, 7)}
-                                                            </a>
-                                                        )}
-                                                        <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={c.message}>{c.message}</span>
-                                                        {c.author && <span className="text-[#848484] shrink-0">— {c.author}</span>}
-                                                    </div>
-                                                ))}
+                                                {commits.map(c => {
+                                                    const openCount = commentTotals.get(c.sha) ?? 0;
+                                                    return (
+                                                        <div key={c.sha} className="flex items-start gap-1.5 text-[10px]">
+                                                            {onViewCommit ? (
+                                                                <button onClick={() => onViewCommit(c.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={c.message} data-testid={`exec-commit-${c.sha.slice(0, 7)}`}>
+                                                                    {c.sha.slice(0, 7)}
+                                                                </button>
+                                                            ) : (
+                                                                <a href={`#commit/${c.sha}`} className="text-[#0078d4] hover:underline font-mono shrink-0" title={c.message}>
+                                                                    {c.sha.slice(0, 7)}
+                                                                </a>
+                                                            )}
+                                                            {openCount > 0 && (
+                                                                <span className="inline-flex items-center gap-0.5 px-1 py-px rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] shrink-0" data-testid={`commit-comment-badge-${c.sha.slice(0, 7)}`}>
+                                                                    💬 {openCount}
+                                                                </span>
+                                                            )}
+                                                            <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={c.message}>{c.message}</span>
+                                                            {c.author && <span className="text-[#848484] shrink-0">— {c.author}</span>}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         ) : exec.status === 'completed' ? (
                                             <div className="px-3 pb-2 text-[10px] text-[#848484] italic" data-testid={`exec-commits-${i}`}>No commits</div>
@@ -496,19 +595,27 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                     </div>
                                     {change.commits.length > 0 ? (
                                         <div className="px-3 pb-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 space-y-0.5">
-                                            {change.commits.map(commit => (
-                                                <div key={commit.sha} className="flex items-start gap-1.5 text-[10px]">
-                                                    {onViewCommit ? (
-                                                        <button onClick={() => onViewCommit(commit.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={commit.message} data-testid={`change-commit-${commit.sha.slice(0, 7)}`}>
-                                                            {commit.sha.slice(0, 7)}
-                                                        </button>
-                                                    ) : (
-                                                        <code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>
-                                                    )}
-                                                    <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={commit.message}>{commit.message}</span>
-                                                    {commit.author && <span className="text-[#848484] shrink-0">— {commit.author}</span>}
-                                                </div>
-                                            ))}
+                                            {change.commits.map(commit => {
+                                                const openCount = commentTotals.get(commit.sha) ?? 0;
+                                                return (
+                                                    <div key={commit.sha} className="flex items-start gap-1.5 text-[10px]">
+                                                        {onViewCommit ? (
+                                                            <button onClick={() => onViewCommit(commit.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={commit.message} data-testid={`change-commit-${commit.sha.slice(0, 7)}`}>
+                                                                {commit.sha.slice(0, 7)}
+                                                            </button>
+                                                        ) : (
+                                                            <code className="text-[#848484] shrink-0 font-mono">{commit.sha.slice(0, 7)}</code>
+                                                        )}
+                                                        {openCount > 0 && (
+                                                            <span className="inline-flex items-center gap-0.5 px-1 py-px rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[9px] shrink-0" data-testid={`commit-comment-badge-${commit.sha.slice(0, 7)}`}>
+                                                                💬 {openCount}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={commit.message}>{commit.message}</span>
+                                                        {commit.author && <span className="text-[#848484] shrink-0">— {commit.author}</span>}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     ) : (
                                         <div className="px-3 pb-2 text-[10px] italic text-[#848484]">No commits recorded</div>
