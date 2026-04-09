@@ -46,6 +46,7 @@ export function AmendMessageModal({ commit, onConfirm, onCancel, titleOnly }: Am
 
     return (
         <div
+            data-testid="amend-message-modal"
             className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/50"
             onKeyDown={handleKeyDown}
             onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
@@ -61,6 +62,7 @@ export function AmendMessageModal({ commit, onConfirm, onCancel, titleOnly }: Am
                     </label>
                     <input
                         ref={titleRef}
+                        data-testid="amend-title-input"
                         type="text"
                         value={title}
                         onChange={(e) => { setTitle(e.target.value); setTitleError(null); }}
@@ -68,7 +70,7 @@ export function AmendMessageModal({ commit, onConfirm, onCancel, titleOnly }: Am
                         placeholder="Commit title"
                     />
                     {titleError && (
-                        <span className="text-xs text-[#f44747]">{titleError}</span>
+                        <span data-testid="amend-title-error" className="text-xs text-[#f44747]">{titleError}</span>
                     )}
                 </div>
 
@@ -76,6 +78,7 @@ export function AmendMessageModal({ commit, onConfirm, onCancel, titleOnly }: Am
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-[var(--vscode-descriptionForeground,#999)]">Body <span className="opacity-60">(optional)</span></label>
                     <textarea
+                        data-testid="amend-body-textarea"
                         value={body}
                         onChange={(e) => setBody(e.target.value)}
                         rows={5}
@@ -87,12 +90,14 @@ export function AmendMessageModal({ commit, onConfirm, onCancel, titleOnly }: Am
 
                 <div className="flex justify-end gap-2">
                     <button
+                        data-testid="amend-cancel-btn"
                         onClick={onCancel}
                         className="px-3 py-1.5 text-xs rounded border border-[var(--vscode-button-border,#555)] text-[var(--vscode-foreground,#ccc)] bg-transparent hover:bg-[var(--vscode-toolbar-hoverBackground,#2a2d2e)] transition-colors"
                     >
                         Cancel
                     </button>
                     <button
+                        data-testid="amend-confirm-btn"
                         onClick={handleConfirm}
                         className="px-3 py-1.5 text-xs rounded bg-[#0078d4] hover:bg-[#1a8ad4] text-white font-medium transition-colors"
                     >
