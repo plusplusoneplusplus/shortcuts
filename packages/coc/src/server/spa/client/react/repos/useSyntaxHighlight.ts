@@ -16,6 +16,7 @@ import langJava from 'highlight.js/lib/languages/java';
 import langJavascript from 'highlight.js/lib/languages/javascript';
 import langJson from 'highlight.js/lib/languages/json';
 import langMarkdown from 'highlight.js/lib/languages/markdown';
+import langPowershell from 'highlight.js/lib/languages/powershell';
 import langPython from 'highlight.js/lib/languages/python';
 import langRust from 'highlight.js/lib/languages/rust';
 import langTypescript from 'highlight.js/lib/languages/typescript';
@@ -34,6 +35,7 @@ hljs.registerLanguage('csharp', langCsharp);
 hljs.registerLanguage('json', langJson);
 hljs.registerLanguage('yaml', langYaml);
 hljs.registerLanguage('bash', langBash);
+hljs.registerLanguage('powershell', langPowershell);
 hljs.registerLanguage('css', langCss);
 hljs.registerLanguage('xml', langXml);
 hljs.registerLanguage('markdown', langMarkdown);
@@ -63,7 +65,7 @@ const EXT_TO_LANG: Record<string, string> = {
     sh: 'bash',
     bash: 'bash',
     zsh: 'bash',
-    ps1: 'bash',
+    ps1: 'powershell',
     css: 'css',
     html: 'xml',
     htm: 'xml',

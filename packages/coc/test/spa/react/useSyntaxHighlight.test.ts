@@ -103,8 +103,8 @@ describe('getLanguageFromFileName', () => {
         expect(getLanguageFromFileName('script.sh')).toBe('bash');
     });
 
-    it('returns bash for .ps1 extension', () => {
-        expect(getLanguageFromFileName('build.ps1')).toBe('bash');
+    it('returns powershell for .ps1 extension', () => {
+        expect(getLanguageFromFileName('build.ps1')).toBe('powershell');
     });
 
     it('returns css for .css extension', () => {
@@ -208,6 +208,11 @@ describe('highlightLine', () => {
         const result = highlightLine('def hello():', 'python');
         expect(result).toContain('hljs-');
     });
+
+    it('highlights PowerShell correctly', () => {
+        const result = highlightLine('Get-ChildItem -Path $env:HOME', 'powershell');
+        expect(result).toContain('hljs-');
+    });
 });
 
 describe('highlightBlock', () => {
@@ -271,6 +276,14 @@ describe('highlightBlock', () => {
         const result = highlightBlock(lines, 'python');
         expect(result.length).toBe(2);
         expect(result[0]).toContain('hljs-');
+    });
+
+    it('highlights PowerShell correctly', () => {
+        const lines = ['function Get-Greeting {', '    param($Name)', '    return "Hello $Name"', '}'];
+        const result = highlightBlock(lines, 'powershell');
+        expect(result.length).toBe(4);
+        const hasTokens = result.some(l => l.includes('hljs-'));
+        expect(hasTokens).toBe(true);
     });
 
     it('highlights multi-line block comments correctly', () => {

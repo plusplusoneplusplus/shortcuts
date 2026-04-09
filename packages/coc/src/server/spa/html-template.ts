@@ -99,7 +99,8 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
     <!-- highlight.js 11.9.0 — syntax highlighting (review editor + wiki) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>${enableWiki ? `
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"><\/script>${enableWiki ? `
     <!-- mermaid 10.x — diagram rendering (wiki) -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"><\/script>
     <!-- marked — markdown-to-HTML parser (wiki) -->
