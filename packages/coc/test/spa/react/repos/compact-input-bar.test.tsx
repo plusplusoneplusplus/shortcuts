@@ -85,6 +85,11 @@ function makeFollowUpProps(overrides: Partial<FollowUpInputAreaProps> = {}): Fol
         onSend: vi.fn().mockResolvedValue(undefined),
         onRetry: vi.fn(),
         skills: [],
+        attachments: [],
+        onAttachmentPaste: vi.fn(),
+        onAttachmentRemove: vi.fn(),
+        onAttachmentFiles: vi.fn(),
+        attachmentError: null,
         images: [],
         onImagePaste: vi.fn(),
         onImageRemove: vi.fn(),
@@ -203,9 +208,9 @@ describe('FollowUpInputArea — compact input bar layout', () => {
     it('all three children (mode, input, send) are direct children of the flex-row container', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const bar = screen.getByTestId('chat-input-bar');
-        // mode-selector, input wrapper, send button
+        // hidden file input, mode-selector, attach button, input wrapper, send button
         const children = Array.from(bar.children);
-        expect(children.length).toBe(3);
+        expect(children.length).toBe(5);
     });
 });
 

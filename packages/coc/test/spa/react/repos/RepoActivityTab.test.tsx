@@ -579,7 +579,7 @@ describe('ActivityChatDetail: inline chat detail', () => {
     });
 
     it('supports image paste', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useImagePaste');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useFileAttachments');
     });
 
     it('has scroll-to-bottom button', () => {
