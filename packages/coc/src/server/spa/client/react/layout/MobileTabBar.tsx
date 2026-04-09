@@ -51,7 +51,7 @@ export function MobileTabBar({
     return (
         <>
             <nav
-                className="fixed top-10 left-0 right-0 z-[8000] h-12 flex items-stretch border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                className="h-12 flex items-stretch border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
                 aria-label="Repo tab navigation"
                 data-testid="mobile-tab-bar"
             >

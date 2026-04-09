@@ -1,0 +1,862 @@
+/**
+ * Tests for RepoActivityTab — the unified Activity tab.
+ *
+ * Validates:
+ * - RepoActivityTab exists and renders a queue-style left rail plus a conditional right pane
+ * - All task types are rendered inline via ActivityChatDetail
+ * - Follow-up child chat tasks remain hidden in the Activity left rail
+ * - ActivityDetailPane always uses ActivityChatDetail
+ * - Mobile layout with back/list behavior
+ * - Empty state rendering
+ */
+
+import { describe, it, expect, beforeAll } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const REPOS_DIR = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos');
+
+const ACTIVITY_TAB_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'RepoActivityTab.tsx'), 'utf-8');
+const ACTIVITY_LIST_PANE_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityListPane.tsx'), 'utf-8');
+const ACTIVITY_CHAT_DETAIL_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityChatDetail.tsx'), 'utf-8');
+const ACTIVITY_DETAIL_PANE_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityDetailPane.tsx'), 'utf-8');
+const INDEX_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'index.ts'), 'utf-8');
+const REPO_DETAIL_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'RepoDetail.tsx'), 'utf-8');
+
+// Extracted component and hook sources (split from ActivityChatDetail in refactoring)
+const CHAT_HEADER_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ChatHeader.tsx'), 'utf-8');
+const CONVERSATION_AREA_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ConversationArea.tsx'), 'utf-8');
+const FOLLOW_UP_INPUT_AREA_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'FollowUpInputArea.tsx'), 'utf-8');
+const HOOKS_DIR = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks');
+const USE_CHAT_SSE_SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'useChatSSE.ts'), 'utf-8');
+const USE_SEND_MESSAGE_SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'useSendMessage.ts'), 'utf-8');
+const USE_QUEUED_TASK_POLL_SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'useQueuedTaskPoll.ts'), 'utf-8');
+
+// ── RepoActivityTab structure ──────────────────────────────────────────
+
+describe('RepoActivityTab: component structure', () => {
+    it('exports RepoActivityTab function component', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('export function RepoActivityTab');
+    });
+
+    it('accepts workspaceId prop', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('workspaceId: string');
+    });
+
+    it('uses ActivityListPane for the left rail', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("import { ActivityListPane } from './ActivityListPane'");
+        expect(ACTIVITY_TAB_SOURCE).toContain('<ActivityListPane');
+    });
+
+    it('uses ActivityDetailPane for the right pane', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("import { ActivityDetailPane } from './ActivityDetailPane'");
+        expect(ACTIVITY_TAB_SOURCE).toContain('<ActivityDetailPane');
+    });
+
+    it('uses useQueue and useApp contexts', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('useQueue()');
+        expect(ACTIVITY_TAB_SOURCE).toContain('useApp()');
+    });
+
+    it('uses useBreakpoint for responsive layout', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('useBreakpoint()');
+    });
+});
+
+// ── Split-panel layout ─────────────────────────────────────────────────
+
+describe('RepoActivityTab: split-panel layout', () => {
+    it('uses flex h-full overflow-hidden layout', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('flex h-full overflow-hidden');
+    });
+
+    it('has data-testid for the split-panel container', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-split-panel"');
+    });
+
+    it('has a left panel with flex-shrink-0 and border-r', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('flex-shrink-0 border-r border-[#e0e0e0]');
+    });
+
+    it('uses useResizablePanel for draggable left panel', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("import { useResizablePanel } from '../hooks/useResizablePanel'");
+        expect(ACTIVITY_TAB_SOURCE).toContain("useResizablePanel({");
+        expect(ACTIVITY_TAB_SOURCE).toContain("storageKey: 'activity-left-panel-width'");
+    });
+
+    it('has a resize handle between left and right panels', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-resize-handle"');
+        expect(ACTIVITY_TAB_SOURCE).toContain('cursor-col-resize');
+        expect(ACTIVITY_TAB_SOURCE).toContain('role="separator"');
+    });
+
+    it('has data-testid for the list panel', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-list-panel"');
+    });
+
+    it('applies leftPanelWidth via inline style', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('style={{ width: leftPanelWidth }}');
+    });
+
+    it('disables text selection while dragging', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("isDragging && 'select-none'");
+    });
+
+    it('has a right panel with flex-1 min-w-0', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('flex-1 min-w-0 overflow-hidden');
+    });
+
+    it('has data-testid for the detail panel', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-detail-panel"');
+    });
+
+    it('marks detail panel with data-pane="detail" for context-aware keyboard handling', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-pane="detail"');
+    });
+
+    it('applies data-pane="detail" to both desktop and mobile detail panels', () => {
+        const matches = ACTIVITY_TAB_SOURCE.match(/data-pane="detail"/g);
+        expect(matches).not.toBeNull();
+        expect(matches!.length).toBeGreaterThanOrEqual(2);
+    });
+});
+
+// ── Activity-specific selectTask behavior ──────────────────────────────
+
+describe('RepoActivityTab: selectTask keeps chat inline', () => {
+    let selectTaskBlock: string;
+
+    beforeAll(() => {
+        const start = ACTIVITY_TAB_SOURCE.indexOf('const selectTask = useCallback');
+        const end = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId])', start);
+        selectTaskBlock = ACTIVITY_TAB_SOURCE.substring(start, end + 60);
+    });
+
+    it('does NOT dispatch SET_SELECTED_CHAT_SESSION for chat tasks', () => {
+        expect(selectTaskBlock).not.toContain('SET_SELECTED_CHAT_SESSION');
+    });
+
+    it('does NOT dispatch SET_REPO_SUB_TAB for chat tasks', () => {
+        expect(selectTaskBlock).not.toContain('SET_REPO_SUB_TAB');
+    });
+
+    it('dispatches SELECT_QUEUE_TASK for regular selection', () => {
+        expect(selectTaskBlock).toContain('SELECT_QUEUE_TASK');
+    });
+
+    it('updates hash using the active tab segment (tasks → tasks, chats → activity)', () => {
+        expect(selectTaskBlock).toContain("activeTab === 'tasks'");
+        expect(selectTaskBlock).toContain("'tasks'");
+        expect(selectTaskBlock).toContain("'activity'");
+    });
+
+    it('still navigates run-workflow tasks to workflow detail', () => {
+        expect(selectTaskBlock).toContain("task?.type === 'run-workflow'");
+        expect(selectTaskBlock).toContain('/workflow/');
+    });
+
+    it('supports re-click refresh', () => {
+        expect(selectTaskBlock).toContain('REFRESH_SELECTED_QUEUE_TASK');
+    });
+
+    it('sets mobileShowDetail on mobile', () => {
+        expect(selectTaskBlock).toContain('if (isMobile) setMobileShowDetail(true)');
+    });
+
+    it('re-click guard also shows detail on mobile (regression: back then re-click same task)', () => {
+        // Extract the same-task guard block
+        const guardStart = selectTaskBlock.indexOf('if (selectedTaskId === id)');
+        const guardEnd = selectTaskBlock.indexOf('return;', guardStart);
+        const guardBlock = selectTaskBlock.substring(guardStart, guardEnd);
+        expect(guardBlock).toContain('setMobileShowDetail(true)');
+    });
+});
+
+// ── ActivityDetailPane: routing logic ──────────────────────────────────
+
+describe('ActivityDetailPane: detail routing', () => {
+    it('exports ActivityDetailPane function component', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('export function ActivityDetailPane');
+    });
+
+    it('imports ActivityChatDetail', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain("import { ActivityChatDetail } from './ActivityChatDetail'");
+    });
+
+    it('always renders ActivityChatDetail for selected tasks', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('<ActivityChatDetail');
+    });
+
+    it('does not import QueueTaskDetail', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).not.toContain('QueueTaskDetail');
+    });
+
+    it('does not route based on task type', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).not.toContain('isTopLevelChatTask');
+    });
+
+    it('shows NewChatArea when no task is selected', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('NewChatArea');
+    });
+
+    it('empty state uses NewChatArea component', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('<NewChatArea');
+    });
+
+    it('passes onBack prop to ActivityChatDetail', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('onBack={onBack}');
+    });
+});
+
+// ── ActivityChatDetail ─────────────────────────────────────────────────
+
+describe('ActivityChatDetail: inline chat detail', () => {
+    it('exports ActivityChatDetail function component', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('export function ActivityChatDetail');
+    });
+
+    it('accepts taskId and onBack props', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('taskId: string');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('onBack?: () => void');
+    });
+
+    it('derives processId from task', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('task?.processId ?? (taskId ? `queue_${taskId}` : null)');
+    });
+
+    it('loads queue task data on mount', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('/queue/${encodeURIComponent(taskId)}');
+    });
+
+    it('loads process conversation data', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('/processes/${encodeURIComponent(pid)}');
+    });
+
+    it('uses getConversationTurns from chatConversationUtils', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("import { getConversationTurns } from '../chat/chatConversationUtils'");
+    });
+
+    it('renders ConversationTurnBubble for turns', () => {
+        // ConversationTurnBubble is rendered inside the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('<ConversationTurnBubble');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('<ConversationArea');
+    });
+
+    it('has SSE streaming for running tasks', () => {
+        // SSE logic lives in the extracted useChatSSE hook
+        expect(USE_CHAT_SSE_SOURCE).toContain('new EventSource');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useChatSSE');
+    });
+
+    it('polls for queued-to-running transition', () => {
+        // Polling logic lives in the extracted useQueuedTaskPoll hook
+        expect(USE_QUEUED_TASK_POLL_SOURCE).toContain('setInterval');
+        expect(USE_QUEUED_TASK_POLL_SOURCE).toContain("task?.status !== 'queued'");
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useQueuedTaskPoll');
+    });
+
+    it('supports follow-up messages', () => {
+        // Message sending logic lives in the extracted useSendMessage hook
+        expect(USE_SEND_MESSAGE_SOURCE).toContain('/message');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('sendFollowUp');
+    });
+
+    it('handles session expiry (410)', () => {
+        // Session expiry handling lives in the extracted useSendMessage hook
+        expect(USE_SEND_MESSAGE_SOURCE).toContain('response.status === 410');
+        expect(USE_SEND_MESSAGE_SOURCE).toContain('setSessionExpired(true)');
+    });
+
+    it('has data-testid for the chat detail container', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="activity-chat-detail"');
+    });
+
+    it('has a back button with data-testid', () => {
+        // Back button lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('data-testid="activity-chat-back-btn"');
+    });
+
+    it('always renders mode selector, input, and send button in a single horizontal row', () => {
+        // Mode selector row lives in the extracted FollowUpInputArea component
+        // Always flex-row with items-center for compact mobile layout
+        expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('flex flex-row items-center gap-2');
+    });
+
+    it('has a chat input with data-testid', () => {
+        // Chat input lives in the extracted FollowUpInputArea component
+        expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="activity-chat-input"');
+    });
+
+    it('has a send button with data-testid', () => {
+        // Send button lives in the extracted FollowUpInputArea component
+        expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="activity-chat-send-btn"');
+    });
+
+    it('shows loading spinner', () => {
+        // Loading spinner lives in the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('Loading conversation...');
+    });
+
+    it('shows PendingTaskInfoPanel for queued tasks', () => {
+        // PendingTaskInfoPanel lives in the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('<PendingTaskInfoPanel');
+    });
+
+    it('passes cancel and moveToTop handlers', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('onCancel={handleCancel}');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('onMoveToTop={handleMoveToTop}');
+    });
+
+    it('uses ReferencesDropdown for plan path display (inline FilePathValue pill replaced)', () => {
+        // ReferencesDropdown is used in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain("from '../shared/ReferencesDropdown'");
+    });
+
+    it('shows no-data message', () => {
+        // No-data message lives in the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('No conversation data available');
+    });
+
+    it('supports resume CLI', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('resume-cli');
+        // Resume CLI button label lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('Resume CLI');
+    });
+
+    it('supports image paste', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useImagePaste');
+    });
+
+    it('has scroll-to-bottom button', () => {
+        // Scroll-to-bottom button lives in the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('Scroll to bottom');
+    });
+
+    it('consumes refreshVersion from QueueContext for re-click refresh', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("useQueue()");
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('queueState.refreshVersion');
+    });
+
+    it('tracks last refresh version to detect re-click', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('lastRefreshVersionRef');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('lastRefreshVersionRef.current !== queueState.refreshVersion');
+    });
+
+    it('re-fetches queue task and process data on refresh', () => {
+        // The refresh effect should fetch the queue task and process data
+        const refreshEffectStart = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('Re-fetch conversation when user re-clicks');
+        const refreshEffectEnd = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('// Scroll to bottom on new turns');
+        const refreshEffect = ACTIVITY_CHAT_DETAIL_SOURCE.substring(refreshEffectStart, refreshEffectEnd);
+        expect(refreshEffect).toContain('/queue/${encodeURIComponent(taskId)}');
+        expect(refreshEffect).toContain('/processes/${encodeURIComponent(pid)}');
+        expect(refreshEffect).toContain('queueState.refreshVersion');
+    });
+
+    it('has copy-conversation button with data-testid', () => {
+        // Copy button lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('data-testid="copy-conversation-btn"');
+    });
+
+    it('imports copyToClipboard and formatConversationAsText from utils/format', () => {
+        // These utilities are used in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('copyToClipboard');
+        expect(CHAT_HEADER_SOURCE).toContain('formatConversationAsText');
+    });
+
+    it('has copied state for copy button feedback', () => {
+        // copied state is managed in the orchestrator and passed to ChatHeader
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useState(false)');
+        expect(CHAT_HEADER_SOURCE).toContain('setCopied(true)');
+        expect(CHAT_HEADER_SOURCE).toContain('setCopied(false)');
+    });
+
+    it('copy button is disabled when loading or turns empty', () => {
+        // Copy button disabling logic lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('disabled={loading || turns.length === 0}');
+    });
+
+    it('copy button calls formatConversationAsText with turns', () => {
+        // formatConversationAsText usage lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('formatConversationAsText(turns)');
+    });
+
+    it('copy button shows checkmark icon after copying (2s revert)', () => {
+        // 2s revert logic lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('setCopied(false), 2000');
+    });
+
+    it('copy button has clipboard and checkmark SVG icons', () => {
+        // SVG icons live in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('M2 8L6 12L14 4');
+        expect(CHAT_HEADER_SOURCE).toContain('copied ?');
+    });
+
+    it('header has right-side actions group with copy and metadata', () => {
+        // The copy button and metadata popover are in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('copy-conversation-btn');
+        expect(CHAT_HEADER_SOURCE).toContain('ConversationMetadataPopover');
+    });
+});
+
+// ── ActivityListPane: shared left rail ─────────────────────────────────
+
+describe('ActivityListPane: shared list component', () => {
+    it('exports ActivityListPane function component', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('export function ActivityListPane');
+    });
+
+    it('does not export legacy isChatFollowUp helper', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).not.toContain('export function isChatFollowUp');
+    });
+
+    it('exports taskMatchesFilter helper', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('export function taskMatchesFilter');
+    });
+
+    it('exports getTaskPromptPreview helper', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('export function getTaskPromptPreview');
+    });
+
+    it('exports QueueTaskItem component', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('export function QueueTaskItem');
+    });
+
+    it('renders running/queued/history sections', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('Running Tasks');
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('Queued Tasks');
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('Completed Tasks');
+    });
+
+    it('supports filter dropdown', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="queue-filter-dropdown"');
+    });
+
+    it('supports pause/resume', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="repo-pause-resume-btn"');
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="queue-paused-banner"');
+    });
+
+    it('pause button is always rendered regardless of queue state (regression: was hidden when empty)', () => {
+        // The pause button must NOT be wrapped in a condition that hides it when
+        // running/queued arrays are empty — users need to pause before adding tasks.
+        const pauseBtnIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="repo-pause-resume-btn"');
+        expect(pauseBtnIndex).toBeGreaterThan(-1);
+        // Verify there is no conditional guard on running/queued length before the button
+        const preceding = ACTIVITY_LIST_PANE_SOURCE.slice(Math.max(0, pauseBtnIndex - 200), pauseBtnIndex);
+        expect(preceding).not.toMatch(/running\.length > 0 \|\| queued\.length > 0.*\{/s);
+    });
+
+    it('renders pause controls as a segmented toggle group', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="pause-toggle-group"');
+    });
+
+    it('segmented group has All segment for queue-wide pause', () => {
+        const groupIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="pause-toggle-group"');
+        const section = ACTIVITY_LIST_PANE_SOURCE.slice(groupIndex, groupIndex + 1000);
+        expect(section).toContain('data-testid="repo-pause-resume-btn"');
+        expect(section).toContain('All');
+    });
+
+    it('segmented group has AP segment for autopilot-only pause', () => {
+        const groupIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="pause-toggle-group"');
+        const section = ACTIVITY_LIST_PANE_SOURCE.slice(groupIndex, groupIndex + 2200);
+        expect(section).toContain('data-testid="autopilot-pause-resume-btn"');
+        expect(section).toContain('} AP');
+        expect(section).not.toContain('🤖 Auto');
+    });
+
+    it('autopilot segment is conditionally rendered via onPauseResumeAutopilot prop', () => {
+        const autoPilotBtnIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="autopilot-pause-resume-btn"');
+        expect(autoPilotBtnIndex).toBeGreaterThan(-1);
+        // Must be guarded by onPauseResumeAutopilot check
+        const preceding = ACTIVITY_LIST_PANE_SOURCE.slice(Math.max(0, autoPilotBtnIndex - 300), autoPilotBtnIndex);
+        expect(preceding).toContain('onPauseResumeAutopilot');
+    });
+
+    it('active segment uses accent highlight style', () => {
+        // Both pause states should apply an accent bg class when active
+        const groupIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="pause-toggle-group"');
+        const section = ACTIVITY_LIST_PANE_SOURCE.slice(groupIndex, groupIndex + 1400);
+        expect(section).toContain('bg-[#0078d4]/10');
+        expect(section).toContain('text-[#0078d4]');
+    });
+
+    it('supports drag and drop', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('useQueueDragDrop');
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('draggable={!isMobile}');
+    });
+
+    it('supports pause markers', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="pause-marker-row"');
+    });
+
+    it('supports context menu', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('ContextMenu');
+    });
+
+    it('has empty state with queue task button', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="repo-queue-task-btn-empty"');
+    });
+
+    it('has empty state with paused resume button', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="repo-pause-resume-btn-empty"');
+    });
+
+    it('has refresh button', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="queue-refresh-btn"');
+    });
+});
+
+// ── Barrel export ──────────────────────────────────────────────────────
+
+describe('repos/index.ts: exports RepoActivityTab', () => {
+    it('exports RepoActivityTab', () => {
+        expect(INDEX_SOURCE).toContain("export { RepoActivityTab } from './RepoActivityTab'");
+    });
+});
+
+// ── RepoDetail wiring ──────────────────────────────────────────────────
+
+describe('RepoDetail: wires RepoActivityTab for activity sub-tab', () => {
+    it('imports RepoActivityTab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { RepoActivityTab } from './RepoActivityTab'");
+    });
+
+    it('renders RepoActivityTab for chats and tasks sub-tabs', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chats'");
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'tasks'");
+        expect(REPO_DETAIL_SOURCE).toContain('mode="chats"');
+        expect(REPO_DETAIL_SOURCE).toContain('mode="tasks"');
+    });
+
+    it('does not render RepoQueueTab (removed in Activity migration)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('RepoQueueTab');
+    });
+});
+
+// ── Mobile layout ──────────────────────────────────────────────────────
+
+describe('RepoActivityTab: mobile layout', () => {
+    it('has mobileShowDetail state', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('const [mobileShowDetail, setMobileShowDetail] = useState(false)');
+    });
+
+    it('renders mobile branch when isMobile', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('if (isMobile)');
+    });
+
+    it('mobile branch has data-testid for split panel', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-split-panel"');
+    });
+
+    it('mobile branch has data-testid for mobile list', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-mobile-list"');
+    });
+
+    it('mobile branch toggles between list and detail', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('mobileShowDetail && selectedTaskId');
+    });
+
+    it('passes onBack to ActivityDetailPane on mobile', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('onBack={() => { setMobileShowDetail(false); }}');
+    });
+
+    it('resets mobileShowDetail when selection is cleared', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('if (!selectedTaskId) setMobileShowDetail(false)');
+    });
+});
+
+// ── Data fetching ──────────────────────────────────────────────────────
+
+describe('RepoActivityTab: data fetching', () => {
+    it('fetches queue data on mount', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("fetchApi('/queue?repoId='");
+    });
+
+    it('fetches history data', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("fetchApi('/queue/history?repoId='");
+    });
+
+    it('applies per-repo WS updates', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('repoQueueMap[workspaceId]');
+    });
+
+    it('dispatches REPO_QUEUE_UPDATED', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('REPO_QUEUE_UPDATED');
+    });
+
+    it('clears selection when task is removed', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("SELECT_QUEUE_TASK', id: null");
+    });
+
+    it('has loading state', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('Loading queue...');
+    });
+
+    it('has live timer for running tasks', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('setInterval(() => setNow(Date.now()), 1000)');
+    });
+
+    it('supports pause/resume', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('/queue/resume');
+        expect(ACTIVITY_TAB_SOURCE).toContain('/queue/pause');
+    });
+});
+
+// ── Reused follow-up chat tasks remain visible ─────────────────────────
+
+describe('ActivityListPane: reused follow-up chat tasks stay visible', () => {
+    it('does not filter running tasks with isChatFollowUp', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('running.filter(t => taskMatchesFilter(t, excludedTypes)');
+    });
+
+    it('does not filter queued tasks with isChatFollowUp', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes)");
+    });
+
+    it('does not filter history tasks with isChatFollowUp', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('history.filter(t => taskMatchesFilter(t, excludedTypes)');
+    });
+
+    it('does not filter allTasks with isChatFollowUp', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("[...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history]");
+    });
+});
+
+// ── Unseen activity tracking ───────────────────────────────────────────
+
+const UNSEEN_HOOK_SOURCE = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks', 'useUnseenActivity.ts'),
+    'utf-8',
+);
+
+describe('useUnseenActivity hook: structure', () => {
+    it('exports useUnseenActivity function', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('export function useUnseenActivity');
+    });
+
+    it('accepts workspaceId, history, and selectedTaskId params', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('workspaceId: string');
+        expect(UNSEEN_HOOK_SOURCE).toContain('history: any[]');
+        expect(UNSEEN_HOOK_SOURCE).toContain('selectedTaskId: string | null');
+    });
+
+    it('returns unseenTaskIds, unseenCount, markSeen, markAllSeen, and markTasksSeen', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('unseenTaskIds');
+        expect(UNSEEN_HOOK_SOURCE).toContain('unseenCount');
+        expect(UNSEEN_HOOK_SOURCE).toContain('markSeen');
+        expect(UNSEEN_HOOK_SOURCE).toContain('markAllSeen');
+        expect(UNSEEN_HOOK_SOURCE).toContain('markTasksSeen');
+    });
+
+    it('persists to localStorage with workspace-scoped key', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain("'coc-unseen-'");
+        expect(UNSEEN_HOOK_SOURCE).toContain('localStorage');
+    });
+
+    it('seeds all existing history as seen on first visit', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('hadPriorStateRef');
+        expect(UNSEEN_HOOK_SOURCE).toContain('seededRef');
+    });
+
+    it('auto-marks selected task as seen when it completes', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('selectedTaskId');
+        expect(UNSEEN_HOOK_SOURCE).toContain('task?.completedAt');
+    });
+
+    it('compares completedAt for unseen detection', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain("seen !== task.completedAt");
+    });
+
+    it('cleans up stale entries for tasks no longer in history', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('lastCleanupRef');
+        expect(UNSEEN_HOOK_SOURCE).toContain('stale');
+    });
+});
+
+describe('RepoActivityTab: unseen activity wiring', () => {
+    it('imports useUnseenActivity hook', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("import { useUnseenActivity } from '../hooks/useUnseenActivity'");
+    });
+
+    it('calls useUnseenActivity with workspaceId, history, and selectedTaskId', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('useUnseenActivity(workspaceId, history, selectedTaskId)');
+    });
+
+    it('destructures unseenTaskIds and markSeen from the hook', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('unseenTaskIds');
+        expect(ACTIVITY_TAB_SOURCE).toContain('markSeen');
+    });
+
+    it('destructures markAllSeen from the hook', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('markAllSeen');
+    });
+
+    it('destructures markTasksSeen from the hook', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('markTasksSeen');
+    });
+
+    it('passes onMarkAllRead to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('onMarkAllRead={markTasksSeen}');
+    });
+
+    it('passes onMarkRead to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('onMarkRead={markSeen}');
+    });
+
+    it('calls markSeen in selectTask', () => {
+        const selectTaskStart = ACTIVITY_TAB_SOURCE.indexOf('const selectTask = useCallback');
+        const selectTaskEnd = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId])', selectTaskStart);
+        const selectTaskBlock = ACTIVITY_TAB_SOURCE.substring(selectTaskStart, selectTaskEnd + 70);
+        expect(selectTaskBlock).toContain('markSeen(id)');
+    });
+
+    it('passes unseenTaskIds to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('unseenTaskIds={unseenTaskIds}');
+    });
+});
+
+describe('ActivityListPane: unseen activity indicators', () => {
+    it('accepts unseenTaskIds prop in interface', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('unseenTaskIds?: Set<string>');
+    });
+
+    it('destructures unseenTaskIds from props', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('unseenTaskIds,');
+    });
+
+    it('renders unseen dot indicator with data-testid', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="unseen-dot"');
+    });
+
+    it('uses blue dot circle for unseen indicator', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('rounded-full bg-[#0078d4]');
+    });
+
+    it('applies font-semibold to unseen task names', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('isUnseen && "font-semibold"');
+    });
+
+    it('shows unseen count badge on Completed Tasks header', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="unseen-count-badge"');
+    });
+
+    it('unseen count badge uses blue background pill style', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('bg-[#0078d4] text-white px-1.5 py-px rounded-full');
+    });
+
+    it('sets data-unseen attribute on unseen history cards', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-unseen={isUnseen || undefined}');
+    });
+
+    it('computes isUnseen per history task', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("unseenTaskIds?.has(task.id)");
+    });
+
+    it('highlights prompt preview text for unseen tasks', () => {
+        // Unseen tasks show prompt preview in foreground color instead of muted
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]"');
+    });
+});
+
+describe('ActivityListPane: mark all read button', () => {
+    it('accepts onMarkAllRead prop in interface', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead?: (tasks: any[]) => void');
+    });
+
+    it('destructures onMarkAllRead from props', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead,');
+    });
+
+    it('renders mark-all-read button with data-testid', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="mark-all-read-btn"');
+    });
+
+    it('mark-all-read button calls onMarkAllRead with filteredUnpinned on click', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onClick={() => onMarkAllRead(filteredUnpinned)}');
+    });
+
+    it('mark-all-read button only shows when there are unseen tasks', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead && unseenTaskIds && filteredUnpinned.some(t => unseenTaskIds.has(t.id))');
+    });
+
+    it('mark-all-read button has "Mark all read" label', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('Mark all read');
+    });
+});
+
+describe('ActivityListPane: mark as read context menu', () => {
+    it('accepts onMarkRead prop in interface', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkRead?: (taskId: string) => void');
+    });
+
+    it('destructures onMarkRead from props', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkRead,');
+    });
+
+    it('shows "Mark as Read" menu item for unseen completed tasks', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("label: 'Mark as Read'");
+    });
+
+    it('Mark as Read item calls onMarkRead with taskId', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkRead(taskId)');
+    });
+
+    it('Mark as Read item only appears when task is unseen', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('isUnseen && onMarkRead');
+    });
+
+    it('shows "Mark as Unread" for seen tasks and "Mark as Read" for unseen tasks', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("label: 'Mark as Unread'");
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("label: 'Mark as Read'");
+    });
+
+    it('includes onMarkRead in contextMenuItems useMemo dependencies', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkRead, onMarkUnread');
+    });
+});
+
+// ── ChatPreferencesProvider wiring ────────────────────────────────────
+
+describe('RepoActivityTab: ChatPreferencesProvider wrapping', () => {
+    it('imports ChatPreferencesProvider', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("import { ChatPreferencesProvider } from '../context/ChatPreferencesContext'");
+    });
+
+    it('renders ChatPreferencesProvider with workspaceId', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('<ChatPreferencesProvider workspaceId={workspaceId}>');
+    });
+
+    it('does NOT import usePinnedChats', () => {
+        expect(ACTIVITY_TAB_SOURCE).not.toContain('usePinnedChats');
+    });
+
+    it('does NOT import useArchivedChats', () => {
+        expect(ACTIVITY_TAB_SOURCE).not.toContain('useArchivedChats');
+    });
+
+    it('does NOT pass pinnedChatIds prop to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).not.toContain('pinnedChatIds={');
+    });
+
+    it('does NOT pass onPinChat prop to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).not.toContain('onPinChat={');
+    });
+});
+
+// ── New Chat deselects task instead of opening dialog ──────────────────
+
+describe('RepoActivityTab: New Chat deselects task (regression)', () => {
+    it('passes onNewChat prop to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('onNewChat=');
+    });
+
+    it('onNewChat dispatches SELECT_QUEUE_TASK with null id', () => {
+        // Ensure clicking "New Chat" deselects the current task to show NewChatArea
+        expect(ACTIVITY_TAB_SOURCE).toContain("onNewChat={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId })");
+    });
+
+    it('still passes onOpenDialog for the Queue Task button', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG'");
+    });
+});

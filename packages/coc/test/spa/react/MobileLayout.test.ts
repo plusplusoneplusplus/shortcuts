@@ -161,8 +161,8 @@ describe('BottomNav safe area insets', () => {
 describe('MobileTabBar safe area and touch targets', () => {
     const src = read('layout/MobileTabBar.tsx');
 
-    it('is positioned below the TopBar using top-10', () => {
-        expect(src).toContain('top-10');
+    it('is in normal document flow (not fixed)', () => {
+        expect(src).not.toContain('fixed top-10');
     });
 
     it('more-sheet items use min-h-[44px] for touch target compliance', () => {
