@@ -29,6 +29,7 @@ import type {
     ReduceConfig,
     JobConfig,
 } from '../../src/workflow/pipeline-compat';
+import { isCSVSource, isGenerateConfig } from '../../src/workflow/pipeline-compat';
 
 // =============================================================================
 // detectFormat
@@ -160,6 +161,21 @@ describe('compileLoadNode', () => {
     it('throws on empty input (no items/from/generate)', () => {
         expect(() => compileLoadNode({} as InputConfig)).toThrow(CompilerError);
         expect(() => compileLoadNode({} as InputConfig)).toThrow('input must have one of');
+    });
+
+    it('throws when from is an unsupported object type (not CSVSource, not array)', () => {
+        const input = { from: { type: 'sftp', path: 'remote.csv' } } as unknown as InputConfig;
+        expect(() => compileLoadNode(input)).toThrow(CompilerError);
+        expect(() => compileLoadNode(input)).toThrow('input must have one of');
+    });
+
+    it('compiled generate node has type load (not ai-generate)', () => {
+        const input: InputConfig = {
+            generate: { prompt: 'Generate items', schema: ['name'] },
+        };
+        const node = compileLoadNode(input);
+        expect(node.type).toBe('load');
+        expect(node.source.type).toBe('ai');
     });
 });
 
@@ -1029,6 +1045,86 @@ reduce:
         const reduce = config.nodes['reduce'] as ReduceNodeConfig;
         expect(reduce.from).toEqual(['map']);
         expect(reduce.strategy).toBe('ai');
+    });
+});
+
+// =============================================================================
+// isCSVSource type guard
+// =============================================================================
+
+describe('isCSVSource type guard', () => {
+    it('returns true for a valid CSV source', () => {
+        expect(isCSVSource({ type: 'csv', path: 'data.csv' })).toBe(true);
+    });
+
+    it('returns true for CSV source with optional delimiter', () => {
+        expect(isCSVSource({ type: 'csv', path: 'data.tsv', delimiter: '\t' })).toBe(true);
+    });
+
+    it('returns false for a non-csv type value', () => {
+        expect(isCSVSource({ type: 'sftp', path: 'data.csv' })).toBe(false);
+    });
+
+    it('returns false when path is missing', () => {
+        expect(isCSVSource({ type: 'csv' })).toBe(false);
+    });
+
+    it('returns false for a generate config', () => {
+        expect(isCSVSource({ prompt: 'List 10 items', schema: ['name'] })).toBe(false);
+    });
+
+    it('returns false for an array', () => {
+        expect(isCSVSource([{ name: 'alice' }])).toBe(false);
+    });
+
+    it('returns false for null', () => {
+        expect(isCSVSource(null)).toBe(false);
+    });
+
+    it('returns false for a primitive', () => {
+        expect(isCSVSource('data.csv')).toBe(false);
+    });
+});
+
+// =============================================================================
+// isGenerateConfig type guard
+// =============================================================================
+
+describe('isGenerateConfig type guard', () => {
+    it('returns true for a valid generate config', () => {
+        expect(isGenerateConfig({ prompt: 'List 10 items', schema: ['name', 'value'] })).toBe(true);
+    });
+
+    it('returns true for generate config with optional model', () => {
+        expect(isGenerateConfig({ prompt: 'List items', schema: ['a'], model: 'gpt-4' })).toBe(true);
+    });
+
+    it('returns false for a CSV source', () => {
+        expect(isGenerateConfig({ type: 'csv', path: 'data.csv' })).toBe(false);
+    });
+
+    it('returns false when schema is missing', () => {
+        expect(isGenerateConfig({ prompt: 'Generate items' })).toBe(false);
+    });
+
+    it('returns false when prompt is missing', () => {
+        expect(isGenerateConfig({ schema: ['a', 'b'] })).toBe(false);
+    });
+
+    it('returns false when prompt is not a string', () => {
+        expect(isGenerateConfig({ prompt: 42, schema: ['a'] })).toBe(false);
+    });
+
+    it('returns false when schema is not an array', () => {
+        expect(isGenerateConfig({ prompt: 'test', schema: 'not-array' })).toBe(false);
+    });
+
+    it('returns false for null', () => {
+        expect(isGenerateConfig(null)).toBe(false);
+    });
+
+    it('returns false for a primitive', () => {
+        expect(isGenerateConfig('generate items')).toBe(false);
     });
 });
 
