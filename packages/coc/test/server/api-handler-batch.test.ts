@@ -82,7 +82,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         ...actual,
         BranchService: vi.fn().mockImplementation(() => ({
             hasUncommittedChanges: vi.fn(async () => true),
-            getBranchStatus: vi.fn(async () => ({ ahead: 1, behind: 0, branch: 'main' })),
+            getBranchStatus: vi.fn(async () => ({ name: 'main', isDetached: false, ahead: 1, behind: 0, hasUncommittedChanges: true })),
         })),
         GitRangeService: vi.fn().mockImplementation(() => ({
             getCurrentBranch: vi.fn(async () => 'main'),

@@ -297,8 +297,9 @@ suite('Git Branch Tests', () => {
             // These tests are marked as integration tests
             // They will only pass when run in a real git repository
 
-            test('getBranchStatus returns null for non-existent path', () => {
-                const result = branchService.getBranchStatus('/non/existent/path', false);
+            test('getBranchStatus returns null for non-existent path', async function () {
+                this.timeout(15000); // Allow for WSL safe-directory initialization on first call
+                const result = await branchService.getBranchStatus('/non/existent/path', false);
                 assert.strictEqual(result, null);
             });
 
@@ -318,8 +319,8 @@ suite('Git Branch Tests', () => {
                 assert.deepStrictEqual(result.remote, []);
             });
 
-            test('hasUncommittedChanges returns false for non-existent path', () => {
-                const result = branchService.hasUncommittedChanges('/non/existent/path');
+            test('hasUncommittedChanges returns false for non-existent path', async () => {
+                const result = await branchService.hasUncommittedChanges('/non/existent/path');
                 assert.strictEqual(result, false);
             });
 

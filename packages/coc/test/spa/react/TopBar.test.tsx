@@ -11,6 +11,10 @@ vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({
     ReposProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
+    fetchApi: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
     QueueProvider: ({ children }: any) => children,
     useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: vi.fn() }),

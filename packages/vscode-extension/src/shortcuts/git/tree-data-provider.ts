@@ -222,7 +222,7 @@ export class GitTreeDataProvider
     /**
      * Reload the commit range for the current branch
      */
-    private reloadCommitRange(): void {
+    private async reloadCommitRange(): Promise<void> {
         // Check if feature is enabled
         const config = vscode.workspace.getConfiguration('workspaceShortcuts.git.commitRange');
         const enabled = config.get<boolean>('enabled', true);
@@ -238,21 +238,21 @@ export class GitTreeDataProvider
             return;
         }
 
-        this.cachedCommitRange = this.gitRangeService.detectCommitRange(repoRoot);
+        this.cachedCommitRange = await this.gitRangeService.detectCommitRange(repoRoot);
     }
 
     /**
      * Reload the branch status
      */
-    private reloadBranchStatus(): void {
+    private async reloadBranchStatus(): Promise<void> {
         const repoRoot = this.gitService.getFirstRepositoryRoot();
         if (!repoRoot) {
             this.cachedBranchStatus = null;
             return;
         }
 
-        const hasChanges = this.branchService.hasUncommittedChanges(repoRoot);
-        this.cachedBranchStatus = this.branchService.getBranchStatus(repoRoot, hasChanges);
+        const hasChanges = await this.branchService.hasUncommittedChanges(repoRoot);
+        this.cachedBranchStatus = await this.branchService.getBranchStatus(repoRoot, hasChanges);
     }
 
     /**
@@ -1087,7 +1087,7 @@ export class GitTreeDataProvider
         }
 
         // Check for uncommitted changes
-        const hasChanges = this.branchService.hasUncommittedChanges(repoRoot);
+        const hasChanges = await this.branchService.hasUncommittedChanges(repoRoot);
 
         if (hasChanges && options?.stashFirst) {
             const stashResult = await this.branchService.stashChanges(

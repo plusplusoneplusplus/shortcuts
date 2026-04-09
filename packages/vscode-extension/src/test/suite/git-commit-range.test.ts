@@ -477,8 +477,8 @@ suite('Git Commit Range Tests', () => {
             // These tests require a real git repository
             // They will be skipped if not in a git repo
 
-            test('should handle non-existent repository gracefully', () => {
-                const branch = service.getCurrentBranch('/non/existent/path');
+            test('should handle non-existent repository gracefully', async () => {
+                const branch = await service.getCurrentBranch('/non/existent/path');
                 // Should return 'HEAD' as fallback
                 assert.strictEqual(branch, 'HEAD');
             });
@@ -509,8 +509,8 @@ suite('Git Commit Range Tests', () => {
                 assert.strictEqual(stats.deletions, 0);
             });
 
-            test('should return null for non-existent repo commit range', () => {
-                const range = service.detectCommitRange('/non/existent/path');
+            test('should return null for non-existent repo commit range', async () => {
+                const range = await service.detectCommitRange('/non/existent/path');
                 assert.strictEqual(range, null);
             });
 
