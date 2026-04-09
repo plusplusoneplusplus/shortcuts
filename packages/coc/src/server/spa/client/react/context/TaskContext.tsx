@@ -10,6 +10,8 @@ import type { TasksPanelNavState } from '../types/dashboard';
 
 export interface TaskContextState {
     openFilePath: string | null;
+    /** Absolute task-root path for the currently open file (multi-root safe). */
+    openFileTaskRootPath: string | null;
     selectedFilePaths: Set<string>;
     showContextFiles: boolean;
     lastTasksChangedWsId: string | null;
@@ -19,6 +21,7 @@ export interface TaskContextState {
 
 const initialState: TaskContextState = {
     openFilePath: null,
+    openFileTaskRootPath: null,
     selectedFilePaths: new Set(),
     showContextFiles: true,
     lastTasksChangedWsId: null,
@@ -29,7 +32,7 @@ const initialState: TaskContextState = {
 // ── Actions ────────────────────────────────────────────────────────────
 
 export type TaskAction =
-    | { type: 'SET_OPEN_FILE_PATH'; path: string | null }
+    | { type: 'SET_OPEN_FILE_PATH'; path: string | null; taskRootPath?: string | null }
     | { type: 'TOGGLE_SELECTED_FILE'; path: string }
     | { type: 'SET_SELECTED_FILES'; paths: Set<string> }
     | { type: 'CLEAR_SELECTION' }
@@ -42,7 +45,7 @@ export type TaskAction =
 export function taskReducer(state: TaskContextState, action: TaskAction): TaskContextState {
     switch (action.type) {
         case 'SET_OPEN_FILE_PATH':
-            return { ...state, openFilePath: action.path };
+            return { ...state, openFilePath: action.path, openFileTaskRootPath: action.taskRootPath ?? null };
         case 'TOGGLE_SELECTED_FILE': {
             const next = new Set(state.selectedFilePaths);
             if (next.has(action.path)) {
@@ -110,7 +113,8 @@ export function useTaskPanel() {
     const { state, dispatch } = useTaskContext();
     return {
         openFilePath: state.openFilePath,
-        setOpenFilePath: (p: string | null) => dispatch({ type: 'SET_OPEN_FILE_PATH', path: p }),
+        openFileTaskRootPath: state.openFileTaskRootPath,
+        setOpenFilePath: (p: string | null, taskRootPath?: string | null) => dispatch({ type: 'SET_OPEN_FILE_PATH', path: p, taskRootPath }),
         selectedFilePaths: state.selectedFilePaths,
         toggleSelectedFile: (p: string) => dispatch({ type: 'TOGGLE_SELECTED_FILE', path: p }),
         setSelectedFiles: (paths: Set<string>) => dispatch({ type: 'SET_SELECTED_FILES', paths }),

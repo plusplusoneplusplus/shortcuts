@@ -68,6 +68,7 @@ const mockCommentCounts = { 'task1.plan.md': 3 };
 describe('taskReducer', () => {
     const initial: TaskContextState = {
         openFilePath: null,
+        openFileTaskRootPath: null,
         selectedFilePaths: new Set(),
         showContextFiles: true,
         lastTasksChangedWsId: null,

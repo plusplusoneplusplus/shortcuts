@@ -94,7 +94,7 @@ describe('TaskSearchResults', () => {
         );
 
         fireEvent.click(screen.getByTestId('search-result-fix-bug'));
-        expect(onClick).toHaveBeenCalledWith('bugs/fix-bug.md');
+        expect(onClick).toHaveBeenCalledWith('bugs/fix-bug.md', undefined);
     });
 
     it('calls onFileClick with first doc path for a document group', () => {
@@ -118,7 +118,7 @@ describe('TaskSearchResults', () => {
         );
 
         fireEvent.click(screen.getByTestId('search-result-auth'));
-        expect(onClick).toHaveBeenCalledWith('features/auth.plan.md');
+        expect(onClick).toHaveBeenCalledWith('features/auth.plan.md', undefined);
     });
 
     it('shows comment count badge when count > 0', () => {
@@ -249,7 +249,7 @@ describe('TaskSearchResults', () => {
         );
 
         fireEvent.click(screen.getByTestId('search-result-root'));
-        expect(onClick).toHaveBeenCalledWith('root.md');
+        expect(onClick).toHaveBeenCalledWith('root.md', undefined);
     });
 
     it('uses baseName for display when baseName is set on a document', () => {

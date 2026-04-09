@@ -32,7 +32,8 @@ interface TasksMillerLayoutProps {
     onDrop: (items: DragItem[], targetFolderPath: string) => void;
     onActiveFolderChange?: (folder: TaskFolder) => void;
     openFilePath: string | null;
-    setOpenFilePath: (path: string | null) => void;
+    openFileTaskRootPath: string | null;
+    setOpenFilePath: (path: string | null, taskRootPath?: string | null) => void;
     isMobile: boolean;
     wsIdEncoded: string;
 }
@@ -60,6 +61,7 @@ export function TasksMillerLayout({
     onDrop,
     onActiveFolderChange,
     openFilePath,
+    openFileTaskRootPath,
     setOpenFilePath,
     isMobile,
     wsIdEncoded,
@@ -82,7 +84,7 @@ export function TasksMillerLayout({
                             query={searchQuery}
                             commentCounts={commentCounts}
                             wsId={wsId}
-                            onFileClick={(path) => setOpenFilePath(path)}
+                            onFileClick={(path, taskRootPath) => setOpenFilePath(path, taskRootPath)}
                             onContextMenu={onFileContextMenu}
                         />
                     ) : (
@@ -134,7 +136,7 @@ export function TasksMillerLayout({
                                 </button>
                             </div>
                         )}
-                        <TaskPreview wsId={wsId} filePath={openFilePath} initialViewMode={initialViewMode} />
+                        <TaskPreview wsId={wsId} filePath={openFilePath} taskRootPath={openFileTaskRootPath} initialViewMode={initialViewMode} />
                     </div>
                 )}
             </div>

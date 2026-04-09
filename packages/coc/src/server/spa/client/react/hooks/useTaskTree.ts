@@ -88,7 +88,7 @@ export function isTaskDocument(node: TaskNode): node is TaskDocument {
     return 'fileName' in node && !('documents' in node) && !('children' in node);
 }
 
-// ── Path helper ────────────────────────────────────────────────────────
+// ── Path helpers ───────────────────────────────────────────────────────
 
 /**
  * Resolve the relative file path for a task document or document group node.
@@ -107,6 +107,17 @@ export function getTaskNodePath(item: TaskNode): string | null {
         }
     }
     return null;
+}
+
+/**
+ * Return the absolute task-root path stamped on a node by the server.
+ * For document groups, uses the first document's root.
+ */
+export function getTaskNodeTaskRootPath(item: TaskNode): string | undefined {
+    if (isTaskDocument(item)) return item.taskRootPath;
+    if (isTaskDocumentGroup(item)) return item.documents[0]?.taskRootPath;
+    if (isTaskFolder(item)) return (item as TaskFolder).taskRootPath;
+    return undefined;
 }
 
 // ── Helper ─────────────────────────────────────────────────────────────

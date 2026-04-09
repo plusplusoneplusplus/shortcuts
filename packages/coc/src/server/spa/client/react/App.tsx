@@ -40,6 +40,7 @@ interface MarkdownReviewDialogState {
     filePath: string | null;
     displayPath: string | null;
     fetchMode: 'tasks' | 'auto';
+    taskRootPath?: string | null;
 }
 
 /* @internal – exported for testing only */
@@ -281,11 +282,12 @@ function AppInner() {
 
     useEffect(() => {
         const handleOpenMarkdownReview = (event: Event) => {
-            const detail = (event as CustomEvent<{ filePath?: string; sourceFilePath?: string; wsId?: string }>).detail;
+            const detail = (event as CustomEvent<{ filePath?: string; sourceFilePath?: string; wsId?: string; taskRootPath?: string }>).detail;
             let filePath = typeof detail?.filePath === 'string' ? detail.filePath : '';
             if (!filePath) return;
 
             const wsIdHint = typeof detail?.wsId === 'string' ? detail.wsId : '';
+            const eventTaskRootPath = typeof detail?.taskRootPath === 'string' ? detail.taskRootPath : undefined;
 
             // Fast path: wsId hint provided — use workspace directly without path resolution
             if (wsIdHint) {
@@ -302,11 +304,17 @@ function AppInner() {
                             filePath: taskRelativePath ?? filePath,
                             displayPath: filePath,
                             fetchMode: taskRelativePath !== null ? 'tasks' : 'auto',
+                            taskRootPath: eventTaskRootPath,
                         });
                     } else {
-                        // Task-relative path from TaskTree — existing behaviour
-                        const rootNormalized = normalizePath(hintedWorkspace.rootPath || '').replace(/\/+$/, '');
-                        const displayPath = rootNormalized ? `${rootNormalized}/.vscode/tasks/${filePath}` : filePath;
+                        // Task-relative path from TaskTree
+                        const displayBase = eventTaskRootPath
+                            ? normalizePath(eventTaskRootPath).replace(/\/+$/, '')
+                            : (() => {
+                                const rootNormalized = normalizePath(hintedWorkspace.rootPath || '').replace(/\/+$/, '');
+                                return rootNormalized ? `${rootNormalized}/.vscode/tasks` : '';
+                            })();
+                        const displayPath = displayBase ? `${displayBase}/${filePath}` : filePath;
                         setReviewDialog({
                             open: true,
                             minimized: false,
@@ -315,6 +323,7 @@ function AppInner() {
                             filePath,
                             displayPath,
                             fetchMode: 'tasks',
+                            taskRootPath: eventTaskRootPath,
                         });
                     }
                     return;
@@ -403,6 +412,7 @@ function AppInner() {
                     filePath={reviewDialog.filePath}
                     displayPath={reviewDialog.displayPath}
                     fetchMode={reviewDialog.fetchMode}
+                    taskRootPath={reviewDialog.taskRootPath}
                     initialScrollTop={reviewDialog.scrollTop}
                 />
                 <MinimizedDialogsTray />

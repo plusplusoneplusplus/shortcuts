@@ -5,7 +5,7 @@
 
 import type { ReactNode } from 'react';
 import { cn } from '../shared';
-import { isTaskDocument, isTaskDocumentGroup, getTaskStatusIcon, getTaskNodePath } from '../hooks/useTaskTree';
+import { isTaskDocument, isTaskDocumentGroup, getTaskStatusIcon, getTaskNodePath, getTaskNodeTaskRootPath } from '../hooks/useTaskTree';
 import type { TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 
 export function highlightMatch(text: string, query: string): ReactNode {
@@ -28,7 +28,7 @@ export interface TaskSearchResultsProps {
     query: string;
     commentCounts: Record<string, number>;
     wsId: string;
-    onFileClick: (path: string) => void;
+    onFileClick: (path: string, taskRootPath?: string) => void;
     onContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
 }
 
@@ -69,7 +69,7 @@ export function TaskSearchResults({ results, query, commentCounts, onFileClick, 
                                 item.isArchived && 'opacity-60 italic',
                                 status === 'future' && 'opacity-60 italic',
                             )}
-                            onClick={() => itemPath && onFileClick(itemPath)}
+                            onClick={() => itemPath && onFileClick(itemPath, getTaskNodeTaskRootPath(item))}
                             onContextMenu={(e) => {
                                 if (onContextMenu) {
                                     if (e.shiftKey) return;

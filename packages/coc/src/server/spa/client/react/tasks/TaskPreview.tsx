@@ -10,10 +10,11 @@ import { Button } from '../shared';
 interface TaskPreviewProps {
     wsId: string;
     filePath: string;
+    taskRootPath?: string | null;
     initialViewMode?: 'review' | 'source' | null;
 }
 
-export function TaskPreview({ wsId, filePath, initialViewMode }: TaskPreviewProps) {
+export function TaskPreview({ wsId, filePath, taskRootPath, initialViewMode }: TaskPreviewProps) {
     const { setOpenFilePath } = useTaskPanel();
 
     const handleViewModeChange = useCallback((mode: 'review' | 'source') => {
@@ -27,6 +28,7 @@ export function TaskPreview({ wsId, filePath, initialViewMode }: TaskPreviewProp
             <MarkdownReviewEditor
                 wsId={wsId}
                 filePath={filePath}
+                taskRootPath={taskRootPath}
                 fetchMode="tasks"
                 initialViewMode={initialViewMode ?? undefined}
                 onViewModeChange={handleViewModeChange}

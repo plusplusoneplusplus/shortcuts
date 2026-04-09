@@ -176,9 +176,13 @@ export function useFileContextMenu({
                 icon: '⚡',
                 onClick: () => {
                     setFileCtxMenu(null);
-                    const isAbsTasksFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
-                    const taskBase = isAbsTasksFolder ? tasksFolder : (workspaceRootPath + '/' + tasksFolder);
-                    const absPath = workspaceRootPath
+                    const taskBase = ctxItem.taskRootPath
+                        ? ctxItem.taskRootPath.replace(/\\/g, '/')
+                        : (() => {
+                            const isAbsTasksFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
+                            return isAbsTasksFolder ? tasksFolder : (workspaceRootPath + '/' + tasksFolder);
+                        })();
+                    const absPath = taskBase
                         ? taskBase + '/' + ctxItem.renamePath
                         : ctxItem.renamePath;
                     queueDispatch({

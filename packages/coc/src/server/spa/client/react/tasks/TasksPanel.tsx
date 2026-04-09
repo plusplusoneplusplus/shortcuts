@@ -56,7 +56,7 @@ function scrollToEnd(el: HTMLElement | null) {
 
 function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps) {
     const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
-    const { openFilePath, setOpenFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
+    const { openFilePath, openFileTaskRootPath, setOpenFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
     const { isMobile } = useBreakpoint();
@@ -277,6 +277,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 onDrop={folderDlg.handleDragDrop}
                 onActiveFolderChange={handleActiveFolderChange}
                 openFilePath={openFilePath}
+                openFileTaskRootPath={openFileTaskRootPath}
                 setOpenFilePath={setOpenFilePath}
                 isMobile={isMobile}
                 wsIdEncoded={encodeURIComponent(wsId)}

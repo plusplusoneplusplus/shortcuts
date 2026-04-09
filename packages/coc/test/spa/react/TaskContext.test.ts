@@ -8,6 +8,7 @@ import { taskReducer, type TaskContextState, type TaskAction } from '../../../sr
 function makeState(overrides: Partial<TaskContextState> = {}): TaskContextState {
     return {
         openFilePath: null,
+        openFileTaskRootPath: null,
         selectedFilePaths: new Set(),
         showContextFiles: true,
         lastTasksChangedWsId: null,

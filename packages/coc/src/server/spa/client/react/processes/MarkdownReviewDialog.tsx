@@ -62,6 +62,8 @@ export interface MarkdownReviewDialogProps {
     filePath: string | null;
     displayPath: string | null;
     fetchMode: 'tasks' | 'auto';
+    /** Absolute task root path for correct path resolution. */
+    taskRootPath?: string | null;
     /** Scroll position to restore after the dialog reopens from minimized state. */
     initialScrollTop?: number;
 }
@@ -81,6 +83,7 @@ export function MarkdownReviewDialog({
     filePath,
     displayPath,
     fetchMode,
+    taskRootPath,
     initialScrollTop,
 }: MarkdownReviewDialogProps) {
     const { isMobile } = useBreakpoint();
@@ -106,6 +109,7 @@ export function MarkdownReviewDialog({
         params.set('filePath', filePath);
         if (displayPath) params.set('displayPath', displayPath);
         params.set('fetchMode', fetchMode);
+        if (taskRootPath) params.set('taskRootPath', taskRootPath);
         const url = `${window.location.origin}${window.location.pathname}?${params.toString()}#popout/markdown`;
         const windowName = `coc-md-popout-${mdPopOutKey(wsId, filePath).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
         const popup = window.open(url, windowName, 'width=900,height=700');
@@ -270,6 +274,7 @@ export function MarkdownReviewDialog({
             <MarkdownReviewEditor
                 wsId={wsId}
                 filePath={filePath}
+                taskRootPath={taskRootPath}
                 fetchMode={fetchMode}
                 showAiButtons={true}
                 initialScrollTop={initialScrollTop}

@@ -22,6 +22,7 @@ export interface PopOutMarkdownParams {
     filePath: string;
     displayPath: string;
     fetchMode: 'tasks' | 'auto';
+    taskRootPath?: string;
 }
 
 export function parsePopOutMarkdownRoute(hash: string, search: string): PopOutMarkdownParams | null {
@@ -36,8 +37,9 @@ export function parsePopOutMarkdownRoute(hash: string, search: string): PopOutMa
 
     const fetchMode = searchParams.get('fetchMode') === 'tasks' ? 'tasks' : 'auto';
     const displayPath = searchParams.get('displayPath') || filePath;
+    const taskRootPath = searchParams.get('taskRootPath') || undefined;
 
-    return { wsId, filePath, displayPath, fetchMode };
+    return { wsId, filePath, displayPath, fetchMode, taskRootPath };
 }
 
 /** Build a pop-out URL key for BroadcastChannel identity */
@@ -96,6 +98,7 @@ function PopOutMarkdownContent({ params }: { params: PopOutMarkdownParams }) {
                     <MarkdownReviewEditor
                         wsId={params.wsId}
                         filePath={params.filePath}
+                        taskRootPath={params.taskRootPath}
                         fetchMode={params.fetchMode}
                         showAiButtons={true}
                     />

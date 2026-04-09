@@ -91,6 +91,7 @@ function defaultQueueState(): QueueContextState {
 function defaultTaskState(): TaskContextState {
     return {
         openFilePath: null,
+        openFileTaskRootPath: null,
         selectedFilePaths: new Set(),
         showContextFiles: true,
         lastTasksChangedWsId: null,

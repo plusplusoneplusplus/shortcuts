@@ -7,7 +7,7 @@ import { useTaskPanel } from '../context/TaskContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useQueueActivity } from '../hooks/useQueueActivity';
 import type { TaskFolder, TaskNode, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
-import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder, isTaskDocument, isTaskDocumentGroup, getTaskNodePath } from '../hooks/useTaskTree';
+import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder, isTaskDocument, isTaskDocumentGroup, getTaskNodePath, getTaskNodeTaskRootPath } from '../hooks/useTaskTree';
 import { useTaskDragDrop } from '../hooks/useTaskDragDrop';
 import type { DragItem } from '../hooks/useTaskDragDrop';
 import { TaskTreeItem } from './TaskTreeItem';
@@ -72,6 +72,33 @@ export function TaskTree({
     const { isMobile } = useBreakpoint();
     const dnd = useTaskDragDrop();
     const [columns, setColumns] = useState<TaskNode[][]>([]);
+
+    /** Resolve taskRootPath for a file path by searching visible columns. */
+    const findTaskRootPathInColumns = (filePath: string): string | undefined => {
+        for (const col of columns) {
+            for (const node of col) {
+                if (getTaskNodePath(node) === filePath) {
+                    return getTaskNodeTaskRootPath(node);
+                }
+            }
+        }
+        return undefined;
+    };
+
+    /** Resolve taskRootPath by recursively searching the tree. */
+    const findTaskRootPathInTree = (folder: TaskFolder, filePath: string): string | undefined => {
+        for (const doc of folder.singleDocuments) {
+            if (getTaskNodePath(doc) === filePath) return doc.taskRootPath;
+        }
+        for (const group of folder.documentGroups) {
+            if (getTaskNodePath(group) === filePath) return group.documents[0]?.taskRootPath;
+        }
+        for (const child of folder.children) {
+            const result = findTaskRootPathInTree(child, filePath);
+            if (result !== undefined) return result;
+        }
+        return undefined;
+    };
     const [activeFolderKeys, setActiveFolderKeys] = useState<(string | null)[]>([]);
     const activeFolderKeysRef = useRef<(string | null)[]>([]);
     const lastClickAnchorRef = useRef<{ path: string; colIndex: number } | null>(null);
@@ -116,7 +143,7 @@ export function TaskTree({
                 setColumns(cols);
                 setActiveFolderKeys(keys);
                 activeFolderKeysRef.current = keys;
-                if (initialFilePath) setOpenFilePath(initialFilePath);
+                if (initialFilePath) setOpenFilePath(initialFilePath, findTaskRootPathInTree(tree, initialFilePath));
                 return;
             }
             setColumns([rootNodes]);
@@ -151,7 +178,7 @@ export function TaskTree({
         setColumns(cols);
         setActiveFolderKeys(keys);
         activeFolderKeysRef.current = keys;
-        setOpenFilePath(navigateToFilePath);
+        setOpenFilePath(navigateToFilePath, findTaskRootPathInTree(tree, navigateToFilePath));
         setSelectedFolderPath(folderPath || null);
         const encoded = navigateToFilePath.split('/').map(encodeURIComponent).join('/');
         history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
@@ -241,12 +268,12 @@ export function TaskTree({
 
         if (isMobile) {
             window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
-                detail: { filePath: path, wsId },
+                detail: { filePath: path, wsId, taskRootPath: findTaskRootPathInColumns(path) },
             }));
             return;
         }
 
-        setOpenFilePath(path);
+        setOpenFilePath(path, findTaskRootPathInColumns(path));
         const encoded = path.split(/[\\/]/).map(encodeURIComponent).join('/');
         history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
     };
@@ -257,7 +284,7 @@ export function TaskTree({
 
     const handleFileDoubleClick = (path: string) => {
         window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
-            detail: { filePath: path, wsId },
+            detail: { filePath: path, wsId, taskRootPath: findTaskRootPathInColumns(path) },
         }));
     };
 

@@ -56,6 +56,8 @@ export function parseFrontmatterStatus(content: string): string | undefined {
 export interface MarkdownReviewEditorProps {
     wsId: string;
     filePath: string;
+    /** Absolute task-root path for constructing correct absolute paths (multi-root safe). */
+    taskRootPath?: string | null;
     fetchMode?: 'tasks' | 'auto';
     /** Extra content rendered at the right end of the toolbar (e.g. a close button). */
     toolbarRight?: React.ReactNode;
@@ -92,6 +94,7 @@ async function fetchWorkspaceFileContent(wsId: string, filePath: string): Promis
 export function MarkdownReviewEditor({
     wsId,
     filePath,
+    taskRootPath,
     fetchMode = 'tasks',
     toolbarRight,
     initialViewMode = 'review',
@@ -106,6 +109,14 @@ export function MarkdownReviewEditor({
         const ws = appState.workspaces.find((w: any) => w.id === wsId);
         return ws?.rootPath ? toForwardSlashes(ws.rootPath).replace(/\/+$/, '') : '';
     }, [appState.workspaces, wsId]);
+
+    /** Resolve absolute path from a relative filePath using taskRootPath or workspaceRootPath. */
+    const resolveAbsolutePath = useCallback((fp: string): string => {
+        if (isAbsolutePath(fp)) return toForwardSlashes(fp);
+        if (taskRootPath) return toForwardSlashes(taskRootPath + '/' + fp);
+        if (workspaceRootPath) return toForwardSlashes(workspaceRootPath + '/' + fp);
+        return fp;
+    }, [taskRootPath, workspaceRootPath]);
 
     const [rawContent, setRawContent] = useState('');
     const [loading, setLoading] = useState(true);
@@ -645,11 +656,7 @@ export function MarkdownReviewEditor({
 
     const handleCopyWithContext = useCallback(async () => {
         const text = savedSelection?.text || rawContent;
-        const absolutePath = isAbsolutePath(filePath)
-            ? toForwardSlashes(filePath)
-            : workspaceRootPath
-                ? toForwardSlashes(workspaceRootPath + '/' + filePath)
-                : filePath || '(unknown file)';
+        const absolutePath = resolveAbsolutePath(filePath) || '(unknown file)';
         const pathLabel = absolutePath || '(unknown file)';
         const formatted = `${pathLabel}\n\`\`\`\n${text}\n\`\`\``;
         try {
@@ -658,7 +665,7 @@ export function MarkdownReviewEditor({
         } catch {
             addToast('Failed to copy — clipboard access denied', 'error');
         }
-    }, [savedSelection, rawContent, filePath, workspaceRootPath, addToast]);
+    }, [savedSelection, rawContent, filePath, resolveAbsolutePath, addToast]);
 
     const handleSwitchToReview = useCallback(() => {
         if (isDirty) {
@@ -769,11 +776,7 @@ export function MarkdownReviewEditor({
                                             data-testid="task-preview-follow-prompt"
                                             title="Run Skill"
                                             onClick={() => {
-                                                const absPath = isAbsolutePath(filePath)
-                                                    ? toForwardSlashes(filePath)
-                                                    : workspaceRootPath
-                                                        ? toForwardSlashes(workspaceRootPath + '/' + filePath)
-                                                        : filePath;
+                                                const absPath = resolveAbsolutePath(filePath);
                                                 queueDispatch({
                                                     type: 'OPEN_DIALOG',
                                                     workspaceId: wsId,
