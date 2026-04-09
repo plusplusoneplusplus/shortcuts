@@ -264,9 +264,31 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
         expect(src).toContain('Auto re-executed');
     });
 
-    it('renders autoResolveAndReExecute toggle', () => {
-        expect(src).toContain('work-item-auto-resolve-toggle');
-        expect(src).toContain('autoResolveAndReExecute');
+    it('renders per-change Auto Resolve button (replaces old toggle)', () => {
+        expect(src).toContain('exec-auto-resolve-btn-');
+        expect(src).toContain('handleAutoResolveChange');
+    });
+
+    it('per-change Auto Resolve button is not restricted to aiDone', () => {
+        // Button condition should check exec.status === 'completed' && execOpenCommentCount > 0 only
+        // It should NOT have isAiDone as a precondition for the auto-resolve button
+        const autoResolveBtnIdx = src.indexOf("exec-auto-resolve-btn-");
+        expect(autoResolveBtnIdx).toBeGreaterThan(-1);
+        // The auto-resolve button should NOT be gated behind isAiDone
+        const surroundingCode = src.slice(Math.max(0, autoResolveBtnIdx - 300), autoResolveBtnIdx);
+        expect(surroundingCode).not.toContain('isAiDone &&');
+    });
+
+    it('per-change Auto Resolve button passes autoReExecute: true in body', () => {
+        expect(src).toContain('autoReExecute: true');
+    });
+
+    it('Auto Resolve button shows per-change resolve count', () => {
+        expect(src).toContain('Auto Resolve (');
+    });
+
+    it('does NOT render the top-level auto-resolve toggle', () => {
+        expect(src).not.toContain('work-item-auto-resolve-toggle');
     });
 
     it('uses green styling for resolved badge and amber for unresolved badge', () => {

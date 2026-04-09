@@ -45,10 +45,21 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const items = state.workItemsByRepo[workspaceId] || [];
     const isLoading = state.loading[workspaceId] ?? false;
 
-    // Per-status collapse state; done/failed start collapsed
-    const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
-        Object.fromEntries(STATUS_ORDER.map(s => [s, STATUS_CONFIG[s].defaultCollapsed ?? false]))
-    );
+    // Per-status collapse state; persisted in localStorage (workspace-scoped)
+    const storageKey = `coc-wi-categories-${workspaceId}`;
+    const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+        const defaults = Object.fromEntries(STATUS_ORDER.map(s => [s, STATUS_CONFIG[s].defaultCollapsed ?? false]));
+        try {
+            const stored = localStorage.getItem(storageKey);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+                    return { ...defaults, ...parsed };
+                }
+            }
+        } catch { /* ignore corrupt storage */ }
+        return defaults;
+    });
 
     const fetchWorkItems = useCallback(async () => {
         dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: true });
@@ -67,7 +78,11 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     if (items.length === 0 && !isLoading) return null;
 
     const toggleGroup = (status: string) =>
-        setCollapsed(prev => ({ ...prev, [status]: !prev[status] }));
+        setCollapsed(prev => {
+            const next = { ...prev, [status]: !prev[status] };
+            try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore storage errors */ }
+            return next;
+        });
 
     // Group items by status, sorted by last run time descending within each group
     const grouped = Object.fromEntries(
