@@ -530,6 +530,14 @@ export function ActivityListPane({
                         closeContextMenu();
                     },
                 },
+                // Rename available only for single-item selection
+                ...(ids.length === 1 ? [{
+                    label: 'Rename', icon: '✏️', onClick: () => {
+                        const task = history.find(t => t.id === ids[0]);
+                        setRenameTarget({ taskId: ids[0], title: task?.displayName || task?.type || '' });
+                        closeContextMenu();
+                    },
+                }] : []),
                 { label: '', icon: '', separator: true, onClick: () => {} },
                 { label: `Delete ${ids.length} chats…`, icon: '🗑', onClick: () => {
                     if (confirm(`Delete ${ids.length} chats? This cannot be undone.`)) {

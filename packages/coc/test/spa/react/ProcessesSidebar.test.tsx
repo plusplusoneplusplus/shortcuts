@@ -1,13 +1,48 @@
 /**
- * Tests for ProcessesSidebar — pause/resume controls, paused badge, and clear-queue button.
+ * Tests for ProcessesSidebar — pause/resume controls, paused badge, clear-queue button, and rename.
  */
 
+import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
+
+// Portal passthrough so ContextMenu and RenameDialog render inline
+vi.mock('react-dom', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('react-dom')>();
+    return { ...actual, createPortal: (children: React.ReactNode) => children };
+});
+
+// ContextMenu — render items as flat buttons for easy querying
+vi.mock('../../../src/server/spa/client/react/tasks/comments/ContextMenu', () => ({
+    ContextMenu: ({ items, onClose }: any) => (
+        <div data-testid="context-menu">
+            {items.filter((i: any) => !i.separator).map((item: any, idx: number) => (
+                <button key={idx} onClick={() => { item.onClick(); onClose(); }}>{item.icon} {item.label}</button>
+            ))}
+        </div>
+    ),
+}));
+
+// Stub useBreakpoint used by Dialog
+vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => ({ isMobile: false }),
+}));
+
+// Stub workspace utils
+vi.mock('../../../src/server/spa/client/react/utils/workspace', () => ({
+    resolveWorkspaceName: (id: string) => id,
+    getProcessWorkspaceId: () => undefined,
+    getProcessWorkspaceName: () => undefined,
+}));
+
+// Stub config
+vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    getApiBase: () => '',
+}));
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -463,6 +498,151 @@ describe('ProcessesSidebar — AI title display for legacy processes', () => {
         await waitFor(() => {
             const truncated = screen.getByText('x'.repeat(80) + '…');
             expect(truncated).toBeDefined();
+        });
+    });
+});
+
+// ── Rename via context menu ────────────────────────────────────────────
+
+describe('ProcessesSidebar — rename via context menu', () => {
+    it('shows context menu with Rename on right-click for completed process', async () => {
+        const process = {
+            id: 'proc-rename-1',
+            status: 'completed',
+            title: 'My Title',
+            promptPreview: 'prompt',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('My Title')).toBeDefined();
+        });
+        const card = screen.getByText('My Title').closest('.process-item') as HTMLElement;
+        expect(card).toBeDefined();
+        fireEvent.contextMenu(card!);
+        await waitFor(() => {
+            expect(screen.getByText(/Rename/)).toBeDefined();
+        });
+    });
+
+    it('does NOT show context menu on right-click for running process', async () => {
+        const process = {
+            id: 'proc-rename-2',
+            status: 'running',
+            title: 'Running Task',
+            promptPreview: 'prompt',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Running Task')).toBeDefined();
+        });
+        const card = screen.getByText('Running Task').closest('.process-item') as HTMLElement;
+        expect(card).toBeDefined();
+        fireEvent.contextMenu(card!);
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
+    it('shows context menu with Rename on right-click for failed process', async () => {
+        const process = {
+            id: 'proc-rename-3',
+            status: 'failed',
+            title: 'Failed Task',
+            promptPreview: 'prompt',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Failed Task')).toBeDefined();
+        });
+        const card = screen.getByText('Failed Task').closest('.process-item') as HTMLElement;
+        expect(card).toBeDefined();
+        fireEvent.contextMenu(card!);
+        await waitFor(() => {
+            expect(screen.getByText(/Rename/)).toBeDefined();
+        });
+    });
+
+    it('clicking Rename opens the RenameDialog with the process title', async () => {
+        const process = {
+            id: 'proc-rename-4',
+            status: 'completed',
+            title: 'Existing Title',
+            promptPreview: 'prompt',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Existing Title')).toBeDefined();
+        });
+        const card = screen.getByText('Existing Title').closest('.process-item') as HTMLElement;
+        fireEvent.contextMenu(card!);
+        await waitFor(() => {
+            expect(screen.getByText(/Rename/)).toBeDefined();
+        });
+        fireEvent.click(screen.getByText(/Rename/));
+        await waitFor(() => {
+            expect(screen.getByText('Rename Chat')).toBeDefined();
+        });
+    });
+
+    it('calls PATCH API on rename confirm and dispatches PROCESS_UPDATED', async () => {
+        fetchSpy.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({
+                queued: [], running: [], history: [],
+                stats: makeStats(),
+                process: { id: 'proc-rename-5', title: 'New Name' },
+            }),
+        });
+        const process = {
+            id: 'proc-rename-5',
+            status: 'completed',
+            title: 'Old Name',
+            promptPreview: 'prompt',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Old Name')).toBeDefined();
+        });
+        const card = screen.getByText('Old Name').closest('.process-item') as HTMLElement;
+        fireEvent.contextMenu(card!);
+        await waitFor(() => expect(screen.getByText(/Rename/)).toBeDefined());
+        fireEvent.click(screen.getByText(/Rename/));
+        await waitFor(() => expect(screen.getByText('Rename Chat')).toBeDefined());
+
+        const input = screen.getByPlaceholderText('Chat title') as HTMLInputElement;
+        await act(async () => {
+            fireEvent.change(input, { target: { value: 'New Name' } });
+        });
+        // Click the Rename button in the dialog (exact text, not the context menu item)
+        await act(async () => {
+            fireEvent.click(screen.getByText('Rename'));
+        });
+
+        await waitFor(() => {
+            const patchCall = fetchSpy.mock.calls.find(
+                (c: any[]) => typeof c[0] === 'string' && c[0].includes('/processes/proc-rename-5') && c[1]?.method === 'PATCH'
+            );
+            expect(patchCall).toBeDefined();
+            const body = JSON.parse(patchCall![1].body);
+            expect(body.title).toBe('New Name');
         });
     });
 });

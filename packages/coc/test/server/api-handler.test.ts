@@ -1086,6 +1086,50 @@ describe('API Handler', () => {
             expect(res.status).toBe(404);
         });
 
+        it('should update title via PATCH and return updated process', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ id: 'p-title-patch', status: 'completed' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await patchJSON(`${srv.url}/api/processes/p-title-patch`, {
+                title: 'My Custom Name',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.process.title).toBe('My Custom Name');
+        });
+
+        it('should persist title after PATCH (verifiable via GET)', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ id: 'p-title-persist', status: 'completed' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            await patchJSON(`${srv.url}/api/processes/p-title-persist`, {
+                title: 'Persisted Title',
+            });
+
+            const getRes = await request(`${srv.url}/api/processes/p-title-persist`);
+            const fetched = JSON.parse(getRes.body);
+            expect(fetched.process.title).toBe('Persisted Title');
+        });
+
+        it('should allow updating title alongside other fields', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ id: 'p-title-combo', status: 'running' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await patchJSON(`${srv.url}/api/processes/p-title-combo`, {
+                title: 'Combo Title',
+                status: 'completed',
+                result: 'Done',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.process.title).toBe('Combo Title');
+            expect(body.process.status).toBe('completed');
+            expect(body.process.result).toBe('Done');
+        });
+
         it('should return 404 for DELETE on nonexistent process', async () => {
             const srv = await startServer();
             const res = await request(`${srv.url}/api/processes/nope`, { method: 'DELETE' });

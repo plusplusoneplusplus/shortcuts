@@ -138,6 +138,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/SummarizeChatDialog', () 
     SummarizeChatDialog: () => null,
 }));
 
+// ── useBreakpoint (used by Dialog inside RenameDialog) ──
+vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => ({ isMobile: false }),
+}));
+
 // ── Factory helpers ────────────────────────────────────────────────────
 
 function makeTask(overrides: Record<string, any> = {}): Record<string, any> {
@@ -620,6 +625,57 @@ describe('ActivityListPane', () => {
                 fireEvent.contextMenu(document.querySelector('[data-task-id="h-1"]')!);
                 // Completed tasks always use bulk menu path (bulkIds=[taskId])
                 expect(screen.getByText(/Delete 1 chats/)).toBeTruthy();
+            });
+
+            it('"Rename" shown for completed task', () => {
+                renderPane({ history: [makeHistoryTask()], onMarkUnread: vi.fn() });
+                fireEvent.contextMenu(document.querySelector('[data-task-id="h-1"]')!);
+                const menuItems = screen.getByTestId('context-menu');
+                expect(menuItems.textContent).toContain('Rename');
+            });
+
+            it('clicking Rename opens the RenameDialog', async () => {
+                renderPane({ history: [makeHistoryTask()], onMarkUnread: vi.fn() });
+                fireEvent.contextMenu(document.querySelector('[data-task-id="h-1"]')!);
+                // Find Rename button inside the context menu
+                const menu = screen.getByTestId('context-menu');
+                const renameBtn = Array.from(menu.querySelectorAll('button')).find(b => b.textContent?.includes('Rename'));
+                expect(renameBtn).toBeTruthy();
+                fireEvent.click(renameBtn!);
+                await waitFor(() => {
+                    expect(screen.getByText('Rename Chat')).toBeTruthy();
+                });
+            });
+
+            it('calls PATCH /api/processes/queue_<taskId> on rename confirm', async () => {
+                const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+                fetchMock.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+                renderPane({
+                    history: [makeHistoryTask({ id: 'h-rename', displayName: 'Old Name' })],
+                    onMarkUnread: vi.fn(),
+                    fetchQueue: vi.fn().mockResolvedValue(undefined),
+                });
+                fireEvent.contextMenu(document.querySelector('[data-task-id="h-rename"]')!);
+                // Find Rename button inside the context menu
+                const menu = screen.getByTestId('context-menu');
+                const renameBtn = Array.from(menu.querySelectorAll('button')).find(b => b.textContent?.includes('Rename'));
+                fireEvent.click(renameBtn!);
+                await waitFor(() => {
+                    expect(screen.getByText('Rename Chat')).toBeTruthy();
+                });
+                const input = screen.getByPlaceholderText('Chat title') as HTMLInputElement;
+                fireEvent.change(input, { target: { value: 'New Name' } });
+                await act(async () => {
+                    fireEvent.click(screen.getByText('Rename'));
+                });
+                await waitFor(() => {
+                    const patchCall = fetchMock.mock.calls.find(
+                        (c: any[]) => typeof c[0] === 'string' && c[0].includes('/processes/queue_h-rename') && c[1]?.method === 'PATCH'
+                    );
+                    expect(patchCall).toBeTruthy();
+                    const body = JSON.parse(patchCall![1].body);
+                    expect(body.title).toBe('New Name');
+                });
             });
         });
 
