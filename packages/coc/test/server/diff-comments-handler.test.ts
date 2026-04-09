@@ -1479,5 +1479,51 @@ describe('Diff Comments Resolve AI Routes', () => {
             expect(input.payload.context.resolveDiffCommentsMulti.oldRef).toBe('main');
             expect(input.payload.context.resolveDiffCommentsMulti.newRef).toBe('feature-branch');
         });
+
+        it('includes workItemResolveContext with autoReExecute when both are provided', async () => {
+            await postJSON(collectionUrl(), makePostBody());
+
+            await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
+                workItemId: 'wi-test-1',
+                autoReExecute: true,
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.payload.workItemResolveContext).toBeDefined();
+            expect(input.payload.workItemResolveContext.workItemId).toBe('wi-test-1');
+            expect(input.payload.workItemResolveContext.wsId).toBe(WS_ID);
+            expect(input.payload.workItemResolveContext.autoReExecute).toBe(true);
+        });
+
+        it('sets autoReExecute to false in context when not provided', async () => {
+            await postJSON(collectionUrl(), makePostBody());
+
+            await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
+                workItemId: 'wi-test-2',
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.payload.workItemResolveContext.autoReExecute).toBe(false);
+        });
+
+        it('omits workItemResolveContext when workItemId is not provided', async () => {
+            await postJSON(collectionUrl(), makePostBody());
+
+            await postJSON(resolveWithAiUrl(), {
+                oldRef: 'main',
+                newRef: 'feature-branch',
+                autoReExecute: true,
+            });
+
+            expect(mockEnqueue).toHaveBeenCalledTimes(1);
+            const input = mockEnqueue.mock.calls[0][0];
+            expect(input.payload.workItemResolveContext).toBeUndefined();
+        });
     });
 });

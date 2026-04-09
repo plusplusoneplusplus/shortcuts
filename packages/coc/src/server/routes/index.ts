@@ -197,7 +197,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         const task = event.task;
         if (task.status !== 'completed') return;
 
-        const resolveCtx = task.payload?.workItemResolveContext as { workItemId: string; wsId: string } | undefined;
+        const resolveCtx = task.payload?.workItemResolveContext as { workItemId: string; wsId: string; autoReExecute?: boolean } | undefined;
         if (!resolveCtx) return;
 
         const { workItemId, wsId } = resolveCtx;
@@ -207,8 +207,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             try {
                 const item = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
                 if (!item) return;
-                // Only auto re-execute if the feature is enabled and item is in aiDone status
-                if (!item.autoResolveAndReExecute) return;
+                // Auto re-execute when: global toggle is on, OR the per-request autoReExecute flag is set
+                if (!item.autoResolveAndReExecute && !resolveCtx.autoReExecute) return;
                 if (item.status !== 'aiDone') return;
 
                 // Loop guard: max N cycles
