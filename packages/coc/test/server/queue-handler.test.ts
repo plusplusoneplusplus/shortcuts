@@ -2836,6 +2836,11 @@ describe('Queue Handler', () => {
             expect(prompt).toContain('Additional focus / question from the user:');
             expect(prompt).toContain('Focus on action items');
         });
+
+        it('should mention the coc-chat skill for reading files', () => {
+            const prompt = buildSummarizePrompt(['/data/proc1.json']);
+            expect(prompt).toContain('coc-chat skill');
+        });
     });
 
     // ========================================================================

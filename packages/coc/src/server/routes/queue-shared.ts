@@ -493,9 +493,9 @@ export function buildSummarizePrompt(filePaths: string[], userPrompt?: string): 
     const fileList = filePaths.map(fp => `- ${fp}`).join('\n');
     let prompt =
         'Summarize the following conversation logs. Each file is a JSON process record ' +
-        'containing conversation turns. Read each file, then produce a concise summary ' +
-        'that highlights: key topics discussed, decisions made, action items, and any ' +
-        'unresolved questions.\n\n' +
+        'containing conversation turns. Use the coc-chat skill to read each file, then ' +
+        'produce a concise summary that highlights: key topics discussed, decisions made, ' +
+        'action items, and any unresolved questions.\n\n' +
         'Conversation files:\n' +
         fileList;
 
