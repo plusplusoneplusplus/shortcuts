@@ -47,6 +47,14 @@ async function waitForTaskStatus(
 
 /** Navigate to the Schedules sub-tab of the first workspace in the sidebar. */
 async function navigateToSchedules(page: Page, serverUrl: string): Promise<void> {
+    // Pre-dismiss the welcome modal AND concept tour so neither blocks pointer events.
+    await request(`${serverUrl}/api/preferences`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+            hasSeenWelcome: true,
+            onboardingProgress: { hasCompletedTour: true, dismissed: true },
+        }),
+    });
     await page.goto(serverUrl);
     await page.click('[data-tab="repos"]');
     await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
@@ -66,7 +74,7 @@ test.describe('Schedule Script', () => {
         await navigateToSchedules(page, serverUrl);
 
         // Wait for the schedules tab to finish loading (empty state means loading=false)
-        await expect(page.getByText('No schedules for this repo yet.')).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[data-testid="user-schedules-dropzone"]')).toBeVisible({ timeout: 10_000 });
 
         // Open the create form (exact match avoids "+ New Chat")
         await page.locator('#repo-detail-content').getByRole('button', { name: '+ New', exact: true }).click();
@@ -238,7 +246,7 @@ test.describe('Schedule Script', () => {
         await seedWorkspace(serverUrl, 'ws-sched-prompt', 'sched-prompt', '/ws/sched-prompt');
 
         await navigateToSchedules(page, serverUrl);
-        await expect(page.getByText('No schedules for this repo yet.')).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[data-testid="user-schedules-dropzone"]')).toBeVisible({ timeout: 10_000 });
 
         // Open create form
         await page.locator('#repo-detail-content').getByRole('button', { name: '+ New', exact: true }).click();
