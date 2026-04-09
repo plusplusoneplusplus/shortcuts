@@ -200,9 +200,12 @@ function Section({ title, count, children, defaultExpanded = true, onStageAll, o
 
     return (
         <div data-testid={testId}>
-            <button
+            <div
+                role="button"
+                tabIndex={0}
                 className="w-full flex items-center gap-1.5 pl-7 pr-4 py-1.5 bg-transparent border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-left cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
                 onClick={() => setExpanded(prev => !prev)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(prev => !prev); } }}
                 data-testid={`${testId}-header`}
             >
                 <span className="text-[10px] text-[#848484] flex-shrink-0">{expanded ? '▼' : '▶'}</span>
@@ -232,7 +235,7 @@ function Section({ title, count, children, defaultExpanded = true, onStageAll, o
                         − All
                     </button>
                 )}
-            </button>
+            </div>
             {expanded && count === 0 && (
                 <div className="pl-10 pr-4 py-1.5 text-xs text-[#848484] italic border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     No changes
@@ -476,9 +479,12 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
             )}
 
             <div data-testid="working-changes-group">
-                <button
+                <div
+                    role="button"
+                    tabIndex={0}
                     className="w-full flex items-center gap-1.5 px-4 py-1.5 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-left cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
                     onClick={() => setWorkingChangesExpanded(prev => !prev)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setWorkingChangesExpanded(prev => !prev); } }}
                     data-testid="working-changes-header"
                 >
                     <span className="text-[10px] text-[#848484] flex-shrink-0">{workingChangesExpanded ? '▼' : '▶'}</span>
@@ -496,7 +502,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                             💬 {allWorkingComments.length > 0 ? allWorkingComments.length : ''}
                         </button>
                     )}
-                </button>
+                </div>
                 {workingChangesExpanded && (
                     <div data-testid="working-changes-content">
                         <Section
