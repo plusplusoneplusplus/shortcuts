@@ -832,6 +832,46 @@ describe('RepoGitTab', () => {
             expect(source).toContain('const closeContextMenu = useCallback(() => setContextMenu(null)');
         });
 
+        it('closeContextMenu is defined before handlePushToCommit to avoid temporal dead zone', () => {
+            const closeIdx = source.indexOf('const closeContextMenu = useCallback');
+            const pushToIdx = source.indexOf('const handlePushToCommit = useCallback');
+            expect(closeIdx).toBeGreaterThan(-1);
+            expect(pushToIdx).toBeGreaterThan(-1);
+            expect(closeIdx).toBeLessThan(pushToIdx);
+        });
+
+        it('closeContextMenu is defined before handleHardReset to avoid temporal dead zone', () => {
+            const closeIdx = source.indexOf('const closeContextMenu = useCallback');
+            const resetIdx = source.indexOf('const handleHardReset = useCallback');
+            expect(closeIdx).toBeGreaterThan(-1);
+            expect(resetIdx).toBeGreaterThan(-1);
+            expect(closeIdx).toBeLessThan(resetIdx);
+        });
+
+        it('closeContextMenu is defined before handleCherryPick to avoid temporal dead zone', () => {
+            const closeIdx = source.indexOf('const closeContextMenu = useCallback');
+            const cherryIdx = source.indexOf('const handleCherryPick = useCallback');
+            expect(closeIdx).toBeGreaterThan(-1);
+            expect(cherryIdx).toBeGreaterThan(-1);
+            expect(closeIdx).toBeLessThan(cherryIdx);
+        });
+
+        it('closeContextMenu is defined before handleEnqueueSkill to avoid temporal dead zone', () => {
+            const closeIdx = source.indexOf('const closeContextMenu = useCallback');
+            const enqueueIdx = source.indexOf('const handleEnqueueSkill = useCallback');
+            expect(closeIdx).toBeGreaterThan(-1);
+            expect(enqueueIdx).toBeGreaterThan(-1);
+            expect(closeIdx).toBeLessThan(enqueueIdx);
+        });
+
+        it('closeContextMenu is defined before handleSquashCommits to avoid temporal dead zone', () => {
+            const closeIdx = source.indexOf('const closeContextMenu = useCallback');
+            const squashIdx = source.indexOf('const handleSquashCommits = useCallback');
+            expect(closeIdx).toBeGreaterThan(-1);
+            expect(squashIdx).toBeGreaterThan(-1);
+            expect(closeIdx).toBeLessThan(squashIdx);
+        });
+
         it('defines handleEnqueueSkill async callback', () => {
             expect(source).toContain('const handleEnqueueSkill = useCallback(async');
         });

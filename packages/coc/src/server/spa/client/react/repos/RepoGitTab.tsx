@@ -178,6 +178,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
     const [rewordingCommit, setRewordingCommit] = useState<GitCommitItem | null>(null);
 
+    const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
     // Repo state (merge/rebase/cherry-pick in progress)
     const [repoState, setRepoState] = useState<{ operation: string; conflictFiles: string[] } | null>(null);
 
@@ -714,8 +716,6 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const handleMobileBack = useCallback(() => {
         setRightPanelView(null);
     }, []);
-
-    const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
     const handleHardReset = useCallback(async (commit: GitCommitItem) => {
         closeContextMenu();
