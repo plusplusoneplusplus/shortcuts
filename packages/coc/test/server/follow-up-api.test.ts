@@ -1349,4 +1349,83 @@ describe('POST /api/processes/:id/message', () => {
             expect(res.status).toBe(404);
         });
     });
+
+    // ========================================================================
+    // Selected-skills directive in follow-up turns
+    // ========================================================================
+
+    describe('selected_skills directive in follow-up turn content', () => {
+        it('should prepend selected_skills directive to stored turn content when skills are provided', async () => {
+            const proc: AIProcess = {
+                id: 'proc-skills-1',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-skills',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-skills-1/message`, {
+                content: 'Fix the bug',
+                skillNames: ['impl', 'review'],
+            });
+
+            const updated = await store.getProcess('proc-skills-1');
+            const userTurn = updated?.conversationTurns?.find(t => t.role === 'user');
+            expect(userTurn?.content).toContain('<selected_skills>');
+            expect(userTurn?.content).toContain('impl, review');
+            expect(userTurn?.content).toContain('Fix the bug');
+        });
+
+        it('should not alter stored turn content when no skills are provided', async () => {
+            const proc: AIProcess = {
+                id: 'proc-skills-2',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-noskills',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-skills-2/message`, {
+                content: 'Hello world',
+            });
+
+            const updated = await store.getProcess('proc-skills-2');
+            const userTurn = updated?.conversationTurns?.find(t => t.role === 'user');
+            expect(userTurn?.content).toBe('Hello world');
+            expect(userTurn?.content).not.toContain('<selected_skills>');
+        });
+
+        it('should pass original content (without directive) to executor paths', async () => {
+            const proc: AIProcess = {
+                id: 'proc-skills-3',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-exec',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-skills-3/message`, {
+                content: 'Fix the bug',
+                skillNames: ['impl'],
+            });
+
+            // The enqueue call should receive the original content, not the directive-prepended one
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            const call = enqueueFn.mock.calls[0][0];
+            expect(call.payload.prompt).toBe('Fix the bug');
+            expect(call.payload.prompt).not.toContain('<selected_skills>');
+        });
+    });
 });

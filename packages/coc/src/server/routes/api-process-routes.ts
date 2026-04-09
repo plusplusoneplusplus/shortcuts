@@ -24,6 +24,7 @@ import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../image-
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { recordUserMessage } from '../memory/conversation-recorder';
+import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import type { ApiRouteContext } from './api-shared';
 
 /** Valid AIProcessStatus values for validation. */
@@ -416,6 +417,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // Pass content through as-is — /skill tokens are kept in the prompt
             // so the AI SDK receives the full user intent (e.g. "/impl fix the bug").
             const messageContent = (body.content as string);
+            const displayContent = prependSelectedSkillsDirective(messageContent, selectedSkillNames);
 
             // Persist the user turn and mark the process as running atomically.
             // This ensures the SSE snapshot always includes the user message,
@@ -427,7 +429,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 id,
                 (turnIndex) => ({
                     role: 'user' as const,
-                    content: messageContent,
+                    content: displayContent,
                     timestamp: new Date(),
                     turnIndex,
                     timeline: [],

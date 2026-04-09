@@ -39,6 +39,7 @@ import type { ChatPayload } from '../task-types';
 import {
     extractPrompt,
     applySkillContent,
+    prependSelectedSkillsDirective,
 } from './prompt-builder';
 import { cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import {
@@ -158,6 +159,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         // New task: create a process entry
         const processId = `queue_${task.id}`;
         const prompt = applySkillContent(extractPrompt(task), task);
+        const selectedSkills = isChatPayload(task.payload)
+            ? (task.payload as ChatPayload).context?.skills
+            : undefined;
+        const displayPrompt = prependSelectedSkillsDirective(prompt, selectedSkills);
         const workingDirectory = opts.getWorkingDirectoryFn(task);
         const seededTokenLimit = task.config.model !== undefined
             ? modelMetadataStore.getContextWindow(task.config.model)
@@ -166,8 +171,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const process: AIProcess = {
             id: processId,
             type: task.type,
-            promptPreview: prompt.length > 80 ? prompt.substring(0, 77) + '...' : prompt,
-            fullPrompt: prompt,
+            promptPreview: displayPrompt.length > 80 ? displayPrompt.substring(0, 77) + '...' : displayPrompt,
+            fullPrompt: displayPrompt,
             status: 'running',
             startTime: new Date(),
             workingDirectory,
@@ -194,7 +199,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const initialTurns: ConversationTurn[] = [
             {
                 role: 'user',
-                content: prompt,
+                content: displayPrompt,
                 timestamp: process.startTime,
                 turnIndex: 0,
                 timeline: [],

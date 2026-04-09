@@ -161,6 +161,95 @@ describe('ProcessLifecycleRunner — initial prompt memory recording', () => {
 });
 
 // ============================================================================
+// Selected-skills directive in initial turn
+// ============================================================================
+
+describe('ProcessLifecycleRunner — selected_skills directive in stored turns', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('prepends selected_skills directive to the initial turn content when skills are selected', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Fix the bug',
+                workspaceId: 'ws-abc',
+                context: { skills: ['impl', 'review'] },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        const userTurn = proc?.conversationTurns?.find(t => t.role === 'user');
+
+        expect(userTurn?.content).toContain('<selected_skills>');
+        expect(userTurn?.content).toContain('impl, review');
+        expect(userTurn?.content).toContain('Fix the bug');
+    });
+
+    it('stores directive in promptPreview and fullPrompt', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Fix the bug',
+                workspaceId: 'ws-abc',
+                context: { skills: ['go-deep'] },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+
+        expect(proc?.fullPrompt).toContain('<selected_skills>');
+        expect(proc?.fullPrompt).toContain('go-deep');
+        expect(proc?.promptPreview).toContain('<selected_skills>');
+    });
+
+    it('does not alter turn content when no skills are selected', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Hello world',
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        const userTurn = proc?.conversationTurns?.find(t => t.role === 'user');
+
+        expect(userTurn?.content).toBe('Hello world');
+        expect(userTurn?.content).not.toContain('<selected_skills>');
+    });
+
+    it('passes original prompt (without directive) to executeByTypeFn', async () => {
+        const executeByTypeFn = vi.fn().mockResolvedValue({ response: 'done' });
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Fix the bug',
+                workspaceId: 'ws-abc',
+                context: { skills: ['impl'] },
+            } as any,
+        });
+        await runner.run(task, makeOpts({ executeByTypeFn }));
+
+        const passedPrompt = executeByTypeFn.mock.calls[0][1];
+        expect(passedPrompt).toBe('Fix the bug');
+        expect(passedPrompt).not.toContain('<selected_skills>');
+    });
+});
+
+// ============================================================================
 // Cancellation detection tests
 // ============================================================================
 
