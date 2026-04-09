@@ -163,6 +163,7 @@ export class ProcessWebSocketServer {
     private clients: Set<WSClient> = new Set();
     private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
     private wss: WebSocketServer;
+    private gitChangedListeners: Array<(workspaceId: string) => void> = [];
 
     constructor() {
         this.wss = new WebSocketServer({ noServer: true });
@@ -280,6 +281,14 @@ export class ProcessWebSocketServer {
     }
 
     /**
+     * Register a listener that is called whenever a `git-changed` event is broadcast.
+     * Used by the git-info cache to invalidate stale entries after git mutations.
+     */
+    onGitChanged(listener: (workspaceId: string) => void): void {
+        this.gitChangedListeners.push(listener);
+    }
+
+    /**
      * Broadcast a git-changed event to clients subscribed to the given workspace.
      */
     broadcastGitChanged(workspaceId: string, trigger: string): void {
@@ -294,6 +303,9 @@ export class ProcessWebSocketServer {
             if (!client.workspaceId || client.workspaceId === workspaceId) {
                 client.send(data);
             }
+        }
+        for (const listener of this.gitChangedListeners) {
+            try { listener(workspaceId); } catch { /* listener errors are non-fatal */ }
         }
     }
 

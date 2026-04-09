@@ -9,20 +9,16 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { BranchService, GitRangeService, loadDefaultMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
+import { BranchService, loadDefaultMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../api-handler';
 import { handleAPIError, missingFields, notFound, badRequest } from '../errors';
 import { gitCache } from '../git-cache';
+import { gitInfoCache, type GitInfoResult } from '../git-info-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 
-// Lazy singleton services (same pattern as original api-handler)
-let _gitRangeService: GitRangeService | undefined;
-function getGitRangeService(): GitRangeService {
-    if (!_gitRangeService) { _gitRangeService = new GitRangeService(); }
-    return _gitRangeService;
-}
+// Lazy singleton service
 let _branchService: BranchService | undefined;
 function getBranchService(): BranchService {
     if (!_branchService) { _branchService = new BranchService(); }
@@ -48,8 +44,41 @@ function hasGitDirectory(rootPath: string): boolean {
     }
 }
 
+/**
+ * Fetch git-info for a single workspace by ID.
+ * Used by both the HTTP handler and the GitInfoCacheService background refresh.
+ */
+async function fetchOneGitInfo(workspaceId: string, store: ProcessStore): Promise<GitInfoResult> {
+    const workspaces = await store.getWorkspaces();
+    const ws = workspaces.find(w => w.id === workspaceId);
+    if (!ws) {
+        throw new Error(`Workspace ${workspaceId} not found`);
+    }
+
+    const dirty = await getBranchService().hasUncommittedChanges(ws.rootPath);
+    const branchStatus = await getBranchService().getBranchStatus(ws.rootPath, dirty);
+
+    if (!branchStatus) {
+        const remoteUrl = await syncRemoteUrl(ws, store);
+        return { branch: null, dirty: false, isGitRepo: false, remoteUrl: remoteUrl || null };
+    }
+
+    const remoteUrl = await syncRemoteUrl(ws, store);
+    return {
+        branch: branchStatus.name || 'HEAD',
+        dirty,
+        ahead: branchStatus.ahead,
+        behind: branchStatus.behind,
+        isGitRepo: true,
+        remoteUrl: remoteUrl || null,
+    };
+}
+
 export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
+
+    // Start the git-info cache background refresh for this server instance
+    gitInfoCache.start(store, (wsId) => fetchOneGitInfo(wsId, store));
 
     // POST /api/workspaces — Register a workspace
     routes.push({
@@ -214,7 +243,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 return;
             }
 
-            const branch = await getGitRangeService().getCurrentBranch(ws.rootPath);
+            const branch = branchStatus.name || 'HEAD';
             const remoteUrl = await syncRemoteUrl(ws, store);
             const ahead = branchStatus.ahead;
             const behind = branchStatus.behind;
@@ -236,31 +265,16 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             }
 
             const workspaces = await store.getWorkspaces();
-            const wsMap = new Map(workspaces.map(w => [w.id, w]));
+            const knownIds = new Set(workspaces.map(w => w.id));
 
             const CONCURRENCY = 4;
             const results: Record<string, any> = {};
             for (let i = 0; i < workspaceIds.length; i += CONCURRENCY) {
                 const batch = workspaceIds.slice(i, i + CONCURRENCY);
                 await Promise.all(batch.map(async (wsId: string) => {
-                    const ws = wsMap.get(wsId);
-                    if (!ws) { results[wsId] = null; return; }
-
+                    if (!knownIds.has(wsId)) { results[wsId] = null; return; }
                     try {
-                        const dirty = await getBranchService().hasUncommittedChanges(ws.rootPath);
-                        const branchStatus = await getBranchService().getBranchStatus(ws.rootPath, dirty);
-                        if (!branchStatus) {
-                            const remoteUrl = await syncRemoteUrl(ws, store);
-                            results[wsId] = { branch: null, dirty: false, isGitRepo: false, remoteUrl: remoteUrl || null };
-                            return;
-                        }
-                        const branch = await getGitRangeService().getCurrentBranch(ws.rootPath);
-                        const remoteUrl = await syncRemoteUrl(ws, store);
-                        results[wsId] = {
-                            branch, dirty,
-                            ahead: branchStatus.ahead, behind: branchStatus.behind,
-                            isGitRepo: true, remoteUrl: remoteUrl || null,
-                        };
+                        results[wsId] = await gitInfoCache.getOrFetch(wsId);
                     } catch {
                         results[wsId] = null;
                     }

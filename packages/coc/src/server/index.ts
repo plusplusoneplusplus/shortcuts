@@ -36,6 +36,7 @@ import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { shortenHostname } from './hostname-utils';
+import { gitInfoCache } from './git-info-cache';
 
 // ============================================================================
 // Close Handler Builder
@@ -70,6 +71,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         templateWatcher.closeAll();
         wikiManager?.disposeAll();
         scheduleManager.dispose();
+        gitInfoCache.dispose();
 
         let drainOutcome: 'completed' | 'timeout' | undefined;
         if (closeOptions?.drain) {

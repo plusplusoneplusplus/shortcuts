@@ -12,6 +12,7 @@
 
 import * as http from 'http';
 import { ProcessWebSocketServer, toProcessSummary, attachWebSocketUpgradeHandler } from '../websocket';
+import { gitInfoCache } from '../git-info-cache';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
@@ -44,6 +45,11 @@ export function createWebSocketInfrastructure(
     const wsServer = new ProcessWebSocketServer();
     wsServer.attachConnectionHandler();
     attachWebSocketUpgradeHandler(server, wsServer, terminalWsServer);
+
+    // Invalidate the git-info cache whenever a git mutation event is broadcast
+    wsServer.onGitChanged((workspaceId) => {
+        gitInfoCache.invalidate(workspaceId);
+    });
 
     // Wire drain events from multi-repo bridge to WebSocket
     bridge.on('drain-start', (event: { queued: number; running: number }) => {
