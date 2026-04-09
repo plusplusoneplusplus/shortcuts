@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { execSync } from 'child_process';
-import { execAsync } from '../../src/utils/exec-utils';
+import { execFileSync, execSync } from 'child_process';
+import { execAsync, execFileAsync } from '../../src/utils/exec-utils';
 import { BranchService } from '../../src/git/branch-service';
 import { setLogger, nullLogger } from '../../src/logger';
 import * as fs from 'fs';
@@ -12,11 +12,32 @@ import * as path from 'path';
 
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
+    execFileSync: vi.fn(),
 }));
 
 vi.mock('../../src/utils/exec-utils', () => ({
     execAsync: vi.fn(),
+    execFileAsync: vi.fn(),
 }));
+
+vi.mock('../../src/git/safe-directory', () => ({
+    ensureGitSafeDirectorySync: vi.fn(),
+    ensureGitSafeDirectoryAsync: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../src/utils/workspace-execution', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/utils/workspace-execution')>();
+    return {
+        ...actual,
+        getWslExecutablePath: vi.fn().mockReturnValue('C:\\Windows\\System32\\wsl.exe'),
+        resolveWorkspaceExecutionContext: vi.fn((workingDirectory?: string) => {
+            if (workingDirectory?.startsWith('\\\\wsl$')) {
+                return actual.resolveWorkspaceExecutionContext(workingDirectory);
+            }
+            return { kind: 'windows', workingDirectory };
+        }),
+    };
+});
 
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
@@ -30,7 +51,9 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 const mockedExecSync = execSync as Mock;
+const mockedExecFileSync = execFileSync as Mock;
 const mockedExecAsync = execAsync as Mock;
+const mockedExecFileAsync = execFileAsync as Mock;
 
 describe('BranchService', () => {
     let service: BranchService;
@@ -67,6 +90,20 @@ describe('BranchService', () => {
             mockedExecSync.mockImplementationOnce(() => { throw new Error('fail'); });
 
             expect(service.getLocalBranches('/repo')).toEqual([]);
+        });
+
+        it.runIf(process.platform === 'win32')('routes WSL local branch reads through wsl.exe', () => {
+            mockedExecFileSync.mockReturnValueOnce('*|main|initial commit|2 hours ago\n');
+
+            const result = service.getLocalBranches(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
+
+            expect(result).toHaveLength(1);
+            expect(mockedExecFileSync).toHaveBeenCalledWith(
+                expect.stringContaining('wsl.exe'),
+                ['-d', 'Ubuntu', '--cd', '/home/tester/repo', '--', 'sh', '-lc', expect.stringContaining('git branch --format=')],
+                expect.objectContaining({ windowsHide: true }),
+            );
+            expect(mockedExecSync).not.toHaveBeenCalled();
         });
     });
 
@@ -235,6 +272,20 @@ describe('BranchService', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toBe('branch not found');
+        });
+
+        it.runIf(process.platform === 'win32')('routes WSL async git commands through wsl.exe', async () => {
+            mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+            const result = await service.switchBranch(String.raw`\\wsl$\Ubuntu\home\tester\repo`, 'main');
+
+            expect(result).toEqual({ success: true });
+            expect(mockedExecFileAsync).toHaveBeenCalledWith(
+                expect.stringContaining('wsl.exe'),
+                ['-d', 'Ubuntu', '--cd', '/home/tester/repo', '--', 'sh', '-lc', 'git checkout "main"'],
+                expect.objectContaining({ windowsHide: true }),
+            );
+            expect(mockedExecAsync).not.toHaveBeenCalled();
         });
     });
 

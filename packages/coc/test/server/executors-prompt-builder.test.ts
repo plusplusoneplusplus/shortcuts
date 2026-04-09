@@ -67,6 +67,7 @@ import {
     findContextFileSuffix,
     extractPrompt,
     applySkillContent,
+    prependSelectedSkillsDirective,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
@@ -340,6 +341,24 @@ describe('applySkillContent', () => {
     it('returns prompt when payload has no context', () => {
         const task: any = { id: 't1', type: 'chat', priority: 'normal', status: 'queued', config: {}, payload: { kind: 'chat' } };
         expect(applySkillContent('Hello', task)).toBe('Hello');
+    });
+});
+
+describe('prependSelectedSkillsDirective', () => {
+    it('returns prompt unchanged when no skills are selected', () => {
+        expect(prependSelectedSkillsDirective('Hello')).toBe('Hello');
+    });
+
+    it('adds a directive for explicitly selected skills', () => {
+        const result = prependSelectedSkillsDirective('Do work', ['impl', 'review']);
+        expect(result).toContain('<selected_skills>');
+        expect(result).toContain('The user explicitly selected these skills: impl, review.');
+        expect(result).toContain('Do work');
+    });
+
+    it('deduplicates repeated skill names', () => {
+        const result = prependSelectedSkillsDirective('Do work', ['impl', 'impl', 'review']);
+        expect(result).toContain('The user explicitly selected these skills: impl, review.');
     });
 });
 

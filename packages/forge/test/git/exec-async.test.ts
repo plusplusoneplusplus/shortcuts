@@ -5,13 +5,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { exec } from 'child_process';
 import { execGitAsync } from '../../src/git/exec';
+import { execFileAsync } from '../../src/utils/exec-utils';
 
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
     exec: vi.fn(),
+    execFileSync: vi.fn(),
 }));
 
+vi.mock('../../src/utils/exec-utils', () => ({
+    execFileAsync: vi.fn(),
+}));
+
+vi.mock('../../src/git/safe-directory', () => ({
+    ensureGitSafeDirectorySync: vi.fn(),
+    ensureGitSafeDirectoryAsync: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../src/utils/workspace-execution', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/utils/workspace-execution')>();
+    return {
+        ...actual,
+        getWslExecutablePath: vi.fn().mockReturnValue('C:\\Windows\\System32\\wsl.exe'),
+        resolveWorkspaceExecutionContext: vi.fn((workingDirectory?: string) => {
+            if (workingDirectory?.startsWith('\\\\wsl$')) {
+                return actual.resolveWorkspaceExecutionContext(workingDirectory);
+            }
+            return { kind: 'windows', workingDirectory };
+        }),
+    };
+});
+
 const mockedExec = exec as unknown as ReturnType<typeof vi.fn>;
+const mockedExecFileAsync = vi.mocked(execFileAsync);
 
 describe('execGitAsync', () => {
     beforeEach(() => {
@@ -87,5 +113,20 @@ describe('execGitAsync', () => {
         });
 
         await execGitAsync(['status'], '/repo');
+    });
+
+    it.runIf(process.platform === 'win32')('routes WSL repos through wsl.exe', async () => {
+        mockedExecFileAsync.mockResolvedValue({ stdout: 'main\n', stderr: '' });
+
+        const repoRoot = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
+        const result = await execGitAsync(['rev-parse', '--abbrev-ref', 'HEAD'], repoRoot);
+
+        expect(result).toBe('main');
+        expect(mockedExecFileAsync).toHaveBeenCalledWith(
+            expect.stringContaining('wsl.exe'),
+            ['-d', 'Ubuntu', '--cd', '/home/tester/repo', '--', 'git', '-C', '/home/tester/repo', 'rev-parse', '--abbrev-ref', 'HEAD'],
+            expect.objectContaining({ windowsHide: true }),
+        );
+        expect(mockedExec).not.toHaveBeenCalled();
     });
 });

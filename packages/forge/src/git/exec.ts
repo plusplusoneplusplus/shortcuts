@@ -4,7 +4,15 @@
  * Uses `child_process.execSync` with `git -C <repoRoot>` to run git commands.
  */
 
-import { exec, execSync } from 'child_process';
+import { exec, execFileSync, execSync } from 'child_process';
+import { execFileAsync } from '../utils/exec-utils';
+import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
+import {
+    buildWslCommandArgs,
+    getWslExecutablePath,
+    resolveWorkspaceExecutionContext,
+    translatePathForExecution,
+} from '../utils/workspace-execution';
 
 /**
  * Options for `execGit`.
@@ -21,6 +29,11 @@ export interface ExecGitOptions {
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024; // 10 MB
 const DEFAULT_TIMEOUT = 30_000;               // 30 s
 
+function createGitExecError(args: string[], err: unknown): Error {
+    const stderr = (err as { stderr?: string | Buffer })?.stderr?.toString().trim() ?? '';
+    return new Error(`git ${args.join(' ')} failed: ${stderr}`);
+}
+
 /**
  * Execute a git command synchronously.
  *
@@ -36,29 +49,68 @@ const DEFAULT_TIMEOUT = 30_000;               // 30 s
  * Node.js event loop is not blocked while the git process runs.
  */
 export function execGitAsync(args: string[], repoRoot: string, options?: ExecGitOptions): Promise<string> {
-    const joined = ['git', '-C', repoRoot, ...args].join(' ');
-    const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
     return new Promise((resolve, reject) => {
-        exec(cmd, {
-            maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
-            timeout: options?.timeout ?? DEFAULT_TIMEOUT,
-            encoding: 'utf-8',
-            cwd: options?.cwd,
-        }, (error, stdout, stderr) => {
-            if (error) {
-                const stderrStr = typeof stderr === 'string' ? stderr.trim() : '';
-                reject(new Error(`git ${args.join(' ')} failed: ${stderrStr}`));
-            } else {
-                resolve((stdout as string).replace(/\r?\n$/, ''));
-            }
-        });
+        ensureGitSafeDirectoryAsync(repoRoot)
+            .then(() => {
+                const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+                if (executionContext.kind === 'wsl') {
+                    const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
+                    execFileAsync(
+                        getWslExecutablePath(),
+                        buildWslCommandArgs(executionContext, ['git', '-C', execRepoRoot, ...args]),
+                        {
+                            maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
+                            timeout: options?.timeout ?? DEFAULT_TIMEOUT,
+                            cwd: options?.cwd,
+                            windowsHide: true,
+                        },
+                    )
+                        .then(({ stdout }) => resolve(stdout.replace(/\r?\n$/, '')))
+                        .catch(err => reject(createGitExecError(args, err)));
+                    return;
+                }
+
+                const joined = ['git', '-C', repoRoot, ...args].join(' ');
+                const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
+                exec(cmd, {
+                    maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
+                    timeout: options?.timeout ?? DEFAULT_TIMEOUT,
+                    encoding: 'utf-8',
+                    cwd: options?.cwd,
+                }, (error, stdout, stderr) => {
+                    if (error) {
+                        reject(createGitExecError(args, { stderr }));
+                    } else {
+                        resolve((stdout as string).replace(/\r?\n$/, ''));
+                    }
+                });
+            })
+            .catch(err => reject(createGitExecError(args, err)));
     });
 }
 
 export function execGit(args: string[], repoRoot: string, options?: ExecGitOptions): string {
-    const joined = ['git', '-C', repoRoot, ...args].join(' ');
-    const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
     try {
+        ensureGitSafeDirectorySync(repoRoot);
+        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+        if (executionContext.kind === 'wsl') {
+            const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
+            const output = execFileSync(
+                getWslExecutablePath(),
+                buildWslCommandArgs(executionContext, ['git', '-C', execRepoRoot, ...args]),
+                {
+                    maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
+                    timeout: options?.timeout ?? DEFAULT_TIMEOUT,
+                    encoding: 'utf-8',
+                    cwd: options?.cwd,
+                    windowsHide: true,
+                },
+            );
+            return output.replace(/\r?\n$/, '');
+        }
+
+        const joined = ['git', '-C', repoRoot, ...args].join(' ');
+        const cmd = process.platform === 'win32' ? joined.replace(/\^/g, '^^') : joined;
         const output = execSync(cmd, {
             maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
             timeout: options?.timeout ?? DEFAULT_TIMEOUT,
@@ -68,7 +120,6 @@ export function execGit(args: string[], repoRoot: string, options?: ExecGitOptio
         // Strip trailing newline(s)
         return output.replace(/\r?\n$/, '');
     } catch (err: unknown) {
-        const stderr = (err as { stderr?: string | Buffer })?.stderr?.toString().trim() ?? '';
-        throw new Error(`git ${args.join(' ')} failed: ${stderr}`);
+        throw createGitExecError(args, err);
     }
 }

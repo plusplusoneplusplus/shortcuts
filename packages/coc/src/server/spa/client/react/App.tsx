@@ -30,6 +30,7 @@ import { buildNotificationEntry } from './utils/build-notification-entry';
 import { WelcomeModal } from './welcome/WelcomeModal';
 import { ConceptTour } from './welcome/ConceptTour';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
+import { ErrorBoundary } from './shared/ErrorBoundary';
 
 interface MarkdownReviewDialogState {
     open: boolean;
@@ -414,22 +415,24 @@ function AppInner() {
 
 export function App() {
     return (
-        <AppProvider>
-            <QueueProvider>
-                <NotificationProvider>
-                    <PopOutProvider>
-                        <MarkdownPopOutProvider>
-                            <FloatingChatsProvider>
-                            <MinimizedDialogsProvider>
-                                <ThemeProvider>
-                                    <AppInner />
-                                </ThemeProvider>
-                            </MinimizedDialogsProvider>
-                        </FloatingChatsProvider>
-                        </MarkdownPopOutProvider>
-                    </PopOutProvider>
-                </NotificationProvider>
-            </QueueProvider>
-        </AppProvider>
+        <ErrorBoundary>
+            <AppProvider>
+                <QueueProvider>
+                    <NotificationProvider>
+                        <PopOutProvider>
+                            <MarkdownPopOutProvider>
+                                <FloatingChatsProvider>
+                                <MinimizedDialogsProvider>
+                                    <ThemeProvider>
+                                        <AppInner />
+                                    </ThemeProvider>
+                                </MinimizedDialogsProvider>
+                            </FloatingChatsProvider>
+                            </MarkdownPopOutProvider>
+                        </PopOutProvider>
+                    </NotificationProvider>
+                </QueueProvider>
+            </AppProvider>
+        </ErrorBoundary>
     );
 }

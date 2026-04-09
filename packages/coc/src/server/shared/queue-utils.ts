@@ -35,6 +35,7 @@ export function applyFollowUpToTask(
     mode?: string,
     deliveryMode?: string,
     images?: string[],
+    selectedSkillNames?: string[],
 ): void {
     const task = manager.getTask(taskId)!;
     const displayName = truncateDisplayName(prompt.trim());
@@ -49,6 +50,9 @@ export function applyFollowUpToTask(
             ...(images ? { images } : {}),
             ...(mode ? { mode } : {}),
             ...(deliveryMode ? { deliveryMode } : {}),
+            ...(selectedSkillNames && selectedSkillNames.length > 0
+                ? { context: { ...(((task.payload as Record<string, unknown>).context as Record<string, unknown> | undefined) ?? {}), skills: selectedSkillNames } }
+                : {}),
         },
     });
     if (!manager.requeueFromHistory(taskId)) {

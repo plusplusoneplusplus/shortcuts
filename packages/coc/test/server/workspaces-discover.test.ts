@@ -225,4 +225,68 @@ describe('GET /api/workspaces/discover', () => {
         expect(names).not.toContain('somefile.txt');
         expect(names).toContain('repo');
     });
+
+    // ── Self-detection: scanned directory is itself a git repo ─────────────
+
+    it('includes the scanned directory itself when it is a git repo', async () => {
+        // Make tmpDir itself a git repo (no child repos)
+        fs.mkdirSync(path.join(tmpDir, '.git'), { recursive: true });
+
+        const { status, body } = await get(
+            `/api/workspaces/discover?path=${encodeURIComponent(tmpDir)}`,
+        );
+
+        expect(status).toBe(200);
+        expect(body.repos).toHaveLength(1);
+        expect(body.repos[0].path).toBe(tmpDir);
+        expect(body.repos[0].name).toBe(path.basename(tmpDir));
+    });
+
+    it('includes both self and child repos when both are git repos', async () => {
+        // Make tmpDir itself a git repo AND add a child repo
+        fs.mkdirSync(path.join(tmpDir, '.git'), { recursive: true });
+        makeGitDir(tmpDir, 'child-repo');
+
+        const { status, body } = await get(
+            `/api/workspaces/discover?path=${encodeURIComponent(tmpDir)}`,
+        );
+
+        expect(status).toBe(200);
+        expect(body.repos).toHaveLength(2);
+        const names = body.repos.map((r: any) => r.name).sort();
+        expect(names).toContain(path.basename(tmpDir));
+        expect(names).toContain('child-repo');
+    });
+
+    it('excludes self from results when already registered', async () => {
+        fs.mkdirSync(path.join(tmpDir, '.git'), { recursive: true });
+
+        (store.getWorkspaces as any).mockResolvedValue([
+            { id: 'ws-self', name: path.basename(tmpDir), rootPath: tmpDir },
+        ]);
+
+        const { status, body } = await get(
+            `/api/workspaces/discover?path=${encodeURIComponent(tmpDir)}`,
+        );
+
+        expect(status).toBe(200);
+        expect(body.repos).toEqual([]);
+    });
+
+    it('returns self when self is git repo but only children are registered', async () => {
+        fs.mkdirSync(path.join(tmpDir, '.git'), { recursive: true });
+        const childRepo = makeGitDir(tmpDir, 'child-repo');
+
+        (store.getWorkspaces as any).mockResolvedValue([
+            { id: 'ws-child', name: 'child-repo', rootPath: childRepo },
+        ]);
+
+        const { status, body } = await get(
+            `/api/workspaces/discover?path=${encodeURIComponent(tmpDir)}`,
+        );
+
+        expect(status).toBe(200);
+        expect(body.repos).toHaveLength(1);
+        expect(body.repos[0].path).toBe(tmpDir);
+    });
 });

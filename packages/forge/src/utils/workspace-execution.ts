@@ -36,6 +36,14 @@ function normalizeLinuxPath(input: string): string {
     return normalized.length === 0 ? '/' : normalized;
 }
 
+function linuxPathToWslUncPath(linuxPath: string, distro: string): string {
+    const normalizedLinuxPath = normalizeLinuxPath(linuxPath);
+    const suffix = normalizedLinuxPath === '/'
+        ? ''
+        : normalizedLinuxPath.replace(/\//g, '\\');
+    return path.win32.normalize(`\\\\wsl$\\${distro}${suffix}`);
+}
+
 export function getWslExecutablePath(): string {
     const systemRoot = process.env['SystemRoot'];
     if (!systemRoot) {
@@ -88,6 +96,7 @@ export function resolveWorkspaceExecutionContext(workingDirectory?: string): Wor
     if (process.platform === 'win32' && isLinuxAbsolutePath(workingDirectory)) {
         return {
             kind: 'wsl',
+            distro: getDefaultWslDistro(),
             linuxWorkingDirectory: normalizeLinuxPath(workingDirectory),
             originalWorkingDirectory: workingDirectory,
         };
@@ -121,6 +130,59 @@ export function translatePathForExecution(targetPath: string, context: Workspace
     }
 
     throw new Error(`Path is not accessible from the active WSL execution context: ${targetPath}`);
+}
+
+export function translatePathForHostFilesystem(
+    targetPath: string,
+    context?: WorkspaceExecutionContext,
+): string {
+    if (process.platform !== 'win32') {
+        return targetPath;
+    }
+
+    const effectiveContext = context ?? resolveWorkspaceExecutionContext(targetPath);
+    if (effectiveContext.kind !== 'wsl') {
+        return targetPath;
+    }
+
+    const unc = parseWslUncPath(targetPath);
+    if (unc) {
+        return linuxPathToWslUncPath(unc.linuxPath, unc.distro);
+    }
+
+    if (isLinuxAbsolutePath(targetPath)) {
+        const distro = effectiveContext.distro ?? getDefaultWslDistro();
+        if (!distro) {
+            throw new Error(`Cannot translate Linux path to Windows filesystem path without a WSL distro: ${targetPath}`);
+        }
+        return linuxPathToWslUncPath(targetPath, distro);
+    }
+
+    return targetPath;
+}
+
+export function resolvePathInExecutionContext(basePath: string, ...segments: string[]): string {
+    const context = resolveWorkspaceExecutionContext(basePath);
+    if (context.kind === 'wsl') {
+        let current = context.linuxWorkingDirectory;
+        for (const segment of segments) {
+            const normalizedSegment = toForwardSlashes(segment).replace(/^\/+/, '');
+            current = current === '/'
+                ? `/${normalizedSegment}`
+                : `${current}/${normalizedSegment}`;
+        }
+        return normalizeLinuxPath(current);
+    }
+
+    return path.resolve(basePath, ...segments);
+}
+
+export function resolvePathForHostFilesystem(basePath: string, ...segments: string[]): string {
+    const baseContext = resolveWorkspaceExecutionContext(basePath);
+    const sourcePath = segments.length > 0
+        ? resolvePathInExecutionContext(basePath, ...segments)
+        : basePath;
+    return translatePathForHostFilesystem(sourcePath, baseContext.kind === 'wsl' ? baseContext : undefined);
 }
 
 export function buildWslCommandArgs(context: WslExecutionContext, argv: string[]): string[] {

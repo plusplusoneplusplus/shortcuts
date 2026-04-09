@@ -2,7 +2,7 @@ import type { ChatPayload, ChatMode } from './task-types';
 import { isChatPayload, isMemoryAggregatePayload } from './task-types';
 import { applyFollowUpToTask } from './shared/queue-utils';
 import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, resolveToolCallCacheOptions } from '@plusplusoneplusplus/forge';
+import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, normalizeExecutionPath, resolveToolCallCacheOptions, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
 import { BaseExecutor } from './executors/base-executor';
 import { resolveSkillConfig } from './executors/skill-config-resolver';
@@ -23,10 +23,29 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
-    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void>;
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void>;
     cancelProcess?(processId: string): Promise<void>;
+}
+
+function pathsReferToSameWorkspace(leftPath: string, rightPath: string): boolean {
+    const left = resolveWorkspaceExecutionContext(leftPath);
+    const right = resolveWorkspaceExecutionContext(rightPath);
+
+    if (left.kind === 'wsl' && right.kind === 'wsl') {
+        if (left.linuxWorkingDirectory !== right.linuxWorkingDirectory) {
+            return false;
+        }
+
+        if (left.distro && right.distro) {
+            return left.distro.toLowerCase() === right.distro.toLowerCase();
+        }
+
+        return true;
+    }
+
+    return normalizeExecutionPath(leftPath) === normalizeExecutionPath(rightPath);
 }
 
 export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
@@ -62,12 +81,16 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     setQueueManager(qm: TaskQueueManager): void { this.queueManager = qm; }
     setQueueExecutor(qe: QueueExecutor): void { this.queueExecutor = qe; }
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { generateTitleIfNeededFn(processId, turns, this.store, this.aiService, this.defaultWorkingDirectory, this.queueManager); }
-    private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> { const ws = (await this.store.getWorkspaces()).find(w => path.resolve(w.rootPath) === path.resolve(rootPath)); return ws?.id ?? rootPath; }
+    private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> {
+        const ws = (await this.store.getWorkspaces())
+            .find(w => pathsReferToSameWorkspace(w.rootPath, rootPath));
+        return ws?.id ?? rootPath;
+    }
 
-    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void> {
+    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         if (!this.queueManager) throw new Error('Queue manager is not available');
         if (!this.queueManager.getTask(taskId)) throw new Error(`Task ${taskId} not found`);
-        applyFollowUpToTask(this.queueManager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images);
+        applyFollowUpToTask(this.queueManager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images, selectedSkillNames);
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
@@ -75,7 +98,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             if (isMemoryAggregatePayload(task.payload)) {
                 return await this.executors.memoryAggregateExecutor.execute(task);
             }
-            return await this.executors.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm, imgs) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs), executeByTypeFn: (t, p) => this.executors.dispatch(t, p), getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t) });
+            return await this.executors.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills), executeByTypeFn: (t, p) => this.executors.dispatch(t, p), getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t) });
         } finally {
             this.cancelledTasks.delete(task.id);
         }
@@ -97,8 +120,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async isSessionAlive(_processId: string): Promise<boolean> { return true; }
 
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[]): Promise<void> {
-        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images);
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
+        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames);
     }
 }
 

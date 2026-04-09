@@ -73,6 +73,7 @@ export interface LifecycleRunnerOptions {
         mode?: string,
         deliveryMode?: string,
         images?: string[],
+        selectedSkillNames?: string[],
     ) => Promise<void>;
     /** Dispatch execution by task type (chat/workflow/script). */
     executeByTypeFn: (task: QueuedTask, prompt: string) => Promise<unknown>;
@@ -139,6 +140,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     followUpPayload.mode,
                     (followUpPayload as any).deliveryMode,
                     (followUpPayload as any).images,
+                    followUpPayload.context?.skills,
                 );
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);

@@ -7,11 +7,17 @@
  * Extracted from `src/shortcuts/git/branch-service.ts`.
  */
 
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execAsync } from '../utils/exec-utils';
+import { execAsync, execFileAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
+import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
+import {
+    buildWslCommandArgs,
+    getWslExecutablePath,
+    resolveWorkspaceExecutionContext,
+} from '../utils/workspace-execution';
 import {
     BranchStatus,
     GitBranch,
@@ -42,6 +48,16 @@ export class BranchService {
      * Used by branch management operations (create, switch, delete, etc.).
      */
     private execGitSync(command: string, options: GitExecOptions): string {
+        ensureGitSafeDirectorySync(options.cwd);
+        const executionContext = resolveWorkspaceExecutionContext(options.cwd);
+        if (executionContext.kind === 'wsl') {
+            return execFileSync(getWslExecutablePath(), buildWslCommandArgs(executionContext, ['sh', '-lc', command]), {
+                encoding: options.encoding || 'utf-8',
+                timeout: options.timeout || 10000,
+                windowsHide: true,
+                stdio: ['pipe', 'pipe', 'pipe'],
+            });
+        }
         return execSync(command, {
             cwd: options.cwd,
             encoding: options.encoding || 'utf-8',
@@ -55,6 +71,25 @@ export class BranchService {
      * Execute a git command asynchronously via execAsync.
      */
     private async execGit(command: string, options: GitExecOptions): Promise<string> {
+        await ensureGitSafeDirectoryAsync(options.cwd);
+        const executionContext = resolveWorkspaceExecutionContext(options.cwd);
+        if (executionContext.kind === 'wsl') {
+            const { stdout } = await execFileAsync(
+                getWslExecutablePath(),
+                buildWslCommandArgs(executionContext, ['sh', '-lc', command]),
+                {
+                    timeout: options.timeout || 30000,
+                    windowsHide: true,
+                    env: {
+                        ...process.env,
+                        GIT_TERMINAL_PROMPT: '0',
+                        ...options.env,
+                    },
+                },
+            );
+            return stdout;
+        }
+
         const { stdout } = await execAsync(command, {
             cwd: options.cwd,
             timeout: options.timeout || 30000,
@@ -319,6 +354,7 @@ export class BranchService {
      */
     getLocalBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): PaginatedBranchResult {
         const { limit = 100, offset = 0, searchPattern } = options;
+        const useWindowsPipeline = process.platform === 'win32' && resolveWorkspaceExecutionContext(repoRoot).kind !== 'wsl';
 
         try {
             const totalCount = this.getLocalBranchCount(repoRoot, searchPattern);
@@ -332,14 +368,14 @@ export class BranchService {
 
             if (searchPattern) {
                 const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                if (process.platform === 'win32') {
+                if (useWindowsPipeline) {
                     command += ` | findstr /i "${escapedPattern}"`;
                 } else {
                     command += ` | grep -i "${escapedPattern}"`;
                 }
             }
 
-            if (process.platform !== 'win32') {
+            if (!useWindowsPipeline) {
                 if (offset > 0) {
                     command += ` | tail -n +${offset + 1}`;
                 }
@@ -354,7 +390,7 @@ export class BranchService {
 
             let lines = output.trim().split('\n');
 
-            if (process.platform === 'win32') {
+            if (useWindowsPipeline) {
                 if (searchPattern) {
                     const lowerPattern = searchPattern.toLowerCase();
                     lines = lines.filter(line => {
@@ -394,6 +430,7 @@ export class BranchService {
      */
     getRemoteBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): PaginatedBranchResult {
         const { limit = 100, offset = 0, searchPattern } = options;
+        const useWindowsPipeline = process.platform === 'win32' && resolveWorkspaceExecutionContext(repoRoot).kind !== 'wsl';
 
         try {
             const totalCount = this.getRemoteBranchCount(repoRoot, searchPattern);
@@ -405,7 +442,7 @@ export class BranchService {
             const format = '%(refname:short)|%(subject)|%(committerdate:relative)';
             let command = `git branch -r --format="${format}"`;
 
-            if (process.platform === 'win32') {
+            if (useWindowsPipeline) {
                 command += ' | findstr /v "HEAD"';
                 if (searchPattern) {
                     const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -431,7 +468,7 @@ export class BranchService {
 
             let lines = output.trim().split('\n').filter(line => !line.includes('HEAD'));
 
-            if (process.platform === 'win32') {
+            if (useWindowsPipeline) {
                 if (searchPattern) {
                     const lowerPattern = searchPattern.toLowerCase();
                     lines = lines.filter(line => {

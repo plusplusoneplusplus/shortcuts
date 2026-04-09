@@ -32,7 +32,6 @@ vi.mock('fs', async (importOriginal) => {
 import * as fs from 'fs';
 
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 
@@ -42,11 +41,41 @@ import { createMockProcessStore, createCompletedProcessWithSession } from '../he
 
 const sdkMocks = createMockSDKService();
 
+function normalizeLinuxPathForTest(input: string): string {
+    const normalized = input.replace(/\\/g, '/').replace(/\/+$/g, '');
+    return normalized.length > 0 ? normalized : '/';
+}
+
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
+    const ensureBareLinuxContext = (workingDirectory?: string) => {
+        const ctx = actual.resolveWorkspaceExecutionContext(workingDirectory);
+        if (process.platform === 'win32' && workingDirectory?.startsWith('/') && ctx.kind === 'wsl' && !ctx.distro) {
+            return { ...ctx, distro: 'Ubuntu' };
+        }
+        return ctx;
+    };
+
     return {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,
+        resolveWorkspaceExecutionContext: ensureBareLinuxContext,
+        normalizeExecutionPath: (pathLike: string) => {
+            const ctx = ensureBareLinuxContext(pathLike);
+            if (ctx.kind === 'wsl') {
+                return actual.normalizeWslExecutionPath(ctx.linuxWorkingDirectory, ctx.distro);
+            }
+            return actual.normalizeExecutionPath(pathLike);
+        },
+        resolvePathForHostFilesystem: (basePath: string, ...segments: string[]) => {
+            if (process.platform === 'win32' && basePath.startsWith('/')) {
+                const linuxPath = segments.length > 0
+                    ? normalizeLinuxPathForTest([basePath, ...segments.map(segment => segment.replace(/\\/g, '/').replace(/^\/+/, ''))].join('/'))
+                    : normalizeLinuxPathForTest(basePath);
+                return path.win32.normalize(`\\\\wsl$\\Ubuntu${linuxPath === '/' ? '' : linuxPath.replace(/\//g, '\\')}`);
+            }
+            return actual.resolvePathForHostFilesystem(basePath, ...segments);
+        },
     };
 });
 
@@ -90,8 +119,11 @@ function makeFollowUpTask(processId: string, content = 'follow up'): QueuedTask 
 
 describe('executeFollowUp — skill configuration', () => {
     let store: ReturnType<typeof createMockProcessStore>;
+    let CLITaskExecutor: typeof import('../../src/server/queue-executor-bridge').CLITaskExecutor;
 
-    beforeEach(() => {
+    beforeEach(async () => {
+        vi.resetModules();
+        ({ CLITaskExecutor } = await import('../../src/server/queue-executor-bridge'));
         store = createMockProcessStore();
         sdkMocks.resetAll();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
@@ -121,7 +153,9 @@ describe('executeFollowUp — skill configuration', () => {
 
     // 2 -----------------------------------------------------------------------
     it('should include repo-local skills dir when it exists', async () => {
-        const workDir = '/tmp/my-project';
+        const workDir = process.platform === 'win32'
+            ? String.raw`C:\tmp\my-project`
+            : '/tmp/my-project';
         const localSkillsDir = path.join(workDir, '.github', 'skills');
 
         (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
@@ -216,7 +250,9 @@ describe('executeFollowUp — skill configuration', () => {
     it('should order repo-local before global skills dir', async () => {
         const dataDir = path.join(os.homedir(), '.coc');
         const globalSkillsDir = path.join(dataDir, 'skills');
-        const workDir = '/tmp/my-project';
+        const workDir = process.platform === 'win32'
+            ? String.raw`C:\tmp\my-project`
+            : '/tmp/my-project';
         const localSkillsDir = path.join(workDir, '.github', 'skills');
 
         (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
@@ -239,7 +275,9 @@ describe('executeFollowUp — skill configuration', () => {
 
     // 8 -----------------------------------------------------------------------
     it('should include extraSkillFolders (absolute) after global skills dir', async () => {
-        const extraDir = '/abs/path/to/team-skills';
+        const extraDir = process.platform === 'win32'
+            ? String.raw`C:\abs\path\to\team-skills`
+            : '/abs/path/to/team-skills';
         const wsId = 'ws-extra-abs';
         (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
             { id: wsId, extraSkillFolders: [extraDir] },
@@ -262,7 +300,9 @@ describe('executeFollowUp — skill configuration', () => {
 
     // 9 -----------------------------------------------------------------------
     it('should resolve relative extraSkillFolders against workingDirectory', async () => {
-        const workDir = '/tmp/my-project';
+        const workDir = process.platform === 'win32'
+            ? String.raw`C:\tmp\my-project`
+            : '/tmp/my-project';
         const relativeFolder = './custom-skills';
         const resolvedDir = path.resolve(workDir, relativeFolder);
         const wsId = 'ws-extra-rel';
@@ -290,7 +330,7 @@ describe('executeFollowUp — skill configuration', () => {
     it('should skip extraSkillFolders that do not exist', async () => {
         const wsId = 'ws-extra-missing';
         (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
-            { id: wsId, extraSkillFolders: ['/does/not/exist'] },
+            { id: wsId, extraSkillFolders: [process.platform === 'win32' ? String.raw`C:\does\not\exist` : '/does/not/exist'] },
         ]);
         // existsSync always returns false (set in beforeEach)
 
@@ -304,5 +344,71 @@ describe('executeFollowUp — skill configuration', () => {
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
         const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callOpts.skillDirectories).toBeUndefined();
+    });
+
+    // 11 ----------------------------------------------------------------------
+    it('translates WSL UNC repo-local skills to Linux paths for the SDK', async () => {
+        const workDir = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
+        const hostSkillsDir = String.raw`\\wsl$\Ubuntu\home\tester\repo\.github\skills`;
+
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === hostSkillsDir ? Promise.resolve() : Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-s11', 'sess-11');
+        proc.workingDirectory = workDir;
+        await store.addProcess(proc);
+
+        await executor.executeFollowUp('proc-s11', 'follow up');
+
+        const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callOpts.skillDirectories).toContain('/home/tester/repo/.github/skills');
+    });
+
+    // 12 ----------------------------------------------------------------------
+    it('translates global Windows skill directories for WSL-backed sessions', async () => {
+        const dataDir = String.raw`C:\Users\tester\.coc`;
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        const workDir = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
+
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === globalSkillsDir ? Promise.resolve() : Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service, dataDir });
+        const proc = createCompletedProcessWithSession('proc-s12', 'sess-12');
+        proc.workingDirectory = workDir;
+        await store.addProcess(proc);
+
+        await executor.executeFollowUp('proc-s12', 'follow up');
+
+        const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callOpts.skillDirectories).toContain('/mnt/c/Users/tester/.coc/skills');
+    });
+
+    // 13 ----------------------------------------------------------------------
+    it.runIf(process.platform === 'win32')('resolves bare Linux working directories for host probing once workspace is identified', async () => {
+        const workDir = '/home/tester/repo';
+        const hostSkillsDir = String.raw`\\wsl$\Ubuntu\home\tester\repo\.github\skills`;
+        const wsId = 'ws-linux-root';
+
+        (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { id: wsId, rootPath: String.raw`\\wsl$\Ubuntu\home\tester\repo`, disabledSkills: ['impl'] },
+        ]);
+        (fs.promises.access as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === hostSkillsDir ? Promise.resolve() : Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-s13', 'sess-13');
+        proc.workingDirectory = workDir;
+        proc.metadata = { ...(proc.metadata ?? {}), workspaceId: wsId };
+        await store.addProcess(proc);
+
+        const { resolveSkillConfig } = await import('../../src/server/executors/skill-config-resolver');
+        const skillConfig = await resolveSkillConfig(store, undefined, wsId, workDir);
+        expect(skillConfig.skillDirectories).toContain('/home/tester/repo/.github/skills');
+        expect(skillConfig.disabledSkills).toEqual(['impl']);
     });
 });
