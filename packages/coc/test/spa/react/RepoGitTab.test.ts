@@ -348,6 +348,41 @@ describe('RepoGitTab', () => {
             expect(pushBlock![0]).toContain('result.error');
         });
 
+        it('defines handlePushToCommit callback', () => {
+            expect(source).toContain('const handlePushToCommit = useCallback');
+        });
+
+        it('handlePushToCommit POSTs to /git/push-to endpoint', () => {
+            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('/git/push-to');
+        });
+
+        it('handlePushToCommit sends commitHash in body', () => {
+            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('commitHash: commit.hash');
+        });
+
+        it('handlePushToCommit calls closeContextMenu', () => {
+            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('closeContextMenu()');
+        });
+
+        it('handlePushToCommit calls refreshAll on success', () => {
+            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('refreshAll()');
+        });
+
+        it('handlePushToCommit sets actionError on failure', () => {
+            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('setActionError');
+            expect(block![0]).toContain("'Push failed'");
+        });
+
         it('clears actionError before each action', () => {
             expect(source).toContain('setActionError(null)');
         });
@@ -838,6 +873,30 @@ describe('RepoGitTab', () => {
 
         it('contextMenuItems includes View Diff for commit type', () => {
             expect(source).toContain('View Diff');
+        });
+
+        it('contextMenuItems includes Push to Here for unpushed commits', () => {
+            expect(source).toContain("label: 'Push to Here'");
+        });
+
+        it('Push to Here is gated by isUnpushed check using unpushedCount', () => {
+            const menuBlock = source.match(/const contextMenuItems = useMemo[\s\S]*?return items;\s*\}/);
+            expect(menuBlock).toBeTruthy();
+            expect(menuBlock![0]).toContain('isUnpushed');
+            expect(menuBlock![0]).toContain('unpushedCount');
+        });
+
+        it('Push to Here calls handlePushToCommit', () => {
+            const menuBlock = source.match(/const contextMenuItems = useMemo[\s\S]*?return items;\s*\}/);
+            expect(menuBlock).toBeTruthy();
+            expect(menuBlock![0]).toContain('handlePushToCommit');
+        });
+
+        it('contextMenuItems dependency array includes handlePushToCommit and unpushedCount', () => {
+            const depsMatch = source.match(/contextMenuItems = useMemo[\s\S]*?\}, \[([^\]]+)\]/);
+            expect(depsMatch).toBeTruthy();
+            expect(depsMatch![1]).toContain('handlePushToCommit');
+            expect(depsMatch![1]).toContain('unpushedCount');
         });
 
         it('contextMenuItems includes Use Skill submenu when skills available', () => {

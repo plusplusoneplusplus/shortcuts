@@ -9,6 +9,7 @@
  * - POST /api/workspaces/:id/git/branches/rename
  * - DELETE /api/workspaces/:id/git/branches/:name
  * - POST /api/workspaces/:id/git/push
+ * - POST /api/workspaces/:id/git/push-to
  * - POST /api/workspaces/:id/git/pull
  * - POST /api/workspaces/:id/git/fetch
  * - POST /api/workspaces/:id/git/merge
@@ -58,6 +59,7 @@ const mockMergeContinue = vi.fn();
 const mockMergeAbort = vi.fn();
 const mockRebaseReorder = vi.fn();
 const mockRewordCommit = vi.fn();
+const mockPushUpTo = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -86,6 +88,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             mergeAbort: mockMergeAbort,
             rebaseReorder: mockRebaseReorder,
             rewordCommit: mockRewordCommit,
+            pushUpTo: mockPushUpTo,
         })),
         detectRemoteUrl: vi.fn(async () => undefined),
     };
@@ -637,6 +640,65 @@ describe('Git Branches API endpoints', () => {
             expect(res.status).toBe(200);
             expect(res.json()).toEqual({ success: true });
             expect(mockPush).toHaveBeenCalledWith(WORKSPACE_ROOT, false);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/push-to — Push up to a specific commit
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/push-to', () => {
+        it('should push up to the specified commit hash', async () => {
+            mockPushUpTo.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/push-to`, {
+                method: 'POST',
+                body: JSON.stringify({ commitHash: 'abc123' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockPushUpTo).toHaveBeenCalledWith(WORKSPACE_ROOT, 'abc123');
+        });
+
+        it('should return 400 when commitHash is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/push-to`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.json()).toEqual({ success: false, error: 'Missing or invalid commitHash' });
+        });
+
+        it('should return 400 when commitHash is not a string', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/push-to`, {
+                method: 'POST',
+                body: JSON.stringify({ commitHash: 123 }),
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.json()).toEqual({ success: false, error: 'Missing or invalid commitHash' });
+        });
+
+        it('should return failure result when pushUpTo fails', async () => {
+            mockPushUpTo.mockResolvedValue({ success: false, error: 'no remote' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/push-to`, {
+                method: 'POST',
+                body: JSON.stringify({ commitHash: 'abc123' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: false, error: 'no remote' });
+        });
+
+        it('should return 400 with empty body', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/push-to`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(400);
         });
     });
 

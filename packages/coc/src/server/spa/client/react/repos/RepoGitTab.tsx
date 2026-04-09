@@ -571,6 +571,25 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
     }, [pushing, workspaceId, refreshAll]);
 
+    const handlePushToCommit = useCallback(async (commit: GitCommitItem) => {
+        closeContextMenu();
+        setPushing(true);
+        setActionError(null);
+        try {
+            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/push-to`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ commitHash: commit.hash }),
+            });
+            if (result.success === false) throw new Error(result.error || 'Push failed');
+            refreshAll();
+        } catch (err: any) {
+            setActionError(err.message || 'Push failed');
+        } finally {
+            setPushing(false);
+        }
+    }, [closeContextMenu, workspaceId, refreshAll]);
+
     const handleRebaseAutosquash = useCallback(async () => {
         if (rebasing) return;
         setRebasing(true);
@@ -1068,6 +1087,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 icon: '🔍',
                 onClick: () => { handleSelect(commit); },
             });
+            // "Push to Here" — only for unpushed commits
+            const commitIndex = commits.findIndex(c => c.hash === commit.hash);
+            const isUnpushed = commitIndex >= 0 && commitIndex < unpushedCount;
+            if (isUnpushed) {
+                items.push({ label: '', separator: true, onClick: () => {} });
+                items.push({
+                    label: 'Push to Here',
+                    icon: '📤',
+                    onClick: () => handlePushToCommit(commit),
+                });
+            }
             if (isHead) {
                 items.push({ label: '', separator: true, onClick: () => {} });
                 items.push({
@@ -1183,7 +1213,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash]);
+    }, [contextMenu, skills, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount]);
 
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {

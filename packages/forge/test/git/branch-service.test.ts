@@ -462,6 +462,53 @@ describe('BranchService', () => {
         });
     });
 
+    // ── pushUpTo ────────────────────────────────────────────────────
+
+    describe('pushUpTo', () => {
+        it('pushes up to the given commit hash on the current branch', async () => {
+            // getCurrentBranchName
+            mockedExecAsync.mockResolvedValueOnce({ stdout: 'main\n', stderr: '' });
+            // git push
+            mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+            const result = await service.pushUpTo('/repo', 'abc123');
+
+            expect(result).toEqual({ success: true });
+            expect(mockedExecAsync).toHaveBeenCalledWith(
+                'git push origin "abc123":refs/heads/"main"',
+                expect.objectContaining({ cwd: '/repo', timeout: 600000 })
+            );
+        });
+
+        it('returns error when in detached HEAD state', async () => {
+            mockedExecAsync.mockResolvedValueOnce({ stdout: 'HEAD\n', stderr: '' });
+
+            const result = await service.pushUpTo('/repo', 'abc123');
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('detached HEAD');
+        });
+
+        it('returns error result on push failure', async () => {
+            mockedExecAsync.mockResolvedValueOnce({ stdout: 'main\n', stderr: '' });
+            mockedExecAsync.mockRejectedValueOnce(new Error('no remote'));
+
+            const result = await service.pushUpTo('/repo', 'abc123');
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('no remote');
+        });
+
+        it('returns error when getCurrentBranchName fails', async () => {
+            mockedExecAsync.mockRejectedValueOnce(new Error('git not found'));
+
+            const result = await service.pushUpTo('/repo', 'abc123');
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('detached HEAD');
+        });
+    });
+
     // ── pull ─────────────────────────────────────────────────────
 
     describe('pull', () => {

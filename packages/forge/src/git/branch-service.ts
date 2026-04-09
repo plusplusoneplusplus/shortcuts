@@ -644,6 +644,26 @@ export class BranchService {
     }
 
     /**
+     * Push commits up to (and including) the given commit hash to the remote.
+     * Leaves newer unpushed commits local.
+     */
+    async pushUpTo(repoRoot: string, commitHash: string): Promise<GitOperationResult> {
+        try {
+            const branchName = await this.getCurrentBranchName(repoRoot);
+            if (!branchName) {
+                return { success: false, error: 'Cannot determine current branch (detached HEAD?)' };
+            }
+            const cmd = `git push origin "${commitHash}":refs/heads/"${branchName}"`;
+            await this.execGit(cmd, { cwd: repoRoot, timeout: 600000 });
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to push up to commit', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
      * Pull from remote.
      */
     async pull(repoRoot: string, rebase: boolean = false): Promise<GitOperationResult> {

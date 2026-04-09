@@ -173,6 +173,34 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
         },
     });
 
+    // POST /api/workspaces/:id/git/push-to — Push up to a specific commit
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/push-to$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            let body: any = {};
+            try {
+                body = await parseBody(req);
+            } catch {
+                body = {};
+            }
+
+            const commitHash = body.commitHash;
+            if (!commitHash || typeof commitHash !== 'string') {
+                sendJSON(res, 400, { success: false, error: 'Missing or invalid commitHash' });
+                return;
+            }
+
+            const result = await branchService.pushUpTo(ws.rootPath, commitHash);
+            getWsServer?.()?.broadcastGitChanged(id, 'push');
+            sendJSON(res, 200, result);
+        },
+    });
+
     // POST /api/workspaces/:id/git/pull — Pull from remote (async background job)
     routes.push({
         method: 'POST',
