@@ -77,6 +77,9 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         storageKey: 'activity-left-panel-width',
     });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
+    // Ref to signal that mobileShowDetail=true was set intentionally for the new-chat flow,
+    // so the selectedTaskId=null reset effect does not immediately clear it.
+    const mobileNewChatRef = useRef(false);
 
     const repoQueue = queueState.repoQueueMap[workspaceId];
 
@@ -237,9 +240,15 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         selectedTaskRef.current = found;
     }, [selectedTaskId, running, queued, history]);
 
-    // Reset mobile detail view when selection is cleared
+    // Reset mobile detail view when selection is cleared, unless the new-chat flow set it
     useEffect(() => {
-        if (!selectedTaskId) setMobileShowDetail(false);
+        if (!selectedTaskId) {
+            if (mobileNewChatRef.current) {
+                mobileNewChatRef.current = false;
+                return;
+            }
+            setMobileShowDetail(false);
+        }
     }, [selectedTaskId]);
 
     // Track unseen activity for completed tasks
@@ -392,7 +401,13 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             onPauseResumeAutopilot={handlePauseResumeAutopilot}
             onRefresh={handleRefresh}
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
-            onNewChat={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId })}
+            onNewChat={() => {
+                if (isMobile) {
+                    mobileNewChatRef.current = true;
+                    setMobileShowDetail(true);
+                }
+                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+            }}
             fetchQueue={fetchQueue}
             pauseReason={pauseReason}
         />
@@ -403,7 +418,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             <ChatPreferencesProvider workspaceId={workspaceId}>
                 <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div className="flex flex-col h-full overflow-hidden" data-testid="activity-split-panel">
-                    {mobileShowDetail && selectedTaskId ? (
+                    {mobileShowDetail ? (
                         <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel" data-pane="detail">
                             <ActivityDetailPane
                                 selectedTaskId={selectedTaskId}

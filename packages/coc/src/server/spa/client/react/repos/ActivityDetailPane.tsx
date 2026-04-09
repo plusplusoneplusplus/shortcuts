@@ -44,7 +44,7 @@ export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId, readOn
                 </div>
             );
         }
-        return <NewChatArea workspaceId={workspaceId} />;
+        return <NewChatArea workspaceId={workspaceId} onBack={onBack} />;
     }
 
     if (poppedOutTasks.has(selectedTaskId)) {

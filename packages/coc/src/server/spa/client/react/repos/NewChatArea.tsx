@@ -15,9 +15,10 @@ import { getApiBase } from '../utils/config';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
+    onBack?: () => void;
 }
 
-export function NewChatArea({ workspaceId }: NewChatAreaProps) {
+export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -90,6 +91,20 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
 
     return (
         <div className="flex flex-col h-full" data-testid="new-chat-area">
+            {/* Back button — rendered when a back handler is provided (mobile new-chat flow) */}
+            {onBack && (
+                <div className="flex items-center border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2">
+                    <button
+                        type="button"
+                        onClick={onBack}
+                        data-testid="new-chat-back-btn"
+                        aria-label="Back to list"
+                        className="flex items-center gap-1 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff]"
+                    >
+                        ← Back
+                    </button>
+                </div>
+            )}
             {/* Hero area */}
             <div className="flex-1 flex items-center justify-center">
                 <div className="text-center text-[#848484]">
