@@ -21,7 +21,7 @@ const TAILWIND_CSS_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'se
 // Source-code inspection tests (structural verification)
 // ---------------------------------------------------------------------------
 
-describe('ChatHeader — mobile hamburger icon (source)', () => {
+describe('ChatHeader — mobile back navigation (source)', () => {
     let src: string;
 
     beforeAll(() => {
@@ -33,10 +33,11 @@ describe('ChatHeader — mobile hamburger icon (source)', () => {
         expect(src).toContain('isMobile');
     });
 
-    it('renders an SVG hamburger icon on mobile instead of text', () => {
-        // The mobile branch renders an SVG with three horizontal lines
+    it('renders a left-chevron + "Chats" label on mobile instead of text', () => {
+        // The mobile branch renders a left-chevron SVG + "Chats" label
         expect(src).toContain('{isMobile ? (');
-        expect(src).toContain('M3 5.5h14M3 10h14M3 14.5h14');
+        expect(src).toContain('M10 3L5 8l5 5');
+        expect(src).toContain('>Chats<');
     });
 
     it('renders "← Back" text on desktop', () => {
@@ -51,8 +52,8 @@ describe('ChatHeader — mobile hamburger icon (source)', () => {
         expect(src).toContain('data-testid="activity-chat-back-btn"');
     });
 
-    it('applies larger touch target on mobile', () => {
-        expect(src).toContain('w-9 h-9');
+    it('applies text-colored styling matching nav links on mobile', () => {
+        expect(src).toContain('text-[#0078d4]');
     });
 });
 
@@ -120,9 +121,9 @@ describe('tailwind.css — mobile-fab utility class (source)', () => {
         expect(src).toContain('.mobile-fab');
     });
 
-    it('uses position absolute', () => {
+    it('uses position fixed', () => {
         const fabSection = src.slice(src.indexOf('.mobile-fab'), src.indexOf('.mobile-fab:hover'));
-        expect(fabSection).toContain('position: absolute');
+        expect(fabSection).toContain('position: fixed');
     });
 
     it('sets bottom and right offsets', () => {
@@ -204,7 +205,7 @@ describe('ChatHeader — mobile rendering', () => {
         };
     }
 
-    it('renders hamburger icon on mobile viewport', async () => {
+    it('renders chevron + Chats label on mobile viewport', async () => {
         cleanup = mockViewport(375);
         const { ChatHeader } = await import('../../../../src/server/spa/client/react/repos/ChatHeader');
         const props = makeChatHeaderProps();
@@ -212,8 +213,9 @@ describe('ChatHeader — mobile rendering', () => {
 
         const backBtn = screen.getByTestId('activity-chat-back-btn');
         expect(backBtn).toBeDefined();
-        // Should contain an SVG (hamburger icon), not "← Back" text
+        // Should contain a chevron SVG and "Chats" text, not "← Back"
         expect(backBtn.querySelector('svg')).not.toBeNull();
+        expect(backBtn.textContent).toContain('Chats');
         expect(backBtn.textContent).not.toContain('← Back');
     });
 
