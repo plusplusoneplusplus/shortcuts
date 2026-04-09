@@ -260,13 +260,25 @@ describe('ReposView — responsive layout', () => {
             expect(screen.queryByTestId('responsive-sidebar')).toBeNull();
         });
 
-        it('uses height class with bottom nav offset', async () => {
+        it('uses height class with bottom nav offset (no selection)', async () => {
             setBreakpoint('mobile');
+            mockAppState.selectedRepoId = null;
             render(<ReposView />);
 
-            // Height class is applied even during loading
+            // Height class is applied even during loading; no selection → BottomNav visible → subtract 48px
             const container = document.getElementById('view-repos')!;
-            expect(container.className).toContain('h-[calc(100vh-40px-48px)]');
+            expect(container.className).toContain('h-[calc(100dvh-40px-48px)]');
+        });
+
+        it('uses height class without bottom nav offset when repo selected', async () => {
+            setBreakpoint('mobile');
+            mockAppState.selectedRepoId = 'repo-1';
+            render(<ReposView />);
+
+            // With a selection the BottomNav is hidden, so no 48px subtraction; uses dvh
+            const container = document.getElementById('view-repos')!;
+            expect(container.className).toContain('h-[calc(100dvh-40px)]');
+            expect(container.className).not.toContain('48px');
         });
 
         it('selected repo shows full-screen detail without MobileRepoHeader bar', async () => {

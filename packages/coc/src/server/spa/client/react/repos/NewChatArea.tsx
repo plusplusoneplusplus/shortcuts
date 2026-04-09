@@ -88,9 +88,12 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         onClick={onBack}
                         data-testid="new-chat-back-btn"
                         aria-label="Back to list"
-                        className="flex items-center gap-1 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff]"
+                        className="inline-flex items-center gap-1 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff]"
                     >
-                        ← Back
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span className="font-medium">Chats</span>
                     </button>
                 </div>
             )}

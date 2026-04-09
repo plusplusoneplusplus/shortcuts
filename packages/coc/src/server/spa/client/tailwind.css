@@ -11,7 +11,7 @@
         display: none;
     }
     .mobile-fab {
-        position: absolute;
+        position: fixed;
         bottom: calc(var(--bottom-nav-height, 48px) + 1rem);
         right: 1rem;
         z-index: 100;

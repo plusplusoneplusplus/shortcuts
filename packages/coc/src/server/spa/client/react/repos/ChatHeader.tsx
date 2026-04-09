@@ -84,9 +84,9 @@ export function ChatHeader({
                 {onBack && variant !== 'floating' && (
                     <button
                         className={cn(
-                            "inline-flex items-center justify-center mr-1",
+                            "inline-flex items-center gap-1 mr-1",
                             isMobile
-                                ? "w-9 h-9 rounded-md text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors"
+                                ? "px-1 py-1 rounded-md text-sm text-[#0078d4] dark:text-[#3794ff] hover:text-[#005a9e] dark:hover:text-[#60aeff] transition-colors"
                                 : "px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff]",
                         )}
                         onClick={onBack}
@@ -94,9 +94,12 @@ export function ChatHeader({
                         aria-label="Back to list"
                     >
                         {isMobile ? (
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                            </svg>
+                            <>
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                    <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                <span className="text-sm font-medium">Chats</span>
+                            </>
                         ) : (
                             '← Back'
                         )}

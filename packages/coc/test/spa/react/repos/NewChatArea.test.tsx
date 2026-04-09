@@ -88,7 +88,7 @@ describe('NewChatArea', () => {
     it('renders back button when onBack prop is provided', () => {
         render(<NewChatArea workspaceId="ws-1" onBack={vi.fn()} />);
         expect(screen.getByTestId('new-chat-back-btn')).toBeTruthy();
-        expect(screen.getByTestId('new-chat-back-btn').textContent).toContain('← Back');
+        expect(screen.getByTestId('new-chat-back-btn').textContent).toContain('Chats');
     });
 
     it('clicking back button calls onBack', () => {
