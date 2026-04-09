@@ -1,0 +1,53 @@
+import { useState, useEffect, useCallback } from 'react';
+import { notesApi, type NoteTreeNode } from '../notesApi';
+
+export interface UseNotesTreeResult {
+    tree: NoteTreeNode[] | null;
+    loading: boolean;
+    error: string | null;
+    refresh: () => void;
+    createNode: (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => Promise<void>;
+    renameNode: (oldPath: string, newPath: string) => Promise<void>;
+    deleteNode: (path: string) => Promise<void>;
+}
+
+export function useNotesTree(workspaceId: string): UseNotesTreeResult {
+    const [tree, setTree] = useState<NoteTreeNode[] | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const fetchTree = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await notesApi.getTree(workspaceId);
+            setTree(data);
+        } catch (err: any) {
+            setError(err.message ?? 'Failed to load notes tree');
+        } finally {
+            setLoading(false);
+        }
+    }, [workspaceId]);
+
+    useEffect(() => {
+        fetchTree();
+    }, [fetchTree]);
+
+    const createNode = useCallback(async (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => {
+        const nodePath = parentPath ? `${parentPath}/${name}` : name;
+        await notesApi.createNode(workspaceId, nodePath, type);
+        await fetchTree();
+    }, [workspaceId, fetchTree]);
+
+    const renameNode = useCallback(async (oldPath: string, newPath: string) => {
+        await notesApi.renameNode(workspaceId, oldPath, newPath);
+        await fetchTree();
+    }, [workspaceId, fetchTree]);
+
+    const deleteNode = useCallback(async (path: string) => {
+        await notesApi.deleteNode(workspaceId, path);
+        await fetchTree();
+    }, [workspaceId, fetchTree]);
+
+    return { tree, loading, error, refresh: fetchTree, createNode, renameNode, deleteNode };
+}
