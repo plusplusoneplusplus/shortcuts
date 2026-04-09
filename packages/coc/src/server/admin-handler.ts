@@ -205,7 +205,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'serve.serverName', 'terminal.enabled'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'serve.serverName', 'terminal.enabled', 'notes.enabled'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -268,6 +268,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('terminal.enabled' in body) {
                 if (typeof body['terminal.enabled'] !== 'boolean') {
                     errors.push('terminal.enabled must be a boolean');
+                }
+            }
+            if ('notes.enabled' in body) {
+                if (typeof body['notes.enabled'] !== 'boolean') {
+                    errors.push('notes.enabled must be a boolean');
                 }
             }
 
@@ -334,6 +339,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('terminal.enabled' in body) {
                 if (!existing.terminal) { existing.terminal = {}; }
                 existing.terminal.enabled = body['terminal.enabled'] as boolean;
+            }
+
+            // Handle nested notes.enabled field
+            if ('notes.enabled' in body) {
+                if (!existing.notes) { existing.notes = {}; }
+                existing.notes.enabled = body['notes.enabled'] as boolean;
             }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);

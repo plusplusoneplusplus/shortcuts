@@ -49,6 +49,9 @@ export interface CLIConfig {
     terminal?: {
         enabled?: boolean;
     };
+    notes?: {
+        enabled?: boolean;
+    };
 }
 
 /** Data wiper instance for clearing server data (opaque handle). */

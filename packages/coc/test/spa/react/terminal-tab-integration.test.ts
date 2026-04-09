@@ -48,7 +48,7 @@ describe('Router terminal integration', () => {
     });
 
     it('imports isTerminalEnabled from utils/config', () => {
-        expect(ROUTER_SOURCE).toContain("import { isTerminalEnabled } from '../utils/config'");
+        expect(ROUTER_SOURCE).toContain("isTerminalEnabled, isNotesEnabled");
     });
 });
 
@@ -89,7 +89,7 @@ describe('RepoDetail terminal visibility gating', () => {
     });
 
     it('visibleSubTabs depends on terminalEnabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled]');
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled]');
     });
 });
 
@@ -126,6 +126,6 @@ describe('RepoDetail TerminalView rendering', () => {
     });
 
     it('terminal content area uses overflow-hidden', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'terminal' ? \"overflow-hidden\"");
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'terminal' || activeSubTab === 'notes' ? \"overflow-hidden\"");
     });
 });

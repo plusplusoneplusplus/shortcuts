@@ -389,6 +389,16 @@ timeout: 300
             const result = mergeConfig(DEFAULT_CONFIG, { terminal: { enabled: true } });
             expect(result.terminal.enabled).toBe(true);
         });
+
+        it('should preserve notes.enabled default when not overridden', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
+            expect(result.notes.enabled).toBe(false);
+        });
+
+        it('should override notes.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { notes: { enabled: true } });
+            expect(result.notes.enabled).toBe(true);
+        });
     });
 
     // ========================================================================
@@ -518,6 +528,22 @@ timeout: 300
             const result = getResolvedConfigWithSource(configPath);
             expect(result.resolved.terminal.enabled).toBe(false);
             expect(result.sources['terminal.enabled']).toBe('default');
+        });
+
+        it('should report file source for notes.enabled when set', () => {
+            const configPath = path.join(tmpDir, 'notes.yaml');
+            fs.writeFileSync(configPath, 'notes:\n  enabled: true\n');
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.notes.enabled).toBe(true);
+            expect(result.sources['notes.enabled']).toBe('file');
+        });
+
+        it('should report default source for notes.enabled when not set', () => {
+            const configPath = path.join(tmpDir, 'no-notes.yaml');
+            fs.writeFileSync(configPath, 'model: gpt-4\n');
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.notes.enabled).toBe(false);
+            expect(result.sources['notes.enabled']).toBe('default');
         });
 
         it('should return resolved config with defaults applied', () => {

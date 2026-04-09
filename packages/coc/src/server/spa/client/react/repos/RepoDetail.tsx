@@ -21,6 +21,7 @@ import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { PullRequestsTab } from './pull-requests/PullRequestsTab';
 import { WorkflowDetailView } from '../processes/dag';
 import { TerminalView } from './TerminalView';
+import { NotesView } from './NotesView';
 import { AddRepoDialog } from './AddRepoDialog';
 
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
@@ -29,6 +30,7 @@ import { fetchApi } from '../hooks/useApi';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
 import { useGitInfo } from '../hooks/useGitInfo';
 import { useTerminalEnabled } from '../hooks/useTerminalEnabled';
+import { useNotesEnabled } from '../hooks/useNotesEnabled';
 import { MobileTabBar } from '../layout/MobileTabBar';
 import { SHOW_WIKI_TAB } from '../layout/TopBar';
 import type { RepoData } from './repoGrouping';
@@ -44,6 +46,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'terminal', label: 'Terminal', shortcut: 'Alt+T' },
+    { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
     { key: 'tasks', label: 'Plans', shortcut: 'Alt+P' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
@@ -92,13 +95,15 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const terminalEnabled = useTerminalEnabled();
+    const notesEnabled = useNotesEnabled();
 
     const visibleSubTabs = useMemo(() => {
         let tabs = BASE_VISIBLE_SUB_TABS;
         if (!isGitRepo) tabs = tabs.filter(t => t.key !== 'git' && t.key !== 'pull-requests');
         if (!terminalEnabled) tabs = tabs.filter(t => t.key !== 'terminal');
+        if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
         return tabs;
-    }, [isGitRepo, terminalEnabled]);
+    }, [isGitRepo, terminalEnabled, notesEnabled]);
 
     // Redirect away from git/pull-requests tab when switching to a non-git repo
     useEffect(() => {
@@ -113,6 +118,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
         }
     }, [activeSubTab, terminalEnabled, dispatch]);
+
+    // Redirect away from notes tab when feature is disabled
+    useEffect(() => {
+        if (activeSubTab === 'notes' && !notesEnabled) {
+            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        }
+    }, [activeSubTab, notesEnabled, dispatch]);
 
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
@@ -487,7 +499,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         onNavStateChange={(navState) => dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState })}
                     />
                 </div>
-                <div style={{ display: activeSubTab !== 'tasks' ? undefined : 'none' }} className={cn("h-full min-w-0", isMobile && "pb-12", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' ? "overflow-hidden" : "overflow-y-auto")}>
+                <div style={{ display: activeSubTab !== 'tasks' ? undefined : 'none' }} className={cn("h-full min-w-0", isMobile && "pb-12", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
                     {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                     {activeSubTab === 'templates' && <TemplatesTab key={ws.id} repo={repo} />}
                     <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
@@ -511,6 +523,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     {terminalEnabled && (
                         <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <TerminalView key={ws.id} workspaceId={ws.id} />
+                        </div>
+                    )}
+                    {notesEnabled && (
+                        <div style={{ display: activeSubTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                            <NotesView key={ws.id} workspaceId={ws.id} />
                         </div>
                     )}
                     {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}

@@ -458,6 +458,15 @@ describe('Admin Handler', () => {
             expect(body.resolved.terminal.enabled).toBe(false);
             expect(body.sources['terminal.enabled']).toBe('default');
         });
+
+        it('should return notes.enabled=false by default', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.notes.enabled).toBe(false);
+            expect(body.sources['notes.enabled']).toBe('default');
+        });
     });
 
     // ========================================================================
@@ -1162,6 +1171,46 @@ describe('Admin Handler', () => {
             expect(res.status).toBe(400);
             const body = JSON.parse(res.body);
             expect(body.error).toContain('terminal.enabled');
+        });
+
+        it('should accept notes.enabled=true', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'notes.enabled': true }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.notes.enabled).toBe(true);
+            expect(body.sources['notes.enabled']).toBe('file');
+        });
+
+        it('should accept notes.enabled=false', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'notes.enabled': false }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.notes.enabled).toBe(false);
+        });
+
+        it('should reject non-boolean notes.enabled', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'notes.enabled': 'yes' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('notes.enabled');
         });
     });
 

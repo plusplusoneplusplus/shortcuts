@@ -13,6 +13,8 @@ export interface DashboardOptions {
     enableWiki?: boolean;
     /** Whether the web terminal feature is enabled in server config. */
     terminalEnabled?: boolean;
+    /** Whether the notes feature is enabled in server config. */
+    notesEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

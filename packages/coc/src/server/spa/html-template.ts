@@ -82,6 +82,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         apiBasePath = '/api',
         enableWiki = false,
         terminalEnabled,
+        notesEnabled,
         reviewFilePath,
         projectDir,
     } = options;
@@ -115,7 +116,8 @@ ${getBundleCss()}
             wsPath: '${escapeHtml(wsPath)}',
             version: '${escapeHtml(getBundleETag())}'${hostname ? `,
             hostname: '${escapeHtml(hostname)}'` : ''},
-            terminalEnabled: ${!!terminalEnabled}
+            terminalEnabled: ${!!terminalEnabled},
+            notesEnabled: ${!!notesEnabled}
         };
     </script>${reviewFilePath ? `
     <script>

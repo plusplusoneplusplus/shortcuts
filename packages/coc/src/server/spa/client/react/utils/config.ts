@@ -8,6 +8,7 @@ interface DashboardConfig {
     wsPath: string;
     hostname?: string;
     terminalEnabled?: boolean;
+    notesEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -32,4 +33,8 @@ export function getHostname(): string | undefined {
 
 export function isTerminalEnabled(): boolean {
     return getConfig().terminalEnabled === true;
+}
+
+export function isNotesEnabled(): boolean {
+    return getConfig().notesEnabled === true;
 }

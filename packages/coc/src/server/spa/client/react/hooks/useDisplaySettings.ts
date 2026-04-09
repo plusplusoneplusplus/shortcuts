@@ -12,9 +12,10 @@ interface DisplaySettings {
     taskCardDensity: 'compact' | 'dense';
     groupSingleLineMessages: boolean;
     terminalEnabled: boolean;
+    notesEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', groupSingleLineMessages: true, terminalEnabled: false };
+const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false };
 
 let cachedSettings: DisplaySettings | null = null;
 let fetchPromise: Promise<DisplaySettings> | null = null;
@@ -30,6 +31,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             taskCardDensity: (data?.resolved?.taskCardDensity === 'compact' ? 'compact' : 'dense') as 'compact' | 'dense',
             groupSingleLineMessages: data?.resolved?.groupSingleLineMessages ?? true,
             terminalEnabled: data?.resolved?.terminal?.enabled ?? false,
+            notesEnabled: data?.resolved?.notes?.enabled ?? false,
         };
     } catch {
         return DEFAULT_SETTINGS;

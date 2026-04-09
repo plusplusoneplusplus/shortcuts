@@ -75,6 +75,9 @@ export function AdminPanel() {
     // Terminal settings
     const [terminalEnabled, setTerminalEnabled] = useState(false);
 
+    // Notes settings
+    const [notesEnabled, setNotesEnabled] = useState(false);
+
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
 
@@ -137,6 +140,7 @@ export function AdminPanel() {
             setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
             setServerName(resolved.serve?.serverName ?? '');
             setTerminalEnabled(resolved.terminal?.enabled ?? false);
+            setNotesEnabled(resolved.notes?.enabled ?? false);
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -249,6 +253,30 @@ export function AdminPanel() {
             setDisplaySaving(false);
         }
     }, [terminalEnabled, addToast]);
+
+    const handleToggleNotesEnabled = useCallback(async (newValue: boolean) => {
+        const prevValue = notesEnabled;
+        setNotesEnabled(newValue);
+        setDisplaySaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'notes.enabled': newValue }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Settings saved', 'success');
+            invalidateDisplaySettings();
+        } catch (err: any) {
+            setNotesEnabled(prevValue);
+            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+        } finally {
+            setDisplaySaving(false);
+        }
+    }, [notesEnabled, addToast]);
 
     const handleChangeToolCompactness= useCallback(async (newValue: 0 | 1 | 2 | 3) => {
         const prevValue = toolCompactness;
@@ -834,6 +862,35 @@ export function AdminPanel() {
                                     </div>
                                     <div className="text-xs text-[#616161] dark:text-[#999]">
                                         When enabled, a Terminal tab appears in the dashboard providing shell access to the server machine.
+                                    </div>
+                                </div>
+
+                                <hr className={dividerClass} />
+
+                                {/* Notes section */}
+                                <div className="space-y-1.5">
+                                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Notes</div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Enable the notes feature in the dashboard">
+                                            Enable notes
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['notes.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={notesEnabled}
+                                                    disabled={displaySaving}
+                                                    onChange={e => void handleToggleNotesEnabled(e.target.checked)}
+                                                    data-testid="toggle-notes-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-[#616161] dark:text-[#999]">
+                                        When enabled, a Notes tab appears in the dashboard for creating and editing markdown notebooks.
                                     </div>
                                 </div>
 

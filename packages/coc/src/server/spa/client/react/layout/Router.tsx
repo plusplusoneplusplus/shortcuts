@@ -10,7 +10,7 @@ import { ProcessesView } from '../processes/ProcessesView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
-import { isTerminalEnabled } from '../utils/config';
+import { isTerminalEnabled, isNotesEnabled } from '../utils/config';
 import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 
@@ -173,7 +173,7 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'templates', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests', 'terminal']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'templates', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests', 'terminal', 'notes']);
 
 export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions', 'memory', 'tasks']);
 /** @deprecated Use VALID_SETTINGS_SECTIONS */
@@ -196,6 +196,7 @@ export function parseCopilotSection(hash: string): SettingsSection {
 const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     g: 'git',
     t: 'terminal',
+    n: 'notes',
     e: 'explorer',
     p: 'tasks',
     r: 'pull-requests',
@@ -478,6 +479,7 @@ export function Router() {
                 const tab = REPO_TAB_SHORTCUTS[letter];
                 if (tab) {
                     if (tab === 'terminal' && !isTerminalEnabled()) return;
+                    if (tab === 'notes' && !isNotesEnabled()) return;
                     e.preventDefault();
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab });
                     location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/' + tab;
