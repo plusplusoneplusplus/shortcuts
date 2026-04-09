@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildMultiFileBatchResolvePrompt, renderCommentBlock } from '../../src/server/diff-comments-ai';
+import {
+    buildMultiFileBatchResolvePrompt,
+    renderCommentBlock,
+    buildDiffEnrichedPrompt,
+    buildDiffAIPrompt,
+    DEFAULT_AI_COMMANDS,
+} from '../../src/server/diff-comments-ai';
 import type { DiffComment } from '@plusplusoneplusplus/forge';
 
 function makeDiffComment(overrides: Partial<DiffComment> = {}): DiffComment {
@@ -216,5 +222,142 @@ describe('buildMultiFileBatchResolvePrompt', () => {
         ];
         const result = buildMultiFileBatchResolvePrompt(entries, 'a', 'b');
         expect(result).not.toContain('Additional Context from User');
+    });
+});
+
+describe('buildDiffEnrichedPrompt', () => {
+    const clarifyCmd = DEFAULT_AI_COMMANDS.find(c => c.id === 'clarify')!;
+    const customCmd = DEFAULT_AI_COMMANDS.find(c => c.id === 'custom')!;
+
+    it('uses command.prompt as template when command.isCustomInput is falsy', () => {
+        const comment = makeDiffComment();
+        const result = buildDiffEnrichedPrompt(clarifyCmd, comment, undefined);
+        expect(result).toContain('clarify the following snippet');
+    });
+
+    it('uses command.prompt when isCustomInput is true but customQuestion is undefined', () => {
+        const comment = makeDiffComment();
+        const result = buildDiffEnrichedPrompt(customCmd, comment, undefined);
+        expect(result).toContain(customCmd.prompt);
+    });
+
+    it('uses command.prompt when isCustomInput is true but customQuestion is empty string', () => {
+        const comment = makeDiffComment();
+        const result = buildDiffEnrichedPrompt(customCmd, comment, '');
+        expect(result).toContain(customCmd.prompt);
+    });
+
+    it('uses customQuestion as template when isCustomInput is true and customQuestion is non-empty', () => {
+        const comment = makeDiffComment();
+        const result = buildDiffEnrichedPrompt(customCmd, comment, 'What does this function return?');
+        expect(result).toContain('What does this function return?');
+        expect(result).not.toContain(customCmd.prompt);
+    });
+
+    it('always contains diff context suffix', () => {
+        const comment = makeDiffComment();
+        const result = buildDiffEnrichedPrompt(clarifyCmd, comment, undefined);
+        expect(result).toContain('Diff context: src/app.ts (abc123^ → abc123)');
+    });
+
+    it('contains user comment line when comment.comment is non-empty', () => {
+        const comment = makeDiffComment({ comment: 'This should be a let' });
+        const result = buildDiffEnrichedPrompt(clarifyCmd, comment, undefined);
+        expect(result).toContain('User comment: "This should be a let"');
+    });
+
+    it('does not contain user comment line when comment.comment is empty string', () => {
+        const comment = makeDiffComment({ comment: '' });
+        const result = buildDiffEnrichedPrompt(clarifyCmd, comment, undefined);
+        expect(result).not.toContain('User comment:');
+    });
+
+    it('does not contain user comment line when comment.comment is undefined', () => {
+        const comment = makeDiffComment({ comment: undefined });
+        const result = buildDiffEnrichedPrompt(clarifyCmd, comment, undefined);
+        expect(result).not.toContain('User comment:');
+    });
+
+    it('includes selectedText and filePath from buildPromptFromContext', () => {
+        const comment = makeDiffComment({ selectedText: 'const x = 1;' });
+        const result = buildDiffEnrichedPrompt(clarifyCmd, comment, undefined);
+        expect(result).toContain('"const x = 1;"');
+        expect(result).toContain('in the file src/app.ts');
+    });
+});
+
+describe('buildDiffAIPrompt', () => {
+    it('starts with the fixed context header', () => {
+        const comment = makeDiffComment();
+        const result = buildDiffAIPrompt(comment, 'Why?');
+        expect(result).toContain('Context: The user is reviewing a git diff.');
+    });
+
+    it('contains the file path', () => {
+        const comment = makeDiffComment();
+        const result = buildDiffAIPrompt(comment, 'Why?');
+        expect(result).toContain('File: src/app.ts');
+    });
+
+    it('contains the diff range', () => {
+        const comment = makeDiffComment();
+        const result = buildDiffAIPrompt(comment, 'Why?');
+        expect(result).toContain('Diff range: abc123^ → abc123');
+    });
+
+    it('includes selected-text block when selectedText is present', () => {
+        const comment = makeDiffComment({ selectedText: 'const x = 1;' });
+        const result = buildDiffAIPrompt(comment, 'Explain');
+        expect(result).toContain('They selected the following text from the diff:\n---\nconst x = 1;\n---');
+    });
+
+    it('omits selected-text block when selectedText is undefined', () => {
+        const comment = makeDiffComment({ selectedText: undefined });
+        const result = buildDiffAIPrompt(comment, 'Explain');
+        expect(result).not.toContain('They selected the following text from the diff:');
+    });
+
+    it('omits selected-text block when selectedText is empty string', () => {
+        const comment = makeDiffComment({ selectedText: '' });
+        const result = buildDiffAIPrompt(comment, 'Explain');
+        expect(result).not.toContain('They selected the following text from the diff:');
+    });
+
+    it('includes comment block when comment.comment is present', () => {
+        const comment = makeDiffComment({ comment: 'This should be a let' });
+        const result = buildDiffAIPrompt(comment, 'Explain');
+        expect(result).toContain('Their comment says: "This should be a let"');
+    });
+
+    it('omits comment block when comment.comment is undefined', () => {
+        const comment = makeDiffComment({ comment: undefined });
+        const result = buildDiffAIPrompt(comment, 'Explain');
+        expect(result).not.toContain('Their comment says:');
+    });
+
+    it('omits comment block when comment.comment is empty string', () => {
+        const comment = makeDiffComment({ comment: '' });
+        const result = buildDiffAIPrompt(comment, 'Explain');
+        expect(result).not.toContain('Their comment says:');
+    });
+
+    it('ends with question and actionable response instruction', () => {
+        const comment = makeDiffComment();
+        const result = buildDiffAIPrompt(comment, 'Is this correct?');
+        expect(result).toContain('Question: Is this correct?\n\nProvide a clear, actionable response.');
+    });
+
+    it('includes both selected-text and comment blocks when both are set', () => {
+        const comment = makeDiffComment({ selectedText: 'let y = 2;', comment: 'Use const' });
+        const result = buildDiffAIPrompt(comment, 'Fix it');
+        expect(result).toContain('They selected the following text from the diff:\n---\nlet y = 2;\n---');
+        expect(result).toContain('Their comment says: "Use const"');
+    });
+
+    it('omits both blocks when both fields are unset', () => {
+        const comment = makeDiffComment({ selectedText: undefined, comment: undefined });
+        const result = buildDiffAIPrompt(comment, 'Summarize');
+        expect(result).not.toContain('They selected the following text from the diff:');
+        expect(result).not.toContain('Their comment says:');
     });
 });
