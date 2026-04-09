@@ -667,7 +667,7 @@ export function ActivityListPane({
         <div className="relative flex-1 flex flex-col overflow-hidden">
             <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
                 {activeTab === 'chats' && (
-                    <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className="self-start" data-testid="new-chat-btn">
+                    <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
                         💬 New Chat
                     </Button>
                 )}
@@ -1165,7 +1165,9 @@ export function ActivityListPane({
                         </div>
                     )}
                     {chatAllItems.unpinned.length > 0 && (
-                        <div className="flex flex-col gap-1">
+                        <div>
+                            <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">🕐 Recently</div>
+                            <div className="flex flex-col gap-1">
                             {chatAllItems.unpinned.map(task => {
                                 const isUnseen = unseenTaskIds?.has(task.id) ?? false;
                                 const hasDraft = !!getDraft(task.id);
@@ -1197,6 +1199,7 @@ export function ActivityListPane({
                                     </SwipeableHistoryItem>
                                 );
                             })}
+                        </div>
                         </div>
                     )}
                     {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && (
