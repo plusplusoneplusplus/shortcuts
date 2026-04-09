@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { ResponsiveSidebar } from '../shared/ResponsiveSidebar';
 import { NotesSidebar } from './notes/NotesSidebar';
+import { NoteEditor } from './notes/NoteEditor';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 
 export interface NotesViewProps {
@@ -45,11 +46,7 @@ export function NotesView({ workspaceId }: NotesViewProps) {
                         </button>
                     </div>
                 )}
-                <div className="flex-1 flex items-center justify-center text-sm text-[#616161] dark:text-[#999]">
-                    {selectedPath
-                        ? <span data-testid="notes-selected-path">{selectedPath}</span>
-                        : <span className="italic">Select a page to start editing</span>}
-                </div>
+                <NoteEditor workspaceId={workspaceId} notePath={selectedPath} />
             </div>
         </div>
     );

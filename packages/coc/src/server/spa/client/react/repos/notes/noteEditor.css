@@ -1,0 +1,71 @@
+/* ProseMirror content-area styling for the Tiptap note editor */
+
+.note-editor .ProseMirror {
+    outline: none;
+    min-height: 300px;
+    padding: 1rem;
+    font-size: 0.9375rem;
+    line-height: 1.65;
+}
+
+.note-editor .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: #999;
+    pointer-events: none;
+    float: left;
+    height: 0;
+}
+
+/* Heading sizes */
+.note-editor .ProseMirror h1 { font-size: 1.75rem; font-weight: 700; margin: 1.5rem 0 0.75rem; }
+.note-editor .ProseMirror h2 { font-size: 1.375rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+.note-editor .ProseMirror h3 { font-size: 1.125rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+
+/* Lists */
+.note-editor .ProseMirror ul { list-style: disc; padding-left: 1.5rem; }
+.note-editor .ProseMirror ol { list-style: decimal; padding-left: 1.5rem; }
+
+/* Task lists */
+.note-editor .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+.note-editor .ProseMirror ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5rem; }
+.note-editor .ProseMirror ul[data-type="taskList"] li input[type="checkbox"] { margin-top: 0.3rem; }
+
+/* Blockquote */
+.note-editor .ProseMirror blockquote {
+    border-left: 3px solid #d0d0d0;
+    padding-left: 1rem;
+    color: #666;
+    margin: 0.75rem 0;
+}
+
+/* Code */
+.note-editor .ProseMirror code {
+    background: #f0f0f0;
+    border-radius: 3px;
+    padding: 0.15rem 0.3rem;
+    font-size: 0.875em;
+}
+
+.note-editor .ProseMirror pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    font-size: 0.875em;
+}
+
+.note-editor .ProseMirror pre code { background: none; padding: 0; }
+
+/* Horizontal rule */
+.note-editor .ProseMirror hr { border: none; border-top: 1px solid #e0e0e0; margin: 1.5rem 0; }
+
+/* Links */
+.note-editor .ProseMirror a { color: #0078d4; text-decoration: underline; }
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+    .note-editor .ProseMirror blockquote { border-left-color: #555; color: #aaa; }
+    .note-editor .ProseMirror code { background: #2d2d2d; }
+    .note-editor .ProseMirror hr { border-top-color: #3c3c3c; }
+}
