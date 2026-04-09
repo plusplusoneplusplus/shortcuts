@@ -5,6 +5,7 @@
 - By default, focus on the CoC (Copilot of Copilot) project (`packages/coc/`, `packages/coc-server/`, `packages/forge/`). Ignore the VS Code extension (`src/`) unless the user explicitly asks about it.
 - When the plan involves UI/UX, make sure to include the visual design in the plan.
 - When fixing the tests, check commit history to see if the test was broken by a previous commit. And if the commit is a new feature or behaivor change and is intentional. You SHOULD gather more information and make a decision on whether to fix the test or the source code.
+- Never include personal or privacy data (e.g., real names, emails, usernames, API keys, tokens, passwords, internal URLs, absolute local paths like `/Users/<name>/...`) in commit messages, code comments, or checked-in code. Use placeholders, relative paths, or anonymized values instead.
 
 ## Project Principles
 - CoC (Copilot of Copilot) is independent of the VS Code extension.
