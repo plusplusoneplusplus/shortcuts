@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../shared';
+import { SkeletonList } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
@@ -205,8 +206,9 @@ export function ProcessesView() {
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
-                <ChatPrefsSync history={history} workspaceId={workspaceId} />
-                <ProcessesViewSkeleton heightClass={heightClass} />
+                <div id="view-processes" className={`${heightClass} flex flex-col overflow-hidden`}>
+                    <SkeletonList count={6} className="pt-4" />
+                </div>
             </ChatPreferencesProvider>
         );
     }

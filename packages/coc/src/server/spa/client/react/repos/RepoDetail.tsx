@@ -331,7 +331,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     <BottomSheet isOpen onClose={() => setMoreMenuOpen(false)} title="Actions">
                                         <div className="flex flex-col" data-testid="repo-more-menu-items">
                                             <button
-                                                className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                className="w-full text-left px-4 min-h-[44px] flex items-center text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-run-script"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
                                             >

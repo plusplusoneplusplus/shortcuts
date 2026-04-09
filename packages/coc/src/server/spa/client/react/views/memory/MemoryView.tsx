@@ -30,14 +30,13 @@ export function MemoryView() {
 
     return (
         <div id="view-memory" className="flex flex-col h-full overflow-hidden">
-            <FeatureTip tipId="memory-intro" className="mx-3 mt-2" />
-            {/* Sub-tab bar */}
+            {/* Sub-tab bar — min-h-[44px] ensures ≥ 44 px touch target on all viewports */}
             <div className="flex items-center gap-1 px-3 pt-2 pb-0 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                 {SUB_TABS.map(({ id, label }) => (
                     <button
                         key={id}
                         className={cn(
-                            'h-8 px-3 rounded-t text-sm transition-colors border-b-2',
+                            'min-h-[44px] px-3 rounded-t text-sm transition-colors border-b-2',
                             activeSubTab === id
                                 ? 'border-[#0078d4] text-[#0078d4] font-medium'
                                 : 'border-transparent text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',

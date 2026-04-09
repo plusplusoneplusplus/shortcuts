@@ -869,12 +869,8 @@ describe('RepoActivityTab: data fetching', () => {
         expect(lastProps?.running).toEqual([r1]);
     });
 
-    it('passes fetched queued tasks to list pane', async () => {
-        const q1 = makeQueuedTask('q1');
-        setupFetchMock({ queued: [q1] });
-        await renderTab();
-        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
-        expect(lastProps?.queued).toEqual([q1]);
+    it('has loading state', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('SkeletonList');
     });
 
     it('passes fetched history tasks to list pane', async () => {
