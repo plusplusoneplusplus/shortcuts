@@ -1,0 +1,253 @@
+/**
+ * Notes REST API Handler — read-only routes.
+ *
+ * HTTP API routes for reading notes hierarchy, content, and search
+ * for a given workspace.
+ *
+ * No VS Code dependencies - uses only Node.js built-in modules.
+ * Cross-platform compatible (Linux/Mac/Windows).
+ */
+
+import * as url from 'url';
+import * as path from 'path';
+import * as fs from 'fs';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { isWithinDirectory } from '@plusplusoneplusplus/forge';
+import { sendJSON, sendError } from './api-handler';
+import { resolveWorkspaceOrFail } from './shared/handler-utils';
+import type { Route } from './types';
+import { getRepoDataPath } from './paths';
+import type { ResolvedCLIConfig } from '../config';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface TreeNode {
+    name: string;
+    path: string;
+    type: 'notebook' | 'section' | 'page';
+    children?: TreeNode[];
+}
+
+interface SearchMatch {
+    line: number;
+    text: string;
+}
+
+interface SearchResult {
+    path: string;
+    matches: SearchMatch[];
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function getNotesRoot(dataDir: string, workspaceId: string): string {
+    return getRepoDataPath(dataDir, workspaceId, 'notes');
+}
+
+async function ensureNotesRoot(notesRoot: string): Promise<void> {
+    await fs.promises.mkdir(notesRoot, { recursive: true });
+}
+
+/**
+ * Recursively scan the notes directory and build a tree.
+ * Directories = notebooks (top-level) or sections (nested), .md files = pages.
+ */
+async function buildTree(dir: string, basePath: string): Promise<TreeNode[]> {
+    let entries: fs.Dirent[];
+    try {
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+        return [];
+    }
+
+    // Sort: directories first, then files, alphabetically within each group
+    entries.sort((a, b) => {
+        const aDir = a.isDirectory() ? 0 : 1;
+        const bDir = b.isDirectory() ? 0 : 1;
+        if (aDir !== bDir) return aDir - bDir;
+        return a.name.localeCompare(b.name);
+    });
+
+    const nodes: TreeNode[] = [];
+    for (const entry of entries) {
+        const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+            const children = await buildTree(path.join(dir, entry.name), entryPath);
+            // Top-level dirs are notebooks, nested dirs are sections
+            const type = basePath ? 'section' : 'notebook';
+            nodes.push({ name: entry.name, path: entryPath, type, children });
+        } else if (entry.name.endsWith('.md')) {
+            nodes.push({ name: entry.name, path: entryPath, type: 'page' });
+        }
+    }
+    return nodes;
+}
+
+/**
+ * Recursively search all .md files for a query string (case-insensitive).
+ */
+async function searchNotes(
+    dir: string,
+    basePath: string,
+    query: string,
+    results: SearchResult[],
+    totalMatches: { count: number },
+    maxFiles: number,
+    maxMatches: number,
+): Promise<void> {
+    let entries: fs.Dirent[];
+    try {
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+        return;
+    }
+
+    const lowerQuery = query.toLowerCase();
+
+    for (const entry of entries) {
+        if (results.length >= maxFiles || totalMatches.count >= maxMatches) return;
+
+        const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+            await searchNotes(path.join(dir, entry.name), entryPath, query, results, totalMatches, maxFiles, maxMatches);
+        } else if (entry.name.endsWith('.md')) {
+            const matches: SearchMatch[] = [];
+
+            // Search filename
+            if (entry.name.toLowerCase().includes(lowerQuery)) {
+                matches.push({ line: 0, text: entry.name });
+                totalMatches.count++;
+            }
+
+            // Search content
+            if (totalMatches.count < maxMatches) {
+                try {
+                    const content = await fs.promises.readFile(path.join(dir, entry.name), 'utf-8');
+                    const lines = content.split('\n');
+                    for (let i = 0; i < lines.length; i++) {
+                        if (totalMatches.count >= maxMatches) break;
+                        if (lines[i].toLowerCase().includes(lowerQuery)) {
+                            matches.push({ line: i + 1, text: lines[i] });
+                            totalMatches.count++;
+                        }
+                    }
+                } catch {
+                    // Skip files that can't be read
+                }
+            }
+
+            if (matches.length > 0) {
+                results.push({ path: entryPath, matches });
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Route Registration
+// ============================================================================
+
+/**
+ * Register all notes read-only API routes on the given route table.
+ * Mutates the `routes` array in-place.
+ */
+export function registerNotesRoutes(
+    routes: Route[],
+    store: ProcessStore,
+    dataDir: string,
+    resolvedConfig?: ResolvedCLIConfig,
+): void {
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/notes/tree — Recursive tree scan
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/tree$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const notesRoot = getNotesRoot(dataDir, ws.id);
+            await ensureNotesRoot(notesRoot);
+
+            const tree = await buildTree(notesRoot, '');
+            sendJSON(res, 200, tree);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/notes/content?path=... — Read markdown
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/content$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const parsed = url.parse(req.url || '/', true);
+            const filePath = typeof parsed.query.path === 'string' ? parsed.query.path : '';
+            if (!filePath) {
+                return sendError(res, 400, 'Missing required query parameter: path');
+            }
+
+            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const resolved = path.resolve(notesRoot, filePath);
+
+            if (!isWithinDirectory(resolved, notesRoot)) {
+                return sendError(res, 403, 'Access denied: path is outside notes directory');
+            }
+
+            try {
+                const content = await fs.promises.readFile(resolved, 'utf-8');
+                sendJSON(res, 200, { content, path: filePath });
+            } catch (err: any) {
+                if (err.code === 'ENOENT') {
+                    return sendError(res, 404, 'File not found');
+                }
+                return sendError(res, 500, 'Failed to read file: ' + (err.message || 'Unknown error'));
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/notes/search?q=... — Full-text search
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/search$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const parsed = url.parse(req.url || '/', true);
+            const query = typeof parsed.query.q === 'string' ? parsed.query.q : '';
+            if (!query) {
+                return sendError(res, 400, 'Missing required query parameter: q');
+            }
+
+            const notesRoot = getNotesRoot(dataDir, ws.id);
+
+            const MAX_FILES = 50;
+            const MAX_MATCHES = 100;
+            const results: SearchResult[] = [];
+            const totalMatches = { count: 0 };
+
+            try {
+                await fs.promises.access(notesRoot);
+            } catch {
+                return sendJSON(res, 200, { results: [], truncated: false });
+            }
+
+            await searchNotes(notesRoot, '', query, results, totalMatches, MAX_FILES, MAX_MATCHES);
+
+            const truncated = results.length >= MAX_FILES || totalMatches.count >= MAX_MATCHES;
+            sendJSON(res, 200, { results, truncated });
+        },
+    });
+}

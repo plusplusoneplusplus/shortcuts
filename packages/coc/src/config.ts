@@ -75,6 +75,10 @@ export interface CLIConfig {
     terminal?: {
         enabled?: boolean;
     };
+    /** Notes configuration */
+    notes?: {
+        enabled?: boolean;
+    };
 }
 
 // ============================================================================
@@ -156,6 +160,10 @@ export interface ResolvedCLIConfig {
     terminal: {
         enabled: boolean;
     };
+    /** Notes configuration */
+    notes: {
+        enabled: boolean;
+    };
 }
 
 // ============================================================================
@@ -193,6 +201,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     terminal: {
         enabled: false,
     },
+    notes: {
+        enabled: false,
+    },
 };
 
 /**
@@ -209,6 +220,7 @@ export const CONFIG_SOURCE_KEYS = [
     'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
     'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme', 'serve.serverName',
     'terminal.enabled',
+    'notes.enabled',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -346,6 +358,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         terminal: {
             enabled: override.terminal?.enabled ?? base.terminal.enabled,
         },
+        notes: {
+            enabled: override.notes?.enabled ?? base.notes.enabled,
+        },
     };
 }
 
@@ -390,6 +405,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('terminal.')) {
         const subKey = key.slice('terminal.'.length) as keyof NonNullable<CLIConfig['terminal']>;
         return fileConfig.terminal?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('notes.')) {
+        const subKey = key.slice('notes.'.length) as keyof NonNullable<CLIConfig['notes']>;
+        return fileConfig.notes?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';

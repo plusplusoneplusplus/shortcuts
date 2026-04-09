@@ -312,6 +312,7 @@ timeout: 300
                 showReportIntent: true,
                 chat: { followUpSuggestions: { enabled: true, count: 3 } },
                 terminal: { enabled: false },
+                notes: { enabled: false },
             };
             const override: CLIConfig = {};
             const result = mergeConfig(base, override);
@@ -560,6 +561,8 @@ timeout: 300
                 '  theme: light',
                 '  serverName: MBP',
                 'terminal:',
+                '  enabled: true',
+                'notes:',
                 '  enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);

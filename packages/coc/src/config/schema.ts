@@ -69,6 +69,9 @@ export const CLIConfigSchema = z.object({
     terminal: z.object({
         enabled: z.boolean().optional(),
     }).strict().optional(),
+    notes: z.object({
+        enabled: z.boolean().optional(),
+    }).strict().optional(),
 }).strict();
 
 /**
