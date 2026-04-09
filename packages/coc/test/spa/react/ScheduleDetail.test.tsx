@@ -191,7 +191,7 @@ describe('ScheduleDetail — header zone', () => {
                 <ScheduleDetail {...renderDetail(MOCK_SCHEDULE_SCRIPT)} />
             </Wrap>,
         );
-        expect(screen.getByTestId('schedule-name').textContent).toContain('⚡');
+        expect(screen.getByTestId('schedule-name').textContent).toContain('🛠️');
     });
 
     it('shows Active status badge for active schedule', async () => {

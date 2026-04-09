@@ -635,7 +635,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 setContextMenu(null);
                             }}
                         >
-                            ⚡ Run Script
+                            🛠️ Run Script
                         </button>
                         <button
                             data-testid="repo-tab-context-generate-plan"

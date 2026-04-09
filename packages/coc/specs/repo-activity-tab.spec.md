@@ -289,7 +289,7 @@ Each story uses the **Given / When / Then** format to enable formal verification
 | Feature | Acceptance Criteria |
 |---|---|
 | Five-section layout | Running Tasks → Queued Tasks → 📌 Pinned → Completed Tasks → 📦 Archived; each section hidden when empty; Archived collapsed by default |
-| Task type icons | Every task card shows the correct icon for its type: 🤖 autopilot, 💡 ask, 📋 plan, ▶️ run-workflow, ⚡ run-script, 📅 scheduled. Additional state overlays: ❄️ frozen, 🚀 admitted (schedule-immediately), 🤖⏸ held (autopilot paused) |
+| Task type icons | Every task card shows the correct icon for its type: 🤖 autopilot, 💡 ask, 📋 plan, ▶️ run-workflow, 🛠️ run-script, 📅 scheduled. Additional state overlays: ❄️ frozen, 🚀 admitted (schedule-immediately), 🤖⏸ held (autopilot paused) |
 | Display name truncation | Task display name is truncated to ≤ 60 characters with ellipsis when longer |
 | Live elapsed timer | Running tasks show an elapsed timer; it increments every 1 second while the task is in `running` state; it stops when the task leaves `running` |
 | Unseen activity dot | Completed tasks not yet viewed by the user show a bold title and a visual dot indicator |

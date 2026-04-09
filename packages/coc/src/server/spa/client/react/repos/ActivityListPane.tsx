@@ -71,7 +71,7 @@ export function getTaskTypeIcon(task: any): string {
         return '🤖';
     }
     if (type === 'run-workflow') return '▶️';
-    if (type === 'run-script') return '⚡';
+    if (type === 'run-script') return '🛠️';
     return '🤖';
 }
 

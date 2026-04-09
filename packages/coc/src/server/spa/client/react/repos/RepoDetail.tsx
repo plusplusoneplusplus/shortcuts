@@ -305,7 +305,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                                 data-testid="repo-more-run-script"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
                                             >
-                                                ⚡ Run Script
+                                                🛠️ Run Script
                                             </button>
                                             <button
                                                 className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
@@ -441,7 +441,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 title="Run a script in this repo"
                                 data-testid="repo-run-script-btn"
                             >
-                                ⚡ Run Script
+                                🛠️ Run Script
                             </Button>
                             <Button
                                 variant="primary"

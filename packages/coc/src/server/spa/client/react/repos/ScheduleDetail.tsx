@@ -61,7 +61,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <h2 className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate" data-testid="schedule-name">
-                                        {`${schedule.targetType === 'script' ? '⚡' : '📄'} ${schedule.name}`}
+                                        {`${schedule.targetType === 'script' ? '🛠️' : '📄'} ${schedule.name}`}
                                     </h2>
                                     {schedule.isRunning && (
                                         <span className="w-3 h-3 border-2 border-[#0078d4] border-t-transparent rounded-full animate-spin flex-shrink-0" aria-label="Running" data-testid="running-spinner" />

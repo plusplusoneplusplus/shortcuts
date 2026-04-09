@@ -1052,11 +1052,11 @@ describe('ActivityListPane', () => {
             expect(container.textContent).toContain('▶️');
         });
 
-        it('run-script shows ⚡', () => {
+        it('run-script shows 🛠️', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'run-script' })],
             });
-            expect(container.textContent).toContain('⚡');
+            expect(container.textContent).toContain('🛠️');
         });
     });
 

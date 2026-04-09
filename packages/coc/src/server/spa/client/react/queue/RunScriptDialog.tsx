@@ -72,7 +72,7 @@ export function RunScriptDialog() {
         if (!minimized || !open) return null;
         return {
             id: 'run-script',
-            icon: '⚡',
+            icon: '🛠️',
             label: 'Run Script',
             preview: pillPreview,
             onRestore: handleRestore,
@@ -323,7 +323,7 @@ export function RunScriptDialog() {
                 open={true}
                 onClose={close}
                 onMinimize={handleMinimize}
-                title="⚡ Run Script"
+                title="🛠️ Run Script"
                 footer={footer}
                 resizable
                 minWidth={520}
@@ -335,7 +335,7 @@ export function RunScriptDialog() {
     }
 
     return (
-        <Dialog open={true} onClose={close} onMinimize={handleMinimize} title="⚡ Run Script" footer={footer}>
+        <Dialog open={true} onClose={close} onMinimize={handleMinimize} title="🛠️ Run Script" footer={footer}>
             {dialogContent}
         </Dialog>
     );
