@@ -393,6 +393,46 @@ describe('Notes Handler', () => {
             expect(content.content).toBe('');
         });
 
+        it('should auto-append .md when creating page without extension (regression)', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            // UI sends name without .md (e.g. user typed "my-page" in the dialog)
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/page`, {
+                path: 'my-notebook/my-page',
+                type: 'page',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.path).toBe('my-notebook/my-page.md');
+            expect(body.type).toBe('page');
+
+            // Page must appear in the tree (was previously invisible)
+            const treeRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
+            const tree = JSON.parse(treeRes.body);
+            expect(tree[0].name).toBe('my-notebook');
+            expect(tree[0].type).toBe('notebook');
+            expect(tree[0].children[0].name).toBe('my-page.md');
+            expect(tree[0].children[0].type).toBe('page');
+        });
+
+        it('should not double-append .md when page path already has extension', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/page`, {
+                path: 'my-page.md',
+                type: 'page',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.path).toBe('my-page.md');
+
+            // Content must be readable at the exact returned path
+            const contentRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/content?path=my-page.md`);
+            expect(contentRes.status).toBe(200);
+        });
+
         it('should return 400 for missing path', async () => {
             const srv = await startServer();
             await registerWorkspace(srv, workspaceDir);

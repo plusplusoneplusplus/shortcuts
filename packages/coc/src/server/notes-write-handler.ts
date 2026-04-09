@@ -72,12 +72,18 @@ export function registerNotesWriteRoutes(
             try {
                 if (type === 'notebook' || type === 'section') {
                     await fs.promises.mkdir(resolved, { recursive: true });
+                    sendJSON(res, 201, { path: notePath, type });
                 } else {
-                    // page — create parent dir then empty .md file
-                    await fs.promises.mkdir(path.dirname(resolved), { recursive: true });
-                    await fs.promises.writeFile(resolved, '', 'utf-8');
+                    // page — auto-append .md if missing, then create parent dir and empty file
+                    const effectivePath = notePath.endsWith('.md') ? notePath : `${notePath}.md`;
+                    const resolvedPage = path.resolve(notesRoot, effectivePath);
+                    if (!isWithinDirectory(resolvedPage, notesRoot)) {
+                        return sendError(res, 403, 'Access denied: path is outside notes directory');
+                    }
+                    await fs.promises.mkdir(path.dirname(resolvedPage), { recursive: true });
+                    await fs.promises.writeFile(resolvedPage, '', 'utf-8');
+                    sendJSON(res, 201, { path: effectivePath, type });
                 }
-                sendJSON(res, 201, { path: notePath, type });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to create: ' + (err.message || 'Unknown error'));
             }

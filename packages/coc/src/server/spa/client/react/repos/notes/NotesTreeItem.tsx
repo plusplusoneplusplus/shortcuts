@@ -30,6 +30,9 @@ export function NotesTreeItem({
 }: NotesTreeItemProps) {
     const folder = isFolder(node.type);
     const selected = node.path === selectedPath;
+    const displayName = node.type === 'page' && node.name.endsWith('.md')
+        ? node.name.slice(0, -3)
+        : node.name;
 
     const handleClick = () => {
         if (folder) {
@@ -72,7 +75,7 @@ export function NotesTreeItem({
             {/* Icon */}
             <span className="flex-shrink-0 text-[11px]" data-testid="node-icon">{ICON_MAP[node.type]}</span>
             {/* Name */}
-            <span className="flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]">{node.name}</span>
+            <span className="flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]">{displayName}</span>
         </div>
     );
 }
