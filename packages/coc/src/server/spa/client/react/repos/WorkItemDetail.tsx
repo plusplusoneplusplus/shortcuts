@@ -82,6 +82,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [acceptingDone, setAcceptingDone] = useState(false);
     const [resolvingDiffComments, setResolvingDiffComments] = useState(false);
     const [resolvingCommitSha, setResolvingCommitSha] = useState<string | null>(null);
+    const [resolvingChangeIdx, setResolvingChangeIdx] = useState<number | null>(null);
 
     const basePath = `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}`;
 
@@ -286,6 +287,37 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     };
 
+    /** AI-resolve all open diff comments for a change's commits, then auto-re-execute. */
+    const handleAutoResolveChange = async (idx: number, commits: Array<{ sha: string }>) => {
+        if (!item) return;
+        setResolvingChangeIdx(idx);
+        try {
+            let lastTaskId: string | undefined;
+            for (const commit of commits) {
+                const openCount = commentTotals.get(commit.sha)?.open ?? 0;
+                if (openCount === 0) continue;
+                const result = await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}/resolve-with-ai`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        oldRef: `${commit.sha}^`,
+                        newRef: commit.sha,
+                        workItemId: item.id,
+                        autoReExecute: true,
+                    }),
+                });
+                if (result?.taskId) lastTaskId = result.taskId;
+            }
+            if (lastTaskId && onNavigateToTasksTab) {
+                onNavigateToTasksTab(lastTaskId);
+            }
+        } catch (err: any) {
+            setError(err.message || 'Failed to enqueue auto-resolve tasks');
+        } finally {
+            setResolvingChangeIdx(null);
+        }
+    };
+
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
     }
@@ -376,26 +408,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             className="rounded"
                         />
                         Auto
-                    </label>
-                    <label className="flex items-center gap-1 text-[10px] cursor-pointer" title="Auto-resolve diff comments and re-execute when all are resolved" data-testid="work-item-auto-resolve-toggle">
-                        <input
-                            type="checkbox"
-                            checked={item.autoResolveAndReExecute ?? false}
-                            onChange={async (e) => {
-                                try {
-                                    await fetchApi(basePath, {
-                                        method: 'PATCH',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ autoResolveAndReExecute: e.target.checked }),
-                                    });
-                                    await fetchItem();
-                                } catch (err: any) {
-                                    setError(err.message || 'Failed to update');
-                                }
-                            }}
-                            className="rounded"
-                        />
-                        Auto-resolve
                     </label>
                     <Button
                         variant="primary" size="sm"
@@ -570,21 +582,22 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                             ) : exec.processId ? (
                                                 <a href={`#process/${exec.processId}`} className="text-[#0078d4] hover:underline text-[10px]" data-testid={`exec-view-session-${i}`}>View Session →</a>
                                             ) : null}
-                                            {isAiDone && exec.status === 'completed' && execOpenCommentCount > 0 && (
+                                            {exec.status === 'completed' && execOpenCommentCount > 0 && (
                                                 <button
-                                                    onClick={() => handleResolveDiffComments(commits.map(c => c.sha))}
-                                                    disabled={resolvingDiffComments}
+                                                    onClick={() => handleAutoResolveChange(i, commits)}
+                                                    disabled={resolvingChangeIdx === i}
                                                     className={cn(
                                                         'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-colors',
-                                                        'border-amber-300 dark:border-amber-700',
-                                                        'bg-amber-50 dark:bg-amber-900/20',
-                                                        'text-amber-800 dark:text-amber-300',
-                                                        'hover:bg-amber-100 dark:hover:bg-amber-900/40',
+                                                        'border-violet-300 dark:border-violet-700',
+                                                        'bg-violet-50 dark:bg-violet-900/20',
+                                                        'text-violet-800 dark:text-violet-300',
+                                                        'hover:bg-violet-100 dark:hover:bg-violet-900/40',
                                                         'disabled:opacity-50 disabled:cursor-not-allowed',
                                                     )}
-                                                    data-testid={`exec-resolve-comments-${i}`}
+                                                    data-testid={`exec-auto-resolve-btn-${i}`}
+                                                    title="AI-resolve all open diff comments and re-execute"
                                                 >
-                                                    {resolvingDiffComments ? '⏳ Resolving…' : `💬 Resolve ${execOpenCommentCount} Comment${execOpenCommentCount !== 1 ? 's' : ''}`}
+                                                    {resolvingChangeIdx === i ? '⏳ Resolving…' : `🤖 Auto Resolve (${execOpenCommentCount})`}
                                                 </button>
                                             )}
                                         </div>

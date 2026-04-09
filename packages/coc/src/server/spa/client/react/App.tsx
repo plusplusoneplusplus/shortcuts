@@ -387,7 +387,7 @@ function AppInner() {
             <ReposProvider>
                 <div className="flex flex-col h-full">
                     <TopBar onAdminOpen={handleAdminOpen} onLogsOpen={handleLogsOpen} />
-                    <main className="flex-1 overflow-hidden min-h-0 pb-12 md:pb-0">
+                    <main className="flex-1 overflow-hidden min-h-0 pt-[var(--bottom-nav-height,0px)] md:pt-0">
                         <Router />
                     </main>
                 </div>

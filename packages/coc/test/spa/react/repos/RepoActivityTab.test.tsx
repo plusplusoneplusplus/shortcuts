@@ -324,7 +324,7 @@ describe('ActivityChatDetail: inline chat detail', () => {
     });
 
     it('supports image paste', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useImagePaste');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useFileAttachments');
     });
 
     it('has scroll-to-bottom button', () => {
@@ -553,16 +553,27 @@ describe('RepoActivityTab: mobile layout', () => {
         expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-mobile-list"');
     });
 
-    it('mobile branch toggles between list and detail', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain('mobileShowDetail && selectedTaskId');
+    it('mobile branch toggles between list and detail using only mobileShowDetail', () => {
+        // The condition no longer requires selectedTaskId so the new-chat page (no task) can show
+        expect(ACTIVITY_TAB_SOURCE).toContain('{mobileShowDetail ?');
+        expect(ACTIVITY_TAB_SOURCE).not.toContain('mobileShowDetail && selectedTaskId');
     });
 
     it('passes onBack to ActivityDetailPane on mobile', () => {
         expect(ACTIVITY_TAB_SOURCE).toContain('onBack={() => { setMobileShowDetail(false); }}');
     });
 
-    it('resets mobileShowDetail when selection is cleared', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain('if (!selectedTaskId) setMobileShowDetail(false)');
+    it('has mobileNewChatRef to prevent premature mobileShowDetail reset', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('mobileNewChatRef');
+    });
+
+    it('onNewChat on mobile sets mobileShowDetail=true before dispatching deselect', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('setMobileShowDetail(true)');
+    });
+
+    it('resets mobileShowDetail when selection is cleared (skips reset for new-chat flow)', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('mobileNewChatRef.current');
+        expect(ACTIVITY_TAB_SOURCE).toContain('setMobileShowDetail(false)');
     });
 });
 
@@ -590,7 +601,7 @@ describe('RepoActivityTab: data fetching', () => {
     });
 
     it('has loading state', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain('Loading queue...');
+        expect(ACTIVITY_TAB_SOURCE).toContain('SkeletonList');
     });
 
     it('has live timer for running tasks', () => {
@@ -852,8 +863,9 @@ describe('RepoActivityTab: New Chat deselects task (regression)', () => {
     });
 
     it('onNewChat dispatches SELECT_QUEUE_TASK with null id', () => {
-        // Ensure clicking "New Chat" deselects the current task to show NewChatArea
-        expect(ACTIVITY_TAB_SOURCE).toContain("onNewChat={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId })");
+        // Ensure clicking "New Chat" deselects the current task to show NewChatArea.
+        // On mobile, it also sets mobileShowDetail=true before dispatching.
+        expect(ACTIVITY_TAB_SOURCE).toContain("SELECT_QUEUE_TASK', id: null, repoId: workspaceId");
     });
 
     it('still passes onOpenDialog for the Queue Task button', () => {

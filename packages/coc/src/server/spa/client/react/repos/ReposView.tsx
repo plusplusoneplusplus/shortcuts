@@ -20,7 +20,9 @@ export function ReposView() {
     const isMobile = breakpoint === 'mobile';
     const hasSelection = state.selectedRepoId !== null;
     const heightClass = isMobile
-        ? 'h-[calc(100vh-40px-48px)]'
+        ? hasSelection
+            ? 'h-[calc(100dvh-40px)]'
+            : 'h-[calc(100dvh-40px-48px)]'
         : 'h-[calc(100vh-48px)]';
 
     const handleBack = useCallback(() => {

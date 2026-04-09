@@ -228,7 +228,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     };
 
     return (
-        <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
+        <div id="repo-detail-content" className={cn("flex flex-col h-full min-h-0 min-w-0")}>
             {/* Header */}
             <div className={cn(
                 'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
@@ -282,7 +282,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     <BottomSheet isOpen onClose={() => setMoreMenuOpen(false)} title="Actions">
                                         <div className="flex flex-col" data-testid="repo-more-menu-items">
                                             <button
-                                                className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                className="w-full text-left px-4 min-h-[44px] flex items-center text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-run-script"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
                                             >
@@ -432,7 +432,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}
 
             {/* Sub-tab content */}
-            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'work-items' && "pb-12")}>
+            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden")}>
                 {activeSubTab === 'work-items' ? (
                     <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : (

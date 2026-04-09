@@ -167,10 +167,13 @@ describe('useChatSSE', () => {
         vi.unstubAllGlobals();
     });
 
-    it('calls onSendComplete on "done" event', () => {
+    it('calls onSendComplete on "done" event', async () => {
         const onSendComplete = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ onSendComplete })));
-        act(() => { MockEventSource.latest().emit('done', {}); });
+        await act(async () => {
+            MockEventSource.latest().emit('done', {});
+            await new Promise(r => setTimeout(r, 0));
+        });
         expect(onSendComplete).toHaveBeenCalled();
     });
 
@@ -196,7 +199,9 @@ describe('useChatSSE', () => {
         act(() => {
             MockEventSource.latest().emit('conversation-snapshot', { turns: [{ role: 'user', content: 'hi' }] });
         });
-        expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
+        expect(setTurnsAndRef).toHaveBeenCalledWith(expect.any(Function));
+        const updater = setTurnsAndRef.mock.calls[0][0];
+        expect(updater([])).toEqual([{ role: 'user', content: 'hi' }]);
     });
 
     it('calls setTask to mark completed on "done" event', () => {
