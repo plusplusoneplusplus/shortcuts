@@ -115,6 +115,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             'enqueue',
             images,
+            undefined,
         );
     });
 
@@ -136,6 +137,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             'enqueue',
             undefined,
+            undefined,
         );
     });
 
@@ -155,6 +157,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             undefined,
             'enqueue',
+            undefined,
             undefined,
         );
     });
@@ -179,6 +182,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             'enqueue',
             sevenImages.slice(0, 5),
+            undefined,
         );
     });
 
@@ -206,6 +210,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             'enqueue',
             [PNG_DATA_URL, GIF_DATA_URL],
+            undefined,
         );
     });
 
@@ -232,6 +237,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             'enqueue',
             [PNG_DATA_URL, JPEG_DATA_URL],
+            undefined,
         );
     });
 
