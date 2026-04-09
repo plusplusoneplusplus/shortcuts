@@ -272,6 +272,13 @@ describe('ActivityListPane', () => {
             expect(screen.getByTestId('queue-banner-view-task-btn')).toBeTruthy();
         });
 
+        it('does not render a redundant Paused badge when paused (banner is sufficient)', () => {
+            renderPane({ isPaused: true, history: [makeHistoryTask()] });
+            // The banner already communicates paused state; no separate badge should exist
+            expect(screen.getByTestId('queue-paused-banner')).toBeTruthy();
+            expect(screen.queryByText('Paused')).toBeNull();
+        });
+
         it('shows autopilot paused banner', () => {
             renderPane({
                 isAutopilotPaused: true,

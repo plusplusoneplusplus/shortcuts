@@ -7,7 +7,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Badge, Card, Button, cn, FilterDropdown } from '../shared';
+import { Card, Button, cn, FilterDropdown } from '../shared';
 import type { FilterItem } from '../shared';
 import { getApiBase } from '../utils/config';
 import { copyToClipboard, formatDuration, formatRelativeTime } from '../utils/format';
@@ -686,7 +686,6 @@ export function ActivityListPane({
                     </div>
                 )}
                 <div className={cn('flex items-center gap-2 mb-3')}>
-                    {isPaused && <Badge status="warning" title={pauseReason ? `${pauseReason.displayName} failed` : undefined}>Paused</Badge>}
                     {availableFilters.length >= 1 && (
                         <FilterDropdown
                             items={availableFilters}
