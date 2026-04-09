@@ -1,5 +1,5 @@
 /**
- * BottomNav — mobile bottom navigation bar.
+ * BottomNav — mobile top navigation bar (positioned below the app TopBar).
  * Renders only on viewports < 768px (mobile). Hidden on tablet/desktop.
  */
 
@@ -182,7 +182,7 @@ export function BottomNav() {
 
     if (!isMobile) return null;
 
-    // When a repo is selected, MobileTabBar in RepoDetail handles bottom navigation
+    // When a repo is selected, MobileTabBar in RepoDetail handles top navigation
     if (selectedRepoId) {
         return null;
     }
@@ -190,8 +190,7 @@ export function BottomNav() {
     return (
         <nav
             ref={navRef}
-            className="fixed bottom-0 left-0 right-0 z-[8000] h-12 flex items-center justify-around border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+            className="fixed top-10 left-0 right-0 z-[8000] h-12 flex items-center justify-around border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
             aria-label="Mobile navigation"
             data-testid="bottom-nav"
         >

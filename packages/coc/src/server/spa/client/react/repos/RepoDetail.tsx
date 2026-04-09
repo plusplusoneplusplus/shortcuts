@@ -277,7 +277,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     };
 
     return (
-        <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
+        <div id="repo-detail-content" className={cn("flex flex-col h-full min-h-0 min-w-0", isMobile && "pt-12")}>
             {/* Header */}
             <div className={cn(
                 'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
@@ -481,7 +481,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}
 
             {/* Sub-tab content */}
-            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'work-items' && "pb-12")}>
+            <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden")}>
                 {activeSubTab === 'work-items' ? (
                     <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : (
