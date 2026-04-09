@@ -114,7 +114,7 @@ describe('BottomNav', () => {
         const nav = screen.getByTestId('bottom-nav');
         expect(nav.tagName).toBe('NAV');
         expect(nav.className).toContain('fixed');
-        expect(nav.className).toContain('bottom-0');
+        expect(nav.className).toContain('top-10');
     });
 
     it('has z-[8000] class', () => {

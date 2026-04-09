@@ -73,11 +73,11 @@ describe('MobileTabBar: basic render', () => {
         expect(screen.queryByTestId('mobile-tab-more-btn')).toBeNull();
     });
 
-    it('nav has fixed bottom-0 classes', () => {
+    it('nav has fixed top-10 classes', () => {
         renderBar();
         const nav = screen.getByTestId('mobile-tab-bar');
         expect(nav.className).toContain('fixed');
-        expect(nav.className).toContain('bottom-0');
+        expect(nav.className).toContain('top-10');
     });
 
     it('nav has z-[8000] class', () => {

@@ -100,7 +100,7 @@ export function FollowUpInputArea({
     }, [followUpInput]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
-        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 pb-[calc(var(--bottom-nav-height,0px)+8px)] md:pb-3 space-y-2">
+        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 pb-3 space-y-2">
             {(sending || task?.status === 'running') && (
                 <div className="flex items-center gap-2 text-xs text-[#848484] dark:text-[#999]" data-testid="agent-responding-indicator">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />

@@ -150,8 +150,8 @@ describe('WikiList scrollability', () => {
 describe('BottomNav safe area insets', () => {
     const src = read('layout/BottomNav.tsx');
 
-    it('applies env(safe-area-inset-bottom) padding', () => {
-        expect(src).toContain('safe-area-inset-bottom');
+    it('is positioned below the TopBar using top-10', () => {
+        expect(src).toContain('top-10');
     });
 });
 
@@ -161,8 +161,8 @@ describe('BottomNav safe area insets', () => {
 describe('MobileTabBar safe area and touch targets', () => {
     const src = read('layout/MobileTabBar.tsx');
 
-    it('applies env(safe-area-inset-bottom) padding', () => {
-        expect(src).toContain('safe-area-inset-bottom');
+    it('is positioned below the TopBar using top-10', () => {
+        expect(src).toContain('top-10');
     });
 
     it('more-sheet items use min-h-[44px] for touch target compliance', () => {
