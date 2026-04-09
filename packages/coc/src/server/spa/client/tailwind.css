@@ -12,7 +12,7 @@
     }
     .mobile-fab {
         position: absolute;
-        bottom: 1rem;
+        bottom: calc(var(--bottom-nav-height, 48px) + 1rem);
         right: 1rem;
         z-index: 100;
         display: flex;

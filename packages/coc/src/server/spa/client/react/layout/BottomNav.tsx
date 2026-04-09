@@ -3,7 +3,7 @@
  * Renders only on viewports < 768px (mobile). Hidden on tablet/desktop.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { DashboardTab } from '../types/dashboard';
@@ -151,11 +151,30 @@ const NAV_ITEMS: NavItem[] = SHOW_WIKI_TAB
 export function BottomNav() {
     const { state, dispatch } = useApp();
     const { isMobile } = useBreakpoint();
+    const navRef = useRef<HTMLElement>(null);
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
         location.hash = '#' + tab;
     }, [dispatch]);
+
+    useLayoutEffect(() => {
+        if (!isMobile) {
+            document.documentElement.style.setProperty('--bottom-nav-height', '0px');
+            return;
+        }
+        const nav = navRef.current;
+        if (!nav) return;
+        const observer = new ResizeObserver(() => {
+            document.documentElement.style.setProperty('--bottom-nav-height', nav.offsetHeight + 'px');
+        });
+        observer.observe(nav);
+        document.documentElement.style.setProperty('--bottom-nav-height', nav.offsetHeight + 'px');
+        return () => {
+            observer.disconnect();
+            document.documentElement.style.setProperty('--bottom-nav-height', '0px');
+        };
+    }, [isMobile]);
 
     if (!isMobile) return null;
 
@@ -168,6 +187,7 @@ export function BottomNav() {
 
     return (
         <nav
+            ref={navRef}
             className="fixed bottom-0 left-0 right-0 z-[8000] h-12 flex items-center justify-around border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
             style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
             aria-label="Mobile navigation"
