@@ -152,7 +152,11 @@ const NAV_ITEMS: NavItem[] = SHOW_WIKI_TAB
 export function BottomNav() {
     const { state, dispatch } = useApp();
     const { isMobile } = useBreakpoint();
+    const { selectedRepoId } = state;
     const navRef = useRef<HTMLElement>(null);
+
+    // Nav is only visible on mobile when no repo is selected (MobileTabBar handles repo-level nav)
+    const isNavVisible = isMobile && !selectedRepoId;
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -160,7 +164,7 @@ export function BottomNav() {
     }, [dispatch]);
 
     useLayoutEffect(() => {
-        if (!isMobile) {
+        if (!isNavVisible) {
             document.documentElement.style.setProperty('--bottom-nav-height', '0px');
             return;
         }
@@ -175,11 +179,9 @@ export function BottomNav() {
             observer.disconnect();
             document.documentElement.style.setProperty('--bottom-nav-height', '0px');
         };
-    }, [isMobile]);
+    }, [isNavVisible]);
 
     if (!isMobile) return null;
-
-    const { selectedRepoId } = state;
 
     // When a repo is selected, MobileTabBar in RepoDetail handles bottom navigation
     if (selectedRepoId) {

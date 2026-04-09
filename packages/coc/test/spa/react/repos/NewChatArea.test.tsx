@@ -80,6 +80,24 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
     });
 
+    it('does not render back button when onBack is not provided', () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        expect(screen.queryByTestId('new-chat-back-btn')).toBeNull();
+    });
+
+    it('renders back button when onBack prop is provided', () => {
+        render(<NewChatArea workspaceId="ws-1" onBack={vi.fn()} />);
+        expect(screen.getByTestId('new-chat-back-btn')).toBeTruthy();
+        expect(screen.getByTestId('new-chat-back-btn').textContent).toContain('← Back');
+    });
+
+    it('clicking back button calls onBack', () => {
+        const onBack = vi.fn();
+        render(<NewChatArea workspaceId="ws-1" onBack={onBack} />);
+        fireEvent.click(screen.getByTestId('new-chat-back-btn'));
+        expect(onBack).toHaveBeenCalledOnce();
+    });
+
     it('send button is disabled when input is empty', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const btn = screen.getByTestId('new-chat-send-btn') as HTMLButtonElement;

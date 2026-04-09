@@ -147,6 +147,14 @@ describe('BottomNav', () => {
             expect(container.innerHTML).toBe('');
         });
 
+        it('resets --bottom-nav-height to 0px on mobile when repo is selected', () => {
+            viewportCleanup = mockViewport(375);
+            // Seed a non-zero value to simulate the variable having been set
+            document.documentElement.style.setProperty('--bottom-nav-height', '48px');
+            render(<BottomNav />);
+            expect(document.documentElement.style.getPropertyValue('--bottom-nav-height')).toBe('0px');
+        });
+
         it('is hidden on desktop even when repo is selected', () => {
             viewportCleanup = mockViewport(1024);
             const { container } = render(<BottomNav />);

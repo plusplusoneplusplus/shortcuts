@@ -14,7 +14,10 @@ vi.mock('../../../../src/server/spa/client/react/repos/ActivityChatDetail', () =
 
 vi.mock('../../../../src/server/spa/client/react/repos/NewChatArea', () => ({
     NewChatArea: (props: any) =>
-        React.createElement('div', { 'data-testid': 'new-chat-area' }, `ws=${props.workspaceId}`),
+        React.createElement('div', {
+            'data-testid': 'new-chat-area',
+            'data-has-back': String(!!props.onBack),
+        }, `ws=${props.workspaceId}`),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/context/PopOutContext', () => ({
@@ -33,6 +36,19 @@ describe('ActivityDetailPane', () => {
         const newChat = screen.getByTestId('new-chat-area');
         expect(newChat).toBeTruthy();
         expect(newChat.textContent).toContain('ws=ws-1');
+    });
+
+    it('forwards onBack prop to NewChatArea', () => {
+        const onBack = vi.fn();
+        render(<ActivityDetailPane selectedTaskId={null} selectedTask={null} workspaceId="ws-1" onBack={onBack} />);
+        const newChat = screen.getByTestId('new-chat-area');
+        expect(newChat.getAttribute('data-has-back')).toBe('true');
+    });
+
+    it('passes no onBack to NewChatArea when not provided', () => {
+        render(<ActivityDetailPane selectedTaskId={null} selectedTask={null} workspaceId="ws-1" />);
+        const newChat = screen.getByTestId('new-chat-area');
+        expect(newChat.getAttribute('data-has-back')).toBe('false');
     });
 
     it('renders ActivityChatDetail when a task is selected', () => {
