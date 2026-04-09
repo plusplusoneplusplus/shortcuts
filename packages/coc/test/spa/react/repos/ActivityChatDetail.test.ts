@@ -177,7 +177,7 @@ describe('ActivityChatDetail', () => {
         it('Shift+Tab handler runs after slash command menu check', () => {
             const onKeyDown = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
                 FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('onKeyDown={e =>'),
-                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('onPaste={onImagePaste}'),
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('onPaste={onAttachmentPaste}'),
             );
             const slashIdx = onKeyDown.indexOf('slashCommands.handleKeyDown(e)');
             const shiftTabIdx = onKeyDown.indexOf("e.key === 'Tab' && e.shiftKey");
@@ -245,25 +245,25 @@ describe('ActivityChatDetail', () => {
         });
     });
 
-    describe('image paste integration', () => {
-        it('imports useImagePaste hook', () => {
-            expect(source).toContain("import { useImagePaste } from '../hooks/useImagePaste'");
+    describe('file attachment integration', () => {
+        it('imports useFileAttachments hook', () => {
+            expect(source).toContain("import { useFileAttachments } from '../hooks/useFileAttachments'");
         });
 
-        it('imports ImagePreviews component', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("import { ImagePreviews } from '../shared/ImagePreviews'");
+        it('imports AttachmentPreviews component', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("import { AttachmentPreviews } from '../shared/AttachmentPreviews'");
         });
 
-        it('destructures useImagePaste result', () => {
-            expect(source).toContain('const { images, addFromPaste, removeImage, clearImages } = useImagePaste()');
+        it('destructures useFileAttachments result', () => {
+            expect(source).toContain('const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments()');
         });
 
         it('attaches onPaste handler to follow-up input', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('onPaste={onImagePaste}');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('onPaste={onAttachmentPaste}');
         });
 
-        it('renders ImagePreviews with images and onRemove', () => {
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<ImagePreviews images={images} onRemove={onImageRemove}');
+        it('renders AttachmentPreviews with attachments and onRemove', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<AttachmentPreviews attachments={attachments} onRemove={onAttachmentRemove}');
         });
 
         it('includes images in sendFollowUp POST body', () => {
@@ -769,7 +769,7 @@ describe('ActivityChatDetail', () => {
         it('drains in sendFollowUp finally block', () => {
             const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
                 USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
-                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 6000,
             );
             expect(sendBlock).toContain('flushQueueRef.current?.()');
         });
