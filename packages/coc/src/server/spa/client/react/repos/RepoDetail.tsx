@@ -73,6 +73,12 @@ function getTabSuffix(tab: RepoSubTab, state: AppContextState): string {
         }
         return '/git';
     }
+    if (tab === 'notes') {
+        if (state.selectedNotePath) {
+            return '/notes/' + state.selectedNotePath.split('/').map(encodeURIComponent).join('/');
+        }
+        return '/notes';
+    }
     return '/' + tab;
 }
 
@@ -527,7 +533,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     )}
                     {notesEnabled && (
                         <div style={{ display: activeSubTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                            <NotesView key={ws.id} workspaceId={ws.id} />
+                            <NotesView key={ws.id} workspaceId={ws.id} initialNotePath={state.selectedNotePath} />
                         </div>
                     )}
                     {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}

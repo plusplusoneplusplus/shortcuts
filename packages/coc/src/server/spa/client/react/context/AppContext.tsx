@@ -65,6 +65,7 @@ export interface AppContextState {
     selectedPrDetailTab: PrDetailTab | null;
     selectedWorkflowProcessId: string | null;
     selectedExplorerPath: string | null;
+    selectedNotePath: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
     activeMemorySubTab: MemorySubTab;
@@ -118,6 +119,7 @@ const initialState: AppContextState = {
     selectedPrDetailTab: null,
     selectedWorkflowProcessId: null,
     selectedExplorerPath: null,
+    selectedNotePath: null,
     conversationCache: {},
     wsStatus: 'closed',
     activeMemorySubTab: 'config',
@@ -186,6 +188,7 @@ export type AppAction =
     | { type: 'SET_REPO_WIKI_DEEP_LINK'; wikiId: string; tab?: WikiProjectTab | null; adminTab?: WikiAdminTab | null; componentId?: string | null }
     | { type: 'CLEAR_REPO_WIKI_INITIAL' }
     | { type: 'SET_EXPLORER_PATH'; path: string | null }
+    | { type: 'SET_SELECTED_NOTE_PATH'; notePath: string | null }
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
     | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
     | { type: 'SET_ADMIN_SUB_TAB'; tab: AdminSubTab }
@@ -411,6 +414,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, repoWikiInitialTab: null, repoWikiInitialAdminTab: null, repoWikiInitialComponentId: null };
         case 'SET_EXPLORER_PATH':
             return { ...state, selectedExplorerPath: action.path };
+        case 'SET_SELECTED_NOTE_PATH':
+            return { ...state, selectedNotePath: action.notePath };
         case 'SET_MEMORY_SUB_TAB':
             return { ...state, activeMemorySubTab: action.tab };
         case 'SET_SKILLS_SUB_TAB':

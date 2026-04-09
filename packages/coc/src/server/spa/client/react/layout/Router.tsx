@@ -173,6 +173,29 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
+/**
+ * Parse a note deep-link: `#repos/{wsId}/notes/{path/segments}`.
+ * Each path segment is decoded individually so embedded `/` delimiters
+ * within segment names (encoded as `%2F`) are preserved correctly.
+ */
+export function parseNoteDeepLink(hash: string): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'notes' && parts[3]) {
+        return parts.slice(3).map(decodeURIComponent).join('/');
+    }
+    return null;
+}
+
+/**
+ * Build a hash string for a note deep-link.
+ * Each segment of the note path is URI-encoded individually.
+ */
+export function buildNoteHash(wsId: string, notePath: string): string {
+    const encodedPath = notePath.split('/').map(encodeURIComponent).join('/');
+    return '#repos/' + encodeURIComponent(wsId) + '/notes/' + encodedPath;
+}
+
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'templates', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests', 'terminal', 'notes']);
 
 export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions', 'memory', 'tasks']);
@@ -382,6 +405,12 @@ export function Router() {
                         dispatch({ type: 'SET_EXPLORER_PATH', path: decodeURIComponent(parts.slice(3).join('/')) });
                     } else if (parts[2] === 'explorer') {
                         dispatch({ type: 'SET_EXPLORER_PATH', path: null });
+                    }
+                    // Notes deep-link: #repos/{id}/notes/{path/segments}
+                    if (parts[2] === 'notes' && parts[3]) {
+                        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: parts.slice(3).map(decodeURIComponent).join('/') });
+                    } else if (parts[2] === 'notes') {
+                        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: null });
                     }
                     // Pull-requests deep-link: #repos/{id}/pull-requests and #repos/{id}/pull-requests/{prNumber}/{subTab}
                     if (parts[2] === 'pull-requests' && parts[3]) {

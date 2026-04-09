@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { NoteTreeNode } from '../notesApi';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
@@ -9,16 +9,57 @@ import { NotesDialogs } from './NotesDialogs';
 import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu, type NoteDialogAction } from './useNotesContextMenu';
 
+/** Compute ancestor folder paths that need to be expanded for a given note path. */
+function getAncestorPaths(notePath: string): string[] {
+    const segments = notePath.split('/');
+    const ancestors: string[] = [];
+    for (let i = 1; i < segments.length; i++) {
+        ancestors.push(segments.slice(0, i).join('/'));
+    }
+    return ancestors;
+}
+
 export interface NotesSidebarProps {
     workspaceId: string;
     selectedPath: string | null;
     onSelectPage: (path: string) => void;
+    onNoteRenamed?: (oldPath: string, newPath: string) => void;
+    onNoteCreated?: (path: string) => void;
+    onNoteDeleted?: (path: string) => void;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted }: NotesSidebarProps) {
     const { tree, loading, error, createNode, renameNode, deleteNode } = useNotesTree(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+    const deepLinkAppliedRef = useRef<string | null>(null);
+
+    // Auto-expand tree when selectedPath changes (deep-link or selection)
+    useEffect(() => {
+        if (!selectedPath || !tree || tree.length === 0) return;
+        // Only auto-expand once per unique selectedPath to avoid overriding user collapses
+        if (deepLinkAppliedRef.current === selectedPath) return;
+        deepLinkAppliedRef.current = selectedPath;
+        const ancestors = getAncestorPaths(selectedPath);
+        if (ancestors.length > 0) {
+            setExpandedPaths(prev => {
+                const next = new Set(prev);
+                for (const a of ancestors) next.add(a);
+                return next;
+            });
+        }
+    }, [selectedPath, tree]);
+
+    // Scroll the selected tree item into view after tree renders
+    useEffect(() => {
+        if (!selectedPath || loading) return;
+        // Defer to allow DOM update after expansion
+        const timer = setTimeout(() => {
+            const el = document.querySelector(`[data-node-path="${CSS.escape(selectedPath)}"]`);
+            el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }, 50);
+        return () => clearTimeout(timer);
+    }, [selectedPath, loading]);
 
     const handleToggleExpand = useCallback((path: string) => {
         setExpandedPaths(prev => {
@@ -36,6 +77,24 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage }: NotesS
     const handleNewNotebook = useCallback(() => {
         openDialog('create-notebook', { name: '', path: '', type: 'notebook' });
     }, [openDialog]);
+
+    const handleCreateNode = useCallback(async (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => {
+        await createNode(parentPath, name, type);
+        if (type === 'page') {
+            const newPath = parentPath ? `${parentPath}/${name}.md` : `${name}.md`;
+            onNoteCreated?.(newPath);
+        }
+    }, [createNode, onNoteCreated]);
+
+    const handleRenameNode = useCallback(async (oldPath: string, newPath: string) => {
+        await renameNode(oldPath, newPath);
+        onNoteRenamed?.(oldPath, newPath);
+    }, [renameNode, onNoteRenamed]);
+
+    const handleDeleteNode = useCallback(async (path: string) => {
+        await deleteNode(path);
+        onNoteDeleted?.(path);
+    }, [deleteNode, onNoteDeleted]);
 
     const buildContextMenuItems = (): ContextMenuItem[] => {
         if (!ctxMenu) return [];
@@ -119,9 +178,9 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage }: NotesS
             <NotesDialogs
                 dialog={dialog}
                 onClose={closeDialog}
-                onCreateNode={createNode}
-                onRenameNode={renameNode}
-                onDeleteNode={deleteNode}
+                onCreateNode={handleCreateNode}
+                onRenameNode={handleRenameNode}
+                onDeleteNode={handleDeleteNode}
                 setSubmitting={setSubmitting}
             />
         </div>
