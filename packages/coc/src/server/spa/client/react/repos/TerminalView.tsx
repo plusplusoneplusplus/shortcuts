@@ -37,15 +37,14 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
     const closeTerminal = useCallback((id: string) => {
         setTerminals(prev => {
             const next = prev.filter(t => t.id !== id);
-            if (id === activeId && next.length > 0) {
-                setActiveId(next[next.length - 1].id);
-            }
             if (next.length === 0) {
-                setTimeout(() => createTerminal(), 0);
+                setActiveId('');
+            } else if (id === activeId) {
+                setActiveId(next[next.length - 1].id);
             }
             return next;
         });
-    }, [activeId, createTerminal]);
+    }, [activeId]);
 
     const handleExit = useCallback((id: string, code: number) => {
         setTerminals(prev =>
@@ -80,13 +79,6 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
             editInputRef.current.select();
         }
     }, [editingId]);
-
-    // Auto-create first terminal on mount
-    useEffect(() => {
-        if (terminals.length === 0) {
-            createTerminal();
-        }
-    }, []);
 
     return (
         <div className="flex flex-col h-full" data-testid="terminal-view">
@@ -154,7 +146,13 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
 
             {/* Terminal panels — all rendered, visibility toggled */}
             <div className="flex-1 min-h-0 relative">
-                {terminals.map(tab => (
+                {terminals.length === 0 ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500" data-testid="terminal-empty-state">
+                        <span className="text-lg mb-1">⬛</span>
+                        <span className="text-sm font-medium">No terminals open</span>
+                        <span className="text-xs mt-1">Click + to create a terminal</span>
+                    </div>
+                ) : terminals.map(tab => (
                     <div
                         key={tab.id}
                         style={{ display: tab.id === activeId ? undefined : 'none' }}

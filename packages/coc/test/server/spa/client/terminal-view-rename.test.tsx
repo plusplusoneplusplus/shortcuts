@@ -25,12 +25,19 @@ describe('TerminalView tab rename', () => {
         uuidCounter = 0;
     });
 
+    /** Create a terminal by clicking the + button so tests have a tab to work with */
+    function renderAndCreate() {
+        const result = render(<TerminalView workspaceId="ws1" />);
+        fireEvent.click(screen.getByTestId('terminal-new-btn'));
+        return result;
+    }
+
     function getTitleSpan() {
         return screen.getByTestId('terminal-tab-title-test-uuid-1');
     }
 
     it('enters edit mode on double-click', async () => {
-        render(<TerminalView workspaceId="ws1" />);
+        renderAndCreate();
         const title = getTitleSpan();
         expect(title.textContent).toBe('Terminal 1');
 
@@ -42,7 +49,7 @@ describe('TerminalView tab rename', () => {
     });
 
     it('commits rename on Enter', async () => {
-        render(<TerminalView workspaceId="ws1" />);
+        renderAndCreate();
         fireEvent.doubleClick(getTitleSpan());
 
         const input = screen.getByTestId('terminal-tab-rename-input-test-uuid-1');
@@ -54,7 +61,7 @@ describe('TerminalView tab rename', () => {
     });
 
     it('cancels rename on Escape', async () => {
-        render(<TerminalView workspaceId="ws1" />);
+        renderAndCreate();
         fireEvent.doubleClick(getTitleSpan());
 
         const input = screen.getByTestId('terminal-tab-rename-input-test-uuid-1');
@@ -66,7 +73,7 @@ describe('TerminalView tab rename', () => {
     });
 
     it('commits rename on blur', async () => {
-        render(<TerminalView workspaceId="ws1" />);
+        renderAndCreate();
         fireEvent.doubleClick(getTitleSpan());
 
         const input = screen.getByTestId('terminal-tab-rename-input-test-uuid-1');
@@ -78,7 +85,7 @@ describe('TerminalView tab rename', () => {
     });
 
     it('reverts to previous title when input is empty', async () => {
-        render(<TerminalView workspaceId="ws1" />);
+        renderAndCreate();
         fireEvent.doubleClick(getTitleSpan());
 
         const input = screen.getByTestId('terminal-tab-rename-input-test-uuid-1');
@@ -90,7 +97,7 @@ describe('TerminalView tab rename', () => {
     });
 
     it('reverts when input is only whitespace', async () => {
-        render(<TerminalView workspaceId="ws1" />);
+        renderAndCreate();
         fireEvent.doubleClick(getTitleSpan());
 
         const input = screen.getByTestId('terminal-tab-rename-input-test-uuid-1');
@@ -102,7 +109,7 @@ describe('TerminalView tab rename', () => {
     });
 
     it('trims whitespace from the new name', async () => {
-        render(<TerminalView workspaceId="ws1" />);
+        renderAndCreate();
         fireEvent.doubleClick(getTitleSpan());
 
         const input = screen.getByTestId('terminal-tab-rename-input-test-uuid-1');

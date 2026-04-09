@@ -45,9 +45,9 @@ describe('TerminalView', () => {
             expect(source).toContain('setActiveId');
         });
 
-        it('auto-creates first terminal on mount', () => {
-            expect(source).toContain('terminals.length === 0');
-            expect(source).toContain('createTerminal');
+        it('does not auto-create a terminal on mount', () => {
+            // No useEffect auto-creates terminals; the component starts with an empty list
+            expect(source).not.toMatch(/useEffect\([^)]*terminals\.length === 0/s);
         });
     });
 
@@ -68,7 +68,11 @@ describe('TerminalView', () => {
         it('closeTerminal switches active tab when closing active', () => {
             // When closing the active tab, it reassigns activeId to the last remaining tab
             expect(source).toContain('id === activeId');
-            expect(source).toContain('next.length > 0');
+            expect(source).toContain('next.length === 0');
+        });
+
+        it('closeTerminal clears activeId when last terminal is closed', () => {
+            expect(source).toContain("setActiveId('')");
         });
     });
 
@@ -96,6 +100,12 @@ describe('TerminalView', () => {
 
         it('has data-testid terminal-view', () => {
             expect(source).toContain('data-testid="terminal-view"');
+        });
+
+        it('renders empty state when no terminals exist', () => {
+            expect(source).toContain('data-testid="terminal-empty-state"');
+            expect(source).toContain('No terminals open');
+            expect(source).toContain('Click + to create a terminal');
         });
     });
 
