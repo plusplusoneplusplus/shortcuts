@@ -127,7 +127,7 @@ describe('tailwind.css — mobile-fab utility class (source)', () => {
 
     it('sets bottom and right offsets', () => {
         const fabSection = src.slice(src.indexOf('.mobile-fab'), src.indexOf('.mobile-fab:hover'));
-        expect(fabSection).toContain('bottom: 1rem');
+        expect(fabSection).toContain('--bottom-nav-height');
         expect(fabSection).toContain('right: 1rem');
     });
 

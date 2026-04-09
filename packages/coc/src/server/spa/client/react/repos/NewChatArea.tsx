@@ -89,7 +89,7 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
             </div>
 
             {/* Input area */}
-            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-3 space-y-2">
+            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 pb-[calc(var(--bottom-nav-height,0px)+8px)] md:pb-3 space-y-2">
                 {error && <div className="text-xs text-[#f14c4c]" data-testid="new-chat-error">{error}</div>}
                 <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
                     <div className="flex-1 min-w-0">

@@ -33,6 +33,15 @@ if (typeof window !== 'undefined') {
             writable: true,
         });
     }
+    // jsdom does not implement ResizeObserver — provide a no-op stub so components
+    // that use it (e.g. BottomNav) don't throw in tests.
+    if (typeof (globalThis as any).ResizeObserver === 'undefined') {
+        (globalThis as any).ResizeObserver = class ResizeObserver {
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+        };
+    }
 }
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
