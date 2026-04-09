@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../shared';
+import { SkeletonList } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
@@ -253,7 +254,9 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
-                <div className="p-4 text-sm text-[#848484]">Loading queue...</div>
+                <div className="flex flex-col h-full overflow-hidden">
+                    <SkeletonList count={5} className="pt-4" />
+                </div>
             </ChatPreferencesProvider>
         );
     }

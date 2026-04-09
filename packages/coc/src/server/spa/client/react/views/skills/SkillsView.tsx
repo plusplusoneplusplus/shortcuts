@@ -2,10 +2,13 @@
  * SkillsView — top-level route component for #skills.
  *
  * Renders sub-tabs: Installed | Gallery | Config
+ * Mobile: horizontal scrollable top tab strip.
+ * Desktop: vertical left sidebar.
  */
 
 import { useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { cn } from '../../shared/cn';
 import type { SkillsSubTab } from '../../types/dashboard';
 import { SkillsInstalledPanel } from './SkillsInstalledPanel';
@@ -20,6 +23,7 @@ const SUB_TABS: { id: SkillsSubTab; label: string }[] = [
 
 export function SkillsView() {
     const { state, dispatch } = useApp();
+    const { isMobile } = useBreakpoint();
     const activeSubTab = state.activeSkillsSubTab;
 
     const switchSubTab = useCallback((tab: SkillsSubTab) => {
@@ -27,9 +31,49 @@ export function SkillsView() {
         location.hash = `#skills/${tab}`;
     }, [dispatch]);
 
+    const content = (
+        <>
+            {activeSubTab === 'installed' && <SkillsInstalledPanel />}
+            {activeSubTab === 'gallery' && <SkillsBundledPanel />}
+            {activeSubTab === 'config' && <SkillsConfigPanel />}
+        </>
+    );
+
+    if (isMobile) {
+        return (
+            <div id="view-skills" className="flex flex-col h-full overflow-hidden">
+                {/* Mobile: horizontal scrollable tab strip */}
+                <div
+                    className="flex overflow-x-auto scrollbar-hide flex-shrink-0 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                    data-testid="skills-mobile-tabs"
+                >
+                    {SUB_TABS.map(({ id, label }) => (
+                        <button
+                            key={id}
+                            className={cn(
+                                'flex-shrink-0 min-h-[44px] px-5 text-sm transition-colors border-b-2 whitespace-nowrap',
+                                activeSubTab === id
+                                    ? 'border-[#0078d4] text-[#0078d4] font-medium'
+                                    : 'border-transparent text-[#616161] dark:text-[#999999]',
+                            )}
+                            data-subtab={id}
+                            onClick={() => switchSubTab(id)}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                {/* Mobile content area */}
+                <div className="flex-1 min-w-0 overflow-auto">
+                    {content}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div id="view-skills" className="flex h-full overflow-hidden">
-            {/* Left tab sidebar */}
+            {/* Desktop: vertical left sidebar */}
             <div className="flex flex-col flex-shrink-0 w-36 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] py-2">
                 {SUB_TABS.map(({ id, label }) => (
                     <button
@@ -48,11 +92,9 @@ export function SkillsView() {
                 ))}
             </div>
 
-            {/* Right content area */}
+            {/* Desktop content area */}
             <div className="flex-1 min-w-0 overflow-auto">
-                {activeSubTab === 'installed' && <SkillsInstalledPanel />}
-                {activeSubTab === 'gallery' && <SkillsBundledPanel />}
-                {activeSubTab === 'config' && <SkillsConfigPanel />}
+                {content}
             </div>
         </div>
     );

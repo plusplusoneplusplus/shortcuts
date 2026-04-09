@@ -601,7 +601,7 @@ describe('RepoActivityTab: data fetching', () => {
     });
 
     it('has loading state', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain('Loading queue...');
+        expect(ACTIVITY_TAB_SOURCE).toContain('SkeletonList');
     });
 
     it('has live timer for running tasks', () => {
