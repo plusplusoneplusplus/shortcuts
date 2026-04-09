@@ -372,6 +372,9 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'INVALIDATE_CONVERSATION': {
             const cache = { ...state.conversationCache };
             delete cache[action.processId];
+            if (action.processId.startsWith('queue_')) {
+                delete cache[action.processId.slice('queue_'.length)];
+            }
             return { ...state, conversationCache: cache };
         }
         case 'SET_SELECTED_WORKFLOW':

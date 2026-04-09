@@ -240,6 +240,39 @@ describe('AppContext reducer', () => {
             const result = appReducer(state, { type: 'INVALIDATE_CONVERSATION', processId: 'p1' });
             expect(result.conversationCache['p1']).toBeUndefined();
         });
+
+        it('also removes the unprefixed entry when processId has queue_ prefix', () => {
+            const state = makeState({
+                conversationCache: { abc123: { turns: [{ role: 'user' as const, content: 'hi', timeline: [] }], cachedAt: Date.now() } },
+            });
+            const result = appReducer(state, { type: 'INVALIDATE_CONVERSATION', processId: 'queue_abc123' });
+            expect(result.conversationCache['abc123']).toBeUndefined();
+            expect(result.conversationCache['queue_abc123']).toBeUndefined();
+        });
+
+        it('removes both prefixed and unprefixed entries when both exist', () => {
+            const state = makeState({
+                conversationCache: {
+                    abc123: { turns: [], cachedAt: Date.now() },
+                    queue_abc123: { turns: [], cachedAt: Date.now() },
+                },
+            });
+            const result = appReducer(state, { type: 'INVALIDATE_CONVERSATION', processId: 'queue_abc123' });
+            expect(result.conversationCache['abc123']).toBeUndefined();
+            expect(result.conversationCache['queue_abc123']).toBeUndefined();
+        });
+
+        it('does not strip queue_ prefix when processId lacks it', () => {
+            const state = makeState({
+                conversationCache: {
+                    p1: { turns: [], cachedAt: Date.now() },
+                    queue_p1: { turns: [], cachedAt: Date.now() },
+                },
+            });
+            const result = appReducer(state, { type: 'INVALIDATE_CONVERSATION', processId: 'p1' });
+            expect(result.conversationCache['p1']).toBeUndefined();
+            expect(result.conversationCache['queue_p1']).toBeDefined();
+        });
     });
 
     // ── Repo selection and sub-tabs ────────────────────────────────
