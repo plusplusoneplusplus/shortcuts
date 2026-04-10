@@ -135,6 +135,111 @@ describe('SessionManager', () => {
         expect(manager.count()).toBe(0);
     });
 
+    it('abortAll calls destroy on every session even when one throws', async () => {
+        const good = makeSession('good');
+        const bad = makeSession('bad', new Error('destroy failed'));
+        manager.track(bad);
+        manager.track(good);
+        await manager.abortAll();
+        expect(good.destroy).toHaveBeenCalledOnce();
+        expect(bad.destroy).toHaveBeenCalledOnce();
+    });
+
+    it('abortAll initiates all destroys concurrently via allSettled', async () => {
+        const order: string[] = [];
+        const slow = {
+            sessionId: 'slow',
+            destroy: vi.fn(async () => {
+                order.push('slow-start');
+                await new Promise(r => setTimeout(r, 20));
+                order.push('slow-end');
+            }),
+        };
+        const fast = {
+            sessionId: 'fast',
+            destroy: vi.fn(async () => {
+                order.push('fast-start');
+                order.push('fast-end');
+            }),
+        };
+        manager.track(slow);
+        manager.track(fast);
+        await manager.abortAll();
+        // Both should have started before slow finished
+        const slowEndIdx = order.indexOf('slow-end');
+        const fastStartIdx = order.indexOf('fast-start');
+        expect(fastStartIdx).toBeLessThan(slowEndIdx);
+    });
+
+    // ── count accuracy across lifecycle ─────────────────────────────────────
+
+    it('count reflects track, abort, untrack sequence correctly', async () => {
+        expect(manager.count()).toBe(0);
+        manager.track(makeSession('a'));
+        expect(manager.count()).toBe(1);
+        manager.track(makeSession('b'));
+        expect(manager.count()).toBe(2);
+        await manager.abort('a');
+        expect(manager.count()).toBe(1);
+        manager.untrack('b');
+        expect(manager.count()).toBe(0);
+        manager.track(makeSession('c'));
+        expect(manager.count()).toBe(1);
+    });
+
+    // ── double abort ─────────────────────────────────────────────────────────
+
+    it('aborting the same session twice returns false on the second call', async () => {
+        const s = makeSession('once');
+        manager.track(s);
+        expect(await manager.abort('once')).toBe(true);
+        expect(await manager.abort('once')).toBe(false);
+        expect(s.destroy).toHaveBeenCalledOnce();
+    });
+
+    // ── untrack after abort ──────────────────────────────────────────────────
+
+    it('untrack after abort is a no-op (no throw)', async () => {
+        const s = makeSession('gone');
+        manager.track(s);
+        await manager.abort('gone');
+        expect(() => manager.untrack('gone')).not.toThrow();
+        expect(manager.count()).toBe(0);
+    });
+
+    // ── re-track after abort ─────────────────────────────────────────────────
+
+    it('a session ID can be re-tracked after being aborted', async () => {
+        const s1 = makeSession('reuse');
+        manager.track(s1);
+        await manager.abort('reuse');
+        expect(manager.has('reuse')).toBe(false);
+
+        const s2 = makeSession('reuse');
+        manager.track(s2);
+        expect(manager.has('reuse')).toBe(true);
+        expect(manager.count()).toBe(1);
+    });
+
+    // ── stale session (destroy already resolved) ─────────────────────────────
+
+    it('abortAll handles a session whose destroy was already resolved gracefully', async () => {
+        // Simulate a "stale" session whose destroy resolves immediately
+        const stale = makeSession('stale');
+        const fresh = makeSession('fresh');
+        manager.track(stale);
+        manager.track(fresh);
+
+        // Manually call destroy to simulate staleness (session already done)
+        await stale.destroy();
+
+        await expect(manager.abortAll()).resolves.not.toThrow();
+        // destroy called twice on stale (once manually, once by abortAll)
+        expect(stale.destroy).toHaveBeenCalledTimes(2);
+        expect(fresh.destroy).toHaveBeenCalledOnce();
+        expect(manager.count()).toBe(0);
+    });
+
     // ── getSession ─────────────────────────────────────────────────────────
 
     it('getSession returns undefined for unknown ID', () => {
