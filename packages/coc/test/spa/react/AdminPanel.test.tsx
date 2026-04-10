@@ -121,6 +121,12 @@ describe('AdminPanel', () => {
                     json: () => Promise.resolve({ token: 'test-token-123' }),
                 });
             }
+            if (url.includes('/admin/storage/status')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ backend: 'file', stats: { processes: 0, workspaces: 0 } }),
+                });
+            }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
 
@@ -151,6 +157,12 @@ describe('AdminPanel', () => {
                 return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({ token: 'abc' }),
+                });
+            }
+            if (url.includes('/admin/storage/status')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ backend: 'file', stats: { processes: 0, workspaces: 0 } }),
                 });
             }
             if (options?.method === 'DELETE') {

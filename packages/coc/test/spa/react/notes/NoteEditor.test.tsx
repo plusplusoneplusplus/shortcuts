@@ -10,6 +10,9 @@ vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
     notesApi: {
         getContent: (...args: unknown[]) => mockGetContent(...args),
         saveContent: (...args: unknown[]) => mockSaveContent(...args),
+        getComments: vi.fn(() => Promise.resolve({ noteId: '', threads: {} })),
+        updateThread: vi.fn(() => Promise.resolve()),
+        uploadImage: vi.fn(() => Promise.resolve({ path: 'img/test.png' })),
     },
 }));
 

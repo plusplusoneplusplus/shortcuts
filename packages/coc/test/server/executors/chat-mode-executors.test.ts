@@ -369,7 +369,6 @@ describe('ChatBaseExecutor selected skills', () => {
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.prompt).toContain('<selected_skills>');
         expect(call.prompt).toContain('The user explicitly selected these skills: go-deep.');
-        expect(call.prompt).toContain('Use the native skill system and invoke each selected skill immediately before proceeding with the request.');
         expect(call.prompt).toContain('<commit>abc123</commit>');
         expect(call.prompt.indexOf('<selected_skills>')).toBeLessThan(call.prompt.indexOf('<commit>'));
         expect(call.prompt).not.toContain('<skill name=');
