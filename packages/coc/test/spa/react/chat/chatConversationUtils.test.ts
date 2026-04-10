@@ -108,6 +108,37 @@ describe('getConversationTurns', () => {
         });
     });
 
+    describe('turnIndex on synthetic/fallback turns', () => {
+        it('assigns turnIndex 0 to synthetic user turn from fullPrompt', () => {
+            const result = getConversationTurns({ process: { fullPrompt: 'q' } });
+            expect(result[0].turnIndex).toBe(0);
+        });
+
+        it('assigns turnIndex 1 to synthetic assistant turn when user turn exists', () => {
+            const result = getConversationTurns({ process: { fullPrompt: 'q', result: 'a' } });
+            expect(result[0].turnIndex).toBe(0);
+            expect(result[1].turnIndex).toBe(1);
+        });
+
+        it('assigns turnIndex 0 to synthetic assistant turn when no user content', () => {
+            const result = getConversationTurns({ process: { result: 'a' } });
+            expect(result[0].turnIndex).toBe(0);
+        });
+
+        it('assigns turnIndex 0 to task payload fallback turn', () => {
+            const result = getConversationTurns({}, { payload: { prompt: 'task' } });
+            expect(result[0].turnIndex).toBe(0);
+        });
+
+        it('all synthetic turns have turnIndex defined', () => {
+            const result = getConversationTurns({ process: { fullPrompt: 'q', result: 'a' } });
+            for (const turn of result) {
+                expect(turn.turnIndex).toBeDefined();
+                expect(typeof turn.turnIndex).toBe('number');
+            }
+        });
+    });
+
     describe('null/undefined data', () => {
         it('returns empty array for null data', () => {
             expect(getConversationTurns(null)).toEqual([]);

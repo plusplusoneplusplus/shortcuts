@@ -327,7 +327,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 if (!loadedTask?.processId && loadedTask?.status === 'queued') {
                     const prompt = loadedTask?.payload?.prompt ?? '';
                     if (prompt) {
-                        setTurnsAndRef([{ role: 'user', content: prompt, timeline: [] }]);
+                        setTurnsAndRef([{ role: 'user', content: prompt, turnIndex: 0, timeline: [] }]);
                     }
                     return;
                 }

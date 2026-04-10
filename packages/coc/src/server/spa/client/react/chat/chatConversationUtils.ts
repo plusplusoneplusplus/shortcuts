@@ -25,15 +25,15 @@ export function getConversationTurns(data: any, task?: any): ClientConversationT
         const synthetic: ClientConversationTurn[] = [];
         const userContent = process.fullPrompt || process.promptPreview;
         if (userContent) {
-            synthetic.push({ role: 'user', content: userContent, timestamp: process.startTime || undefined, timeline: [] });
+            synthetic.push({ role: 'user', content: userContent, timestamp: process.startTime || undefined, turnIndex: 0, timeline: [] });
         }
         if (process.result) {
-            synthetic.push({ role: 'assistant', content: process.result, timestamp: process.endTime || undefined, timeline: [] });
+            synthetic.push({ role: 'assistant', content: process.result, timestamp: process.endTime || undefined, turnIndex: userContent ? 1 : 0, timeline: [] });
         }
         return synthetic;
     }
     if (task?.payload?.prompt) {
-        return [{ role: 'user', content: task.payload.prompt, timeline: [] }];
+        return [{ role: 'user', content: task.payload.prompt, turnIndex: 0, timeline: [] }];
     }
     return [];
 }
