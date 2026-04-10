@@ -11,7 +11,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
-import Image from '@tiptap/extension-image';
+import { ResizableImage } from './extensions/resizableImage';
 import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
 import { notesApi } from '../notesApi';
 import type { CommentThread } from '../notesApi';
@@ -81,7 +81,7 @@ export function NoteEditor({
             TableCell,
             TableHeader,
             Highlight.configure({ multicolor: true }),
-            Image.configure({ inline: false, allowBase64: false }),
+            ResizableImage.configure({ inline: false, allowBase64: false }),
             ...(commentsEnabled
                 ? [
                     CommentExtension.configure({

@@ -18,6 +18,8 @@ vi.mock(
     () => ({
         markdownToHtml: (md: string) => `<p>${md}</p>`,
         htmlToMarkdown: (html: string) => html.replace(/<\/?[^>]+>/g, ''),
+        rewriteImageSrcToApi: (html: string) => html,
+        rewriteImageSrcToRelative: (md: string) => md,
     }),
 );
 

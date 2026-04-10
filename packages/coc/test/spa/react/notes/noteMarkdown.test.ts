@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { markdownToHtml, htmlToMarkdown } from '../../../../src/server/spa/client/react/repos/notes/noteMarkdown';
+import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToApi, rewriteImageSrcToRelative } from '../../../../src/server/spa/client/react/repos/notes/noteMarkdown';
 
 /** Normalize whitespace for comparison: trim + collapse internal whitespace runs. */
 function norm(s: string): string {
@@ -430,6 +430,100 @@ describe('noteMarkdown', () => {
             expect(rt).toContain('| Col A | Col B |');
             expect(rt).toContain('| x | y |');
             expect(rt).toContain('Outro paragraph');
+        });
+    });
+
+    // ── Image resize serialization ──────────────────────────────────────
+
+    describe('image resize serialization', () => {
+        it('htmlToMarkdown — img with width attribute serializes as HTML <img> tag', () => {
+            const html = '<img src=".attachments/abc.png" alt="screenshot" width="450">';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<img src=".attachments/abc.png"');
+            expect(md).toContain('width="450"');
+            expect(md).not.toContain('![');
+        });
+
+        it('htmlToMarkdown — img without width attribute serializes as standard markdown', () => {
+            const html = '<img src=".attachments/abc.png" alt="screenshot">';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('![screenshot](.attachments/abc.png)');
+            expect(md).not.toContain('<img');
+        });
+
+        it('markdownToHtml — inline HTML <img> with width is preserved', () => {
+            const md = '<img src=".attachments/abc.png" alt="screenshot" width="450" />';
+            const html = markdownToHtml(md);
+            expect(html).toContain('src=".attachments/abc.png"');
+            expect(html).toContain('width="450"');
+        });
+
+        it('rewriteImageSrcToRelative — rewrites standard markdown image URLs', () => {
+            const md = '![alt](/api/workspaces/ws1/notes/image?path=.attachments%2Fimg.png)';
+            const result = rewriteImageSrcToRelative(md);
+            expect(result).toBe('![alt](.attachments/img.png)');
+        });
+
+        it('rewriteImageSrcToRelative — rewrites HTML <img> tags with API URLs', () => {
+            const md = '<img src="/api/workspaces/ws1/notes/image?path=.attachments%2Fimg.png" alt="shot" width="300" />';
+            const result = rewriteImageSrcToRelative(md);
+            expect(result).toContain('src=".attachments/img.png"');
+            expect(result).toContain('width="300"');
+            expect(result).not.toContain('/api/workspaces');
+        });
+
+        it('rewriteImageSrcToApi — rewrites relative src in HTML <img> tags', () => {
+            const html = '<img src=".attachments/abc.png" alt="x" width="200">';
+            const result = rewriteImageSrcToApi(html, 'ws1');
+            expect(result).toContain('src="/api/workspaces/ws1/notes/image?path=');
+            expect(result).toContain('width="200"');
+        });
+
+        it('round-trip — image with width survives markdown → html → markdown', () => {
+            const md = '<img src=".attachments/abc.png" alt="screenshot" width="450" />\n';
+            const html = markdownToHtml(md);
+            expect(html).toContain('width="450"');
+            const rt = htmlToMarkdown(html);
+            expect(rt).toContain('width="450"');
+            expect(rt).toContain('src=".attachments/abc.png"');
+        });
+
+        it('round-trip — image without width uses standard markdown syntax', () => {
+            const md = '![screenshot](.attachments/abc.png)\n';
+            const html = markdownToHtml(md);
+            const rt = htmlToMarkdown(html);
+            expect(rt).toContain('![screenshot](.attachments/abc.png)');
+            expect(rt).not.toContain('<img');
+        });
+
+        it('round-trip — mixed content with resized and normal images', () => {
+            const md = [
+                '# Title',
+                '',
+                '![normal](.attachments/a.png)',
+                '',
+                '<img src=".attachments/b.png" alt="resized" width="300" />',
+                '',
+                'Some text.',
+                '',
+            ].join('\n');
+            const html = markdownToHtml(md);
+            const rt = htmlToMarkdown(html);
+            expect(rt).toContain('![normal](.attachments/a.png)');
+            expect(rt).toContain('width="300"');
+            expect(rt).toContain('# Title');
+            expect(rt).toContain('Some text.');
+        });
+
+        it('rewriteImageSrcToRelative — handles both markdown and HTML images in same content', () => {
+            const md = [
+                '![alt1](/api/workspaces/ws1/notes/image?path=.attachments%2Fa.png)',
+                '<img src="/api/workspaces/ws1/notes/image?path=.attachments%2Fb.png" alt="alt2" width="250" />',
+            ].join('\n');
+            const result = rewriteImageSrcToRelative(md);
+            expect(result).toContain('![alt1](.attachments/a.png)');
+            expect(result).toContain('src=".attachments/b.png"');
+            expect(result).toContain('width="250"');
         });
     });
 });

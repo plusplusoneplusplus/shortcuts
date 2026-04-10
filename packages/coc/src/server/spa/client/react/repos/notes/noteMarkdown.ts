@@ -65,6 +65,21 @@ turndown.addRule('highlight', {
     },
 });
 
+// Images with width: preserve as HTML <img> tag so dimensions round-trip
+turndown.addRule('resizableImage', {
+    filter(node) {
+        return node.nodeName === 'IMG' && node.hasAttribute('width');
+    },
+    replacement(_content, node) {
+        const el = node as HTMLElement;
+        const src = el.getAttribute('src') ?? '';
+        const alt = el.getAttribute('alt') ?? '';
+        const width = el.getAttribute('width') ?? '';
+        const altAttr = alt ? ` alt="${alt}"` : '';
+        return `<img src="${src}"${altAttr} width="${width}" />`;
+    },
+});
+
 // Comment spans: strip wrapper, keep inner text
 turndown.addRule('commentSpan', {
     filter(node) {
@@ -292,12 +307,21 @@ export function rewriteImageSrcToApi(html: string, workspaceId: string): string 
  */
 export function rewriteImageSrcToRelative(markdown: string): string {
     if (!markdown) return markdown;
-    return markdown.replace(
+    // Standard markdown images: ![alt](/api/workspaces/.../image?path=...)
+    let result = markdown.replace(
         /!\[([^\]]*)\]\(\/api\/workspaces\/[^/]+\/notes\/image\?path=([^)]+)\)/g,
         (_match, alt: string, encodedPath: string) => {
             return `![${alt}](${decodeURIComponent(encodedPath)})`;
         },
     );
+    // HTML <img> tags with API URLs (from resized images)
+    result = result.replace(
+        /<img\s([^>]*?)src="\/api\/workspaces\/[^/]+\/notes\/image\?path=([^"]+)"([^>]*?)\/?\s*>/gi,
+        (_match, before: string, encodedPath: string, after: string) => {
+            return `<img ${before}src="${decodeURIComponent(encodedPath)}"${after} />`;
+        },
+    );
+    return result;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

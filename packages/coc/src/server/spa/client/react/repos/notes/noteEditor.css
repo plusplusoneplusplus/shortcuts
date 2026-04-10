@@ -158,6 +158,121 @@
     outline-offset: 2px;
 }
 
+/* ── Image resize handles ────────────────────────────────────────────────── */
+
+.image-resize-wrapper {
+    display: block;
+    margin: 0.5em 0;
+}
+
+.image-resize-container {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    line-height: 0;
+}
+
+.image-resize-container img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    cursor: default;
+    margin: 0;
+}
+
+.image-resize-handle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #0078d4;
+    border: 1px solid #fff;
+    border-radius: 2px;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.image-resize-container:hover .image-resize-handle,
+.image-resizing .image-resize-handle {
+    opacity: 1;
+}
+
+.image-resize-handle.top-left     { top: 4px; left: 4px; cursor: nwse-resize; }
+.image-resize-handle.top-right    { top: 4px; right: 4px; cursor: nesw-resize; }
+.image-resize-handle.bottom-left  { bottom: 4px; left: 4px; cursor: nesw-resize; }
+.image-resize-handle.bottom-right { bottom: 4px; right: 4px; cursor: nwse-resize; }
+
+.image-resizing .image-resize-container {
+    outline: 2px dashed #0078d4;
+    outline-offset: 2px;
+}
+
+.image-resize-tooltip {
+    position: absolute;
+    bottom: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.75);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.image-resize-reset {
+    position: absolute;
+    top: 4px;
+    right: 20px;
+    width: 20px;
+    height: 20px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    font-size: 13px;
+    line-height: 20px;
+    text-align: center;
+    cursor: pointer;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.15s;
+    padding: 0;
+}
+
+.image-resize-container:hover .image-resize-reset {
+    opacity: 1;
+}
+
+.image-resize-reset:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+/* Dark mode — resize handles */
+@media (prefers-color-scheme: dark) {
+    .image-resize-handle {
+        background: #4fc3f7;
+        border-color: #1e1e1e;
+    }
+    .image-resizing .image-resize-container {
+        outline-color: #4fc3f7;
+    }
+    .image-resize-tooltip {
+        background: rgba(50, 50, 50, 0.9);
+    }
+    .image-resize-reset {
+        background: rgba(255, 255, 255, 0.25);
+        color: #e0e0e0;
+    }
+    .image-resize-reset:hover {
+        background: rgba(255, 255, 255, 0.4);
+    }
+}
+
 /* ── Comment highlights ─────────────────────────────────────────────────── */
 
 /* Inline comment marks (rendered by @sereneinserenade/tiptap-comment-extension) */
