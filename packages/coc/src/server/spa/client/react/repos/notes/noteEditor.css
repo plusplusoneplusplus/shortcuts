@@ -69,3 +69,64 @@
     .note-editor .ProseMirror code { background: #2d2d2d; }
     .note-editor .ProseMirror hr { border-top-color: #3c3c3c; }
 }
+
+/* Tables */
+.note-editor .ProseMirror table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.75rem 0;
+    table-layout: fixed;
+    overflow: hidden;
+}
+
+.note-editor .ProseMirror th,
+.note-editor .ProseMirror td {
+    border: 1px solid #e0e0e0;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.note-editor .ProseMirror th {
+    background: #f3f3f3;
+    font-weight: 600;
+}
+
+/* Tiptap cell selection highlight */
+.note-editor .ProseMirror .selectedCell::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 120, 212, 0.12);
+    pointer-events: none;
+}
+
+/* Column resize handle stub (resizable: false, but safe to pre-define) */
+.note-editor .ProseMirror .column-resize-handle {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: col-resize;
+    background: #0078d4;
+    opacity: 0;
+}
+
+/* Dark mode — tables */
+@media (prefers-color-scheme: dark) {
+    .note-editor .ProseMirror th,
+    .note-editor .ProseMirror td {
+        border-color: #3c3c3c;
+    }
+
+    .note-editor .ProseMirror th {
+        background: #252526;
+    }
+
+    .note-editor .ProseMirror .selectedCell::after {
+        background: rgba(0, 120, 212, 0.22);
+    }
+}
