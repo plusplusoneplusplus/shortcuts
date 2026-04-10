@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/processes/WhisperCollapsedGroup';
-import type { WhisperSummary } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
+import type { WhisperSummary, FileEdit } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -132,5 +132,128 @@ describe('WhisperCollapsedGroup — header text', () => {
         });
         const text = getHeaderText(container);
         expect(text).toContain('(2.5s)');
+    });
+});
+
+// ── File count header tests ────────────────────────────────────────────────
+
+describe('WhisperCollapsedGroup — file count in header', () => {
+    it('shows plural "3 files" when fileEditCount > 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 5,
+            messageCount: 1,
+            fileEditCount: 3,
+        });
+        const text = getHeaderText(container);
+        expect(text).toContain('3 files');
+    });
+
+    it('shows singular "1 file" when fileEditCount === 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 2,
+            messageCount: 0,
+            fileEditCount: 1,
+        });
+        const text = getHeaderText(container);
+        expect(text).toContain('1 file');
+        expect(text).not.toContain('1 files');
+    });
+
+    it('omits file segment when fileEditCount is 0', () => {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 1,
+            fileEditCount: 0,
+        });
+        const text = getHeaderText(container);
+        expect(text).not.toMatch(/\bfile/);
+    });
+
+    it('omits file segment when fileEditCount is undefined', () => {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 1,
+        });
+        const text = getHeaderText(container);
+        expect(text).not.toMatch(/\bfile/);
+    });
+
+    it('files appear between messages and commits in order', () => {
+        const { container } = renderHeader({
+            toolCallCount: 4,
+            messageCount: 2,
+            fileEditCount: 3,
+            commitCount: 1,
+        });
+        const text = getHeaderText(container);
+        expect(text).toMatch(/2 messages\s*·\s*3 files\s*·\s*1 commit/);
+    });
+
+    it('renders file hover span with data-testid', () => {
+        const fileEdits: FileEdit[] = [
+            { path: 'src/a.ts', insertions: 5, deletions: 2, isCreate: false },
+        ];
+        const { container } = renderHeader({
+            toolCallCount: 1,
+            messageCount: 0,
+            fileEditCount: 1,
+            fileEdits,
+        });
+        const span = container.querySelector('[data-testid="whisper-file-hover"]');
+        expect(span).not.toBeNull();
+        expect(span?.textContent).toContain('1 file');
+    });
+});
+
+// ── FileHoverPopover tests ─────────────────────────────────────────────────
+
+describe('WhisperCollapsedGroup — FileHoverPopover', () => {
+    function renderAndHoverFiles(fileEdits: FileEdit[]) {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 0,
+            fileEditCount: fileEdits.length,
+            fileEdits,
+        });
+        const span = container.querySelector('[data-testid="whisper-file-hover"]') as HTMLElement;
+        if (span) {
+            fireEvent.mouseEnter(span);
+        }
+        return container;
+    }
+
+    it('popover renders file rows with correct icon and basename', () => {
+        const container = renderAndHoverFiles([
+            { path: 'src/utils.ts', insertions: 12, deletions: 3, isCreate: false },
+            { path: 'src/new-file.ts', insertions: 25, deletions: 0, isCreate: true },
+        ]);
+        const popover = container.querySelector('[data-testid="file-hover-popover"]');
+        expect(popover).not.toBeNull();
+        const rows = container.querySelectorAll('[data-testid="file-popover-row"]');
+        expect(rows).toHaveLength(2);
+        // Check icons
+        expect(rows[0].textContent).toContain('✏️');
+        expect(rows[1].textContent).toContain('📄');
+        // Check basenames
+        expect(rows[0].textContent).toContain('utils.ts');
+        expect(rows[1].textContent).toContain('new-file.ts');
+    });
+
+    it('popover shows +N and −N stats', () => {
+        const container = renderAndHoverFiles([
+            { path: 'src/a.ts', insertions: 4, deletions: 2, isCreate: false },
+        ]);
+        const row = container.querySelector('[data-testid="file-popover-row"]');
+        expect(row?.textContent).toContain('+4');
+        expect(row?.textContent).toContain('−2');
+    });
+
+    it('created files show no deletion count', () => {
+        const container = renderAndHoverFiles([
+            { path: 'src/b.ts', insertions: 10, deletions: 0, isCreate: true },
+        ]);
+        const row = container.querySelector('[data-testid="file-popover-row"]');
+        expect(row?.textContent).toContain('+10');
+        expect(row?.textContent).not.toContain('−');
     });
 });

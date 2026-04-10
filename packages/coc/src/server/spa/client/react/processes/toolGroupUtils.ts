@@ -303,6 +303,14 @@ export function groupConsecutiveToolChunks(
 // Whisper-level (level 3) filtering
 // ---------------------------------------------------------------------------
 
+/** Per-file edit/create statistics collected from tool calls. */
+export interface FileEdit {
+    path: string;
+    insertions: number;
+    deletions: number;
+    isCreate: boolean;
+}
+
 /**
  * Summary of the "preceding" chunks that Whisper mode collapses.
  */
@@ -321,6 +329,10 @@ export interface WhisperSummary {
     skillCount?: number;
     /** Names of unique skills invoked. */
     skillNames?: string[];
+    /** Number of unique files edited or created. */
+    fileEditCount?: number;
+    /** Per-file edit/create statistics. */
+    fileEdits?: FileEdit[];
     /** Epoch ms — earliest startTime among all tool calls. */
     startTime?: number;
     /** Epoch ms — latest endTime among all tool calls (undefined if any still running). */
@@ -457,12 +469,42 @@ export function filterWhisperChunks(
         }
     }
 
+    // Count file edits/creates
+    const fileMap = new Map<string, { insertions: number; deletions: number; hasCreate: boolean; hasEdit: boolean }>();
+    for (const tc of allToolCalls) {
+        if (tc.toolName === 'edit' && tc.args) {
+            const filePath = (tc.args.path || tc.args.filePath) as string | undefined;
+            if (filePath) {
+                const entry = fileMap.get(filePath) ?? { insertions: 0, deletions: 0, hasCreate: false, hasEdit: false };
+                entry.hasEdit = true;
+                const oldStr = (tc.args.old_str ?? tc.args.old_string ?? '') as string;
+                const newStr = (tc.args.new_str ?? tc.args.new_string ?? '') as string;
+                if (oldStr) entry.deletions += oldStr.split('\n').length;
+                if (newStr) entry.insertions += newStr.split('\n').length;
+                fileMap.set(filePath, entry);
+            }
+        } else if (tc.toolName === 'create' && tc.args) {
+            const filePath = (tc.args.path || tc.args.filePath) as string | undefined;
+            if (filePath) {
+                const entry = fileMap.get(filePath) ?? { insertions: 0, deletions: 0, hasCreate: false, hasEdit: false };
+                entry.hasCreate = true;
+                const fileText = (tc.args.file_text ?? '') as string;
+                if (fileText) entry.insertions += fileText.split('\n').length;
+                fileMap.set(filePath, entry);
+            }
+        }
+    }
+    const fileEdits: FileEdit[] = [...fileMap.entries()]
+        .map(([path, e]) => ({ path, insertions: e.insertions, deletions: e.deletions, isCreate: e.hasCreate && !e.hasEdit }))
+        .sort((a, b) => a.path.localeCompare(b.path));
+
     const summary: WhisperSummary = {
         toolCallCount,
         messageCount,
         ...(commitCount > 0 ? { commitCount, commits: regularCommits } : {}),
         ...(fixupCommitCount > 0 ? { fixupCommitCount, fixupCommits } : {}),
         ...(skillNameSet.size > 0 ? { skillCount: skillNameSet.size, skillNames: [...skillNameSet].sort() } : {}),
+        ...(fileEdits.length > 0 ? { fileEditCount: fileEdits.length, fileEdits } : {}),
         startTime: startTimes.length ? Math.min(...startTimes) : undefined,
         endTime: allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
     };

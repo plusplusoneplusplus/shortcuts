@@ -5,7 +5,7 @@
  */
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { cn } from '../shared';
-import type { WhisperSummary } from './toolGroupUtils';
+import type { WhisperSummary, FileEdit } from './toolGroupUtils';
 import { groupConsecutiveToolChunks } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import type { RenderToolCall } from './ToolCallGroupView';
@@ -104,6 +104,93 @@ function CommitHoverPopover({ commits, workspaceId, anchorRef }: CommitHoverPopo
 }
 
 // ---------------------------------------------------------------------------
+// FileHoverPopover — shown when hovering over "N files"
+// ---------------------------------------------------------------------------
+
+interface FileHoverPopoverProps {
+    files: FileEdit[];
+    anchorRef: React.RefObject<HTMLSpanElement | null>;
+}
+
+function FileHoverPopover({ files, anchorRef }: FileHoverPopoverProps) {
+    if (!anchorRef.current) return null;
+    const rect = anchorRef.current.getBoundingClientRect();
+
+    return (
+        <div
+            className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
+            style={{ top: rect.bottom + 4, left: rect.left }}
+            data-testid="file-hover-popover"
+        >
+            {files.map(file => {
+                const basename = file.path.split(/[/\\]/).pop() || file.path;
+                return (
+                    <div
+                        key={file.path}
+                        className="flex items-center gap-2 px-2.5 py-1 text-xs"
+                        data-testid={`file-popover-row`}
+                        title={file.path}
+                    >
+                        <span className="shrink-0">{file.isCreate ? '📄' : '✏️'}</span>
+                        <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
+                            {basename}
+                        </span>
+                        {file.insertions > 0 && (
+                            <span className="shrink-0 text-[#22863a] dark:text-[#85e89d]">+{file.insertions}</span>
+                        )}
+                        {file.deletions > 0 && (
+                            <span className="shrink-0 text-[#cb2431] dark:text-[#f97583]">−{file.deletions}</span>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// FileHoverSpan — a span that shows a file popover on hover
+// ---------------------------------------------------------------------------
+
+interface FileHoverSpanProps {
+    text: string;
+    files: FileEdit[];
+    testId?: string;
+}
+
+function FileHoverSpan({ text, files, testId }: FileHoverSpanProps) {
+    const [hovered, setHovered] = useState(false);
+    const anchorRef = useRef<HTMLSpanElement | null>(null);
+    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const showPopover = useCallback(() => {
+        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
+        setHovered(true);
+    }, []);
+
+    const hidePopover = useCallback(() => {
+        graceTimer.current = setTimeout(() => setHovered(false), 150);
+    }, []);
+
+    return (
+        <span
+            ref={anchorRef}
+            onMouseEnter={showPopover}
+            onMouseLeave={hidePopover}
+            className="underline decoration-dotted cursor-default"
+            data-testid={testId}
+        >
+            {text}
+            {hovered && files.length > 0 && (
+                <span onMouseEnter={showPopover} onMouseLeave={hidePopover}>
+                    <FileHoverPopover files={files} anchorRef={anchorRef} />
+                </span>
+            )}
+        </span>
+    );
+}
+
+// ---------------------------------------------------------------------------
 // CommitHoverSpan — a span that shows a popover on hover
 // ---------------------------------------------------------------------------
 
@@ -159,12 +246,15 @@ export function WhisperCollapsedGroup({
 }: WhisperCollapsedGroupProps) {
     const [expanded, setExpanded] = useState(false);
 
-    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' }> = [];
+    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'file' }> = [];
     if (summary.toolCallCount > 0) {
         headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
     }
     if (summary.messageCount > 0) {
         headerParts.push({ text: `${summary.messageCount} message${summary.messageCount !== 1 ? 's' : ''}` });
+    }
+    if (summary.fileEditCount && summary.fileEditCount > 0) {
+        headerParts.push({ text: `${summary.fileEditCount} file${summary.fileEditCount !== 1 ? 's' : ''}`, kind: 'file' });
     }
     if (summary.commitCount && summary.commitCount > 0) {
         headerParts.push({ text: `${summary.commitCount} commit${summary.commitCount !== 1 ? 's' : ''}`, kind: 'commit' });
@@ -191,6 +281,10 @@ export function WhisperCollapsedGroup({
         } else if (part.kind === 'fixup' && summary.fixupCommits && summary.fixupCommits.length > 0) {
             headerElements.push(
                 <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.fixupCommits} workspaceId={workspaceId} testId="whisper-fixup-hover" />,
+            );
+        } else if (part.kind === 'file' && summary.fileEdits && summary.fileEdits.length > 0) {
+            headerElements.push(
+                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-file-hover" />,
             );
         } else if (part.title) {
             headerElements.push(<span key={`part-${idx}`} title={part.title}>{part.text}</span>);

@@ -7,7 +7,7 @@ import {
     isSingleLineHtml,
     filterWhisperChunks,
 } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
-import type { WhisperGroupChunk } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
+import type { WhisperGroupChunk, FileEdit } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
 
 // ---------------------------------------------------------------------------
 // getToolGroupCategory
@@ -1367,5 +1367,161 @@ describe('filterWhisperChunks', () => {
         const wg = result[0] as WhisperGroupChunk;
         expect(wg.summary.commits).toBeUndefined();
         expect(wg.summary.fixupCommits).toBeUndefined();
+    });
+
+    // ── File edit counting ─────────────────────────────────────────────────
+
+    it('counts a single edit tool call as 1 file with correct insertions/deletions', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'edit',
+                status: 'completed',
+                args: { path: 'src/utils.ts', old_str: 'line1\nline2\nline3', new_str: 'newLine1\nnewLine2' },
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(1);
+        expect(wg.summary.fileEdits).toHaveLength(1);
+        const fe = wg.summary.fileEdits![0];
+        expect(fe.path).toBe('src/utils.ts');
+        expect(fe.deletions).toBe(3);
+        expect(fe.insertions).toBe(2);
+        expect(fe.isCreate).toBe(false);
+    });
+
+    it('aggregates multiple edits to the same file into one entry', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'edit',
+                status: 'completed',
+                args: { path: 'src/utils.ts', old_str: 'a', new_str: 'b\nc' },
+            }],
+            ['t2', {
+                toolName: 'edit',
+                status: 'completed',
+                args: { path: 'src/utils.ts', old_str: 'x\ny', new_str: 'z' },
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(1);
+        const fe = wg.summary.fileEdits![0];
+        expect(fe.insertions).toBe(3); // 2 + 1
+        expect(fe.deletions).toBe(3);  // 1 + 2
+    });
+
+    it('counts a create tool call with isCreate true and insertions only', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Created.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'create',
+                status: 'completed',
+                args: { path: 'src/new-file.ts', file_text: 'line1\nline2\nline3\nline4' },
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(1);
+        const fe = wg.summary.fileEdits![0];
+        expect(fe.isCreate).toBe(true);
+        expect(fe.insertions).toBe(4);
+        expect(fe.deletions).toBe(0);
+    });
+
+    it('counts a mix of edit and create across different files', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'tool', key: 'k-t3', toolId: 't3' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'edit', status: 'completed', args: { path: 'src/a.ts', old_str: 'old', new_str: 'new' } }],
+            ['t2', { toolName: 'create', status: 'completed', args: { path: 'src/b.ts', file_text: 'content' } }],
+            ['t3', { toolName: 'edit', status: 'completed', args: { path: 'src/c.ts', old_string: 'x', new_string: 'y\nz' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(3);
+        expect(wg.summary.fileEdits).toHaveLength(3);
+        // sorted alphabetically
+        expect(wg.summary.fileEdits![0].path).toBe('src/a.ts');
+        expect(wg.summary.fileEdits![1].path).toBe('src/b.ts');
+        expect(wg.summary.fileEdits![1].isCreate).toBe(true);
+        expect(wg.summary.fileEdits![2].path).toBe('src/c.ts');
+        expect(wg.summary.fileEdits![2].insertions).toBe(2);
+    });
+
+    it('fileEditCount is undefined when there are no edit/create tools', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'view', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBeUndefined();
+        expect(wg.summary.fileEdits).toBeUndefined();
+    });
+
+    it('marks file as not-create when both create and edit operations target same path', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'create', status: 'completed', args: { path: 'src/file.ts', file_text: 'a\nb' } }],
+            ['t2', { toolName: 'edit', status: 'completed', args: { path: 'src/file.ts', old_str: 'a', new_str: 'c' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(1);
+        const fe = wg.summary.fileEdits![0];
+        expect(fe.isCreate).toBe(false); // has edit, so not purely a create
+        expect(fe.insertions).toBe(3); // 2 from create + 1 from edit
+    });
+
+    it('supports old_string/new_string arg variants', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'edit',
+                status: 'completed',
+                args: { filePath: 'src/alt.ts', old_string: 'a\nb', new_string: 'c' },
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(1);
+        const fe = wg.summary.fileEdits![0];
+        expect(fe.path).toBe('src/alt.ts');
+        expect(fe.deletions).toBe(2);
+        expect(fe.insertions).toBe(1);
     });
 });
