@@ -5,6 +5,7 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
+import Highlight from '@tiptap/extension-highlight';
 
 function makeEditor() {
     return new Editor({
@@ -14,6 +15,7 @@ function makeEditor() {
             TableRow,
             TableCell,
             TableHeader,
+            Highlight.configure({ multicolor: true }),
         ],
         content: '',
     });
@@ -48,6 +50,42 @@ describe('noteEditor table extensions', () => {
         expect(out).toContain('Name');
         expect(out).toContain('<td');
         expect(out).toContain('Alice');
+        editor.destroy();
+    });
+});
+
+describe('noteEditor highlight extension', () => {
+    it('initialises with Highlight extension without errors', () => {
+        expect(() => makeEditor()).not.toThrow();
+    });
+
+    it('preserves <mark> content via setContent() and getHTML()', () => {
+        const editor = makeEditor();
+        editor.commands.setContent('<p><mark>highlighted</mark></p>');
+        const out = editor.getHTML();
+        expect(out).toContain('<mark');
+        expect(out).toContain('highlighted');
+        editor.destroy();
+    });
+
+    it('preserves multicolor <mark> with data-color attribute', () => {
+        const editor = makeEditor();
+        editor.commands.setContent('<p><mark data-color="#ffc8dd" style="background-color: #ffc8dd">pink text</mark></p>');
+        const out = editor.getHTML();
+        expect(out).toContain('<mark');
+        expect(out).toContain('pink text');
+        expect(out).toContain('#ffc8dd');
+        editor.destroy();
+    });
+
+    it('toggleHighlight command applies mark', () => {
+        const editor = makeEditor();
+        editor.commands.setContent('<p>hello world</p>');
+        editor.commands.selectAll();
+        editor.commands.toggleHighlight({ color: '#b9f5d0' });
+        const out = editor.getHTML();
+        expect(out).toContain('<mark');
+        expect(out).toContain('#b9f5d0');
         editor.destroy();
     });
 });

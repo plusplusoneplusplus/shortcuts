@@ -18,6 +18,8 @@ function makeMockEditor(isActiveOverride?: (name: string) => boolean) {
         toggleBold: () => ({ run: vi.fn() }),
         toggleItalic: () => ({ run: vi.fn() }),
         toggleStrike: () => ({ run: vi.fn() }),
+        toggleHighlight: vi.fn(() => ({ run: vi.fn() })),
+        unsetHighlight: vi.fn(() => ({ run: vi.fn() })),
         toggleHeading: () => ({ run: vi.fn() }),
         toggleBulletList: () => ({ run: vi.fn() }),
         toggleOrderedList: () => ({ run: vi.fn() }),
@@ -40,6 +42,7 @@ function makeMockEditor(isActiveOverride?: (name: string) => boolean) {
 
     return {
         isActive: vi.fn((name: string) => isActiveOverride ? isActiveOverride(name) : false),
+        getAttributes: vi.fn(() => ({})),
         chain: () => ({ focus: () => focusResult }),
         _focusResult: focusResult,
     };
@@ -146,5 +149,71 @@ describe('NoteEditorToolbar — table controls', () => {
 
         fireEvent.mouseDown(screen.getByLabelText('Delete table'));
         expect(editor._focusResult.deleteTable).toHaveBeenCalled();
+    });
+});
+
+describe('NoteEditorToolbar — highlight controls', () => {
+    it('renders "Highlight" button in toolbar', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByLabelText('Highlight')).toBeDefined();
+    });
+
+    it('renders "Highlight colors" dropdown arrow', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByLabelText('Highlight colors')).toBeDefined();
+    });
+
+    it('clicking Highlight button calls toggleHighlight with default color', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Highlight'));
+        expect(editor._focusResult.toggleHighlight).toHaveBeenCalledWith({ color: '#fff3b0' });
+    });
+
+    it('color picker is hidden by default', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByTestId('highlight-color-picker')).toBeNull();
+    });
+
+    it('clicking dropdown arrow shows color picker', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
+        expect(screen.getByTestId('highlight-color-picker')).toBeDefined();
+    });
+
+    it('color picker has 6 color swatches plus remove button', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
+        const picker = screen.getByTestId('highlight-color-picker');
+        // 6 color buttons + 1 remove button = 7
+        expect(picker.querySelectorAll('button').length).toBe(7);
+    });
+
+    it('clicking a color swatch calls toggleHighlight with that color', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
+        fireEvent.mouseDown(screen.getByLabelText('Highlight Pink'));
+        expect(editor._focusResult.toggleHighlight).toHaveBeenCalledWith({ color: '#ffc8dd' });
+    });
+
+    it('clicking Remove highlight calls unsetHighlight', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
+        fireEvent.mouseDown(screen.getByLabelText('Remove highlight'));
+        expect(editor._focusResult.unsetHighlight).toHaveBeenCalled();
+    });
+
+    it('highlight button shows active state when highlight is active', () => {
+        const editor = makeMockEditor((name) => name === 'highlight');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const btn = screen.getByLabelText('Highlight');
+        expect(btn.className).toContain('font-bold');
     });
 });

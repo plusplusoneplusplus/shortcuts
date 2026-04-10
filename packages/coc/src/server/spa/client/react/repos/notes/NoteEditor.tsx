@@ -9,6 +9,7 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
+import Highlight from '@tiptap/extension-highlight';
 import { notesApi } from '../notesApi';
 import { markdownToHtml, htmlToMarkdown } from './noteMarkdown';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
@@ -56,6 +57,7 @@ export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
             TableRow,
             TableCell,
             TableHeader,
+            Highlight.configure({ multicolor: true }),
         ],
         onUpdate: ({ editor: ed }) => {
             setDirty(true);

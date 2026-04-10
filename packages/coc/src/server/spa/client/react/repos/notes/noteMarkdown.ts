@@ -12,6 +12,35 @@ import TurndownService from 'turndown';
 
 marked.setOptions({ gfm: true, breaks: false });
 
+// Add ==highlight== syntax support to marked
+const highlightExtension: marked.MarkedExtension = {
+    extensions: [
+        {
+            name: 'highlight',
+            level: 'inline' as const,
+            start(src: string) {
+                return src.indexOf('==');
+            },
+            tokenizer(src: string) {
+                const match = /^==([^=]+)==/.exec(src);
+                if (match) {
+                    return {
+                        type: 'highlight',
+                        raw: match[0],
+                        text: match[1],
+                        tokens: [],
+                    };
+                }
+                return undefined;
+            },
+            renderer(token: { text: string }) {
+                return `<mark>${token.text}</mark>`;
+            },
+        },
+    ],
+};
+marked.use(highlightExtension);
+
 // ── turndown singleton ──────────────────────────────────────────────────────
 
 const turndown = new TurndownService({
@@ -25,6 +54,14 @@ turndown.addRule('strikethrough', {
     filter: ['del', 's'],
     replacement(content) {
         return `~~${content}~~`;
+    },
+});
+
+// Highlight: <mark> → ==text==
+turndown.addRule('highlight', {
+    filter: 'mark',
+    replacement(content) {
+        return `==${content}==`;
     },
 });
 

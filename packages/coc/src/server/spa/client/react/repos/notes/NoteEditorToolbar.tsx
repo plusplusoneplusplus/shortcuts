@@ -1,8 +1,22 @@
+import { useState, useRef, useEffect } from 'react';
 import type { Editor } from '@tiptap/react';
 
 export interface NoteEditorToolbarProps {
     editor: Editor | null;
 }
+
+// ── Highlight color palette ─────────────────────────────────────────────────
+
+export const HIGHLIGHT_COLORS = [
+    { name: 'Yellow', color: '#fff3b0' },
+    { name: 'Green', color: '#b9f5d0' },
+    { name: 'Blue', color: '#bde0fe' },
+    { name: 'Pink', color: '#ffc8dd' },
+    { name: 'Orange', color: '#ffd6a5' },
+    { name: 'Purple', color: '#e0c3fc' },
+] as const;
+
+const DEFAULT_HIGHLIGHT_COLOR = HIGHLIGHT_COLORS[0].color;
 
 // ── Toolbar button helper ───────────────────────────────────────────────────
 
@@ -38,6 +52,115 @@ function TB({ editor, label, icon, command, activeName, activeAttrs }: TBProps) 
 
 function Sep() {
     return <div className="w-px h-5 mx-1 bg-[#e0e0e0] dark:bg-[#3c3c3c]" />;
+}
+
+// ── Highlight button with color picker ───────────────────────────────────────
+
+interface HighlightButtonProps {
+    editor: Editor;
+}
+
+function HighlightButton({ editor }: HighlightButtonProps) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    // Close on outside click or Escape
+    useEffect(() => {
+        if (!open) return;
+        function handleClick(e: MouseEvent) {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+        }
+        function handleKey(e: KeyboardEvent) {
+            if (e.key === 'Escape') setOpen(false);
+        }
+        document.addEventListener('mousedown', handleClick);
+        document.addEventListener('keydown', handleKey);
+        return () => {
+            document.removeEventListener('mousedown', handleClick);
+            document.removeEventListener('keydown', handleKey);
+        };
+    }, [open]);
+
+    const isActive = editor.isActive('highlight');
+
+    return (
+        <div className="relative" ref={ref}>
+            <div className="flex items-center">
+                {/* Main highlight toggle */}
+                <button
+                    type="button"
+                    title="Highlight"
+                    aria-label="Highlight"
+                    className={
+                        'h-7 px-1 rounded-l flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
+                        (isActive ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] font-bold' : '')
+                    }
+                    onMouseDown={(e) => {
+                        e.preventDefault();
+                        editor.chain().focus().toggleHighlight({ color: DEFAULT_HIGHLIGHT_COLOR }).run();
+                    }}
+                >
+                    <span
+                        className="inline-block w-4 h-4 leading-4 text-center rounded-sm text-[10px] font-bold"
+                        style={{ backgroundColor: isActive ? (editor.getAttributes('highlight').color ?? DEFAULT_HIGHLIGHT_COLOR) : DEFAULT_HIGHLIGHT_COLOR }}
+                    >
+                        HL
+                    </span>
+                </button>
+                {/* Dropdown arrow */}
+                <button
+                    type="button"
+                    title="Highlight colors"
+                    aria-label="Highlight colors"
+                    className="h-7 w-4 rounded-r flex items-center justify-center text-[10px] hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                    onMouseDown={(e) => {
+                        e.preventDefault();
+                        setOpen((v) => !v);
+                    }}
+                >
+                    ▾
+                </button>
+            </div>
+
+            {/* Color picker dropdown */}
+            {open && (
+                <div
+                    className="absolute top-full left-0 mt-1 z-50 flex gap-1 p-1.5 rounded shadow-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]"
+                    data-testid="highlight-color-picker"
+                >
+                    {HIGHLIGHT_COLORS.map(({ name, color }) => (
+                        <button
+                            key={color}
+                            type="button"
+                            title={name}
+                            aria-label={`Highlight ${name}`}
+                            className="w-6 h-6 rounded-sm border border-[#ccc] dark:border-[#555] hover:scale-110 transition-transform"
+                            style={{ backgroundColor: color }}
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                editor.chain().focus().toggleHighlight({ color }).run();
+                                setOpen(false);
+                            }}
+                        />
+                    ))}
+                    {/* Remove highlight */}
+                    <button
+                        type="button"
+                        title="Remove highlight"
+                        aria-label="Remove highlight"
+                        className="w-6 h-6 rounded-sm border border-[#ccc] dark:border-[#555] hover:scale-110 transition-transform flex items-center justify-center text-xs text-[#888]"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            editor.chain().focus().unsetHighlight().run();
+                            setOpen(false);
+                        }}
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
+        </div>
+    );
 }
 
 // ── Table contextual controls ───────────────────────────────────────────────
@@ -127,6 +250,7 @@ export function NoteEditorToolbar({ editor }: NoteEditorToolbarProps) {
             <TB editor={editor} label="Bold" icon="B" command={() => c().toggleBold().run()} activeName="bold" />
             <TB editor={editor} label="Italic" icon="I" command={() => c().toggleItalic().run()} activeName="italic" />
             <TB editor={editor} label="Strikethrough" icon="S̶" command={() => c().toggleStrike().run()} activeName="strike" />
+            <HighlightButton editor={editor} />
             <Sep />
 
             {/* Headings */}

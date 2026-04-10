@@ -25,6 +25,7 @@
     "@octokit/rest": "^22.0.1",
     "@plusplusoneplusplus/forge": "^1.1.0",
     "@tiptap/core": "^2.27.2",
+    "@tiptap/extension-highlight": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",
     "@tiptap/extension-placeholder": "^2.27.2",
     "@tiptap/extension-table": "^2.27.2",

@@ -63,11 +63,22 @@
 /* Links */
 .note-editor .ProseMirror a { color: #0078d4; text-decoration: underline; }
 
+/* Highlight / <mark> */
+.note-editor .ProseMirror mark {
+    border-radius: 2px;
+    padding: 0.05rem 0.1rem;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
 /* Dark mode overrides */
 @media (prefers-color-scheme: dark) {
     .note-editor .ProseMirror blockquote { border-left-color: #555; color: #aaa; }
     .note-editor .ProseMirror code { background: #2d2d2d; }
     .note-editor .ProseMirror hr { border-top-color: #3c3c3c; }
+    .note-editor .ProseMirror mark {
+        color: #e0e0e0;
+    }
 }
 
 /* Tables */

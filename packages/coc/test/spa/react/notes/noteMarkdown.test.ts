@@ -81,6 +81,18 @@ describe('noteMarkdown', () => {
             const html = markdownToHtml('~~strike~~');
             expect(html).toContain('<del>strike</del>');
         });
+
+        it('converts ==highlight== to <mark>', () => {
+            const html = markdownToHtml('==highlighted text==');
+            expect(html).toContain('<mark>');
+            expect(html).toContain('highlighted text');
+            expect(html).toContain('</mark>');
+        });
+
+        it('converts inline highlight within a sentence', () => {
+            const html = markdownToHtml('This is ==important== text');
+            expect(html).toContain('<mark>important</mark>');
+        });
     });
 
     // ── htmlToMarkdown ──────────────────────────────────────────────────
@@ -133,6 +145,16 @@ describe('noteMarkdown', () => {
             expect(md).toMatch(/\n$/);
             expect(md).not.toMatch(/\n\n$/);
         });
+
+        it('converts <mark> to ==text==', () => {
+            const md = htmlToMarkdown('<p>this is <mark>highlighted</mark> text</p>');
+            expect(md).toContain('==highlighted==');
+        });
+
+        it('converts <mark> with style attribute to ==text==', () => {
+            const md = htmlToMarkdown('<p><mark data-color="#ffc8dd" style="background-color: #ffc8dd">pink</mark></p>');
+            expect(md).toContain('==pink==');
+        });
     });
 
     // ── Round-trip ──────────────────────────────────────────────────────
@@ -160,6 +182,15 @@ describe('noteMarkdown', () => {
 
         it('strikethrough', () => {
             expect(norm(roundTrip('~~strike~~'))).toBe('~~strike~~');
+        });
+
+        it('highlight', () => {
+            expect(norm(roundTrip('==highlighted=='))).toBe('==highlighted==');
+        });
+
+        it('highlight within a sentence', () => {
+            const rt = norm(roundTrip('This has ==important== info'));
+            expect(rt).toContain('==important==');
         });
 
         it('bullet list', () => {
