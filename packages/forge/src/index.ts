@@ -449,6 +449,13 @@ export {
     SqliteProcessStoreOptions,
 } from './sqlite-process-store';
 
+export {
+    Database,
+    initializeDatabase,
+    SCHEMA_VERSION,
+    getSchemaVersion,
+} from './sqlite-schema';
+
 // ============================================================================
 // Map-Reduce Framework
 // ============================================================================
