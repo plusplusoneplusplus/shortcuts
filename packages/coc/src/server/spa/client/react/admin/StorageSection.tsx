@@ -93,7 +93,7 @@ export default function StorageSection() {
     const loadStatus = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await fetchApi('/api/admin/storage/status');
+            const data = await fetchApi('/admin/storage/status');
             setStatus(data);
         } catch {
             // silently ignore — status section will show a loading state
@@ -125,7 +125,7 @@ export default function StorageSection() {
         setPhase('confirm');
         setAcquiringToken(true);
         try {
-            const data = await fetchApi('/api/admin/storage/migrate-token');
+            const data = await fetchApi('/admin/storage/migrate-token');
             setToken(data.token);
         } catch {
             setToken(null);
@@ -148,7 +148,7 @@ export default function StorageSection() {
 
         try {
             const res = await fetch(
-                getApiBase() + '/api/admin/storage/migrate?confirm=' + encodeURIComponent(token),
+                getApiBase() + '/admin/storage/migrate?confirm=' + encodeURIComponent(token),
                 { method: 'POST', signal: controller.signal },
             );
 
@@ -262,7 +262,7 @@ export default function StorageSection() {
     const handleCancel = async () => {
         abortRef.current?.abort();
         try {
-            await fetch(getApiBase() + '/api/admin/storage/migrate/cancel', { method: 'POST' });
+            await fetch(getApiBase() + '/admin/storage/migrate/cancel', { method: 'POST' });
         } catch { /* ignore */ }
         setLogs(prev => [...prev, 'Migration cancelled. Rolling back…']);
         setResult({ success: false, error: 'Migration cancelled by user' });
@@ -277,7 +277,7 @@ export default function StorageSection() {
         setPolling(true);
         const poll = setInterval(async () => {
             try {
-                await fetchApi('/api/admin/storage/status');
+                await fetchApi('/admin/storage/status');
                 clearInterval(poll);
                 pollRef.current = null;
                 window.location.reload();

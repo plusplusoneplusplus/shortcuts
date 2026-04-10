@@ -213,7 +213,7 @@ describe('StorageSection — migration progress', () => {
 
         const originalFetch = globalThis.fetch;
         globalThis.fetch = vi.fn(async (url: any, opts: any) => {
-            if (typeof url === 'string' && url.includes('/api/admin/storage/migrate') && !url.includes('cancel') && !url.includes('token')) {
+            if (typeof url === 'string' && url.includes('/admin/storage/migrate') && !url.includes('cancel') && !url.includes('token')) {
                 return {
                     ok: true,
                     body: { getReader: () => mockReader },
@@ -279,7 +279,7 @@ describe('StorageSection — migration progress', () => {
 
         const originalFetch = globalThis.fetch;
         globalThis.fetch = vi.fn(async (url: any, opts: any) => {
-            if (typeof url === 'string' && url.includes('/api/admin/storage/migrate') && !url.includes('cancel') && !url.includes('token')) {
+            if (typeof url === 'string' && url.includes('/admin/storage/migrate') && !url.includes('cancel') && !url.includes('token')) {
                 return {
                     ok: true,
                     body: { getReader: () => mockReader },
@@ -328,7 +328,7 @@ describe('StorageSection — migration progress', () => {
 
         const originalFetch = globalThis.fetch;
         globalThis.fetch = vi.fn(async (url: any, opts: any) => {
-            if (typeof url === 'string' && url.includes('/api/admin/storage/migrate') && !url.includes('cancel') && !url.includes('token')) {
+            if (typeof url === 'string' && url.includes('/admin/storage/migrate') && !url.includes('cancel') && !url.includes('token')) {
                 return {
                     ok: false,
                     text: async () => 'Migration already in progress',
