@@ -37,6 +37,8 @@ interface MigrationResult {
     archivedProcesses?: number;
     workspaces?: number;
     wikis?: number;
+    backupPath?: string;
+    backupSizeBytes?: number;
     error?: string;
     failedPhase?: number;
     failedMessage?: string;
@@ -47,6 +49,7 @@ interface MigrationResult {
 // ---------------------------------------------------------------------------
 
 const PHASE_LABELS = [
+    'Backing up data',
     'Creating database schema',
     'Migrating processes',
     'Migrating workspaces & wikis',
@@ -200,6 +203,8 @@ export default function StorageSection() {
                     archivedProcesses: data.archivedProcesses,
                     workspaces: data.workspaces,
                     wikis: data.wikis,
+                    backupPath: data.backupPath,
+                    backupSizeBytes: data.backupSizeBytes,
                 });
                 setPhase('done');
             } else {
@@ -385,7 +390,7 @@ export default function StorageSection() {
                         <Button
                             variant="danger"
                             size="sm"
-                            disabled={currentPhaseNumber >= 3}
+                            disabled={currentPhaseNumber >= 4}
                             onClick={handleCancel}
                         >
                             Cancel
@@ -445,6 +450,9 @@ export default function StorageSection() {
                             )}
                             {result?.archivedProcesses != null && result.archivedProcesses > 0 && (
                                 <li>{result.archivedProcesses} archived processes preserved</li>
+                            )}
+                            {result?.backupPath && (
+                                <li>Backup saved to: <code className="text-[10px] break-all">{result.backupPath}</code></li>
                             )}
                             <li>JSON files cleaned up</li>
                         </ul>

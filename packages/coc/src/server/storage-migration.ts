@@ -1,21 +1,23 @@
 /**
  * Storage Migration Engine
  *
- * 5-phase pipeline that reads existing JSON process/workspace/wiki files
+ * 6-phase pipeline that reads existing JSON process/workspace/wiki files
  * from ~/.coc/repos/ and writes them into a new SQLite database.
  *
  * Phases:
- *   1. Schema creation
- *   2. Process migration (active + pruned)
- *   3. Metadata migration (workspaces + wikis)
- *   4. Validation
- *   5. Cleanup & config switch
+ *   1. Backup source data to temp directory
+ *   2. Schema creation
+ *   3. Process migration (active + pruned)
+ *   4. Metadata migration (workspaces + wikis)
+ *   5. Validation
+ *   6. Cleanup & config switch
  *
- * Supports progress reporting, cancellation (phases 1–2), and automatic
+ * Supports progress reporting, cancellation (phases 1–3), and automatic
  * cleanup on failure. Independently testable — no server infrastructure needed.
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import {
     Database,
@@ -53,6 +55,8 @@ export interface MigrationSummary {
     workspaces: number;
     wikis: number;
     durationMs: number;
+    backupPath: string;
+    backupSizeBytes: number;
 }
 
 export interface StorageMigrationOptions {
@@ -107,6 +111,7 @@ function buildMetadataEnvelope(proc: SerializedAIProcess, workspaceId: string): 
 
 export class StorageMigrationEngine {
     private db: Database.Database | null = null;
+    private backupDir: string | null = null;
 
     constructor(private options: StorageMigrationOptions) {}
 
@@ -118,28 +123,35 @@ export class StorageMigrationEngine {
         let wikiCount = 0;
 
         try {
-            // Phase 1: Schema creation
+            // Phase 1: Backup
             this.checkAborted();
-            this.emit({ phase: 1, status: 'running', message: 'Creating database schema...' });
-            this.db = this.createDatabase();
-            this.emit({ phase: 1, status: 'running', message: 'Database schema created' });
+            this.emit({ phase: 1, status: 'running', message: 'Backing up source data...' });
+            this.backupDir = path.join(os.tmpdir(), '.coc-backup');
+            const { backupDir, sizeBytes } = this.backup();
+            this.emit({ phase: 1, status: 'running', message: `Backup complete → ${backupDir}` });
 
-            // Phase 2: Process migration
+            // Phase 2: Schema creation
+            this.checkAborted();
+            this.emit({ phase: 2, status: 'running', message: 'Creating database schema...' });
+            this.db = this.createDatabase();
+            this.emit({ phase: 2, status: 'running', message: 'Database schema created' });
+
+            // Phase 3: Process migration
             this.checkAborted();
             const migrationResult = this.migrateProcesses();
             processCount = migrationResult.active;
             archivedCount = migrationResult.archived;
 
-            // Phase 3: Metadata migration (cancellation disabled from here)
-            this.emit({ phase: 3, status: 'running', message: 'Migrating workspaces and wikis...' });
+            // Phase 4: Metadata migration (cancellation disabled from here)
+            this.emit({ phase: 4, status: 'running', message: 'Migrating workspaces and wikis...' });
             workspaceCount = this.migrateWorkspaces();
             wikiCount = this.migrateWikis();
-            this.emit({ phase: 3, status: 'running', message: `Migrated ${workspaceCount} workspaces and ${wikiCount} wikis` });
+            this.emit({ phase: 4, status: 'running', message: `Migrated ${workspaceCount} workspaces and ${wikiCount} wikis` });
 
-            // Phase 4: Validation
+            // Phase 5: Validation
             await this.validate(processCount + archivedCount, workspaceCount, wikiCount);
 
-            // Phase 5: Cleanup & config switch
+            // Phase 6: Cleanup & config switch
             this.cleanup();
 
             const summary: MigrationSummary = {
@@ -148,9 +160,11 @@ export class StorageMigrationEngine {
                 workspaces: workspaceCount,
                 wikis: wikiCount,
                 durationMs: Date.now() - startTime,
+                backupPath: backupDir,
+                backupSizeBytes: sizeBytes,
             };
 
-            this.emit({ phase: 5, status: 'complete', message: 'Migration complete', summary });
+            this.emit({ phase: 6, status: 'complete', message: 'Migration complete', summary });
             this.closeDb();
             return summary;
         } catch (err) {
@@ -158,21 +172,112 @@ export class StorageMigrationEngine {
 
             if (err instanceof DOMException && err.name === 'AbortError') {
                 this.deleteDbFile();
+                this.deleteBackupDir();
                 throw err;
             }
 
-            // Failure recovery: delete .db, don't touch config or JSON
+            // Failure recovery: delete .db, don't touch config or JSON.
+            // Leave backup dir intact for manual recovery.
             this.deleteDbFile();
 
             const phase = this.inferPhase(err);
             const message = err instanceof Error ? err.message : String(err);
-            this.emit({ phase, status: 'error', message });
+            const backupHint = this.backupDir ? ` (backup preserved at ${this.backupDir})` : '';
+            this.emit({ phase, status: 'error', message: message + backupHint });
             throw new Error(`Migration failed in phase ${phase}: ${message}`);
         }
     }
 
     // ========================================================================
-    // Phase 1: Schema creation
+    // Phase 1: Backup
+    // ========================================================================
+
+    private backup(): { backupDir: string; sizeBytes: number } {
+        const backupDir = path.join(os.tmpdir(), '.coc-backup');
+
+        // Remove stale backup from previous attempt
+        if (fs.existsSync(backupDir)) {
+            fs.rmSync(backupDir, { recursive: true, force: true });
+        }
+        fs.mkdirSync(backupDir, { recursive: true });
+
+        const filesToBackup = ['config.yaml', 'workspaces.json', 'wikis.json'];
+        let totalBytes = 0;
+        let current = 0;
+
+        // Count total items (top-level files + workspace process dirs)
+        const reposDir = path.join(this.options.dataDir, 'repos');
+        const workspaceDirs = fs.existsSync(reposDir)
+            ? fs.readdirSync(reposDir, { withFileTypes: true })
+                .filter(d => d.isDirectory())
+                .map(d => d.name)
+            : [];
+        const total = filesToBackup.length + workspaceDirs.length;
+
+        // Copy top-level files
+        for (const file of filesToBackup) {
+            const src = path.join(this.options.dataDir, file);
+            if (fs.existsSync(src)) {
+                const dest = path.join(backupDir, file);
+                fs.cpSync(src, dest);
+                totalBytes += fs.statSync(dest).size;
+            }
+            current++;
+            this.emit({
+                phase: 1,
+                status: 'running',
+                message: `Backing up ${file}`,
+                progress: { current, total },
+            });
+        }
+
+        // Copy repos/*/processes/ subtrees
+        for (const wsId of workspaceDirs) {
+            this.checkAborted();
+            const srcProcesses = path.join(reposDir, wsId, 'processes');
+            if (fs.existsSync(srcProcesses)) {
+                const destProcesses = path.join(backupDir, 'repos', wsId, 'processes');
+                fs.cpSync(srcProcesses, destProcesses, { recursive: true });
+                totalBytes += this.dirSize(destProcesses);
+            }
+            current++;
+            this.emit({
+                phase: 1,
+                status: 'running',
+                message: `Backing up workspace ${wsId}`,
+                progress: { current, total },
+            });
+        }
+
+        return { backupDir, sizeBytes: totalBytes };
+    }
+
+    private dirSize(dir: string): number {
+        let total = 0;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                total += this.dirSize(full);
+            } else {
+                total += fs.statSync(full).size;
+            }
+        }
+        return total;
+    }
+
+    private deleteBackupDir(): void {
+        try {
+            if (this.backupDir && fs.existsSync(this.backupDir)) {
+                fs.rmSync(this.backupDir, { recursive: true, force: true });
+            }
+        } catch {
+            // best-effort
+        }
+    }
+
+    // ========================================================================
+    // Phase 2: Schema creation
     // ========================================================================
 
     private createDatabase(): Database.Database {
@@ -182,13 +287,13 @@ export class StorageMigrationEngine {
     }
 
     // ========================================================================
-    // Phase 2: Process migration
+    // Phase 3: Process migration
     // ========================================================================
 
     private migrateProcesses(): { active: number; archived: number } {
         const reposDir = path.join(this.options.dataDir, 'repos');
         if (!fs.existsSync(reposDir)) {
-            this.emit({ phase: 2, status: 'running', message: 'No repos directory found, skipping process migration' });
+            this.emit({ phase: 3, status: 'running', message: 'No repos directory found, skipping process migration' });
             return { active: 0, archived: 0 };
         }
 
@@ -237,7 +342,7 @@ export class StorageMigrationEngine {
             if (!fs.existsSync(processesDir)) continue;
 
             this.emit({
-                phase: 2,
+                phase: 3,
                 status: 'running',
                 message: `Migrating workspace ${wsId}`,
                 progress: { current: i + 1, total: workspaceDirs.length },
@@ -272,7 +377,7 @@ export class StorageMigrationEngine {
         }
 
         this.emit({
-            phase: 2,
+            phase: 3,
             status: 'running',
             message: `Migrated ${totalActive} active and ${totalArchived} archived processes`,
         });
@@ -376,7 +481,7 @@ export class StorageMigrationEngine {
     }
 
     // ========================================================================
-    // Phase 3: Metadata migration
+    // Phase 4: Metadata migration
     // ========================================================================
 
     private migrateWorkspaces(): number {
@@ -448,11 +553,11 @@ export class StorageMigrationEngine {
     }
 
     // ========================================================================
-    // Phase 4: Validation
+    // Phase 5: Validation
     // ========================================================================
 
     private async validate(expectedProcesses: number, expectedWorkspaces: number, expectedWikis: number): Promise<void> {
-        this.emit({ phase: 4, status: 'running', message: 'Validating migrated data...' });
+        this.emit({ phase: 5, status: 'running', message: 'Validating migrated data...' });
 
         // Validate total process count
         const actualProcesses = (this.db!.prepare('SELECT COUNT(*) AS cnt FROM processes').get() as { cnt: number }).cnt;
@@ -502,7 +607,7 @@ export class StorageMigrationEngine {
         // Sample validation via SqliteProcessStore round-trip
         await this.validateSample();
 
-        this.emit({ phase: 4, status: 'running', message: `Validated: ${actualProcesses} processes verified` });
+        this.emit({ phase: 5, status: 'running', message: `Validated: ${actualProcesses} processes verified` });
     }
 
     private countJsonProcesses(workspaceId: string): number {
@@ -633,11 +738,11 @@ export class StorageMigrationEngine {
     }
 
     // ========================================================================
-    // Phase 5: Cleanup & config switch
+    // Phase 6: Cleanup & config switch
     // ========================================================================
 
     private cleanup(): void {
-        this.emit({ phase: 5, status: 'running', message: 'Updating configuration and cleaning up...' });
+        this.emit({ phase: 6, status: 'running', message: 'Updating configuration and cleaning up...' });
 
         // Update config.yaml
         const configPath = path.join(this.options.dataDir, 'config.yaml');
@@ -721,13 +826,13 @@ export class StorageMigrationEngine {
 
     private inferPhase(err: unknown): number {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('Validation failed')) return 4;
+        if (msg.includes('Validation failed')) return 5;
         if (msg.includes('Migration failed in phase')) {
             const match = msg.match(/phase (\d+)/);
             if (match) return parseInt(match[1], 10);
         }
         // Default to current DB state to infer
-        if (!this.db) return 1;
-        return 2;
+        if (!this.db) return 2;
+        return 3;
     }
 }

@@ -1,17 +1,22 @@
 /**
  * Storage Migration Engine Tests
  *
- * Validates the 5-phase migration pipeline:
+ * Validates the 6-phase migration pipeline:
+ * - Backup phase creates correct directory structure
+ * - Stale backup dir is cleaned up
  * - Full migration succeeds with realistic JSON fixtures
  * - Pruned processes imported with archived = 1
  * - Validation catches count mismatch
- * - Cancellation during phase 2
+ * - Cancellation during backup deletes backup dir
+ * - Cancellation during phase 3
  * - Empty workspace handled gracefully
  * - Missing workspaces.json / wikis.json handled gracefully
  * - Progress events emitted in order
  * - config.yaml updated correctly
  * - JSON cleanup selective (non-process files preserved)
- * - Failure at phase 1 cleans up
+ * - Failure at phase 2 cleans up
+ * - Migration failure preserves backup dir
+ * - Summary includes backupPath and backupSizeBytes
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -193,6 +198,11 @@ describe('StorageMigrationEngine', () => {
 
     afterEach(() => {
         fs.rmSync(dataDir, { recursive: true, force: true });
+        // Clean up backup dir if it exists
+        const backupDir = path.join(os.tmpdir(), '.coc-backup');
+        if (fs.existsSync(backupDir)) {
+            fs.rmSync(backupDir, { recursive: true, force: true });
+        }
     });
 
     function createEngine(signal?: AbortSignal) {
@@ -306,7 +316,7 @@ describe('StorageMigrationEngine', () => {
             dbPath,
             onProgress: (event) => {
                 events.push({ ...event });
-                if (event.phase === 3 && event.message.includes('Migrated') && !tampered) {
+                if (event.phase === 4 && event.message.includes('Migrated') && !tampered) {
                     tampered = true;
                     // Tamper with the DB — delete a process row
                     const db = new Database(dbPath);
@@ -316,7 +326,7 @@ describe('StorageMigrationEngine', () => {
             },
         });
 
-        await expect(tamperEngine.run()).rejects.toThrow(/Migration failed in phase 4/);
+        await expect(tamperEngine.run()).rejects.toThrow(/Migration failed in phase 5/);
 
         // .db file should be deleted
         expect(fs.existsSync(dbPath)).toBe(false);
@@ -330,7 +340,7 @@ describe('StorageMigrationEngine', () => {
     // Cancellation during phase 2
     // ========================================================================
 
-    it('cancellation during phase 2 deletes .db and preserves JSON', async () => {
+    it('cancellation during phase 3 deletes .db and preserves JSON', async () => {
         buildFixtures(dataDir);
 
         const controller = new AbortController();
@@ -341,7 +351,7 @@ describe('StorageMigrationEngine', () => {
             dbPath,
             onProgress: (event) => {
                 events.push({ ...event });
-                if (event.phase === 2 && event.message.startsWith('Migrating workspace')) {
+                if (event.phase === 3 && event.message.startsWith('Migrating workspace')) {
                     wsCount++;
                     if (wsCount >= 1) {
                         controller.abort();
@@ -421,13 +431,14 @@ describe('StorageMigrationEngine', () => {
             expect(events[i].phase).toBeGreaterThanOrEqual(events[i - 1].phase);
         }
 
-        // Should cover phases 1 through 5
+        // Should cover phases 1 through 6
         const phases = new Set(events.map(e => e.phase));
         expect(phases.has(1)).toBe(true);
         expect(phases.has(2)).toBe(true);
         expect(phases.has(3)).toBe(true);
         expect(phases.has(4)).toBe(true);
         expect(phases.has(5)).toBe(true);
+        expect(phases.has(6)).toBe(true);
 
         // Final event should have status 'complete' with summary
         const lastEvent = events[events.length - 1];
@@ -478,7 +489,7 @@ describe('StorageMigrationEngine', () => {
     });
 
     // ========================================================================
-    // Failure at phase 1 cleans up
+    // Failure at phase 2 cleans up
     // ========================================================================
 
     it('failure at schema creation cleans up .db file', async () => {
@@ -505,7 +516,7 @@ describe('StorageMigrationEngine', () => {
             dbPath,
             onProgress: (event) => {
                 events.push({ ...event });
-                if (event.phase === 3 && event.message.includes('Migrated')) {
+                if (event.phase === 4 && event.message.includes('Migrated')) {
                     const db = new Database(dbPath);
                     db.prepare('DELETE FROM processes WHERE id = ?').run('proc-2');
                     db.close();
@@ -618,5 +629,168 @@ describe('StorageMigrationEngine', () => {
         } finally {
             db.close();
         }
+    });
+
+    // ========================================================================
+    // Backup phase tests
+    // ========================================================================
+
+    it('backup phase creates correct directory structure', async () => {
+        buildFixtures(dataDir);
+        const engine = createEngine();
+        await engine.run();
+
+        const backupDir = path.join(os.tmpdir(), '.coc-backup');
+        expect(fs.existsSync(backupDir)).toBe(true);
+
+        // Top-level files
+        expect(fs.existsSync(path.join(backupDir, 'config.yaml'))).toBe(true);
+        expect(fs.existsSync(path.join(backupDir, 'workspaces.json'))).toBe(true);
+        expect(fs.existsSync(path.join(backupDir, 'wikis.json'))).toBe(true);
+
+        // Workspace process directories
+        expect(fs.existsSync(path.join(backupDir, 'repos', 'ws1', 'processes', 'index.json'))).toBe(true);
+        expect(fs.existsSync(path.join(backupDir, 'repos', 'ws1', 'processes', 'proc-1.json'))).toBe(true);
+        expect(fs.existsSync(path.join(backupDir, 'repos', 'ws2', 'processes', 'index.json'))).toBe(true);
+
+        // Pruned processes
+        expect(fs.existsSync(path.join(backupDir, 'repos', 'ws1', 'processes', 'pruned', '2024-01', 'proc-old.json'))).toBe(true);
+
+        // Verify content matches
+        const backupConfig = fs.readFileSync(path.join(backupDir, 'config.yaml'), 'utf-8');
+        expect(backupConfig).toBe('model: gpt-4\n');
+
+        const backupWs = JSON.parse(fs.readFileSync(path.join(backupDir, 'workspaces.json'), 'utf-8'));
+        expect(backupWs).toHaveLength(2);
+        expect(backupWs[0].id).toBe('ws1');
+    });
+
+    it('stale backup dir is cleaned up before new backup', async () => {
+        const backupDir = path.join(os.tmpdir(), '.coc-backup');
+
+        // Pre-create stale backup
+        fs.mkdirSync(path.join(backupDir, 'stale-dir'), { recursive: true });
+        fs.writeFileSync(path.join(backupDir, 'stale-file.txt'), 'old data');
+
+        buildFixtures(dataDir);
+        const engine = createEngine();
+        await engine.run();
+
+        // Stale content should be gone
+        expect(fs.existsSync(path.join(backupDir, 'stale-file.txt'))).toBe(false);
+        expect(fs.existsSync(path.join(backupDir, 'stale-dir'))).toBe(false);
+
+        // New backup content should exist
+        expect(fs.existsSync(path.join(backupDir, 'config.yaml'))).toBe(true);
+    });
+
+    it('backup phase emits progress events', async () => {
+        buildFixtures(dataDir);
+        const engine = createEngine();
+        await engine.run();
+
+        const backupEvents = events.filter(e => e.phase === 1);
+        expect(backupEvents.length).toBeGreaterThanOrEqual(1);
+
+        // Should have progress tracking
+        const progressEvents = backupEvents.filter(e => e.progress);
+        expect(progressEvents.length).toBeGreaterThan(0);
+
+        // First event should mention backing up
+        expect(backupEvents[0].message).toContain('Backing up');
+    });
+
+    it('cancellation during backup deletes backup dir', async () => {
+        buildFixtures(dataDir);
+
+        const controller = new AbortController();
+
+        const cancelEngine = new StorageMigrationEngine({
+            dataDir,
+            dbPath,
+            onProgress: (event) => {
+                events.push({ ...event });
+                // Abort during workspace backup in phase 1
+                if (event.phase === 1 && event.message.startsWith('Backing up workspace')) {
+                    controller.abort();
+                }
+            },
+            signal: controller.signal,
+        });
+
+        await expect(cancelEngine.run()).rejects.toThrow();
+
+        const backupDir = path.join(os.tmpdir(), '.coc-backup');
+        expect(fs.existsSync(backupDir)).toBe(false);
+
+        // JSON source files should be intact
+        expect(fs.existsSync(path.join(dataDir, 'repos', 'ws1', 'processes', 'proc-1.json'))).toBe(true);
+    });
+
+    it('migration failure preserves backup dir', async () => {
+        buildFixtures(dataDir);
+
+        // Tamper with DB to cause validation failure
+        let tampered = false;
+        const tamperEngine = new StorageMigrationEngine({
+            dataDir,
+            dbPath,
+            onProgress: (event) => {
+                events.push({ ...event });
+                if (event.phase === 4 && event.message.includes('Migrated') && !tampered) {
+                    tampered = true;
+                    const db = new Database(dbPath);
+                    db.prepare('DELETE FROM processes WHERE id = ?').run('proc-1');
+                    db.close();
+                }
+            },
+        });
+
+        await expect(tamperEngine.run()).rejects.toThrow(/Migration failed/);
+
+        // Backup dir should still exist for manual recovery
+        const backupDir = path.join(os.tmpdir(), '.coc-backup');
+        expect(fs.existsSync(backupDir)).toBe(true);
+        expect(fs.existsSync(path.join(backupDir, 'config.yaml'))).toBe(true);
+        expect(fs.existsSync(path.join(backupDir, 'repos', 'ws1', 'processes', 'proc-1.json'))).toBe(true);
+    });
+
+    it('summary includes backupPath and backupSizeBytes', async () => {
+        buildFixtures(dataDir);
+        const engine = createEngine();
+        const summary = await engine.run();
+
+        expect(summary.backupPath).toBe(path.join(os.tmpdir(), '.coc-backup'));
+        expect(summary.backupSizeBytes).toBeGreaterThan(0);
+    });
+
+    it('backup handles missing source files gracefully', async () => {
+        // Only config.yaml, no workspaces.json or wikis.json
+        writeFile(path.join(dataDir, 'config.yaml'), 'model: gpt-4\n');
+
+        const engine = createEngine();
+        const summary = await engine.run();
+
+        const backupDir = path.join(os.tmpdir(), '.coc-backup');
+        expect(fs.existsSync(backupDir)).toBe(true);
+        expect(fs.existsSync(path.join(backupDir, 'config.yaml'))).toBe(true);
+        // Missing files should simply not be in backup
+        expect(fs.existsSync(path.join(backupDir, 'workspaces.json'))).toBe(false);
+        expect(fs.existsSync(path.join(backupDir, 'wikis.json'))).toBe(false);
+        expect(summary.backupSizeBytes).toBeGreaterThan(0);
+    });
+
+    it('backup does not include non-process files', async () => {
+        buildFixtures(dataDir);
+        const engine = createEngine();
+        await engine.run();
+
+        const backupDir = path.join(os.tmpdir(), '.coc-backup');
+
+        // Non-process files should NOT be backed up
+        expect(fs.existsSync(path.join(backupDir, 'repos', 'ws1', 'queues.json'))).toBe(false);
+        expect(fs.existsSync(path.join(backupDir, 'repos', 'ws1', 'schedules'))).toBe(false);
+        expect(fs.existsSync(path.join(backupDir, 'repos', 'ws1', 'outputs'))).toBe(false);
+        expect(fs.existsSync(path.join(backupDir, 'memory'))).toBe(false);
     });
 });
