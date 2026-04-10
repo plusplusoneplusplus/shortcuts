@@ -47,7 +47,8 @@ function getConversationTurns(data: any): ClientConversationTurn[] {
 }
 
 export function ItemConversationPanel({ processId, onClose, isDark }: ItemConversationPanelProps) {
-    const modHeld = useModifierKey();
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const modHeld = useModifierKey(textareaRef);
     const [processData, setProcessData] = useState<any>(null);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const [loading, setLoading] = useState(true);
@@ -355,6 +356,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                 style={{ borderColor: isDark ? '#3c3c3c' : '#e0e0e0' }}
             >
                 <textarea
+                    ref={textareaRef}
                     rows={1}
                     value={inputValue}
                     disabled={inputDisabled}

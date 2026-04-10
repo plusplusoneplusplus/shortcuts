@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { Button, SuggestionChips, SplitSendButton } from '../shared';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { PastePreview } from '../shared/PastePreview';
@@ -76,9 +76,10 @@ export function FollowUpInputArea({
     slashCommands,
     hideModeSelector = false,
 }: FollowUpInputAreaProps) {
-    const modHeld = useModifierKey();
+    const inputWrapperRef = useRef<HTMLDivElement>(null);
+    const modHeld = useModifierKey(inputWrapperRef as RefObject<HTMLElement>);
 
-    // Sync programmatic followUpInput changes (draft restore, clear after send) to the editor.
+    // Sync programmatic followUpInput changes(draft restore, clear after send) to the editor.
     // Guard prevents re-setting when the change originated from the user typing.
     // skipNextSyncRef is set by selectSkill callers so the effect does not overwrite the cursor
     // position that selectSkill already placed synchronously via ref.current.setValue(text, cursor).
@@ -165,7 +166,7 @@ export function FollowUpInputArea({
                         ))}
                     </select>
                 </div>}
-                <div className="relative flex-1 min-w-0">
+                <div ref={inputWrapperRef} className="relative flex-1 min-w-0">
                     <RichTextInput
                         ref={richTextRef}
                         disabled={inputDisabled}

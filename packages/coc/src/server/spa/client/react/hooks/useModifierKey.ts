@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
+import type { RefObject } from 'react';
 
-export function useModifierKey(): boolean {
+export function useModifierKey(targetRef?: RefObject<HTMLElement | null>): boolean {
     const [held, setHeld] = useState(false);
     useEffect(() => {
         const down = (e: KeyboardEvent) => {
-            if (e.key === 'Control' || e.key === 'Meta') setHeld(true);
+            if (e.key === 'Control' || e.key === 'Meta') {
+                if (targetRef?.current && !targetRef.current.contains(document.activeElement)) return;
+                setHeld(true);
+            }
         };
         const up = (e: KeyboardEvent) => {
             if (e.key === 'Control' || e.key === 'Meta') setHeld(false);
