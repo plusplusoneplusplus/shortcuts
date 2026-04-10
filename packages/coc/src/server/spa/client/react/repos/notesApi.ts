@@ -136,39 +136,39 @@ export const notesApi = {
     },
 
     updateThread(wsId: string, notePath: string, threadId: string, status: 'open' | 'resolved'): Promise<{ thread: CommentThread }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread`, {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, threadId, status }),
+            body: JSON.stringify({ path: notePath, status }),
         });
     },
 
     deleteThread(wsId: string, notePath: string, threadId: string): Promise<void> {
         return fetchApi(
-            `/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread?path=${encodeURIComponent(notePath)}&threadId=${encodeURIComponent(threadId)}`,
+            `/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}?path=${encodeURIComponent(notePath)}`,
             { method: 'DELETE' },
         );
     },
 
     addComment(wsId: string, notePath: string, threadId: string, content: string): Promise<{ comment: Comment }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/comment`, {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}/comment`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, threadId, content }),
+            body: JSON.stringify({ path: notePath, content }),
         });
     },
 
     editComment(wsId: string, notePath: string, threadId: string, commentId: string, content: string): Promise<{ comment: Comment }> {
-        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/comment`, {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}/comment/${encodeURIComponent(commentId)}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: notePath, threadId, commentId, content }),
+            body: JSON.stringify({ path: notePath, content }),
         });
     },
 
     deleteComment(wsId: string, notePath: string, threadId: string, commentId: string): Promise<void> {
         return fetchApi(
-            `/workspaces/${encodeURIComponent(wsId)}/notes/comments/comment?path=${encodeURIComponent(notePath)}&threadId=${encodeURIComponent(threadId)}&commentId=${encodeURIComponent(commentId)}`,
+            `/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread/${encodeURIComponent(threadId)}/comment/${encodeURIComponent(commentId)}?path=${encodeURIComponent(notePath)}`,
             { method: 'DELETE' },
         );
     },

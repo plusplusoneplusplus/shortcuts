@@ -161,62 +161,71 @@ describe('notesApi', () => {
             );
         });
 
-        it('updateThread — calls PATCH with threadId and status', async () => {
+        it('updateThread — calls PATCH with threadId in path and status in body', async () => {
             const thread = { id: 't1', status: 'resolved' };
             mockOk({ thread });
             const result = await notesApi.updateThread('ws-1', 'notes/hello.md', 't1', 'resolved');
             expect(result).toEqual({ thread });
             expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/thread',
+                '/api/workspaces/ws-1/notes/comments/thread/t1',
                 expect.objectContaining({
                     method: 'PATCH',
-                    body: JSON.stringify({ path: 'notes/hello.md', threadId: 't1', status: 'resolved' }),
+                    body: JSON.stringify({ path: 'notes/hello.md', status: 'resolved' }),
                 }),
             );
         });
 
-        it('deleteThread — calls DELETE with path and threadId query params', async () => {
+        it('deleteThread — calls DELETE with threadId in path and path query param', async () => {
             mock204();
             await notesApi.deleteThread('ws-1', 'notes/hello.md', 't1');
             expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/thread?path=notes%2Fhello.md&threadId=t1',
+                '/api/workspaces/ws-1/notes/comments/thread/t1?path=notes%2Fhello.md',
                 expect.objectContaining({ method: 'DELETE' }),
             );
         });
 
-        it('addComment — calls POST with threadId and content', async () => {
+        it('addComment — calls POST with threadId in path and content in body', async () => {
             const comment = { id: 'c1', body: 'Hello', createdAt: '2025-01-01T00:00:00Z' };
             mockOk({ comment });
             const result = await notesApi.addComment('ws-1', 'notes/hello.md', 't1', 'Hello');
             expect(result).toEqual({ comment });
             expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/comment',
+                '/api/workspaces/ws-1/notes/comments/thread/t1/comment',
                 expect.objectContaining({
                     method: 'POST',
-                    body: JSON.stringify({ path: 'notes/hello.md', threadId: 't1', content: 'Hello' }),
+                    body: JSON.stringify({ path: 'notes/hello.md', content: 'Hello' }),
                 }),
             );
         });
 
-        it('editComment — calls PATCH with commentId and content', async () => {
+        it('editComment — calls PATCH with threadId and commentId in path', async () => {
             const comment = { id: 'c1', body: 'Updated', createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-02T00:00:00Z' };
             mockOk({ comment });
             const result = await notesApi.editComment('ws-1', 'notes/hello.md', 't1', 'c1', 'Updated');
             expect(result).toEqual({ comment });
             expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/comment',
+                '/api/workspaces/ws-1/notes/comments/thread/t1/comment/c1',
                 expect.objectContaining({
                     method: 'PATCH',
-                    body: JSON.stringify({ path: 'notes/hello.md', threadId: 't1', commentId: 'c1', content: 'Updated' }),
+                    body: JSON.stringify({ path: 'notes/hello.md', content: 'Updated' }),
                 }),
             );
         });
 
-        it('deleteComment — calls DELETE with path, threadId, and commentId query params', async () => {
+        it('deleteComment — calls DELETE with threadId and commentId in path', async () => {
             mock204();
             await notesApi.deleteComment('ws-1', 'notes/hello.md', 't1', 'c1');
             expect(mockFetch).toHaveBeenCalledWith(
-                '/api/workspaces/ws-1/notes/comments/comment?path=notes%2Fhello.md&threadId=t1&commentId=c1',
+                '/api/workspaces/ws-1/notes/comments/thread/t1/comment/c1?path=notes%2Fhello.md',
+                expect.objectContaining({ method: 'DELETE' }),
+            );
+        });
+
+        it('encodes special characters in threadId and commentId path segments', async () => {
+            mock204();
+            await notesApi.deleteComment('ws-1', 'notes/hello.md', 'thread/1', 'comment/2');
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/comments/thread/thread%2F1/comment/comment%2F2?path=notes%2Fhello.md',
                 expect.objectContaining({ method: 'DELETE' }),
             );
         });
