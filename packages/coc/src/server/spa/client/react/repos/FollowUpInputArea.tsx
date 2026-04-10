@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Button, SuggestionChips } from '../shared';
+import { Button, SuggestionChips, SplitSendButton } from '../shared';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { PastePreview } from '../shared/PastePreview';
 import { cn } from '../shared/cn';
@@ -224,20 +224,12 @@ export function FollowUpInputArea({
                         highlightIndex={slashCommands.highlightIndex}
                     />
                 </div>
-                <button
-                    type="button"
+                <SplitSendButton
+                    sending={sending}
                     disabled={inputDisabled}
-                    className={`shrink-0 h-[34px] px-2 sm:px-3 rounded text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${modHeld && sending ? 'bg-[#e8912d] hover:bg-[#c97a25]' : 'bg-[#0078d4] hover:bg-[#106ebe]'}`}
-                    onClick={() => { void onSend(); }}
-                    data-testid="activity-chat-send-btn"
-                    title={modHeld
-                        ? 'Release Ctrl to queue instead'
-                        : 'Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline'}
-                >
-                    {sending
-                        ? (modHeld ? '⚡ Steer' : 'Queue')
-                        : (modHeld ? '⚡ Send Now' : 'Send')}
-                </button>
+                    ctrlHeld={modHeld}
+                    onSend={(dm) => { void onSend(undefined, dm); }}
+                />
             </div>
         </div>
     );

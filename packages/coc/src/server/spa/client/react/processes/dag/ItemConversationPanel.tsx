@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
-import { Badge, Button, Spinner } from '../../shared';
+import { Badge, Button, Spinner, SplitSendButton } from '../../shared';
 import { ConversationTurnBubble } from '../ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { getProcessWorkspaceId } from '../../utils/workspace';
@@ -374,19 +374,13 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                     data-testid="item-conversation-textarea"
                     className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
                 />
-                <Button
+                <SplitSendButton
+                    sending={sending}
                     disabled={inputDisabled || !inputValue.trim()}
-                    onClick={() => void sendFollowUp()}
+                    ctrlHeld={modHeld}
+                    onSend={(dm) => { void sendFollowUp(dm); }}
                     data-testid="item-conversation-send"
-                    title={modHeld
-                        ? 'Release Ctrl to queue instead'
-                        : 'Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline'}
-                    className={modHeld && sending ? '!bg-[#e8912d] hover:!bg-[#c97a25]' : undefined}
-                >
-                    {sending
-                        ? (modHeld ? '⚡ Steer' : 'Queue')
-                        : (modHeld ? '⚡ Send Now' : 'Send')}
-                </Button>
+                />
             </div>
         </div>
     );
