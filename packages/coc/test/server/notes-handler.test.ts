@@ -558,6 +558,63 @@ describe('Notes Handler', () => {
             });
             expect(res.status).toBe(404);
         });
+
+        it('should rename sidecar .comments.json when renaming a page', async () => {
+            const srv = await startServer();
+            const sidecarData = JSON.stringify({ threads: { t1: { id: 't1' } } });
+            createNoteFiles({
+                'old-name.md': '# Old Name',
+                'old-name.md.comments.json': sidecarData,
+            });
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'old-name.md',
+                newPath: 'new-name.md',
+            });
+            expect(res.status).toBe(200);
+
+            const notesDir = getRepoDataPath(dataDir, wsId, 'notes');
+            // Old sidecar gone
+            expect(fs.existsSync(path.join(notesDir, 'old-name.md.comments.json'))).toBe(false);
+            // New sidecar exists with same content
+            const newSidecar = fs.readFileSync(
+                path.join(notesDir, 'new-name.md.comments.json'), 'utf-8'
+            );
+            expect(JSON.parse(newSidecar)).toEqual({ threads: { t1: { id: 't1' } } });
+        });
+
+        it('should succeed when renaming a page with no sidecar', async () => {
+            const srv = await startServer();
+            createNoteFiles({ 'solo.md': '# Solo' });
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'solo.md',
+                newPath: 'renamed-solo.md',
+            });
+            expect(res.status).toBe(200);
+        });
+
+        it('should move sidecars when renaming a directory', async () => {
+            const srv = await startServer();
+            createNoteFiles({
+                'nb/page.md': '# Page',
+                'nb/page.md.comments.json': '{"threads":{}}',
+            });
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'nb',
+                newPath: 'renamed-nb',
+            });
+            expect(res.status).toBe(200);
+
+            const notesDir = getRepoDataPath(dataDir, wsId, 'notes');
+            expect(fs.existsSync(path.join(notesDir, 'renamed-nb', 'page.md'))).toBe(true);
+            expect(fs.existsSync(path.join(notesDir, 'renamed-nb', 'page.md.comments.json'))).toBe(true);
+            expect(fs.existsSync(path.join(notesDir, 'nb'))).toBe(false);
+        });
     });
 
     // ========================================================================
@@ -609,6 +666,36 @@ describe('Notes Handler', () => {
 
             const res = await deleteRequest(`${srv.url}/api/workspaces/${wsId}/notes/path?path=../../../../../../etc/passwd`);
             expect(res.status).toBe(403);
+        });
+
+        it('should delete sidecar .comments.json when deleting a page', async () => {
+            const srv = await startServer();
+            createNoteFiles({
+                'commented.md': '# Has comments',
+                'commented.md.comments.json': JSON.stringify({ threads: {} }),
+            });
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await deleteRequest(
+                `${srv.url}/api/workspaces/${wsId}/notes/path?path=commented.md`
+            );
+            expect(res.status).toBe(204);
+
+            // Both the page and its sidecar should be gone
+            const notesDir = getRepoDataPath(dataDir, wsId, 'notes');
+            expect(fs.existsSync(path.join(notesDir, 'commented.md'))).toBe(false);
+            expect(fs.existsSync(path.join(notesDir, 'commented.md.comments.json'))).toBe(false);
+        });
+
+        it('should succeed when deleting a page with no sidecar', async () => {
+            const srv = await startServer();
+            createNoteFiles({ 'no-comments.md': '# No comments' });
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await deleteRequest(
+                `${srv.url}/api/workspaces/${wsId}/notes/path?path=no-comments.md`
+            );
+            expect(res.status).toBe(204);
         });
     });
 

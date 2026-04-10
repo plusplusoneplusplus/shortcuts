@@ -65,6 +65,19 @@ turndown.addRule('highlight', {
     },
 });
 
+// Comment spans: strip wrapper, keep inner text
+turndown.addRule('commentSpan', {
+    filter(node) {
+        return (
+            node.nodeName === 'SPAN' &&
+            node.hasAttribute('data-comment-id')
+        );
+    },
+    replacement(content) {
+        return content;
+    },
+});
+
 // Task list container: pass through children, don't wrap in extra markup
 turndown.addRule('taskList', {
     filter(node) {
@@ -192,6 +205,62 @@ export function htmlToMarkdown(html: string): string {
     // Ensure single trailing newline
     md = md.replace(/\n*$/, '\n');
     return md;
+}
+
+/**
+ * Thread shape expected by the export function.
+ * Matches the CommentThread type from the comments system.
+ */
+export interface ExportCommentThread {
+    id: string;
+    status: 'open' | 'resolved';
+    anchor: { quotedText: string };
+    comments: { author: string; content: string; createdAt: string }[];
+}
+
+/**
+ * Convert Tiptap HTML to markdown with comment threads appended as
+ * a footnote-style "Comments" section.
+ *
+ * - Open threads render as blockquotes under `## Comments`
+ * - Resolved threads render under `### Resolved` with strikethrough
+ * - If no threads exist, output is identical to `htmlToMarkdown`.
+ */
+export function htmlToMarkdownWithComments(
+    html: string,
+    threads: Record<string, ExportCommentThread>,
+): string {
+    const md = htmlToMarkdown(html);
+    if (!threads || Object.keys(threads).length === 0) return md;
+
+    const open = Object.values(threads).filter(t => t.status === 'open');
+    const resolved = Object.values(threads).filter(t => t.status === 'resolved');
+
+    let result = md.trimEnd() + '\n';
+
+    if (open.length > 0) {
+        result += '\n---\n\n## Comments\n\n';
+        for (const thread of open) {
+            result += `> **On:** "${thread.anchor.quotedText}"\n`;
+            for (const c of thread.comments) {
+                result += `> ${c.content}\n`;
+            }
+            result += '\n';
+        }
+    }
+
+    if (resolved.length > 0) {
+        result += '\n### Resolved\n\n';
+        for (const thread of resolved) {
+            result += `> ~~"${thread.anchor.quotedText}"~~\n`;
+            for (const c of thread.comments) {
+                result += `> ${c.content}\n`;
+            }
+            result += '\n';
+        }
+    }
+
+    return result;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

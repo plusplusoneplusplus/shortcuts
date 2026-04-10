@@ -178,6 +178,16 @@ export function registerNotesWriteRoutes(
             try {
                 await fs.promises.mkdir(path.dirname(resolvedNew), { recursive: true });
                 await fs.promises.rename(resolvedOld, resolvedNew);
+
+                // Cascade: rename sidecar comments file when it exists
+                const oldSidecar = resolvedOld + '.comments.json';
+                const newSidecar = resolvedNew + '.comments.json';
+                try {
+                    await fs.promises.rename(oldSidecar, newSidecar);
+                } catch (err: any) {
+                    if (err.code !== 'ENOENT') throw err;
+                }
+
                 sendJSON(res, 200, { oldPath, newPath });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to rename: ' + (err.message || 'Unknown error'));
@@ -220,6 +230,13 @@ export function registerNotesWriteRoutes(
                     await fs.promises.rm(resolved, { recursive: true });
                 } else {
                     await fs.promises.unlink(resolved);
+                    // Cascade: remove sidecar comments file when it exists
+                    const sidecarPath = resolved + '.comments.json';
+                    try {
+                        await fs.promises.unlink(sidecarPath);
+                    } catch (err: any) {
+                        if (err.code !== 'ENOENT') throw err;
+                    }
                 }
                 res.writeHead(204);
                 res.end();
