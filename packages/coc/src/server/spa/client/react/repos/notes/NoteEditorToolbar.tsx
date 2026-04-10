@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/react';
 
 export interface NoteEditorToolbarProps {
     editor: Editor | null;
+    onCommentCreate?: () => void;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -221,9 +222,52 @@ function TableControls({ editor }: TableControlsProps) {
     );
 }
 
+// ── Comment button ──────────────────────────────────────────────────────────
+
+interface CommentButtonProps {
+    editor: Editor;
+    onCommentCreate: () => void;
+}
+
+function CommentButton({ editor, onCommentCreate }: CommentButtonProps) {
+    const [hasSelection, setHasSelection] = useState(false);
+
+    useEffect(() => {
+        const update = () => setHasSelection(!editor.state.selection.empty);
+        editor.on('selectionUpdate', update);
+        editor.on('transaction', update);
+        return () => {
+            editor.off('selectionUpdate', update);
+            editor.off('transaction', update);
+        };
+    }, [editor]);
+
+    return (
+        <button
+            type="button"
+            title="Add comment (Ctrl+Shift+M)"
+            aria-label="Add comment"
+            disabled={!hasSelection}
+            className={
+                'h-7 w-7 rounded flex items-center justify-center text-xs ' +
+                (hasSelection
+                    ? 'hover:bg-[#e0e0e0] dark:hover:bg-[#505050] cursor-pointer'
+                    : 'opacity-40 cursor-not-allowed')
+            }
+            onMouseDown={(e) => {
+                e.preventDefault();
+                if (hasSelection) onCommentCreate();
+            }}
+            data-testid="toolbar-comment-btn"
+        >
+            💬
+        </button>
+    );
+}
+
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, onCommentCreate }: NoteEditorToolbarProps) {
     if (!editor) return null;
 
     const c = editor.chain().focus.bind(editor.chain());
@@ -286,6 +330,14 @@ export function NoteEditorToolbar({ editor }: NoteEditorToolbarProps) {
 
             {/* Table — contextual operations (visible only inside a table) */}
             <TableControls editor={editor} />
+
+            {/* Comment */}
+            {onCommentCreate && (
+                <>
+                    <Sep />
+                    <CommentButton editor={editor} onCommentCreate={onCommentCreate} />
+                </>
+            )}
         </div>
     );
 }

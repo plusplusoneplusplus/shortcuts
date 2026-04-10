@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -10,19 +11,33 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
+import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
 import { notesApi } from '../notesApi';
+import type { CommentThread } from '../notesApi';
 import { markdownToHtml, htmlToMarkdown } from './noteMarkdown';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
+import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import './noteEditor.css';
 
 export interface NoteEditorProps {
     workspaceId: string;
     notePath: string | null;
+    onCommentActivated?: (commentId: string | null) => void;
+    onEditorReady?: (editor: Editor) => void;
+    onCommentCreate?: () => void;
+    commentsEnabled?: boolean;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
+export function NoteEditor({
+    workspaceId,
+    notePath,
+    onCommentActivated,
+    onEditorReady,
+    onCommentCreate,
+    commentsEnabled = true,
+}: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -38,6 +53,12 @@ export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
     workspaceIdRef.current = workspaceId;
 
     // ── Tiptap editor ───────────────────────────────────────────────────────
+
+    // Stable callback refs for extension config (avoids editor recreation)
+    const onCommentActivatedRef = useRef(onCommentActivated);
+    onCommentActivatedRef.current = onCommentActivated;
+    const onCommentCreateRef = useRef(onCommentCreate);
+    onCommentCreateRef.current = onCommentCreate;
 
     const editor = useEditor({
         extensions: [
@@ -58,6 +79,15 @@ export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
             TableCell,
             TableHeader,
             Highlight.configure({ multicolor: true }),
+            ...(commentsEnabled
+                ? [
+                    CommentExtension.configure({
+                        onCommentActivated: (commentId: string | null) => {
+                            onCommentActivatedRef.current?.(commentId);
+                        },
+                    }),
+                ]
+                : []),
         ],
         onUpdate: ({ editor: ed }) => {
             setDirty(true);
@@ -65,7 +95,16 @@ export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
         },
     });
 
+    // ── Expose editor to parent ────────────────────────────────────────────
+
+    useEffect(() => {
+        if (editor) onEditorReady?.(editor);
+    }, [editor, onEditorReady]);
+
     // ── Autosave ────────────────────────────────────────────────────────────
+
+    // Ref to track loaded threads for re-anchoring
+    const loadedThreadsRef = useRef<CommentThread[]>([]);
 
     const flushSave = useCallback(async () => {
         if (saveTimerRef.current) {
@@ -82,10 +121,24 @@ export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
             setSaveState('saved');
             setDirty(false);
             setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
+
+            // Re-anchor threads after save to keep context fresh
+            if (commentsEnabled && editor) {
+                const threads = loadedThreadsRef.current;
+                for (const thread of threads) {
+                    if (thread.status === 'resolved') continue;
+                    const freshAnchor = buildAnchorFromMark(editor, thread.id);
+                    if (freshAnchor && freshAnchor.quotedText !== thread.anchor.quotedText) {
+                        notesApi.updateThread(workspaceIdRef.current, path, thread.id, thread.status)
+                            .catch(() => { /* non-fatal */ });
+                        thread.anchor = freshAnchor;
+                    }
+                }
+            }
         } catch {
             setSaveState('error');
         }
-    }, []);
+    }, [editor, commentsEnabled]);
 
     function scheduleSave(ed: { getHTML: () => string }) {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -119,6 +172,22 @@ export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
                 const html = markdownToHtml(content);
                 editor?.commands.setContent(html);
                 setDirty(false);
+
+                // Apply comment marks from persisted threads
+                if (commentsEnabled && editor) {
+                    notesApi.getComments(workspaceId, notePath).then((sidecar) => {
+                        if (cancelled) return;
+                        const threads = Object.values(sidecar.threads);
+                        loadedThreadsRef.current = threads;
+                        for (const thread of threads) {
+                            if (thread.status === 'resolved') continue;
+                            const result = findAnchorInDoc(editor.state.doc, thread.anchor);
+                            if (result) {
+                                applyCommentMark(editor, thread.id, result.from, result.to);
+                            }
+                        }
+                    }).catch(() => { /* non-fatal — comments just won't highlight */ });
+                }
             })
             .catch((err) => {
                 if (cancelled) return;
@@ -149,6 +218,10 @@ export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
                 flushSave();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+                e.preventDefault();
+                onCommentCreateRef.current?.();
             }
         };
         document.addEventListener('keydown', handler);
@@ -212,7 +285,7 @@ export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
 
     return (
         <div className="note-editor flex-1 flex flex-col min-h-0 relative" data-testid="note-editor">
-            <NoteEditorToolbar editor={editor} />
+            <NoteEditorToolbar editor={editor} onCommentCreate={onCommentCreate} />
             <div className="flex-1 overflow-y-auto">
                 <EditorContent editor={editor} />
             </div>
