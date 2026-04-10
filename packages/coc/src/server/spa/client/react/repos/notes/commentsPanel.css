@@ -1,0 +1,29 @@
+/* Thread card enter/exit transitions */
+.comment-thread-enter {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.comment-thread-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
+}
+
+/* Resolved thread strikethrough on anchor text */
+.comment-thread-resolved .comment-anchor-text {
+  text-decoration: line-through;
+}
+
+/* Reply input focus ring consistent with editor */
+.comment-reply-input:focus {
+  outline: none;
+  border-color: #0078d4;
+  box-shadow: 0 0 0 1px #0078d4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .comment-reply-input:focus {
+    border-color: #3794ff;
+    box-shadow: 0 0 0 1px #3794ff;
+  }
+}

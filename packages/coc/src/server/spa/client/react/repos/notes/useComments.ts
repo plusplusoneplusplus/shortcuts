@@ -1,0 +1,254 @@
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { notesApi, type CommentThread, type TextAnchor, type Comment } from '../notesApi';
+
+export type CommentFilter = 'all' | 'open' | 'resolved';
+
+export interface UseCommentsOptions {
+    workspaceId: string;
+    notePath: string | null;
+    onThreadSelect?: (threadId: string | null) => void;
+}
+
+export interface UseCommentsReturn {
+    threads: CommentThread[];
+    selectedThreadId: string | null;
+    filter: CommentFilter;
+    loading: boolean;
+    error: string | null;
+
+    totalCount: number;
+    openCount: number;
+    resolvedCount: number;
+
+    setFilter: (filter: CommentFilter) => void;
+    selectThread: (threadId: string | null) => void;
+    createThread: (anchor: TextAnchor, initialComment: string) => Promise<CommentThread>;
+    resolveThread: (threadId: string) => Promise<void>;
+    reopenThread: (threadId: string) => Promise<void>;
+    deleteThread: (threadId: string) => Promise<void>;
+    addComment: (threadId: string, content: string) => Promise<void>;
+    editComment: (threadId: string, commentId: string, content: string) => Promise<void>;
+    deleteComment: (threadId: string, commentId: string) => Promise<void>;
+    reload: () => Promise<void>;
+}
+
+function sortThreads(threads: CommentThread[]): CommentThread[] {
+    return [...threads].sort((a, b) => {
+        // Open threads first
+        if (a.status !== b.status) {
+            return a.status === 'open' ? -1 : 1;
+        }
+        // Newest first within each group
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+}
+
+function filterThreads(threads: CommentThread[], filter: CommentFilter): CommentThread[] {
+    if (filter === 'all') return threads;
+    return threads.filter(t => t.status === filter);
+}
+
+export function useComments(options: UseCommentsOptions): UseCommentsReturn {
+    const { workspaceId, notePath, onThreadSelect } = options;
+
+    const [allThreads, setAllThreads] = useState<CommentThread[]>([]);
+    const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+    const [filter, setFilter] = useState<CommentFilter>('all');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Refs for stale-closure prevention
+    const workspaceIdRef = useRef(workspaceId);
+    const notePathRef = useRef(notePath);
+    const onThreadSelectRef = useRef(onThreadSelect);
+    const threadsRef = useRef(allThreads);
+    const lastFetchedPathRef = useRef<string | null>(null);
+
+    workspaceIdRef.current = workspaceId;
+    notePathRef.current = notePath;
+    onThreadSelectRef.current = onThreadSelect;
+    threadsRef.current = allThreads;
+
+    const fetchThreads = useCallback(async (targetPath: string) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const sidecar = await notesApi.getComments(workspaceIdRef.current, targetPath);
+            const threads = Object.values(sidecar.threads);
+            setAllThreads(sortThreads(threads));
+        } catch (err: any) {
+            setError(err.message ?? 'Failed to load comments');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // Load on mount / notePath change
+    useEffect(() => {
+        if (!notePath) {
+            setAllThreads([]);
+            setSelectedThreadId(null);
+            setError(null);
+            setLoading(false);
+            lastFetchedPathRef.current = null;
+            return;
+        }
+        if (lastFetchedPathRef.current === notePath) return;
+        lastFetchedPathRef.current = notePath;
+        fetchThreads(notePath);
+    }, [notePath, fetchThreads]);
+
+    // Derived counts (always from unfiltered list)
+    const totalCount = allThreads.length;
+    const openCount = allThreads.filter(t => t.status === 'open').length;
+    const resolvedCount = allThreads.filter(t => t.status === 'resolved').length;
+
+    const filteredAndSorted = filterThreads(allThreads, filter);
+
+    const selectThread = useCallback((threadId: string | null) => {
+        setSelectedThreadId(threadId);
+        onThreadSelectRef.current?.(threadId);
+    }, []);
+
+    const createThread = useCallback(async (anchor: TextAnchor, initialComment: string): Promise<CommentThread> => {
+        const wsId = workspaceIdRef.current;
+        const path = notePathRef.current;
+        if (!path) throw new Error('No note path');
+
+        const now = new Date().toISOString();
+        const tempId = `temp-${Date.now()}`;
+        const newThread: CommentThread = {
+            id: tempId,
+            anchor,
+            status: 'open',
+            comments: [{ id: `temp-c-${Date.now()}`, body: initialComment, createdAt: now }],
+            createdAt: now,
+        };
+
+        const result = await notesApi.createThread(wsId, path, newThread);
+        const created = result.thread;
+        setAllThreads(prev => sortThreads([...prev, created]));
+        setSelectedThreadId(created.id);
+        onThreadSelectRef.current?.(created.id);
+        return created;
+    }, []);
+
+    const resolveThread = useCallback(async (threadId: string) => {
+        const prev = threadsRef.current;
+        setAllThreads(sortThreads(prev.map(t => t.id === threadId ? { ...t, status: 'resolved' as const } : t)));
+        try {
+            await notesApi.updateThread(workspaceIdRef.current, notePathRef.current!, threadId, 'resolved');
+        } catch (e: any) {
+            setAllThreads(prev);
+            setError(e.message ?? 'Failed to resolve thread');
+        }
+    }, []);
+
+    const reopenThread = useCallback(async (threadId: string) => {
+        const prev = threadsRef.current;
+        setAllThreads(sortThreads(prev.map(t => t.id === threadId ? { ...t, status: 'open' as const } : t)));
+        try {
+            await notesApi.updateThread(workspaceIdRef.current, notePathRef.current!, threadId, 'open');
+        } catch (e: any) {
+            setAllThreads(prev);
+            setError(e.message ?? 'Failed to reopen thread');
+        }
+    }, []);
+
+    const deleteThread = useCallback(async (threadId: string) => {
+        const prev = threadsRef.current;
+        setAllThreads(prev.filter(t => t.id !== threadId));
+        setSelectedThreadId(current => current === threadId ? null : current);
+        try {
+            await notesApi.deleteThread(workspaceIdRef.current, notePathRef.current!, threadId);
+        } catch (e: any) {
+            setAllThreads(prev);
+            setError(e.message ?? 'Failed to delete thread');
+        }
+    }, []);
+
+    const addComment = useCallback(async (threadId: string, content: string) => {
+        const prev = threadsRef.current;
+        const tempComment: Comment = {
+            id: `temp-c-${Date.now()}`,
+            body: content,
+            createdAt: new Date().toISOString(),
+        };
+        setAllThreads(prev.map(t =>
+            t.id === threadId ? { ...t, comments: [...t.comments, tempComment] } : t,
+        ));
+        try {
+            const result = await notesApi.addComment(workspaceIdRef.current, notePathRef.current!, threadId, content);
+            // Replace temp comment with server response
+            setAllThreads(current =>
+                current.map(t =>
+                    t.id === threadId
+                        ? { ...t, comments: t.comments.map(c => c.id === tempComment.id ? result.comment : c) }
+                        : t,
+                ),
+            );
+        } catch (e: any) {
+            setAllThreads(prev);
+            setError(e.message ?? 'Failed to add comment');
+        }
+    }, []);
+
+    const editComment = useCallback(async (threadId: string, commentId: string, content: string) => {
+        const prev = threadsRef.current;
+        setAllThreads(prev.map(t =>
+            t.id === threadId
+                ? { ...t, comments: t.comments.map(c => c.id === commentId ? { ...c, body: content, updatedAt: new Date().toISOString() } : c) }
+                : t,
+        ));
+        try {
+            await notesApi.editComment(workspaceIdRef.current, notePathRef.current!, threadId, commentId, content);
+        } catch (e: any) {
+            setAllThreads(prev);
+            setError(e.message ?? 'Failed to edit comment');
+        }
+    }, []);
+
+    const deleteComment = useCallback(async (threadId: string, commentId: string) => {
+        const prev = threadsRef.current;
+        setAllThreads(prev.map(t =>
+            t.id === threadId
+                ? { ...t, comments: t.comments.filter(c => c.id !== commentId) }
+                : t,
+        ));
+        try {
+            await notesApi.deleteComment(workspaceIdRef.current, notePathRef.current!, threadId, commentId);
+        } catch (e: any) {
+            setAllThreads(prev);
+            setError(e.message ?? 'Failed to delete comment');
+        }
+    }, []);
+
+    const reload = useCallback(async () => {
+        const path = notePathRef.current;
+        if (!path) return;
+        lastFetchedPathRef.current = null;
+        setError(null);
+        await fetchThreads(path);
+    }, [fetchThreads]);
+
+    return {
+        threads: filteredAndSorted,
+        selectedThreadId,
+        filter,
+        loading,
+        error,
+        totalCount,
+        openCount,
+        resolvedCount,
+        setFilter,
+        selectThread,
+        createThread,
+        resolveThread,
+        reopenThread,
+        deleteThread,
+        addComment,
+        editComment,
+        deleteComment,
+        reload,
+    };
+}
