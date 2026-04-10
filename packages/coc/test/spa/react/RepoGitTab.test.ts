@@ -787,6 +787,87 @@ describe('RepoGitTab', () => {
         it('uses handleBranchRangeSelect for onBranchRangeSelect prop', () => {
             expect(source).toContain('onBranchRangeSelect={handleBranchRangeSelect}');
         });
+
+        describe('post-mount deep-link navigation', () => {
+            it('declares consumedDeepLinkRef initialized to initialCommitHash', () => {
+                expect(source).toContain('const consumedDeepLinkRef = useRef<string | null>(initialCommitHash)');
+            });
+
+            it('has a useEffect that watches state.selectedGitCommitHash', () => {
+                // The effect should depend on state.selectedGitCommitHash
+                const effectPattern = /useEffect\(\(\) => \{[^}]*state\.selectedGitCommitHash[\s\S]*?\}, \[state\.selectedGitCommitHash/;
+                expect(source).toMatch(effectPattern);
+            });
+
+            it('skips navigation when hash is null', () => {
+                // The effect checks for falsy hash
+                expect(source).toContain('if (!hash || hash === \'branch-range\' || loading) return');
+            });
+
+            it('skips navigation when hash equals branch-range', () => {
+                expect(source).toContain("hash === 'branch-range'");
+            });
+
+            it('skips navigation while loading', () => {
+                // loading is checked in the guard
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                expect(effectBlock).toBeTruthy();
+                expect(effectBlock![0]).toContain('loading');
+            });
+
+            it('skips navigation when hash matches consumedDeepLinkRef (no infinite loop)', () => {
+                expect(source).toContain('if (hash === consumedDeepLinkRef.current) return');
+            });
+
+            it('updates consumedDeepLinkRef when consuming a new deep-link', () => {
+                expect(source).toContain('consumedDeepLinkRef.current = hash');
+            });
+
+            it('finds target commit using startsWith matching', () => {
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                expect(effectBlock).toBeTruthy();
+                expect(effectBlock![0]).toContain('commits.find(c => c.hash.startsWith(hash))');
+            });
+
+            it('sets commit-file right panel view when filePath is present', () => {
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                expect(effectBlock).toBeTruthy();
+                expect(effectBlock![0]).toContain("setRightPanelView({ type: 'commit-file', hash: target.hash, filePath })");
+            });
+
+            it('sets commit right panel view when no filePath', () => {
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                expect(effectBlock).toBeTruthy();
+                expect(effectBlock![0]).toContain("setRightPanelView({ type: 'commit', commit: target })");
+            });
+
+            it('includes loading and commits in the dependency array', () => {
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[([^\]]*)\]/);
+                expect(effectBlock).toBeTruthy();
+                const deps = effectBlock![1];
+                expect(deps).toContain('loading');
+                expect(deps).toContain('commits');
+            });
+
+            it('includes state.selectedGitFilePath in the dependency array', () => {
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[([^\]]*)\]/);
+                expect(effectBlock).toBeTruthy();
+                expect(effectBlock![1]).toContain('state.selectedGitFilePath');
+            });
+
+            it('does not dispatch SET_GIT_COMMIT_HASH (avoids desync with URL state)', () => {
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                expect(effectBlock).toBeTruthy();
+                // The effect should NOT dispatch — it only updates the right panel view
+                expect(effectBlock![0]).not.toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH'");
+            });
+
+            it('does not clear the hash from state after consuming', () => {
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                expect(effectBlock).toBeTruthy();
+                expect(effectBlock![0]).not.toContain('dispatch({ type: \'SET_GIT_COMMIT_HASH\', hash: null');
+            });
+        });
     });
 
     describe('skill review context menu', () => {

@@ -139,6 +139,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     });
     const initialCommitHash = state.selectedGitCommitHash;
     const initialFilePath = state.selectedGitFilePath;
+    const consumedDeepLinkRef = useRef<string | null>(initialCommitHash);
     const [commits, setCommits] = useState<GitCommitItem[]>([]);
     const [skip, setSkip] = useState(0);
     const [hasMore, setHasMore] = useState(true);
@@ -332,6 +333,23 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             .catch(err => setError(err.message || 'Failed to load commits'))
             .finally(() => setLoading(false));
     }, [workspaceId, fetchCommits, fetchBranchRange, retryKey]);
+
+    // Deep-link navigation after mount: when state.selectedGitCommitHash changes
+    // (e.g. clicking a commit link from the activity tab), select the target commit.
+    useEffect(() => {
+        const hash = state.selectedGitCommitHash;
+        if (!hash || hash === 'branch-range' || loading) return;
+        if (hash === consumedDeepLinkRef.current) return;
+        consumedDeepLinkRef.current = hash;
+        const target = commits.find(c => c.hash.startsWith(hash));
+        if (!target) return;
+        const filePath = state.selectedGitFilePath;
+        if (filePath) {
+            setRightPanelView({ type: 'commit-file', hash: target.hash, filePath });
+        } else {
+            setRightPanelView({ type: 'commit', commit: target });
+        }
+    }, [state.selectedGitCommitHash, state.selectedGitFilePath, loading, commits]);
 
     // Fetch skills once per workspace
     useEffect(() => {
