@@ -141,6 +141,16 @@ export function parseGitFileDeepLink(hash: string): { commitHash: string; filePa
     return null;
 }
 
+/** Build a pop-out URL for git commit review. */
+export function buildGitReviewPopOutUrl(workspaceId: string, commitHash: string): string {
+    return `/?workspace=${encodeURIComponent(workspaceId)}#popout/git-review/${encodeURIComponent(commitHash)}`;
+}
+
+/** Build a pop-out URL for branch-range review. */
+export function buildGitBranchRangePopOutUrl(workspaceId: string): string {
+    return `/?workspace=${encodeURIComponent(workspaceId)}#popout/git-review/branch-range`;
+}
+
 export function parseWorkflowDeepLink(hash: string): { repoId: string; processId: string } | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');

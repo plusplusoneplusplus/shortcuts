@@ -12,6 +12,8 @@ import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../.
 import type { DiffLine } from '../repos/UnifiedDiffViewer';
 import { relocateDiffAnchor } from '../utils/relocateDiffAnchor';
 import { computeStorageKey, buildDiffCommentUrl, patchDiffComment, deleteDiffCommentById } from '../utils/diffCommentApi';
+import { GIT_REVIEW_POPOUT_CHANNEL } from '../context/GitReviewPopOutContext';
+import type { GitReviewPopOutMessage } from '../context/GitReviewPopOutContext';
 
 // ============================================================================
 // Request/Response Types
@@ -533,6 +535,22 @@ export function useDiffComments(
         });
         return () => { ws.close(); };
     }, [contextKey, fetchComments]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ------------------------------------------------------------------
+    // BroadcastChannel — refetch when pop-out window notifies comment changes
+    // ------------------------------------------------------------------
+
+    useEffect(() => {
+        if (!context) return;
+        if (typeof BroadcastChannel === 'undefined') return;
+        const channel = new BroadcastChannel(GIT_REVIEW_POPOUT_CHANNEL);
+        channel.onmessage = (event: MessageEvent<GitReviewPopOutMessage>) => {
+            if (event.data.type === 'git-review-comments-updated' && mountedRef.current) {
+                void fetchComments();
+            }
+        };
+        return () => { channel.close(); };
+    }, [context, fetchComments]);
 
     return {
         comments,

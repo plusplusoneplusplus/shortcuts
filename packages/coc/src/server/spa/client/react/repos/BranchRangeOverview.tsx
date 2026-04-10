@@ -14,6 +14,8 @@ import type { BranchRangeFile } from './BranchAllFilesDiff';
 import type { DiffComment } from '../../diff-comment-types';
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
+import { useGitReviewPopOut, gitReviewBranchPopOutKey } from '../context/GitReviewPopOutContext';
+import { buildGitBranchRangePopOutUrl } from '../layout/Router';
 
 const RANGE_STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';
 const DEFAULT_UPPER_HEIGHT = 160;
@@ -40,15 +42,25 @@ export interface BranchRangeOverviewProps {
     onAllCommentsClick?: () => void;
     onAskAI?: () => void;
     onQueueTask?: () => void;
+    isPopOut?: boolean;
 }
 
-export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask }: BranchRangeOverviewProps) {
+export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask, isPopOut }: BranchRangeOverviewProps) {
     const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
     const [isDragging, setIsDragging] = useState(false);
     const [branchCommentCount, setBranchCommentCount] = useState(0);
     const rangeContainerRef = useRef<HTMLDivElement>(null);
     const startYRef = useRef(0);
     const startHeightRef = useRef(0);
+    const { markPoppedOut } = useGitReviewPopOut();
+
+    const handlePopOut = useCallback(() => {
+        const url = buildGitBranchRangePopOutUrl(workspaceId);
+        const win = window.open(url, `coc-git-review-branch-${workspaceId}`, 'width=1200,height=800');
+        if (win) {
+            markPoppedOut(gitReviewBranchPopOutKey(workspaceId));
+        }
+    }, [workspaceId, markPoppedOut]);
 
     const getMaxUpperHeight = useCallback(() => {
         if (!rangeContainerRef.current) return 400;
@@ -141,6 +153,20 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
                     onQueueTask={onQueueTask}
                 />
             </div>
+
+            {/* Toolbar — pop-out button */}
+            {!isPopOut && (
+                <div className="flex items-center justify-end px-4 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]">
+                    <button
+                        onClick={handlePopOut}
+                        title="Open in new window"
+                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                        data-testid="branch-range-popout-btn"
+                    >
+                        ↗️
+                    </button>
+                </div>
+            )}
 
             {/* Draggable horizontal divider */}
             <div

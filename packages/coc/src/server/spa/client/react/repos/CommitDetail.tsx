@@ -20,6 +20,8 @@ import { CommitChatPanel } from './CommitChatPanel';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { shouldSkipResolveDialog } from '../shared/ResolveContextDialog';
 import { useQueue } from '../context/QueueContext';
+import { useGitReviewPopOut, gitReviewPopOutKey } from '../context/GitReviewPopOutContext';
+import { buildGitReviewPopOutUrl } from '../layout/Router';
 import type { DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
 import type { GitCommitItem } from './CommitList';
@@ -28,9 +30,10 @@ export interface CommitDetailProps {
     workspaceId: string;
     hash?: string;
     commit?: GitCommitItem;
+    isPopOut?: boolean;
 }
 
-export function CommitDetail({ workspaceId, hash, commit }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, hash, commit, isPopOut }: CommitDetailProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [chatOpen, setChatOpen] = useState(() => {
         try {
@@ -83,6 +86,16 @@ export function CommitDetail({ workspaceId, hash, commit }: CommitDetailProps) {
     } = useAllCommitComments(workspaceId, hash ?? '');
 
     const { dispatch: queueDispatch } = useQueue();
+    const { markPoppedOut } = useGitReviewPopOut();
+
+    const handlePopOut = useCallback(() => {
+        if (!hash) return;
+        const url = buildGitReviewPopOutUrl(workspaceId, hash);
+        const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
+        if (win) {
+            markPoppedOut(gitReviewPopOutKey(workspaceId, hash));
+        }
+    }, [workspaceId, hash, markPoppedOut]);
 
     const handleResolveAllCommitWithAI = useCallback(() => {
         if (shouldSkipResolveDialog()) {
@@ -260,6 +273,16 @@ export function CommitDetail({ workspaceId, hash, commit }: CommitDetailProps) {
                 >
                     🤖
                 </button>
+                {!isPopOut && hash && (
+                    <button
+                        onClick={handlePopOut}
+                        title="Open in new window"
+                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                        data-testid="commit-popout-btn"
+                    >
+                        ↗️
+                    </button>
+                )}
             </div>
 
             {/* Diff view + sidebar */}

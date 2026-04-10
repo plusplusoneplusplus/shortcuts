@@ -12,6 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './react/App';
 import { PopOutActivityShell } from './react/layout/PopOutActivityShell';
 import { PopOutMarkdownShell } from './react/layout/PopOutMarkdownShell';
+import { PopOutGitReviewShell } from './react/layout/PopOutGitReviewShell';
 import './react/file-path-preview';
 import './react/repos/explorer/monaco-setup';
 
@@ -23,6 +24,8 @@ if (window.location.hash.startsWith('#popout/activity/')) {
     root.render(<PopOutActivityShell />);
 } else if (window.location.hash.startsWith('#popout/markdown')) {
     root.render(<PopOutMarkdownShell />);
+} else if (window.location.hash.startsWith('#popout/git-review')) {
+    root.render(<PopOutGitReviewShell />);
 } else {
     root.render(<App />);
 }

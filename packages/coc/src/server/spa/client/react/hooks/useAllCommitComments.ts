@@ -16,6 +16,8 @@ import { fetchApi } from './useApi';
 import type { DiffComment } from '../../diff-comment-types';
 import { computeStorageKey, patchDiffComment, deleteDiffCommentById } from '../utils/diffCommentApi';
 import type { UpdateDiffCommentRequest } from './useDiffComments';
+import { GIT_REVIEW_POPOUT_CHANNEL } from '../context/GitReviewPopOutContext';
+import type { GitReviewPopOutMessage } from '../context/GitReviewPopOutContext';
 
 // ============================================================================
 // Return type
@@ -253,6 +255,22 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
             } catch { /* ignore parse errors */ }
         });
         return () => { ws.close(); };
+    }, [wsId, hash, fetchComments]);
+
+    // ------------------------------------------------------------------
+    // BroadcastChannel — refetch when pop-out window notifies comment changes
+    // ------------------------------------------------------------------
+
+    useEffect(() => {
+        if (!wsId || !hash) return;
+        if (typeof BroadcastChannel === 'undefined') return;
+        const channel = new BroadcastChannel(GIT_REVIEW_POPOUT_CHANNEL);
+        channel.onmessage = (event: MessageEvent<GitReviewPopOutMessage>) => {
+            if (event.data.type === 'git-review-comments-updated' && mountedRef.current) {
+                void fetchComments();
+            }
+        };
+        return () => { channel.close(); };
     }, [wsId, hash, fetchComments]);
 
     return {

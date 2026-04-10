@@ -12,6 +12,7 @@ import { ToastProvider } from './context/ToastContext';
 import { MinimizedDialogsProvider, useMinimizedDialog, MinimizedDialogsTray } from './context/MinimizedDialogsContext';
 import { PopOutProvider } from './context/PopOutContext';
 import { MarkdownPopOutProvider } from './context/MarkdownPopOutContext';
+import { GitReviewPopOutProvider } from './context/GitReviewPopOutContext';
 import { FloatingChatsProvider } from './context/FloatingChatsContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
@@ -431,13 +432,15 @@ export function App() {
                     <NotificationProvider>
                         <PopOutProvider>
                             <MarkdownPopOutProvider>
-                                <FloatingChatsProvider>
-                                <MinimizedDialogsProvider>
-                                    <ThemeProvider>
-                                        <AppInner />
-                                    </ThemeProvider>
-                                </MinimizedDialogsProvider>
-                            </FloatingChatsProvider>
+                                <GitReviewPopOutProvider>
+                                    <FloatingChatsProvider>
+                                    <MinimizedDialogsProvider>
+                                        <ThemeProvider>
+                                            <AppInner />
+                                        </ThemeProvider>
+                                    </MinimizedDialogsProvider>
+                                </FloatingChatsProvider>
+                                </GitReviewPopOutProvider>
                             </MarkdownPopOutProvider>
                         </PopOutProvider>
                     </NotificationProvider>
