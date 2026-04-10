@@ -13,6 +13,7 @@ import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { getProcessWorkspaceId } from '../../utils/workspace';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
+import { useModifierKey } from '../../hooks/useModifierKey';
 
 export interface ItemConversationPanelProps {
     processId: string;
@@ -46,6 +47,7 @@ function getConversationTurns(data: any): ClientConversationTurn[] {
 }
 
 export function ItemConversationPanel({ processId, onClose, isDark }: ItemConversationPanelProps) {
+    const modHeld = useModifierKey();
     const [processData, setProcessData] = useState<any>(null);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const [loading, setLoading] = useState(true);
@@ -372,8 +374,18 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                     data-testid="item-conversation-textarea"
                     className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
                 />
-                <Button disabled={inputDisabled || !inputValue.trim()} onClick={() => void sendFollowUp()} data-testid="item-conversation-send" title="Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline">
-                    {sending ? '...' : 'Send'}
+                <Button
+                    disabled={inputDisabled || !inputValue.trim()}
+                    onClick={() => void sendFollowUp()}
+                    data-testid="item-conversation-send"
+                    title={modHeld
+                        ? 'Release Ctrl to queue instead'
+                        : 'Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline'}
+                    className={modHeld && sending ? '!bg-[#e8912d] hover:!bg-[#c97a25]' : undefined}
+                >
+                    {sending
+                        ? (modHeld ? '⚡ Steer' : 'Queue')
+                        : (modHeld ? '⚡ Send Now' : 'Send')}
                 </Button>
             </div>
         </div>

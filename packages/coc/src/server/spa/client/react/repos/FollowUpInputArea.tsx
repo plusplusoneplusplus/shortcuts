@@ -6,6 +6,7 @@ import { cn } from '../shared/cn';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
+import { useModifierKey } from '../hooks/useModifierKey';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
@@ -75,6 +76,8 @@ export function FollowUpInputArea({
     slashCommands,
     hideModeSelector = false,
 }: FollowUpInputAreaProps) {
+    const modHeld = useModifierKey();
+
     // Sync programmatic followUpInput changes (draft restore, clear after send) to the editor.
     // Guard prevents re-setting when the change originated from the user typing.
     // skipNextSyncRef is set by selectSkill callers so the effect does not overwrite the cursor
@@ -224,12 +227,16 @@ export function FollowUpInputArea({
                 <button
                     type="button"
                     disabled={inputDisabled}
-                    className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={`shrink-0 h-[34px] px-2 sm:px-3 rounded text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${modHeld && sending ? 'bg-[#e8912d] hover:bg-[#c97a25]' : 'bg-[#0078d4] hover:bg-[#106ebe]'}`}
                     onClick={() => { void onSend(); }}
                     data-testid="activity-chat-send-btn"
-                    title="Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline"
+                    title={modHeld
+                        ? 'Release Ctrl to queue instead'
+                        : 'Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline'}
                 >
-                    {sending ? '...' : 'Send'}
+                    {sending
+                        ? (modHeld ? '⚡ Steer' : 'Queue')
+                        : (modHeld ? '⚡ Send Now' : 'Send')}
                 </button>
             </div>
         </div>
