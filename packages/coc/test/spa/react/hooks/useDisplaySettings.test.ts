@@ -57,3 +57,32 @@ describe('useDisplaySettings', () => {
         expect(source).toContain("taskCardDensity === 'compact' ? 'compact' : 'dense'");
     });
 });
+
+// ── Deep-link initial-state seeding from __DASHBOARD_CONFIG__ ────────────────
+
+describe('useDisplaySettings — __DASHBOARD_CONFIG__ seeding', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(USE_DISPLAY_SETTINGS_PATH, 'utf-8');
+    });
+
+    it('imports isTerminalEnabled and isNotesEnabled from config', () => {
+        expect(source).toContain('isTerminalEnabled');
+        expect(source).toContain('isNotesEnabled');
+        expect(source).toMatch(/from\s+['"]\.\.\/utils\/config['"]/);
+    });
+
+    it('defines getInitialSettings that spreads DEFAULT_SETTINGS with config values', () => {
+        expect(source).toContain('function getInitialSettings');
+        expect(source).toContain('...DEFAULT_SETTINGS');
+        expect(source).toContain('isTerminalEnabled()');
+        expect(source).toContain('isNotesEnabled()');
+    });
+
+    it('uses getInitialSettings() as useState fallback instead of DEFAULT_SETTINGS', () => {
+        expect(source).toContain('cachedSettings ?? getInitialSettings()');
+        // Should NOT fall back to DEFAULT_SETTINGS in useState
+        expect(source).not.toMatch(/useState.*cachedSettings\s*\?\?\s*DEFAULT_SETTINGS/);
+    });
+});

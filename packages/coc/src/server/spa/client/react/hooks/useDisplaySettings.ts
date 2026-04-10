@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getApiBase } from '../utils/config';
+import { getApiBase, isTerminalEnabled, isNotesEnabled } from '../utils/config';
 
 interface DisplaySettings {
     showReportIntent: boolean;
@@ -16,6 +16,11 @@ interface DisplaySettings {
 }
 
 const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false };
+
+/** Build initial settings seeded from window.__DASHBOARD_CONFIG__ when available. */
+function getInitialSettings(): DisplaySettings {
+    return { ...DEFAULT_SETTINGS, terminalEnabled: isTerminalEnabled(), notesEnabled: isNotesEnabled() };
+}
 
 let cachedSettings: DisplaySettings | null = null;
 let fetchPromise: Promise<DisplaySettings> | null = null;
@@ -57,7 +62,7 @@ export function invalidateDisplaySettings(): void {
 }
 
 export function useDisplaySettings(): DisplaySettings {
-    const [settings, setSettings] = useState<DisplaySettings>(cachedSettings ?? DEFAULT_SETTINGS);
+    const [settings, setSettings] = useState<DisplaySettings>(cachedSettings ?? getInitialSettings());
 
     useEffect(() => {
         let cancelled = false;

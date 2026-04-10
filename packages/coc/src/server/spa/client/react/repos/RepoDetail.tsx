@@ -103,6 +103,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const terminalEnabled = useTerminalEnabled();
     const notesEnabled = useNotesEnabled();
 
+    // Track previous feature-flag values so redirects only fire on true→false
+    // transitions, not on the initial mount (defense-in-depth for deep links).
+    const prevTerminalEnabled = useRef(terminalEnabled);
+    const prevNotesEnabled = useRef(notesEnabled);
+
     const visibleSubTabs = useMemo(() => {
         let tabs = BASE_VISIBLE_SUB_TABS;
         if (!isGitRepo) tabs = tabs.filter(t => t.key !== 'git' && t.key !== 'pull-requests');
@@ -118,18 +123,20 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         }
     }, [activeSubTab, isGitRepo, dispatch]);
 
-    // Redirect away from terminal tab when feature is disabled
+    // Redirect away from terminal tab only when the feature transitions to disabled
     useEffect(() => {
-        if (activeSubTab === 'terminal' && !terminalEnabled) {
+        if (activeSubTab === 'terminal' && !terminalEnabled && prevTerminalEnabled.current) {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
         }
+        prevTerminalEnabled.current = terminalEnabled;
     }, [activeSubTab, terminalEnabled, dispatch]);
 
-    // Redirect away from notes tab when feature is disabled
+    // Redirect away from notes tab only when the feature transitions to disabled
     useEffect(() => {
-        if (activeSubTab === 'notes' && !notesEnabled) {
+        if (activeSubTab === 'notes' && !notesEnabled && prevNotesEnabled.current) {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
         }
+        prevNotesEnabled.current = notesEnabled;
     }, [activeSubTab, notesEnabled, dispatch]);
 
     const repoWikis = useMemo(() =>
