@@ -261,6 +261,76 @@ describe('NoteEditor', () => {
         expect(screen.getByLabelText('Link')).toBeDefined();
     });
 
+    // ── Ctrl+S suppresses browser dialog and flushes save ─────────────
+
+    it('Ctrl+S calls preventDefault and triggers save', async () => {
+        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
+
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+        });
+        await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+        // Make content dirty so flushSave has something to persist
+        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+
+        const event = new KeyboardEvent('keydown', {
+            key: 's',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        const preventSpy = vi.spyOn(event, 'preventDefault');
+
+        await act(async () => { document.dispatchEvent(event); });
+
+        expect(preventSpy).toHaveBeenCalled();
+        expect(mockSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
+    });
+
+    it('Cmd+S (metaKey) also suppresses dialog and saves', async () => {
+        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
+
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+        });
+        await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+
+        const event = new KeyboardEvent('keydown', {
+            key: 's',
+            metaKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        const preventSpy = vi.spyOn(event, 'preventDefault');
+
+        await act(async () => { document.dispatchEvent(event); });
+
+        expect(preventSpy).toHaveBeenCalled();
+        expect(mockSaveContent).toHaveBeenCalled();
+    });
+
+    it('Ctrl+S with no note selected does not error', () => {
+        render(<NoteEditor workspaceId="ws1" notePath={null} />);
+
+        const event = new KeyboardEvent('keydown', {
+            key: 's',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        const preventSpy = vi.spyOn(event, 'preventDefault');
+
+        document.dispatchEvent(event);
+
+        expect(preventSpy).toHaveBeenCalled();
+        expect(mockSaveContent).not.toHaveBeenCalled();
+    });
+
     // ── beforeunload ────────────────────────────────────────────────────
 
     it('registers beforeunload when dirty', async () => {

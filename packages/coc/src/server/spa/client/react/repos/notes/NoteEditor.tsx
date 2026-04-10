@@ -142,6 +142,19 @@ export function NoteEditor({ workspaceId, notePath }: NoteEditorProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // ── Ctrl+S / Cmd+S: suppress browser dialog & flush save ──────────────
+
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                flushSave();
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [flushSave]);
+
     // ── beforeunload guard ──────────────────────────────────────────────────
 
     useEffect(() => {
