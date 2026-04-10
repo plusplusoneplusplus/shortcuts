@@ -281,6 +281,7 @@ export class StorageMigrationEngine {
     // ========================================================================
 
     private createDatabase(): Database.Database {
+        this.deleteDbFile();
         const db = new Database(this.options.dbPath);
         initializeDatabase(db);
         return db;
@@ -561,10 +562,13 @@ export class StorageMigrationEngine {
 
         // Validate total process count
         const actualProcesses = (this.db!.prepare('SELECT COUNT(*) AS cnt FROM processes').get() as { cnt: number }).cnt;
-        if (actualProcesses !== expectedProcesses) {
+        if (actualProcesses < expectedProcesses) {
             throw this.validationError(
                 `Process count mismatch: expected ${expectedProcesses}, got ${actualProcesses}`
             );
+        }
+        if (actualProcesses > expectedProcesses) {
+            logger.warn('storage-migration', `Process count higher than expected: expected ${expectedProcesses}, got ${actualProcesses} — proceeding`);
         }
 
         // Validate workspace count

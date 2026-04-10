@@ -793,4 +793,90 @@ describe('StorageMigrationEngine', () => {
         expect(fs.existsSync(path.join(backupDir, 'repos', 'ws1', 'outputs'))).toBe(false);
         expect(fs.existsSync(path.join(backupDir, 'memory'))).toBe(false);
     });
+
+    // ========================================================================
+    // Stale DB cleanup
+    // ========================================================================
+
+    it('stale DB from previous run is deleted before schema creation', async () => {
+        buildFixtures(dataDir);
+
+        // Pre-populate a stale DB with extra rows
+        const staleDb = new Database(dbPath);
+        staleDb.exec(`
+            CREATE TABLE IF NOT EXISTS processes (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT,
+                type TEXT,
+                prompt_preview TEXT,
+                full_prompt TEXT,
+                status TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                error TEXT,
+                result TEXT,
+                result_file_path TEXT,
+                pipeline_yaml TEXT,
+                model TEXT,
+                archived INTEGER DEFAULT 0,
+                metadata TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        `);
+        staleDb.prepare(
+            `INSERT INTO processes (id, workspace_id, type, prompt_preview, status, start_time)
+             VALUES ('stale-1', 'ws1', 'chat', 'stale', 'completed', '2024-01-01T00:00:00.000Z')`
+        ).run();
+        staleDb.prepare(
+            `INSERT INTO processes (id, workspace_id, type, prompt_preview, status, start_time)
+             VALUES ('stale-2', 'ws1', 'chat', 'stale', 'completed', '2024-01-01T00:00:00.000Z')`
+        ).run();
+        staleDb.close();
+        expect(fs.existsSync(dbPath)).toBe(true);
+
+        // Migration should succeed despite the stale DB
+        const engine = createEngine();
+        const summary = await engine.run();
+
+        // Should have exactly the fixture processes, no stale rows
+        expect(summary.processes + summary.archivedProcesses).toBe(6);
+
+        // Verify via direct DB query
+        const db = new Database(dbPath);
+        const count = (db.prepare('SELECT COUNT(*) AS cnt FROM processes').get() as { cnt: number }).cnt;
+        db.close();
+        expect(count).toBe(6);
+    });
+
+    // ========================================================================
+    // Relaxed total process count validation (actual > expected)
+    // ========================================================================
+
+    it('validation passes with warning when actual > expected total processes', async () => {
+        buildFixtures(dataDir);
+
+        // Use progress callback to inject an extra row after phase 4
+        let injected = false;
+        const engine = new StorageMigrationEngine({
+            dataDir,
+            dbPath,
+            onProgress: (event) => {
+                events.push({ ...event });
+                if (event.phase === 4 && event.message.includes('Migrated') && !injected) {
+                    injected = true;
+                    // Add an extra process row — DB will have more than expected
+                    const db = new Database(dbPath);
+                    db.prepare(
+                        `INSERT INTO processes (id, workspace_id, type, prompt_preview, status, start_time)
+                         VALUES ('extra-1', 'ws-extra', 'chat', 'extra', 'completed', '2024-01-01T00:00:00.000Z')`
+                    ).run();
+                    db.close();
+                }
+            },
+        });
+
+        // Should NOT throw — actual > expected is acceptable
+        const summary = await engine.run();
+        expect(summary.processes + summary.archivedProcesses).toBe(6);
+    });
 });
