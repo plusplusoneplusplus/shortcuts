@@ -8,6 +8,7 @@
 
 import { useRef, useState } from 'react';
 import { FloatingDialog } from '../shared/FloatingDialog';
+import { BottomSheet } from '../shared/BottomSheet';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useMarkdownPopOut } from '../context/MarkdownPopOutContext';
@@ -123,6 +124,67 @@ export function MarkdownReviewDialog({
 
     const headerBtnClass = 'shrink-0 flex items-center justify-center w-8 h-8 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
+    if (isMobile) {
+        return (
+            <BottomSheet
+                isOpen={open}
+                onClose={onClose}
+                title={title}
+                height={90}
+            >
+                {/* Action buttons row */}
+                <div className="flex items-center gap-0.5 px-3 pb-2">
+                    <button
+                        data-testid="markdown-review-reveal-btn"
+                        onClick={handleReveal}
+                        className={headerBtnClass}
+                        aria-label="Reveal in Explorer"
+                        title="Reveal in Explorer"
+                    >
+                        <RevealInExplorerIcon />
+                    </button>
+                    <button
+                        data-testid="markdown-review-popout-btn"
+                        onClick={handlePopOut}
+                        className={headerBtnClass}
+                        aria-label="Open in new window"
+                        title="Open in new window"
+                    >
+                        <PopOutIcon />
+                    </button>
+                    {handleMinimize && (
+                        <button
+                            data-testid="markdown-review-minimize-btn"
+                            onClick={handleMinimize}
+                            className={headerBtnClass}
+                            aria-label="Minimize"
+                        >
+                            −
+                        </button>
+                    )}
+                    <button
+                        onClick={onClose}
+                        className={`${headerBtnClass} ml-auto`}
+                        aria-label="Close"
+                    >
+                        ✕
+                    </button>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                    <MarkdownReviewEditor
+                        wsId={wsId}
+                        filePath={filePath}
+                        taskRootPath={taskRootPath}
+                        fetchMode={fetchMode}
+                        showAiButtons={true}
+                        initialScrollTop={initialScrollTop}
+                        onScrollTopChange={(st) => { scrollTopRef.current = st; }}
+                    />
+                </div>
+            </BottomSheet>
+        );
+    }
+
     return (
         <FloatingDialog
             open={open}
@@ -133,71 +195,7 @@ export function MarkdownReviewDialog({
             minHeight={400}
             className="max-w-[900px] w-[900px] h-[700px]"
             isMaximized={isMaximized}
-            renderHeader={({ onMouseDown }) => isMobile ? (
-                /* Mobile: compact single-row header */
-                <div
-                    className="flex items-center justify-between px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] cursor-move select-none"
-                    style={{ minHeight: 44 }}
-                    onMouseDown={onMouseDown}
-                    data-testid="floating-dialog-drag-handle"
-                >
-                    <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate mr-2 select-text cursor-text" title={displayPath || filePath}
-                        onMouseDown={e => e.stopPropagation()}>
-                        {title}
-                    </span>
-                    <div className="flex items-center gap-0.5 shrink-0">
-                        <button
-                            data-testid="markdown-review-reveal-btn"
-                            onClick={handleReveal}
-                            onMouseDown={e => e.stopPropagation()}
-                            className={headerBtnClass}
-                            aria-label="Reveal in Explorer"
-                            title="Reveal in Explorer"
-                        >
-                            <RevealInExplorerIcon />
-                        </button>
-                        <button
-                            data-testid="markdown-review-popout-btn"
-                            onClick={handlePopOut}
-                            onMouseDown={e => e.stopPropagation()}
-                            className={headerBtnClass}
-                            aria-label="Open in new window"
-                            title="Open in new window"
-                        >
-                            <PopOutIcon />
-                        </button>
-                        <button
-                            data-testid="markdown-review-maximize-btn"
-                            onClick={handleToggleMaximize}
-                            onMouseDown={e => e.stopPropagation()}
-                            className={headerBtnClass}
-                            aria-label={isMaximized ? 'Restore' : 'Maximize'}
-                            title={isMaximized ? 'Restore' : 'Maximize'}
-                        >
-                            {isMaximized ? <RestoreIcon /> : <MaximizeIcon />}
-                        </button>
-                        {handleMinimize && (
-                            <button
-                                data-testid="markdown-review-minimize-btn"
-                                onClick={handleMinimize}
-                                onMouseDown={e => e.stopPropagation()}
-                                className={headerBtnClass}
-                                aria-label="Minimize"
-                            >
-                                −
-                            </button>
-                        )}
-                        <button
-                            onClick={onClose}
-                            onMouseDown={e => e.stopPropagation()}
-                            className={headerBtnClass}
-                            aria-label="Close"
-                        >
-                            ✕
-                        </button>
-                    </div>
-                </div>
-            ) : (
+            renderHeader={({ onMouseDown }) => (
                 /* Desktop: full header with title + subtitle + pop-out + minimize + close */
                 <div
                     className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-start justify-between gap-2 cursor-move select-none"

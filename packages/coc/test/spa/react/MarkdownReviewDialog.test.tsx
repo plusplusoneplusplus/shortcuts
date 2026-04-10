@@ -7,6 +7,26 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import { MarkdownReviewDialog } from '../../../src/server/spa/client/react/processes/MarkdownReviewDialog';
 
+/* ── Mutable breakpoint mock ────────────────────────────────────────────── */
+
+const mockBreakpoint = { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const };
+
+vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => mockBreakpoint,
+}));
+
+/* ── BottomSheet stub ────────────────────────────────────────────────────── */
+
+vi.mock('../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+    BottomSheet: ({ isOpen, onClose, title, children, height }: any) =>
+        isOpen ? (
+            <div data-testid="bottomsheet-mock" data-title={title} data-height={height}>
+                <button data-testid="bottomsheet-close" onClick={onClose}>close</button>
+                {children}
+            </div>
+        ) : null,
+}));
+
 /* ── Mocks required by MarkdownReviewEditor (used inside the dialog) ── */
 
 vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
@@ -95,6 +115,10 @@ function setupFetch(content = '# Hello') {
 }
 
 afterEach(() => {
+    mockBreakpoint.isMobile = false;
+    mockBreakpoint.isTablet = false;
+    mockBreakpoint.isDesktop = true;
+    mockBreakpoint.breakpoint = 'desktop';
     cleanup();
     vi.restoreAllMocks();
 });
@@ -556,5 +580,186 @@ describe('MarkdownReviewDialog', () => {
         const target = windowOpenSpy.mock.calls[0][1] as string;
         // Target encodes wsId + filePath, sanitised for window.open
         expect(target).toBe('coc-md-popout-ws1__src_readme_md');
+    });
+});
+
+describe('MarkdownReviewDialog — mobile (BottomSheet)', () => {
+    beforeEach(() => {
+        setupFetch();
+        mockAddToast.mockClear();
+        mockBreakpoint.isMobile = true;
+        mockBreakpoint.isTablet = false;
+        mockBreakpoint.isDesktop = false;
+        mockBreakpoint.breakpoint = 'mobile';
+    });
+
+    it('renders nothing when open=false on mobile', () => {
+        const { container } = render(
+            <MarkdownReviewDialog
+                open={false}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        expect(container.innerHTML).toBe('');
+    });
+
+    it('renders BottomSheet instead of FloatingDialog on mobile', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        expect(screen.getByTestId('bottomsheet-mock')).toBeTruthy();
+        expect(document.querySelector('[data-testid="floating-dialog-panel"]')).toBeNull();
+    });
+
+    it('BottomSheet uses 90% height on mobile', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        expect(screen.getByTestId('bottomsheet-mock').dataset['height']).toBe('90');
+    });
+
+    it('BottomSheet title shows file basename', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="/workspace/tasks/plan.md"
+                displayPath="/workspace/tasks/plan.md"
+                fetchMode="tasks"
+            />
+        );
+        expect(screen.getByTestId('bottomsheet-mock').dataset['title']).toBe('plan.md');
+    });
+
+    it('renders reveal button inside BottomSheet on mobile', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-reveal-btn"]');
+        expect(btn).not.toBeNull();
+        expect(btn!.getAttribute('aria-label')).toBe('Reveal in Explorer');
+    });
+
+    it('renders pop-out button inside BottomSheet on mobile', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-popout-btn"]');
+        expect(btn).not.toBeNull();
+        expect(btn!.getAttribute('aria-label')).toBe('Open in new window');
+    });
+
+    it('close button inside BottomSheet calls onClose', () => {
+        const onClose = vi.fn();
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={onClose}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const closeBtn = document.querySelector('[aria-label="Close"]') as HTMLElement;
+        fireEvent.click(closeBtn);
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('renders minimize button in BottomSheet when onMinimize is provided', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                onMinimize={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-minimize-btn"]');
+        expect(btn).not.toBeNull();
+        expect(btn!.getAttribute('aria-label')).toBe('Minimize');
+    });
+
+    it('does not render minimize button when onMinimize is absent', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        expect(document.querySelector('[data-testid="markdown-review-minimize-btn"]')).toBeNull();
+    });
+
+    it('clicking minimize button in BottomSheet calls onMinimize with scrollTop', () => {
+        const onMinimize = vi.fn();
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                onMinimize={onMinimize}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-minimize-btn"]') as HTMLElement;
+        fireEvent.click(btn);
+        expect(onMinimize).toHaveBeenCalledOnce();
+        expect(typeof onMinimize.mock.calls[0][0]).toBe('number');
+    });
+
+    it('does not render maximize button in BottomSheet mode', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        expect(document.querySelector('[data-testid="markdown-review-maximize-btn"]')).toBeNull();
     });
 });
