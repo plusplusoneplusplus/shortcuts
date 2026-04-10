@@ -37,7 +37,7 @@ import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from '..
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from '../workflows-handler';
 import { registerWorkspaceSummaryRoutes } from '../workspace-summary-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../templates-handler';
-import { registerNotesRoutes, registerNotesWriteRoutes } from '../notes-handler';
+import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes } from '../notes-handler';
 import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
@@ -93,6 +93,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerTaskWriteRoutes(routes, store, dataDir);
     registerNotesRoutes(routes, store, dataDir, opts.resolvedConfig);
     registerNotesWriteRoutes(routes, store, dataDir);
+    registerNotesCommentsRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);
     registerWorkspaceSummaryRoutes(routes, store, dataDir);
     registerWorkflowWriteRoutes(routes, store, (workspaceId) => {
