@@ -879,4 +879,94 @@ describe('StorageMigrationEngine', () => {
         const summary = await engine.run();
         expect(summary.processes + summary.archivedProcesses).toBe(6);
     });
+
+    // ========================================================================
+    // skipValidation option
+    // ========================================================================
+
+    it('skips validation when skipValidation is true', async () => {
+        buildFixtures(dataDir);
+
+        const engine = new StorageMigrationEngine({
+            dataDir,
+            dbPath,
+            onProgress: (event) => events.push({ ...event }),
+            skipValidation: true,
+        });
+
+        const summary = await engine.run();
+
+        // Migration should complete successfully
+        expect(summary.processes).toBe(5);
+        expect(summary.archivedProcesses).toBe(1);
+        expect(summary.workspaces).toBe(2);
+        expect(summary.wikis).toBe(1);
+
+        // Phase 5 should emit a single "skipped" message, not validation checks
+        const phase5Events = events.filter(e => e.phase === 5);
+        expect(phase5Events).toHaveLength(1);
+        expect(phase5Events[0].status).toBe('running');
+        expect(phase5Events[0].message).toContain('skipped');
+
+        // Phase 6 should still complete
+        const phase6Events = events.filter(e => e.phase === 6);
+        expect(phase6Events.length).toBeGreaterThan(0);
+        expect(phase6Events.some(e => e.status === 'complete')).toBe(true);
+    });
+
+    it('runs validation by default when skipValidation is not set', async () => {
+        buildFixtures(dataDir);
+
+        const engine = createEngine();
+        const summary = await engine.run();
+
+        expect(summary.processes).toBe(5);
+
+        // Phase 5 should have validation events (not the "skipped" message)
+        const phase5Events = events.filter(e => e.phase === 5);
+        expect(phase5Events.length).toBeGreaterThan(0);
+        expect(phase5Events.some(e => e.message.includes('Validated'))).toBe(true);
+        expect(phase5Events.some(e => e.message.includes('skipped'))).toBe(false);
+    });
+
+    it('skipValidation still creates backup', async () => {
+        buildFixtures(dataDir);
+
+        const engine = new StorageMigrationEngine({
+            dataDir,
+            dbPath,
+            onProgress: (event) => events.push({ ...event }),
+            skipValidation: true,
+        });
+
+        const summary = await engine.run();
+
+        // Backup should exist
+        expect(summary.backupPath).toBeTruthy();
+        expect(fs.existsSync(summary.backupPath)).toBe(true);
+        expect(summary.backupSizeBytes).toBeGreaterThan(0);
+    });
+
+    it('skipValidation completes even when data would fail validation', async () => {
+        buildFixtures(dataDir);
+
+        const engine = new StorageMigrationEngine({
+            dataDir,
+            dbPath,
+            onProgress: (event) => {
+                events.push({ ...event });
+                // Tamper with the database during phase 4 to create a mismatch
+                if (event.phase === 4 && event.message.includes('Migrated')) {
+                    const db = new Database(dbPath);
+                    db.prepare('DELETE FROM processes WHERE id = ?').run('proc-2');
+                    db.close();
+                }
+            },
+            skipValidation: true,
+        });
+
+        // With skipValidation, this should NOT throw despite tampered data
+        const summary = await engine.run();
+        expect(summary.processes).toBe(5);
+    });
 });

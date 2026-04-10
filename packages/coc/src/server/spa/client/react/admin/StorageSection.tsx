@@ -23,7 +23,7 @@ interface StorageStatus {
 
 type Phase = 'status' | 'confirm' | 'migrating' | 'done' | 'error';
 
-type PhaseState = 'pending' | 'running' | 'complete' | 'error';
+type PhaseState = 'pending' | 'running' | 'complete' | 'error' | 'skipped';
 
 interface MigrationPhase {
     label: string;
@@ -66,6 +66,7 @@ function phaseIcon(state: PhaseState): string {
         case 'complete': return '✓';
         case 'error': return '❌';
         case 'running': return '⏳';
+        case 'skipped': return '⊘';
         default: return '○';
     }
 }
@@ -84,6 +85,7 @@ export default function StorageSection() {
     const [logs, setLogs] = useState<string[]>([]);
     const [result, setResult] = useState<MigrationResult | null>(null);
     const [polling, setPolling] = useState(false);
+    const [skipValidation, setSkipValidation] = useState(false);
 
     const abortRef = useRef<AbortController | null>(null);
     const logRef = useRef<HTMLPreElement>(null);
@@ -150,8 +152,12 @@ export default function StorageSection() {
         abortRef.current = controller;
 
         try {
+            let migrateUrl = getApiBase() + '/admin/storage/migrate?confirm=' + encodeURIComponent(token);
+            if (skipValidation) {
+                migrateUrl += '&skipValidation=1';
+            }
             const res = await fetch(
-                getApiBase() + '/admin/storage/migrate?confirm=' + encodeURIComponent(token),
+                migrateUrl,
                 { method: 'POST', signal: controller.signal },
             );
 
@@ -233,9 +239,10 @@ export default function StorageSection() {
         const phaseIdx = (data.phase ?? 1) - 1;
 
         if (data.status === 'running') {
+            const isSkipped = data.message?.includes('skipped');
             setMigrationPhases(prev => prev.map((p, i) => {
-                if (i === phaseIdx) return { ...p, state: 'running', progress: data.progress };
-                if (i < phaseIdx && p.state !== 'complete') return { ...p, state: 'complete' };
+                if (i === phaseIdx) return { ...p, state: isSkipped ? 'skipped' : 'running', progress: data.progress };
+                if (i < phaseIdx && p.state !== 'complete' && p.state !== 'skipped') return { ...p, state: 'complete' };
                 return p;
             }));
             if (data.message) {
@@ -368,6 +375,15 @@ export default function StorageSection() {
                         <li>Clean up old JSON files</li>
                     </ul>
                     <p className="mt-2 text-xs text-[#848484]">The server will restart after migration. Running tasks will be re-queued.</p>
+                    <label className="mt-3 flex items-start gap-2 text-xs text-[#848484] cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={skipValidation}
+                            onChange={(e) => setSkipValidation(e.target.checked)}
+                            className="mt-0.5"
+                        />
+                        <span>Skip validation (use only if migration keeps failing due to validation errors)</span>
+                    </label>
                 </Dialog>
             </>
         );
@@ -405,10 +421,11 @@ export default function StorageSection() {
                                 ) : (
                                     <span className="w-4 text-center">{phaseIcon(mp.state)}</span>
                                 )}
-                                <span className={mp.state === 'running' ? 'text-[#1e1e1e] dark:text-[#cccccc]' : statusTextClass}>
+                                <span className={mp.state === 'running' ? 'text-[#1e1e1e] dark:text-[#cccccc]' : mp.state === 'skipped' ? 'line-through text-[#a0a0a0]' : statusTextClass}>
                                     Phase {i + 1}/{PHASE_LABELS.length}: {mp.label}
                                     {mp.progress ? ` (${mp.progress.current}/${mp.progress.total})` : ''}
                                     {mp.state === 'running' ? '…' : ''}
+                                    {mp.state === 'skipped' ? ' — Skipped' : ''}
                                 </span>
                             </div>
                         ))}

@@ -630,6 +630,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
             const confirmToken = typeof parsed.query.confirm === 'string' ? parsed.query.confirm : '';
+            const skipValidation = parsed.query.skipValidation === '1' || parsed.query.skipValidation === 'true';
 
             if (!confirmToken) {
                 return handleAPIError(res, badRequest('Missing confirmation token. GET /api/admin/storage/migrate-token first.'));
@@ -668,6 +669,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     sendSSE(res, event as unknown as Record<string, unknown>);
                 },
                 signal: controller.signal,
+                skipValidation,
             });
 
             try {

@@ -64,6 +64,7 @@ export interface StorageMigrationOptions {
     dbPath: string;
     onProgress: (event: MigrationProgress) => void;
     signal?: AbortSignal;
+    skipValidation?: boolean;
 }
 
 // ============================================================================
@@ -149,7 +150,11 @@ export class StorageMigrationEngine {
             this.emit({ phase: 4, status: 'running', message: `Migrated ${workspaceCount} workspaces and ${wikiCount} wikis` });
 
             // Phase 5: Validation
-            await this.validate(processCount + archivedCount, workspaceCount, wikiCount);
+            if (this.options.skipValidation) {
+                this.emit({ phase: 5, status: 'running', message: '⚠️ Validation skipped by user request' });
+            } else {
+                await this.validate(processCount + archivedCount, workspaceCount, wikiCount);
+            }
 
             // Phase 6: Cleanup & config switch
             this.cleanup();

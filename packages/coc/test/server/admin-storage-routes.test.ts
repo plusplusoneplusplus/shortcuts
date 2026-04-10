@@ -287,10 +287,29 @@ describe('Admin Storage Routes', () => {
             // so we just verify no crash occurred.
             expect([200, 409]).toContain(res2.status);
         });
+        it('should pass skipValidation flag to migration engine', async () => {
+            const srv = await startServer();
+            const tokenRes = await request(`${srv.url}/api/admin/storage/migrate-token`);
+            const token = JSON.parse(tokenRes.body).token;
+
+            const res = await requestSSE(`${srv.url}/api/admin/storage/migrate?confirm=${token}&skipValidation=1`);
+
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type']).toBe('text/event-stream');
+
+            const events = parseSSEEvents(res.body);
+            // Should have a phase 5 event with "skipped" message
+            const phase5 = events.find((e: any) => e.phase === 5 && e.message?.includes('skipped'));
+            expect(phase5).toBeDefined();
+
+            // Should still complete successfully
+            const doneEvent = events.find((e: any) => e.type === 'done') as any;
+            expect(doneEvent).toBeDefined();
+            expect(doneEvent.success).toBe(true);
+        });
     });
 
     // ========================================================================
-    // POST /api/admin/storage/migrate/cancel
     // ========================================================================
 
     describe('POST /api/admin/storage/migrate/cancel', () => {
