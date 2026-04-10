@@ -444,6 +444,11 @@ export {
     ensureDataDir
 } from './file-process-store';
 
+export {
+    SqliteProcessStore,
+    SqliteProcessStoreOptions,
+} from './sqlite-process-store';
+
 // ============================================================================
 // Map-Reduce Framework
 // ============================================================================

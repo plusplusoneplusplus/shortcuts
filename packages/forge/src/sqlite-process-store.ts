@@ -1,0 +1,1210 @@
+/**
+ * SQLite-backed ProcessStore Implementation
+ *
+ * Single-file process store using better-sqlite3.
+ * All methods are synchronous at the SQLite level, wrapped in async
+ * to satisfy the ProcessStore interface's Promise return types.
+ *
+ * No VS Code dependencies — designed for the standalone CoC server.
+ */
+
+import * as fs from 'fs';
+import { EventEmitter } from 'events';
+import Database from 'better-sqlite3';
+import type { Statement } from 'better-sqlite3';
+
+import {
+    ProcessStore,
+    ProcessFilter,
+    ProcessIndexEntry,
+    WorkspaceInfo,
+    WikiInfo,
+    ProcessChangeCallback,
+    ProcessOutputEvent,
+    StorageStats,
+} from './process-store';
+import {
+    AIProcess,
+    AIProcessStatus,
+    ConversationTurn,
+    TimelineItem,
+    ToolCall,
+    ToolCallPermissionRequest,
+    ToolCallPermissionResult,
+    ProcessEvent,
+} from './ai/process-types';
+import type { AIBackendType } from './ai/types';
+import type { TokenUsage } from './copilot-sdk-wrapper/types';
+import { initializeDatabase } from './sqlite-schema';
+import { getLogger } from './logger';
+
+// ============================================================================
+// Options
+// ============================================================================
+
+export interface SqliteProcessStoreOptions {
+    /** Absolute path to the .db file (e.g. ~/.coc/coc.db) */
+    dbPath: string;
+}
+
+// ============================================================================
+// Row types (snake_case, matching SQLite columns)
+// ============================================================================
+
+interface ProcessRow {
+    id: string;
+    workspace_id: string;
+    type: string | null;
+    prompt_preview: string | null;
+    full_prompt: string | null;
+    status: string;
+    start_time: string;
+    end_time: string | null;
+    error: string | null;
+    result: string | null;
+    result_file_path: string | null;
+    raw_stdout_file_path: string | null;
+    metadata: string | null;
+    group_metadata: string | null;
+    structured_result: string | null;
+    parent_process_id: string | null;
+    sdk_session_id: string | null;
+    backend: string | null;
+    working_directory: string | null;
+    title: string | null;
+    token_limit: number | null;
+    current_tokens: number | null;
+    cumulative_token_usage: string | null;
+    stale: number;
+    data_file_path: string | null;
+    archived: number;
+}
+
+interface TurnRow {
+    id: number;
+    process_id: string;
+    turn_index: number;
+    role: string;
+    content: string | null;
+    timestamp: string;
+    streaming: number;
+    tool_calls: string | null;
+    timeline: string | null;
+    images: string | null;
+    historical: number;
+    suggestions: string | null;
+    token_usage: string | null;
+    paste_externalized: number;
+}
+
+interface WorkspaceRow {
+    id: string;
+    name: string;
+    root_path: string;
+    color: string | null;
+    remote_url: string | null;
+    description: string | null;
+    enabled_mcp_servers: string | null;
+    disabled_skills: string | null;
+    extra_skill_folders: string | null;
+    virtual: number;
+}
+
+interface WikiRow {
+    id: string;
+    name: string;
+    wiki_dir: string;
+    repo_path: string | null;
+    color: string | null;
+    ai_enabled: number;
+    registered_at: string;
+}
+
+interface CountRow {
+    cnt: number;
+}
+
+interface MaxTurnIndexRow {
+    next_idx: number;
+}
+
+interface StreamingTurnRow {
+    turn_index: number;
+}
+
+// ============================================================================
+// Metadata envelope stored in the `metadata` TEXT column.
+// Folds legacy metadata fields + pendingMessages alongside GenericProcessMetadata.
+// ============================================================================
+
+interface MetadataEnvelope {
+    [key: string]: unknown;
+    __codeReviewMetadata?: unknown;
+    __discoveryMetadata?: unknown;
+    __codeReviewGroupMetadata?: unknown;
+    __pendingMessages?: unknown;
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function jsonStringify(value: unknown): string | null {
+    if (value === undefined || value === null) return null;
+    return JSON.stringify(value);
+}
+
+function jsonParse<T>(value: string | null): T | undefined {
+    if (value === null || value === undefined) return undefined;
+    try {
+        return JSON.parse(value) as T;
+    } catch {
+        return undefined;
+    }
+}
+
+function boolToInt(value: boolean | undefined): number {
+    return value ? 1 : 0;
+}
+
+function intToBool(value: number): boolean | undefined {
+    return value ? true : undefined;
+}
+
+function dateToIso(date: Date | undefined): string | null {
+    if (!date) return null;
+    return date.toISOString();
+}
+
+function isoToDate(iso: string | null): Date | undefined {
+    if (!iso) return undefined;
+    return new Date(iso);
+}
+
+/** Serialize a ToolCall's Date fields to ISO strings for JSON storage. */
+function serializeToolCall(tc: ToolCall): Record<string, unknown> {
+    return {
+        id: tc.id,
+        name: tc.name,
+        status: tc.status,
+        startTime: tc.startTime.toISOString(),
+        endTime: tc.endTime?.toISOString(),
+        args: tc.args,
+        result: tc.result,
+        error: tc.error,
+        parentToolCallId: tc.parentToolCallId,
+        permissionRequest: tc.permissionRequest ? {
+            kind: tc.permissionRequest.kind,
+            timestamp: tc.permissionRequest.timestamp.toISOString(),
+            resource: tc.permissionRequest.resource,
+            operation: tc.permissionRequest.operation,
+        } : undefined,
+        permissionResult: tc.permissionResult ? {
+            approved: tc.permissionResult.approved,
+            timestamp: tc.permissionResult.timestamp.toISOString(),
+            reason: tc.permissionResult.reason,
+        } : undefined,
+    };
+}
+
+/** Deserialize a ToolCall from JSON with ISO string dates. */
+function deserializeToolCall(raw: Record<string, unknown>): ToolCall {
+    return {
+        id: raw.id as string,
+        name: raw.name as string,
+        status: raw.status as ToolCall['status'],
+        startTime: new Date(raw.startTime as string),
+        endTime: raw.endTime ? new Date(raw.endTime as string) : undefined,
+        args: (raw.args ?? {}) as Record<string, unknown>,
+        result: raw.result as string | undefined,
+        error: raw.error as string | undefined,
+        parentToolCallId: raw.parentToolCallId as string | undefined,
+        permissionRequest: raw.permissionRequest ? {
+            kind: (raw.permissionRequest as Record<string, unknown>).kind as string,
+            timestamp: new Date((raw.permissionRequest as Record<string, unknown>).timestamp as string),
+            resource: (raw.permissionRequest as Record<string, unknown>).resource as string | undefined,
+            operation: (raw.permissionRequest as Record<string, unknown>).operation as string | undefined,
+        } as ToolCallPermissionRequest : undefined,
+        permissionResult: raw.permissionResult ? {
+            approved: (raw.permissionResult as Record<string, unknown>).approved as boolean,
+            timestamp: new Date((raw.permissionResult as Record<string, unknown>).timestamp as string),
+            reason: (raw.permissionResult as Record<string, unknown>).reason as string | undefined,
+        } as ToolCallPermissionResult : undefined,
+    };
+}
+
+/** Serialize a TimelineItem's Date fields to ISO strings for JSON storage. */
+function serializeTimelineItem(item: TimelineItem): Record<string, unknown> {
+    return {
+        type: item.type,
+        timestamp: item.timestamp.toISOString(),
+        content: item.content,
+        toolCall: item.toolCall ? serializeToolCall(item.toolCall) : undefined,
+    };
+}
+
+/** Deserialize a TimelineItem from JSON with ISO string dates. */
+function deserializeTimelineItem(raw: Record<string, unknown>): TimelineItem {
+    return {
+        type: raw.type as TimelineItem['type'],
+        timestamp: new Date(raw.timestamp as string),
+        content: raw.content as string | undefined,
+        toolCall: raw.toolCall ? deserializeToolCall(raw.toolCall as Record<string, unknown>) : undefined,
+    };
+}
+
+// ============================================================================
+// Process ↔ Row conversion
+// ============================================================================
+
+function processToRow(process: AIProcess): Record<string, unknown> {
+    // Fold legacy metadata + pendingMessages into the metadata JSON blob
+    const envelope: MetadataEnvelope = { ...(process.metadata ?? {}) };
+    if (process.codeReviewMetadata) envelope.__codeReviewMetadata = process.codeReviewMetadata;
+    if (process.discoveryMetadata) envelope.__discoveryMetadata = process.discoveryMetadata;
+    if (process.codeReviewGroupMetadata) envelope.__codeReviewGroupMetadata = process.codeReviewGroupMetadata;
+    if (process.pendingMessages && process.pendingMessages.length > 0) envelope.__pendingMessages = process.pendingMessages;
+
+    const hasMetadataContent = process.metadata || process.codeReviewMetadata ||
+        process.discoveryMetadata || process.codeReviewGroupMetadata ||
+        (process.pendingMessages && process.pendingMessages.length > 0);
+
+    return {
+        id: process.id,
+        workspace_id: process.metadata?.workspaceId ?? '',
+        type: process.type ?? null,
+        prompt_preview: process.promptPreview ?? null,
+        full_prompt: process.fullPrompt ?? null,
+        status: process.status,
+        start_time: process.startTime.toISOString(),
+        end_time: dateToIso(process.endTime),
+        error: process.error ?? null,
+        result: process.result ?? null,
+        result_file_path: process.resultFilePath ?? null,
+        raw_stdout_file_path: process.rawStdoutFilePath ?? null,
+        metadata: hasMetadataContent ? JSON.stringify(envelope) : null,
+        group_metadata: jsonStringify(process.groupMetadata),
+        structured_result: process.structuredResult ?? null,
+        parent_process_id: process.parentProcessId ?? null,
+        sdk_session_id: process.sdkSessionId ?? null,
+        backend: process.backend ?? null,
+        working_directory: process.workingDirectory ?? null,
+        title: process.title ?? null,
+        token_limit: process.tokenLimit ?? null,
+        current_tokens: process.currentTokens ?? null,
+        cumulative_token_usage: jsonStringify(process.cumulativeTokenUsage),
+        stale: boolToInt(process.stale),
+        data_file_path: process.dataFilePath ?? null,
+        archived: 0,
+    };
+}
+
+function rowToProcess(row: ProcessRow, turns?: ConversationTurn[]): AIProcess {
+    // Parse the metadata envelope and extract legacy/folded fields
+    const envelope = jsonParse<MetadataEnvelope>(row.metadata);
+    let metadata: AIProcess['metadata'] | undefined;
+    let codeReviewMetadata: AIProcess['codeReviewMetadata'] | undefined;
+    let discoveryMetadata: AIProcess['discoveryMetadata'] | undefined;
+    let codeReviewGroupMetadata: AIProcess['codeReviewGroupMetadata'] | undefined;
+    let pendingMessages: AIProcess['pendingMessages'] | undefined;
+
+    if (envelope) {
+        const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata, __pendingMessages, ...rest } = envelope;
+        metadata = Object.keys(rest).length > 0 ? rest as AIProcess['metadata'] : undefined;
+        codeReviewMetadata = __codeReviewMetadata as AIProcess['codeReviewMetadata'];
+        discoveryMetadata = __discoveryMetadata as AIProcess['discoveryMetadata'];
+        codeReviewGroupMetadata = __codeReviewGroupMetadata as AIProcess['codeReviewGroupMetadata'];
+        pendingMessages = __pendingMessages as AIProcess['pendingMessages'];
+    }
+
+    const process: AIProcess = {
+        id: row.id,
+        type: (row.type ?? 'clarification') as AIProcess['type'],
+        promptPreview: row.prompt_preview ?? '',
+        fullPrompt: row.full_prompt ?? '',
+        status: row.status as AIProcessStatus,
+        startTime: new Date(row.start_time),
+        endTime: isoToDate(row.end_time),
+        error: row.error ?? undefined,
+        result: row.result ?? undefined,
+        resultFilePath: row.result_file_path ?? undefined,
+        rawStdoutFilePath: row.raw_stdout_file_path ?? undefined,
+        metadata,
+        groupMetadata: jsonParse(row.group_metadata),
+        codeReviewMetadata,
+        discoveryMetadata,
+        codeReviewGroupMetadata,
+        structuredResult: row.structured_result ?? undefined,
+        parentProcessId: row.parent_process_id ?? undefined,
+        sdkSessionId: row.sdk_session_id ?? undefined,
+        backend: (row.backend ?? undefined) as AIBackendType | undefined,
+        workingDirectory: row.working_directory ?? undefined,
+        title: row.title ?? undefined,
+        tokenLimit: row.token_limit ?? undefined,
+        currentTokens: row.current_tokens ?? undefined,
+        cumulativeTokenUsage: jsonParse<TokenUsage>(row.cumulative_token_usage),
+        stale: intToBool(row.stale),
+        dataFilePath: row.data_file_path ?? undefined,
+        pendingMessages,
+    };
+
+    if (turns) {
+        process.conversationTurns = turns;
+    }
+
+    return process;
+}
+
+// ============================================================================
+// Turn ↔ Row conversion
+// ============================================================================
+
+function turnToRow(turn: ConversationTurn, processId: string): Record<string, unknown> {
+    return {
+        process_id: processId,
+        turn_index: turn.turnIndex,
+        role: turn.role,
+        content: turn.content ?? null,
+        timestamp: turn.timestamp.toISOString(),
+        streaming: boolToInt(turn.streaming),
+        tool_calls: turn.toolCalls ? JSON.stringify(turn.toolCalls.map(serializeToolCall)) : null,
+        timeline: JSON.stringify((turn.timeline ?? []).map(serializeTimelineItem)),
+        images: turn.images ? JSON.stringify(turn.images) : null,
+        historical: boolToInt(turn.historical),
+        suggestions: turn.suggestions ? JSON.stringify(turn.suggestions) : null,
+        token_usage: jsonStringify(turn.tokenUsage),
+        paste_externalized: boolToInt(turn.pasteExternalized),
+    };
+}
+
+function rowToTurn(row: TurnRow): ConversationTurn {
+    const rawToolCalls = jsonParse<Record<string, unknown>[]>(row.tool_calls);
+    const rawTimeline = jsonParse<Record<string, unknown>[]>(row.timeline);
+
+    return {
+        role: row.role as ConversationTurn['role'],
+        content: row.content ?? '',
+        timestamp: new Date(row.timestamp),
+        turnIndex: row.turn_index,
+        streaming: intToBool(row.streaming),
+        toolCalls: rawToolCalls?.map(deserializeToolCall),
+        timeline: rawTimeline?.map(deserializeTimelineItem) ?? [],
+        images: jsonParse<string[]>(row.images),
+        historical: intToBool(row.historical),
+        suggestions: jsonParse<string[]>(row.suggestions),
+        tokenUsage: jsonParse<TokenUsage>(row.token_usage),
+        pasteExternalized: intToBool(row.paste_externalized),
+    };
+}
+
+// ============================================================================
+// Workspace ↔ Row conversion
+// ============================================================================
+
+function workspaceToRow(ws: WorkspaceInfo): Record<string, unknown> {
+    return {
+        id: ws.id,
+        name: ws.name,
+        root_path: ws.rootPath,
+        color: ws.color ?? null,
+        remote_url: ws.remoteUrl ?? null,
+        description: ws.description ?? null,
+        enabled_mcp_servers: ws.enabledMcpServers === null ? null :
+            ws.enabledMcpServers !== undefined ? JSON.stringify(ws.enabledMcpServers) : null,
+        disabled_skills: jsonStringify(ws.disabledSkills),
+        extra_skill_folders: jsonStringify(ws.extraSkillFolders),
+        virtual: boolToInt(ws.virtual),
+    };
+}
+
+function rowToWorkspace(row: WorkspaceRow): WorkspaceInfo {
+    const ws: WorkspaceInfo = {
+        id: row.id,
+        name: row.name,
+        rootPath: row.root_path,
+        color: row.color ?? undefined,
+        remoteUrl: row.remote_url ?? undefined,
+        description: row.description ?? undefined,
+        virtual: intToBool(row.virtual),
+    };
+
+    // enabledMcpServers: null in DB means null/undefined; JSON string means parsed array
+    if (row.enabled_mcp_servers !== null) {
+        ws.enabledMcpServers = jsonParse<string[]>(row.enabled_mcp_servers);
+    }
+    if (row.disabled_skills !== null) {
+        ws.disabledSkills = jsonParse<string[]>(row.disabled_skills);
+    }
+    if (row.extra_skill_folders !== null) {
+        ws.extraSkillFolders = jsonParse<string[]>(row.extra_skill_folders);
+    }
+
+    return ws;
+}
+
+// ============================================================================
+// Wiki ↔ Row conversion
+// ============================================================================
+
+function wikiToRow(wiki: WikiInfo): Record<string, unknown> {
+    return {
+        id: wiki.id,
+        name: wiki.name,
+        wiki_dir: wiki.wikiDir,
+        repo_path: wiki.repoPath ?? null,
+        color: wiki.color ?? null,
+        ai_enabled: boolToInt(wiki.aiEnabled),
+        registered_at: wiki.registeredAt,
+    };
+}
+
+function rowToWiki(row: WikiRow): WikiInfo {
+    return {
+        id: row.id,
+        name: row.name,
+        wikiDir: row.wiki_dir,
+        repoPath: row.repo_path ?? undefined,
+        color: row.color ?? undefined,
+        aiEnabled: !!row.ai_enabled,
+        registeredAt: row.registered_at,
+    };
+}
+
+// ============================================================================
+// SqliteProcessStore
+// ============================================================================
+
+export class SqliteProcessStore implements ProcessStore {
+    private readonly db: Database.Database;
+    private readonly dbPath: string;
+    private readonly emitters = new Map<string, EventEmitter>();
+    private readonly flushHandlers = new Map<string, () => Promise<void>>();
+
+    // Cached prepared statements
+    private readonly insertProcessStmt: Statement;
+    private readonly insertTurnStmt: Statement;
+    private readonly getProcessStmt: Statement;
+    private readonly getTurnsStmt: Statement;
+    private readonly upsertStreamingStmt: Statement;
+    private readonly maxTurnIndexStmt: Statement;
+
+    onProcessChange?: ProcessChangeCallback;
+
+    constructor(options: SqliteProcessStoreOptions) {
+        this.dbPath = options.dbPath;
+        this.db = new Database(options.dbPath);
+        initializeDatabase(this.db);
+
+        // Prepare cached statements
+        this.insertProcessStmt = this.db.prepare(`
+            INSERT INTO processes (
+                id, workspace_id, type, prompt_preview, full_prompt, status,
+                start_time, end_time, error, result, result_file_path,
+                raw_stdout_file_path, metadata, group_metadata, structured_result,
+                parent_process_id, sdk_session_id, backend, working_directory,
+                title, token_limit, current_tokens, cumulative_token_usage,
+                stale, data_file_path, archived
+            ) VALUES (
+                @id, @workspace_id, @type, @prompt_preview, @full_prompt, @status,
+                @start_time, @end_time, @error, @result, @result_file_path,
+                @raw_stdout_file_path, @metadata, @group_metadata, @structured_result,
+                @parent_process_id, @sdk_session_id, @backend, @working_directory,
+                @title, @token_limit, @current_tokens, @cumulative_token_usage,
+                @stale, @data_file_path, @archived
+            )
+        `);
+
+        this.insertTurnStmt = this.db.prepare(`
+            INSERT INTO conversation_turns (
+                process_id, turn_index, role, content, timestamp, streaming,
+                tool_calls, timeline, images, historical, suggestions,
+                token_usage, paste_externalized
+            ) VALUES (
+                @process_id, @turn_index, @role, @content, @timestamp, @streaming,
+                @tool_calls, @timeline, @images, @historical, @suggestions,
+                @token_usage, @paste_externalized
+            )
+        `);
+
+        this.getProcessStmt = this.db.prepare(
+            'SELECT * FROM processes WHERE id = ?'
+        );
+
+        this.getTurnsStmt = this.db.prepare(
+            'SELECT * FROM conversation_turns WHERE process_id = ? ORDER BY turn_index'
+        );
+
+        this.upsertStreamingStmt = this.db.prepare(`
+            UPDATE conversation_turns
+            SET content = @content, timeline = @timeline, streaming = @streaming
+            WHERE process_id = @process_id AND streaming = 1
+        `);
+
+        this.maxTurnIndexStmt = this.db.prepare(
+            'SELECT COALESCE(MAX(turn_index), -1) + 1 AS next_idx FROM conversation_turns WHERE process_id = ?'
+        );
+    }
+
+    // ========================================================================
+    // Process CRUD
+    // ========================================================================
+
+    async addProcess(process: AIProcess): Promise<void> {
+        const addTxn = this.db.transaction((proc: AIProcess) => {
+            const row = processToRow(proc);
+            this.insertProcessStmt.run(row);
+            for (const turn of proc.conversationTurns ?? []) {
+                this.insertTurnStmt.run(turnToRow(turn, proc.id));
+            }
+        });
+        addTxn(process);
+        this.onProcessChange?.({ type: 'process-added', process });
+    }
+
+    async getProcess(id: string, _workspaceId?: string): Promise<AIProcess | undefined> {
+        const row = this.getProcessStmt.get(id) as ProcessRow | undefined;
+        if (!row) return undefined;
+        const turnRows = this.getTurnsStmt.all(id) as TurnRow[];
+        const turns = turnRows.map(rowToTurn);
+        return rowToProcess(row, turns);
+    }
+
+    async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
+        const { sql, params } = this.buildProcessWhereClause(filter);
+        const query = `SELECT * FROM processes ${sql} ORDER BY start_time DESC` +
+            (filter?.limit !== undefined ? ` LIMIT ?` : '') +
+            (filter?.offset !== undefined ? ` OFFSET ?` : '');
+
+        const queryParams = [...params];
+        if (filter?.limit !== undefined) queryParams.push(filter.limit);
+        if (filter?.offset !== undefined) queryParams.push(filter.offset);
+
+        const rows = this.db.prepare(query).all(...queryParams) as ProcessRow[];
+
+        const excludeConversation = filter?.exclude?.includes('conversation');
+        const excludeToolCalls = filter?.exclude?.includes('toolCalls');
+
+        return rows.map(row => {
+            let turns: ConversationTurn[] | undefined;
+            if (!excludeConversation) {
+                const turnRows = this.getTurnsStmt.all(row.id) as TurnRow[];
+                turns = turnRows.map(rowToTurn);
+                if (excludeToolCalls && turns) {
+                    turns = turns.map(t => {
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        const { toolCalls, ...rest } = t;
+                        return rest as ConversationTurn;
+                    });
+                }
+            }
+
+            const process = rowToProcess(row, turns);
+            if (excludeConversation) {
+                const { conversationTurns: _ct, fullPrompt: _fp, result: _r, ...rest } = process;
+                return rest as AIProcess;
+            }
+            return process;
+        });
+    }
+
+    async getProcessSummaries(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }> {
+        const { sql, params } = this.buildProcessWhereClause(filter);
+
+        // Total count (pre-pagination)
+        const countQuery = `SELECT COUNT(*) AS cnt FROM processes ${sql}`;
+        const countRow = this.db.prepare(countQuery).get(...params) as CountRow;
+        const total = countRow.cnt;
+
+        // Fetch summary columns with pagination
+        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title FROM processes ${sql} ORDER BY start_time DESC` +
+            (filter?.limit !== undefined ? ` LIMIT ?` : '') +
+            (filter?.offset !== undefined ? ` OFFSET ?` : '');
+
+        const queryParams = [...params];
+        if (filter?.limit !== undefined) queryParams.push(filter.limit);
+        if (filter?.offset !== undefined) queryParams.push(filter.offset);
+
+        const rows = this.db.prepare(selectQuery).all(...queryParams) as ProcessRow[];
+
+        const entries: ProcessIndexEntry[] = rows.map(row => {
+            const startMs = new Date(row.start_time).getTime();
+            const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
+            return {
+                id: row.id,
+                workspaceId: row.workspace_id,
+                status: row.status,
+                type: row.type || 'clarification',
+                startTime: new Date(row.start_time).toISOString(),
+                endTime: row.end_time ? new Date(row.end_time).toISOString() : undefined,
+                promptPreview: row.prompt_preview ?? '',
+                error: row.error ?? undefined,
+                parentProcessId: row.parent_process_id ?? undefined,
+                title: row.title ?? undefined,
+                duration: endMs !== undefined ? endMs - startMs : undefined,
+            };
+        });
+
+        return { entries, total };
+    }
+
+    async updateProcess(id: string, updates: Partial<AIProcess>): Promise<void> {
+        if ('conversationTurns' in updates) {
+            throw new Error('Use appendConversationTurn/upsertStreamingTurn/updateTurnContent to modify conversationTurns');
+        }
+
+        const setClauses: string[] = [];
+        const values: unknown[] = [];
+
+        const mapField = (column: string, value: unknown, transform?: (v: unknown) => unknown) => {
+            if (value !== undefined) {
+                setClauses.push(`${column} = ?`);
+                values.push(transform ? transform(value) : value);
+            }
+        };
+
+        mapField('type', updates.type);
+        mapField('prompt_preview', updates.promptPreview);
+        mapField('full_prompt', updates.fullPrompt);
+        mapField('status', updates.status);
+        mapField('start_time', updates.startTime, v => (v as Date).toISOString());
+        mapField('end_time', updates.endTime, v => v ? (v as Date).toISOString() : null);
+        mapField('error', updates.error);
+        mapField('result', updates.result);
+        mapField('result_file_path', updates.resultFilePath);
+        mapField('raw_stdout_file_path', updates.rawStdoutFilePath);
+        mapField('structured_result', updates.structuredResult);
+        mapField('parent_process_id', updates.parentProcessId);
+        mapField('sdk_session_id', updates.sdkSessionId);
+        mapField('backend', updates.backend);
+        mapField('working_directory', updates.workingDirectory);
+        mapField('title', updates.title);
+        mapField('token_limit', updates.tokenLimit);
+        mapField('current_tokens', updates.currentTokens);
+        mapField('cumulative_token_usage', updates.cumulativeTokenUsage, v => jsonStringify(v));
+        mapField('group_metadata', updates.groupMetadata, v => jsonStringify(v));
+        if (updates.stale !== undefined) {
+            setClauses.push('stale = ?');
+            values.push(boolToInt(updates.stale));
+        }
+        mapField('data_file_path', updates.dataFilePath);
+
+        // Handle metadata envelope rebuild when any metadata field changes
+        if ('metadata' in updates || 'codeReviewMetadata' in updates ||
+            'discoveryMetadata' in updates || 'codeReviewGroupMetadata' in updates ||
+            'pendingMessages' in updates) {
+            // Re-read existing process to merge metadata
+            const existing = this.getProcessStmt.get(id) as ProcessRow | undefined;
+            if (existing) {
+                const existingEnvelope = jsonParse<MetadataEnvelope>(existing.metadata) ?? {};
+                const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata, __pendingMessages, ...existingMeta } = existingEnvelope;
+
+                const newMeta = 'metadata' in updates ? (updates.metadata ?? {}) : existingMeta;
+                const newCrm = 'codeReviewMetadata' in updates ? updates.codeReviewMetadata : __codeReviewMetadata;
+                const newDm = 'discoveryMetadata' in updates ? updates.discoveryMetadata : __discoveryMetadata;
+                const newCrgm = 'codeReviewGroupMetadata' in updates ? updates.codeReviewGroupMetadata : __codeReviewGroupMetadata;
+                const newPm = 'pendingMessages' in updates ? updates.pendingMessages : __pendingMessages;
+
+                const envelope: MetadataEnvelope = { ...(newMeta as object) };
+                if (newCrm) envelope.__codeReviewMetadata = newCrm;
+                if (newDm) envelope.__discoveryMetadata = newDm;
+                if (newCrgm) envelope.__codeReviewGroupMetadata = newCrgm;
+                if (newPm && (newPm as unknown[]).length > 0) envelope.__pendingMessages = newPm;
+
+                const hasContent = Object.keys(envelope).length > 0;
+                setClauses.push('metadata = ?');
+                values.push(hasContent ? JSON.stringify(envelope) : null);
+            }
+        }
+
+        if (setClauses.length === 0) return;
+
+        values.push(id);
+        const updateSql = `UPDATE processes SET ${setClauses.join(', ')} WHERE id = ?`;
+        this.db.prepare(updateSql).run(...values);
+
+        // Re-read for event
+        const updated = await this.getProcess(id);
+        if (updated) {
+            this.onProcessChange?.({ type: 'process-updated', process: updated });
+        }
+    }
+
+    async removeProcess(id: string): Promise<void> {
+        const process = await this.getProcess(id);
+        if (!process) return;
+        this.db.prepare('DELETE FROM processes WHERE id = ?').run(id);
+        this.onProcessChange?.({ type: 'process-removed', process });
+    }
+
+    async clearProcesses(filter?: ProcessFilter): Promise<number> {
+        const { sql, params } = this.buildProcessWhereClause(filter);
+        const result = this.db.prepare(`DELETE FROM processes ${sql}`).run(...params);
+        this.onProcessChange?.({ type: 'processes-cleared' });
+        return result.changes;
+    }
+
+    // ========================================================================
+    // Conversation Turn Operations
+    // ========================================================================
+
+    async upsertStreamingTurn(
+        processId: string,
+        content: string,
+        streaming: boolean,
+        timeline?: TimelineItem[],
+    ): Promise<void> {
+        const upsertTxn = this.db.transaction(() => {
+            const result = this.upsertStreamingStmt.run({
+                content,
+                timeline: JSON.stringify((timeline ?? []).map(serializeTimelineItem)),
+                streaming: boolToInt(streaming),
+                process_id: processId,
+            });
+
+            if (result.changes === 0) {
+                // No existing streaming turn — insert new one
+                const { next_idx } = this.maxTurnIndexStmt.get(processId) as MaxTurnIndexRow;
+                this.insertTurnStmt.run({
+                    process_id: processId,
+                    turn_index: next_idx,
+                    role: 'assistant',
+                    content,
+                    timestamp: new Date().toISOString(),
+                    streaming: boolToInt(streaming),
+                    tool_calls: null,
+                    timeline: JSON.stringify((timeline ?? []).map(serializeTimelineItem)),
+                    images: null,
+                    historical: 0,
+                    suggestions: null,
+                    token_usage: null,
+                    paste_externalized: 0,
+                });
+            }
+        });
+        upsertTxn();
+        this.onProcessChange?.({ type: 'process-updated' });
+    }
+
+    async appendConversationTurn(
+        processId: string,
+        makeTurn: (turnIndex: number) => ConversationTurn,
+        options?: {
+            filterStreaming?: boolean;
+            additionalUpdates?:
+                | Partial<Omit<AIProcess, 'conversationTurns'>>
+                | ((current: AIProcess) => Partial<Omit<AIProcess, 'conversationTurns'>>);
+        }
+    ): Promise<{ turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined> {
+        let appendResult: { turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined;
+
+        const appendTxn = this.db.transaction(() => {
+            // Check process exists
+            const processRow = this.getProcessStmt.get(processId) as ProcessRow | undefined;
+            if (!processRow) return;
+
+            let stableTurnIndex: number | undefined;
+
+            if (options?.filterStreaming) {
+                // Find streaming turn index before deleting
+                const streamingRow = this.db.prepare(
+                    "SELECT turn_index FROM conversation_turns WHERE process_id = ? AND streaming = 1 AND role = 'assistant'"
+                ).get(processId) as StreamingTurnRow | undefined;
+
+                if (streamingRow) {
+                    stableTurnIndex = streamingRow.turn_index;
+                }
+
+                // Delete streaming turns
+                this.db.prepare(
+                    'DELETE FROM conversation_turns WHERE process_id = ? AND streaming = 1'
+                ).run(processId);
+
+                // Guard: discard stale stableTurnIndex if a new turn was appended after it
+                if (stableTurnIndex !== undefined) {
+                    const maxRow = this.db.prepare(
+                        'SELECT COALESCE(MAX(turn_index), -1) AS max_idx FROM conversation_turns WHERE process_id = ?'
+                    ).get(processId) as { max_idx: number };
+                    if (stableTurnIndex <= maxRow.max_idx) {
+                        stableTurnIndex = undefined;
+                    }
+                }
+            }
+
+            // Compute fallback index
+            const { next_idx } = this.maxTurnIndexStmt.get(processId) as MaxTurnIndexRow;
+            const turn = makeTurn(stableTurnIndex ?? next_idx);
+
+            // Insert the new turn
+            this.insertTurnStmt.run(turnToRow(turn, processId));
+
+            // Apply additional updates
+            if (options?.additionalUpdates) {
+                const currentProcess = rowToProcess(processRow);
+                const extraUpdates = typeof options.additionalUpdates === 'function'
+                    ? options.additionalUpdates(currentProcess)
+                    : options.additionalUpdates;
+
+                if (extraUpdates && Object.keys(extraUpdates).length > 0) {
+                    this.applyProcessUpdatesInline(processId, extraUpdates, processRow);
+                }
+            }
+
+            // Read all turns for return value
+            const allTurnRows = this.getTurnsStmt.all(processId) as TurnRow[];
+            const allTurns = allTurnRows.map(rowToTurn);
+
+            appendResult = { turn, allTurns };
+        });
+
+        appendTxn();
+
+        if (appendResult) {
+            this.onProcessChange?.({ type: 'process-updated' });
+        }
+
+        return appendResult;
+    }
+
+    async updateTurnContent(
+        processId: string,
+        turnIndex: number,
+        content: string,
+    ): Promise<void> {
+        const result = this.db.prepare(
+            'UPDATE conversation_turns SET content = ? WHERE process_id = ? AND turn_index = ?'
+        ).run(content, processId, turnIndex);
+
+        if (result.changes === 0) {
+            getLogger().warn('SqliteProcessStore', `Turn not found: processId=${processId}, turnIndex=${turnIndex}`);
+        }
+        this.onProcessChange?.({ type: 'process-updated' });
+    }
+
+    // ========================================================================
+    // Workspace CRUD
+    // ========================================================================
+
+    async registerWorkspace(workspace: WorkspaceInfo): Promise<void> {
+        const row = workspaceToRow(workspace);
+        this.db.prepare(`
+            INSERT OR REPLACE INTO workspaces (
+                id, name, root_path, color, remote_url, description,
+                enabled_mcp_servers, disabled_skills, extra_skill_folders, virtual
+            ) VALUES (
+                @id, @name, @root_path, @color, @remote_url, @description,
+                @enabled_mcp_servers, @disabled_skills, @extra_skill_folders, @virtual
+            )
+        `).run(row);
+    }
+
+    async getWorkspaces(): Promise<WorkspaceInfo[]> {
+        const rows = this.db.prepare('SELECT * FROM workspaces').all() as WorkspaceRow[];
+        return rows.map(rowToWorkspace);
+    }
+
+    async removeWorkspace(id: string): Promise<boolean> {
+        const result = this.db.prepare('DELETE FROM workspaces WHERE id = ?').run(id);
+        return result.changes > 0;
+    }
+
+    async updateWorkspace(id: string, updates: Partial<Omit<WorkspaceInfo, 'id'>>): Promise<WorkspaceInfo | undefined> {
+        const setClauses: string[] = [];
+        const values: unknown[] = [];
+
+        if (updates.name !== undefined) { setClauses.push('name = ?'); values.push(updates.name); }
+        if (updates.rootPath !== undefined) { setClauses.push('root_path = ?'); values.push(updates.rootPath); }
+        if (updates.color !== undefined) { setClauses.push('color = ?'); values.push(updates.color); }
+        if (updates.remoteUrl !== undefined) { setClauses.push('remote_url = ?'); values.push(updates.remoteUrl); }
+        if (updates.description !== undefined) { setClauses.push('description = ?'); values.push(updates.description); }
+        if ('enabledMcpServers' in updates) {
+            setClauses.push('enabled_mcp_servers = ?');
+            values.push(updates.enabledMcpServers === null ? null :
+                updates.enabledMcpServers !== undefined ? JSON.stringify(updates.enabledMcpServers) : null);
+        }
+        if ('disabledSkills' in updates) {
+            setClauses.push('disabled_skills = ?');
+            values.push(jsonStringify(updates.disabledSkills));
+        }
+        if ('extraSkillFolders' in updates) {
+            setClauses.push('extra_skill_folders = ?');
+            values.push(jsonStringify(updates.extraSkillFolders));
+        }
+        if (updates.virtual !== undefined) { setClauses.push('virtual = ?'); values.push(boolToInt(updates.virtual)); }
+
+        if (setClauses.length === 0) {
+            // No updates, just return existing
+            const row = this.db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id) as WorkspaceRow | undefined;
+            return row ? rowToWorkspace(row) : undefined;
+        }
+
+        values.push(id);
+        this.db.prepare(`UPDATE workspaces SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+
+        const row = this.db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id) as WorkspaceRow | undefined;
+        return row ? rowToWorkspace(row) : undefined;
+    }
+
+    // ========================================================================
+    // Wiki CRUD
+    // ========================================================================
+
+    async registerWiki(wiki: WikiInfo): Promise<void> {
+        const row = wikiToRow(wiki);
+        this.db.prepare(`
+            INSERT OR REPLACE INTO wikis (
+                id, name, wiki_dir, repo_path, color, ai_enabled, registered_at
+            ) VALUES (
+                @id, @name, @wiki_dir, @repo_path, @color, @ai_enabled, @registered_at
+            )
+        `).run(row);
+    }
+
+    async getWikis(): Promise<WikiInfo[]> {
+        const rows = this.db.prepare('SELECT * FROM wikis').all() as WikiRow[];
+        return rows.map(rowToWiki);
+    }
+
+    async removeWiki(id: string): Promise<boolean> {
+        const result = this.db.prepare('DELETE FROM wikis WHERE id = ?').run(id);
+        return result.changes > 0;
+    }
+
+    async updateWiki(id: string, updates: Partial<Omit<WikiInfo, 'id'>>): Promise<WikiInfo | undefined> {
+        const setClauses: string[] = [];
+        const values: unknown[] = [];
+
+        if (updates.name !== undefined) { setClauses.push('name = ?'); values.push(updates.name); }
+        if (updates.wikiDir !== undefined) { setClauses.push('wiki_dir = ?'); values.push(updates.wikiDir); }
+        if (updates.repoPath !== undefined) { setClauses.push('repo_path = ?'); values.push(updates.repoPath); }
+        if (updates.color !== undefined) { setClauses.push('color = ?'); values.push(updates.color); }
+        if (updates.aiEnabled !== undefined) { setClauses.push('ai_enabled = ?'); values.push(boolToInt(updates.aiEnabled)); }
+        if (updates.registeredAt !== undefined) { setClauses.push('registered_at = ?'); values.push(updates.registeredAt); }
+
+        if (setClauses.length === 0) {
+            const row = this.db.prepare('SELECT * FROM wikis WHERE id = ?').get(id) as WikiRow | undefined;
+            return row ? rowToWiki(row) : undefined;
+        }
+
+        values.push(id);
+        this.db.prepare(`UPDATE wikis SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+
+        const row = this.db.prepare('SELECT * FROM wikis WHERE id = ?').get(id) as WikiRow | undefined;
+        return row ? rowToWiki(row) : undefined;
+    }
+
+    // ========================================================================
+    // Admin: bulk clear & stats
+    // ========================================================================
+
+    async clearAllWorkspaces(): Promise<number> {
+        const result = this.db.prepare('DELETE FROM workspaces').run();
+        return result.changes;
+    }
+
+    async clearAllWikis(): Promise<number> {
+        const result = this.db.prepare('DELETE FROM wikis').run();
+        return result.changes;
+    }
+
+    async getStorageStats(): Promise<StorageStats> {
+        const procCount = (this.db.prepare('SELECT COUNT(*) AS cnt FROM processes').get() as CountRow).cnt;
+        const wsCount = (this.db.prepare('SELECT COUNT(*) AS cnt FROM workspaces').get() as CountRow).cnt;
+        const wikiCount = (this.db.prepare('SELECT COUNT(*) AS cnt FROM wikis').get() as CountRow).cnt;
+
+        let storageSize = 0;
+        try {
+            storageSize = fs.statSync(this.dbPath).size;
+        } catch {
+            // File may not exist yet
+        }
+
+        return {
+            totalProcesses: procCount,
+            totalWorkspaces: wsCount,
+            totalWikis: wikiCount,
+            storageSize,
+        };
+    }
+
+    // ========================================================================
+    // EventEmitter Bus
+    // ========================================================================
+
+    onProcessOutput(id: string, callback: (event: ProcessOutputEvent) => void): () => void {
+        const emitter = this.getOrCreateEmitter(id);
+        const listener = (event: ProcessOutputEvent) => callback(event);
+        emitter.on('output', listener);
+        return () => {
+            emitter.removeListener('output', listener);
+        };
+    }
+
+    emitProcessOutput(id: string, content: string): void {
+        const emitter = this.getOrCreateEmitter(id);
+        const event: ProcessOutputEvent = { type: 'chunk', content };
+        emitter.emit('output', event);
+    }
+
+    emitProcessComplete(id: string, status: AIProcessStatus, duration: string): void {
+        const emitter = this.emitters.get(id);
+        if (!emitter) return;
+        const event: ProcessOutputEvent = { type: 'complete', status, duration };
+        emitter.emit('output', event);
+        this.emitters.delete(id);
+    }
+
+    emitProcessEvent(id: string, event: ProcessOutputEvent): void {
+        const emitter = this.getOrCreateEmitter(id);
+        emitter.emit('output', event);
+    }
+
+    // ========================================================================
+    // Flush Handlers
+    // ========================================================================
+
+    registerFlushHandler(id: string, handler: () => Promise<void>): void {
+        this.flushHandlers.set(id, handler);
+    }
+
+    unregisterFlushHandler(id: string): void {
+        this.flushHandlers.delete(id);
+    }
+
+    async requestFlush(id: string): Promise<void> {
+        const handler = this.flushHandlers.get(id);
+        if (handler) { await handler(); }
+    }
+
+    // ========================================================================
+    // Disposal
+    // ========================================================================
+
+    close(): void {
+        this.db.close();
+    }
+
+    // ========================================================================
+    // Private helpers
+    // ========================================================================
+
+    private getOrCreateEmitter(id: string): EventEmitter {
+        let emitter = this.emitters.get(id);
+        if (!emitter) {
+            emitter = new EventEmitter();
+            this.emitters.set(id, emitter);
+        }
+        return emitter;
+    }
+
+    /** Build a WHERE clause from ProcessFilter fields. */
+    private buildProcessWhereClause(filter?: ProcessFilter): { sql: string; params: unknown[] } {
+        if (!filter) return { sql: '', params: [] };
+
+        const conditions: string[] = [];
+        const params: unknown[] = [];
+
+        if (filter.workspaceId !== undefined) {
+            conditions.push('workspace_id = ?');
+            params.push(filter.workspaceId);
+        }
+        if (filter.parentProcessId !== undefined) {
+            conditions.push('parent_process_id = ?');
+            params.push(filter.parentProcessId);
+        }
+        if (filter.status !== undefined) {
+            if (Array.isArray(filter.status)) {
+                conditions.push(`status IN (${filter.status.map(() => '?').join(', ')})`);
+                params.push(...filter.status);
+            } else {
+                conditions.push('status = ?');
+                params.push(filter.status);
+            }
+        }
+        if (filter.type !== undefined) {
+            conditions.push('type = ?');
+            params.push(filter.type);
+        }
+        if (filter.since !== undefined) {
+            conditions.push('start_time >= ?');
+            params.push(filter.since.toISOString());
+        }
+
+        if (conditions.length === 0) return { sql: '', params: [] };
+        return { sql: `WHERE ${conditions.join(' AND ')}`, params };
+    }
+
+    /**
+     * Apply partial process updates inline within a transaction (no re-read).
+     * Used by appendConversationTurn for additionalUpdates.
+     */
+    private applyProcessUpdatesInline(
+        processId: string,
+        updates: Partial<Omit<AIProcess, 'conversationTurns'>>,
+        existingRow: ProcessRow,
+    ): void {
+        const setClauses: string[] = [];
+        const values: unknown[] = [];
+
+        const mapField = (column: string, value: unknown, transform?: (v: unknown) => unknown) => {
+            if (value !== undefined) {
+                setClauses.push(`${column} = ?`);
+                values.push(transform ? transform(value) : value);
+            }
+        };
+
+        mapField('type', updates.type);
+        mapField('prompt_preview', updates.promptPreview);
+        mapField('full_prompt', updates.fullPrompt);
+        mapField('status', updates.status);
+        mapField('start_time', updates.startTime, v => (v as Date).toISOString());
+        mapField('end_time', updates.endTime, v => v ? (v as Date).toISOString() : null);
+        mapField('error', updates.error);
+        mapField('result', updates.result);
+        mapField('result_file_path', updates.resultFilePath);
+        mapField('raw_stdout_file_path', updates.rawStdoutFilePath);
+        mapField('structured_result', updates.structuredResult);
+        mapField('parent_process_id', updates.parentProcessId);
+        mapField('sdk_session_id', updates.sdkSessionId);
+        mapField('backend', updates.backend);
+        mapField('working_directory', updates.workingDirectory);
+        mapField('title', updates.title);
+        mapField('token_limit', updates.tokenLimit);
+        mapField('current_tokens', updates.currentTokens);
+        mapField('cumulative_token_usage', updates.cumulativeTokenUsage, v => jsonStringify(v));
+        mapField('group_metadata', updates.groupMetadata, v => jsonStringify(v));
+        if (updates.stale !== undefined) {
+            setClauses.push('stale = ?');
+            values.push(boolToInt(updates.stale));
+        }
+        mapField('data_file_path', updates.dataFilePath);
+
+        // Handle metadata envelope if any metadata-related fields are updated
+        if ('metadata' in updates || 'codeReviewMetadata' in updates ||
+            'discoveryMetadata' in updates || 'codeReviewGroupMetadata' in updates ||
+            'pendingMessages' in updates) {
+            const existingEnvelope = jsonParse<MetadataEnvelope>(existingRow.metadata) ?? {};
+            const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata, __pendingMessages, ...existingMeta } = existingEnvelope;
+
+            const newMeta = 'metadata' in updates ? (updates.metadata ?? {}) : existingMeta;
+            const newCrm = 'codeReviewMetadata' in updates ? updates.codeReviewMetadata : __codeReviewMetadata;
+            const newDm = 'discoveryMetadata' in updates ? updates.discoveryMetadata : __discoveryMetadata;
+            const newCrgm = 'codeReviewGroupMetadata' in updates ? updates.codeReviewGroupMetadata : __codeReviewGroupMetadata;
+            const newPm = 'pendingMessages' in updates ? updates.pendingMessages : __pendingMessages;
+
+            const envelope: MetadataEnvelope = { ...(newMeta as object) };
+            if (newCrm) envelope.__codeReviewMetadata = newCrm;
+            if (newDm) envelope.__discoveryMetadata = newDm;
+            if (newCrgm) envelope.__codeReviewGroupMetadata = newCrgm;
+            if (newPm && (newPm as unknown[]).length > 0) envelope.__pendingMessages = newPm;
+
+            const hasContent = Object.keys(envelope).length > 0;
+            setClauses.push('metadata = ?');
+            values.push(hasContent ? JSON.stringify(envelope) : null);
+        }
+
+        if (setClauses.length === 0) return;
+
+        values.push(processId);
+        this.db.prepare(`UPDATE processes SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+    }
+}
