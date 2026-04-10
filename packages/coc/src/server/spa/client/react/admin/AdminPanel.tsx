@@ -3,7 +3,7 @@
  * Storage stats, config view, export, import, and data wipe.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Card, Button, Spinner, useToast, ToastContainer } from '../shared';
 import { getApiBase } from '../utils/config';
 import { invalidateDisplaySettings } from '../hooks/useDisplaySettings';
@@ -13,7 +13,10 @@ import { PromptsPanel } from './PromptsPanel';
 import { useApp } from '../context/AppContext';
 import { FeatureTip } from '../welcome/FeatureTip';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
+import { ENABLE_SQLITE_BACKEND } from '../featureFlags';
 import type { AdminSubTab } from '../types/dashboard';
+
+const StorageSection = lazy(() => import('./StorageSection'));
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -944,6 +947,16 @@ export function AdminPanel() {
                 {/* ── Data tab ── */}
                 {activeTab === 'data' && (
                     <Card className="p-2 md:p-3">
+                        {/* Storage Backend */}
+                        {ENABLE_SQLITE_BACKEND && (
+                            <>
+                                <Suspense fallback={<Spinner size="sm" />}>
+                                    <StorageSection />
+                                </Suspense>
+                                <hr className={dividerClass} />
+                            </>
+                        )}
+
                         {/* Export */}
                         <div>
                             <div className={sectionHeadClass}>Export</div>

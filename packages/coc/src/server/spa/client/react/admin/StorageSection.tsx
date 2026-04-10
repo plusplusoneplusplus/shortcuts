@@ -1,0 +1,498 @@
+/**
+ * StorageSection — displays current storage backend info and drives
+ * the SQLite migration flow (confirm → stream progress → done/error).
+ *
+ * Gated behind ENABLE_SQLITE_BACKEND in AdminPanel via React.lazy.
+ */
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Button, Spinner } from '../shared';
+import { Dialog } from '../shared/Dialog';
+import { fetchApi } from '../hooks/useApi';
+import { getApiBase } from '../utils/config';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface StorageStatus {
+    backend: 'file' | 'sqlite';
+    stats: { processes: number; workspaces: number };
+    dbPath?: string;
+}
+
+type Phase = 'status' | 'confirm' | 'migrating' | 'done' | 'error';
+
+type PhaseState = 'pending' | 'running' | 'complete' | 'error';
+
+interface MigrationPhase {
+    label: string;
+    state: PhaseState;
+    progress?: { current: number; total: number };
+}
+
+interface MigrationResult {
+    success: boolean;
+    processes?: number;
+    archivedProcesses?: number;
+    workspaces?: number;
+    wikis?: number;
+    error?: string;
+    failedPhase?: number;
+    failedMessage?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const PHASE_LABELS = [
+    'Creating database schema',
+    'Migrating processes',
+    'Migrating workspaces & wikis',
+    'Validating migrated data',
+    'Cleanup & restart',
+];
+
+const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
+const statusTextClass = 'text-xs text-[#848484]';
+const logPreClass = 'text-xs bg-black/5 dark:bg-white/5 p-2 rounded whitespace-pre-wrap max-h-48 overflow-y-auto font-mono';
+
+function phaseIcon(state: PhaseState): string {
+    switch (state) {
+        case 'complete': return '✓';
+        case 'error': return '❌';
+        case 'running': return '⏳';
+        default: return '○';
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export default function StorageSection() {
+    const [phase, setPhase] = useState<Phase>('status');
+    const [status, setStatus] = useState<StorageStatus | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [acquiringToken, setAcquiringToken] = useState(false);
+    const [token, setToken] = useState<string | null>(null);
+    const [migrationPhases, setMigrationPhases] = useState<MigrationPhase[]>([]);
+    const [logs, setLogs] = useState<string[]>([]);
+    const [result, setResult] = useState<MigrationResult | null>(null);
+    const [polling, setPolling] = useState(false);
+
+    const abortRef = useRef<AbortController | null>(null);
+    const logRef = useRef<HTMLPreElement>(null);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // -----------------------------------------------------------------------
+    // Fetch status on mount (and on reset)
+    // -----------------------------------------------------------------------
+
+    const loadStatus = useCallback(async () => {
+        setLoading(true);
+        try {
+            const data = await fetchApi('/api/admin/storage/status');
+            setStatus(data);
+        } catch {
+            // silently ignore — status section will show a loading state
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { loadStatus(); }, [loadStatus]);
+
+    // Auto-scroll log area
+    useEffect(() => {
+        if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+    }, [logs]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            abortRef.current?.abort();
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+    }, []);
+
+    // -----------------------------------------------------------------------
+    // Confirmation flow
+    // -----------------------------------------------------------------------
+
+    const handleMigrateClick = async () => {
+        setPhase('confirm');
+        setAcquiringToken(true);
+        try {
+            const data = await fetchApi('/api/admin/storage/migrate-token');
+            setToken(data.token);
+        } catch {
+            setToken(null);
+        } finally {
+            setAcquiringToken(false);
+        }
+    };
+
+    const handleConfirm = async () => {
+        if (!token) return;
+
+        // Initialize phase checklist
+        setMigrationPhases(PHASE_LABELS.map(label => ({ label, state: 'pending' })));
+        setLogs([]);
+        setResult(null);
+        setPhase('migrating');
+
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        try {
+            const res = await fetch(
+                getApiBase() + '/api/admin/storage/migrate?confirm=' + encodeURIComponent(token),
+                { method: 'POST', signal: controller.signal },
+            );
+
+            if (!res.ok) {
+                const text = await res.text();
+                setResult({ success: false, error: text });
+                setPhase('error');
+                return;
+            }
+
+            const reader = res.body!.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        handleSSEEvent(data);
+                    } catch { /* ignore malformed */ }
+                }
+            }
+        } catch (err: any) {
+            if (err?.name === 'AbortError') {
+                // User cancelled — handled by handleCancel
+                return;
+            }
+            setResult({ success: false, error: err?.message ?? 'Network error' });
+            setPhase('error');
+        }
+    };
+
+    const handleSSEEvent = (data: any) => {
+        if (data.type === 'done') {
+            if (data.success) {
+                // Mark all phases complete
+                setMigrationPhases(prev => prev.map(p => ({ ...p, state: 'complete' })));
+                setResult({
+                    success: true,
+                    processes: data.processes,
+                    archivedProcesses: data.archivedProcesses,
+                    workspaces: data.workspaces,
+                    wikis: data.wikis,
+                });
+                setPhase('done');
+            } else {
+                setResult({ success: false, error: data.error ?? data.message ?? 'Migration failed' });
+                setPhase('error');
+            }
+            return;
+        }
+
+        if (data.type === 'error') {
+            const phaseIdx = (data.phase ?? 1) - 1;
+            setMigrationPhases(prev => prev.map((p, i) =>
+                i === phaseIdx ? { ...p, state: 'error' } : p
+            ));
+            setLogs(prev => [...prev, `❌ ${data.message || 'Error'}`]);
+            setResult({
+                success: false,
+                failedPhase: data.phase,
+                failedMessage: data.message,
+                error: data.message,
+            });
+            return;
+        }
+
+        // MigrationProgress events: { phase, status, message, progress? }
+        const phaseIdx = (data.phase ?? 1) - 1;
+
+        if (data.status === 'running') {
+            setMigrationPhases(prev => prev.map((p, i) => {
+                if (i === phaseIdx) return { ...p, state: 'running', progress: data.progress };
+                if (i < phaseIdx && p.state !== 'complete') return { ...p, state: 'complete' };
+                return p;
+            }));
+            if (data.message) {
+                setLogs(prev => [...prev, data.message]);
+            }
+        } else if (data.status === 'complete') {
+            setMigrationPhases(prev => prev.map((p, i) =>
+                i === phaseIdx ? { ...p, state: 'complete' } : p
+            ));
+            if (data.message) {
+                setLogs(prev => [...prev, `✓ ${data.message}`]);
+            }
+        } else if (data.status === 'error') {
+            setMigrationPhases(prev => prev.map((p, i) =>
+                i === phaseIdx ? { ...p, state: 'error' } : p
+            ));
+            if (data.message) {
+                setLogs(prev => [...prev, `❌ ${data.message}`]);
+            }
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Cancel
+    // -----------------------------------------------------------------------
+
+    const currentPhaseNumber = migrationPhases.findIndex(p => p.state === 'running') + 1;
+
+    const handleCancel = async () => {
+        abortRef.current?.abort();
+        try {
+            await fetch(getApiBase() + '/api/admin/storage/migrate/cancel', { method: 'POST' });
+        } catch { /* ignore */ }
+        setLogs(prev => [...prev, 'Migration cancelled. Rolling back…']);
+        setResult({ success: false, error: 'Migration cancelled by user' });
+        setPhase('error');
+    };
+
+    // -----------------------------------------------------------------------
+    // Restart polling (success state)
+    // -----------------------------------------------------------------------
+
+    const handleDoneOk = () => {
+        setPolling(true);
+        const poll = setInterval(async () => {
+            try {
+                await fetchApi('/api/admin/storage/status');
+                clearInterval(poll);
+                pollRef.current = null;
+                window.location.reload();
+            } catch {
+                // server not back yet
+            }
+        }, 3000);
+        pollRef.current = poll;
+    };
+
+    // -----------------------------------------------------------------------
+    // Error → reset
+    // -----------------------------------------------------------------------
+
+    const handleCloseError = () => {
+        setPhase('status');
+        loadStatus();
+    };
+
+    // -----------------------------------------------------------------------
+    // Render
+    // -----------------------------------------------------------------------
+
+    // Status display
+    if (phase === 'status') {
+        return (
+            <div>
+                <div className={sectionHeadClass}>Storage Backend</div>
+                {loading ? (
+                    <Spinner size="sm" />
+                ) : status ? (
+                    <div className="flex flex-col gap-1">
+                        <span className={statusTextClass}>
+                            Current: {status.backend === 'sqlite' ? 'SQLite' : 'JSON files'}
+                            {' '}({status.stats.processes} processes, {status.stats.workspaces} workspaces)
+                        </span>
+                        {status.backend === 'sqlite' && status.dbPath && (
+                            <span className={statusTextClass}>Database: {status.dbPath}</span>
+                        )}
+                        {status.backend === 'file' && (
+                            <div className="mt-1">
+                                <Button variant="secondary" size="sm" onClick={handleMigrateClick}>
+                                    Migrate to SQLite
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <span className={statusTextClass}>Unable to load storage status</span>
+                )}
+            </div>
+        );
+    }
+
+    // Confirmation dialog
+    if (phase === 'confirm') {
+        return (
+            <>
+                <div>
+                    <div className={sectionHeadClass}>Storage Backend</div>
+                    <span className={statusTextClass}>
+                        Current: JSON files ({status?.stats.processes ?? 0} processes, {status?.stats.workspaces ?? 0} workspaces)
+                    </span>
+                </div>
+                <Dialog
+                    open={true}
+                    onClose={() => setPhase('status')}
+                    title="Migrate to SQLite"
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={() => setPhase('status')}>Cancel</Button>
+                            <Button variant="primary" loading={acquiringToken} disabled={!token} onClick={handleConfirm}>
+                                Confirm Migration
+                            </Button>
+                        </>
+                    }
+                >
+                    <p className="mb-2">This will:</p>
+                    <ul className="list-disc pl-5 space-y-1 text-xs">
+                        <li>Copy {status?.stats.processes ?? 0} processes, {status?.stats.workspaces ?? 0} workspaces into a SQLite database</li>
+                        <li>Validate all migrated data</li>
+                        <li>Switch the server to use SQLite</li>
+                        <li>Clean up old JSON files</li>
+                    </ul>
+                    <p className="mt-2 text-xs text-[#848484]">The server will restart after migration. Running tasks will be re-queued.</p>
+                </Dialog>
+            </>
+        );
+    }
+
+    // Migration progress dialog
+    if (phase === 'migrating') {
+        return (
+            <>
+                <div>
+                    <div className={sectionHeadClass}>Storage Backend</div>
+                    <span className={statusTextClass}>Migration in progress…</span>
+                </div>
+                <Dialog
+                    open={true}
+                    onClose={() => {}}
+                    title="Migrating to SQLite…"
+                    disableClose={true}
+                    footer={
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            disabled={currentPhaseNumber >= 3}
+                            onClick={handleCancel}
+                        >
+                            Cancel
+                        </Button>
+                    }
+                >
+                    <div className="space-y-1 mb-3">
+                        {migrationPhases.map((mp, i) => (
+                            <div key={i} className="flex items-center gap-2 text-xs">
+                                {mp.state === 'running' ? (
+                                    <Spinner size="sm" />
+                                ) : (
+                                    <span className="w-4 text-center">{phaseIcon(mp.state)}</span>
+                                )}
+                                <span className={mp.state === 'running' ? 'text-[#1e1e1e] dark:text-[#cccccc]' : statusTextClass}>
+                                    Phase {i + 1}/{PHASE_LABELS.length}: {mp.label}
+                                    {mp.progress ? ` (${mp.progress.current}/${mp.progress.total})` : ''}
+                                    {mp.state === 'running' ? '…' : ''}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                    {logs.length > 0 && (
+                        <pre ref={logRef} className={logPreClass}>
+                            {logs.join('\n')}
+                        </pre>
+                    )}
+                </Dialog>
+            </>
+        );
+    }
+
+    // Success
+    if (phase === 'done') {
+        return (
+            <>
+                <div>
+                    <div className={sectionHeadClass}>Storage Backend</div>
+                    <span className={statusTextClass}>Migration complete</span>
+                </div>
+                <Dialog
+                    open={true}
+                    onClose={handleDoneOk}
+                    title="Migration Complete"
+                    footer={
+                        <Button variant="primary" onClick={handleDoneOk} loading={polling}>
+                            OK
+                        </Button>
+                    }
+                >
+                    <div className="space-y-1 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                        <p>✅ Successfully migrated to SQLite</p>
+                        <ul className="list-disc pl-5 space-y-0.5 mt-2">
+                            {result?.processes != null && <li>{result.processes} processes migrated</li>}
+                            {(result?.workspaces != null || result?.wikis != null) && (
+                                <li>{result?.workspaces ?? 0} workspaces{result?.wikis ? `, ${result.wikis} wikis` : ''}</li>
+                            )}
+                            {result?.archivedProcesses != null && result.archivedProcesses > 0 && (
+                                <li>{result.archivedProcesses} archived processes preserved</li>
+                            )}
+                            <li>JSON files cleaned up</li>
+                        </ul>
+                        {polling ? (
+                            <p className="mt-2 flex items-center gap-2">
+                                <Spinner size="sm" />
+                                Waiting for server restart…
+                            </p>
+                        ) : (
+                            <p className="mt-2 text-[#848484]">The server will restart now.</p>
+                        )}
+                    </div>
+                </Dialog>
+            </>
+        );
+    }
+
+    // Error
+    return (
+        <>
+            <div>
+                <div className={sectionHeadClass}>Storage Backend</div>
+                <span className={statusTextClass}>Migration failed</span>
+            </div>
+            <Dialog
+                open={true}
+                onClose={handleCloseError}
+                title="Migration Failed"
+                footer={
+                    <Button variant="secondary" onClick={handleCloseError}>Close</Button>
+                }
+            >
+                <div className="space-y-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                    <p>❌ Migration failed</p>
+                    {result?.failedPhase && (
+                        <p>Phase {result.failedPhase}: {result.failedMessage ?? 'Unknown error'}</p>
+                    )}
+                    {result?.error && !result.failedPhase && (
+                        <p>{result.error}</p>
+                    )}
+                    <p className="text-[#848484]">No changes were made. JSON files are untouched.</p>
+                </div>
+                {logs.length > 0 && (
+                    <pre ref={logRef} className={logPreClass + ' mt-2'}>
+                        {logs.join('\n')}
+                    </pre>
+                )}
+            </Dialog>
+        </>
+    );
+}
