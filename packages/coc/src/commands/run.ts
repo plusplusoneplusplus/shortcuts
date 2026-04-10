@@ -9,12 +9,14 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import {
     compileToWorkflow,
     executeWorkflow,
     flattenWorkflowResult,
     setLogger,
     FileProcessStore,
+    SqliteProcessStore,
 } from '@plusplusoneplusplus/forge';
 import type {
     WorkflowConfig,
@@ -40,6 +42,7 @@ import {
 } from '../logger';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 import { resolveLoggingConfig, loadConfigFile } from '../config';
+import type { CLIConfig } from '../config';
 import { formatResults, formatSummary, formatDuration } from '../output-formatter';
 import type { OutputFormat } from '../output-formatter';
 import { resolvePipelinePath } from './validate';
@@ -214,7 +217,7 @@ export async function executeRun(
 
         // 9. Persist to process store
         if (options.persist) {
-            await persistProcess(config, yamlPath, result, exitCode, startTime, elapsed, options);
+            await persistProcess(config, yamlPath, result, exitCode, startTime, elapsed, options, fileConfig);
         }
 
         return exitCode;
@@ -321,7 +324,8 @@ async function persistProcess(
     exitCode: number,
     startTime: number,
     elapsed: number,
-    options: RunCommandOptions
+    options: RunCommandOptions,
+    fileConfig: CLIConfig | undefined,
 ): Promise<void> {
     try {
         const endTime = new Date();
@@ -343,9 +347,11 @@ async function persistProcess(
                 failCount: result.stats.failedMaps,
             },
         };
-        const store = new FileProcessStore({
-            dataDir: options.dataDir,
-        });
+        const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
+        const storeBackend = fileConfig?.store?.backend ?? 'file';
+        const store = storeBackend === 'sqlite'
+            ? new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') })
+            : new FileProcessStore({ dataDir });
         await store.addProcess(process);
     } catch (err) {
         // Persistence errors should never fail the run command

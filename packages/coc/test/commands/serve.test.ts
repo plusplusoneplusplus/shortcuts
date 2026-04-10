@@ -43,6 +43,15 @@ vi.mock('child_process', () => ({
     exec: (...args: unknown[]) => mockExec(...args),
 }));
 
+// Partial mock of config module to control loadConfigFile per-test
+const { mockLoadConfigFile } = vi.hoisted(() => ({
+    mockLoadConfigFile: vi.fn<() => any>(() => undefined),
+}));
+vi.mock('../../src/config', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/config')>();
+    return { ...actual, loadConfigFile: mockLoadConfigFile };
+});
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -85,6 +94,8 @@ describe('Serve Command', () => {
         mockExec.mockClear();
         mockCreateExecutionServer.mockReset();
         mockCreateExecutionServer.mockResolvedValue(makeServerResult());
+        mockLoadConfigFile.mockReset();
+        mockLoadConfigFile.mockReturnValue(undefined);
         // Save and remove all SIGINT listeners to isolate tests
         savedSigintListeners = process.rawListeners('SIGINT') as Function[];
         process.removeAllListeners('SIGINT');
@@ -438,6 +449,44 @@ describe('Serve Command', () => {
             const opts = mockCreateExecutionServer.mock.calls[0][0];
             expect('fileConfig' in opts).toBe(true);
             spy.mockRestore();
+        });
+    });
+
+    // ========================================================================
+    // 15. Store backend wiring based on config
+    // ========================================================================
+
+    describe('Store backend wiring', () => {
+        it('should create SqliteProcessStore when config has store.backend: sqlite', async () => {
+            mockLoadConfigFile.mockReturnValue({ store: { backend: 'sqlite' } });
+            const { SqliteProcessStore } = await import('@plusplusoneplusplus/forge');
+
+            await runServeWithSigint({ dataDir: tmpDir, open: false });
+
+            const opts = mockCreateExecutionServer.mock.calls[0][0];
+            expect(opts.store).toBeInstanceOf(SqliteProcessStore);
+            // Close the SQLite database to release the file lock before tmpDir cleanup
+            (opts.store as InstanceType<typeof SqliteProcessStore>).close();
+        });
+
+        it('should create FileProcessStore when config has store.backend: file', async () => {
+            mockLoadConfigFile.mockReturnValue({ store: { backend: 'file' } });
+            const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
+
+            await runServeWithSigint({ dataDir: tmpDir, open: false });
+
+            const opts = mockCreateExecutionServer.mock.calls[0][0];
+            expect(opts.store).toBeInstanceOf(FileProcessStore);
+        });
+
+        it('should default to FileProcessStore when store config is absent', async () => {
+            mockLoadConfigFile.mockReturnValue(undefined);
+            const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
+
+            await runServeWithSigint({ dataDir: tmpDir, open: false });
+
+            const opts = mockCreateExecutionServer.mock.calls[0][0];
+            expect(opts.store).toBeInstanceOf(FileProcessStore);
         });
     });
 });

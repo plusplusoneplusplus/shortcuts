@@ -23,7 +23,8 @@ import {
     cyan,
     dim,
 } from '../logger';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import { loadConfigFile } from '../config';
 import { DataWiper } from '../server/data-wiper';
 import type { WipeResult } from '../server/data-wiper';
 
@@ -117,7 +118,11 @@ function printSummary(result: WipeResult, dryRun: boolean): void {
 export async function executeWipeData(options: WipeDataCommandOptions): Promise<number> {
     const dataDir = resolveDataDir(options.dataDir ?? '~/.coc');
 
-    const store = new FileProcessStore({ dataDir });
+    const fileConfig = loadConfigFile();
+    const storeBackend = fileConfig?.store?.backend ?? 'file';
+    const store = storeBackend === 'sqlite'
+        ? new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') })
+        : new FileProcessStore({ dataDir });
     const wiper = new DataWiper(dataDir, store);
 
     try {

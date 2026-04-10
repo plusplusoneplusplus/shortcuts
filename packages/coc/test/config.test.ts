@@ -217,6 +217,28 @@ timeout: 300
             expect(result).toBeDefined();
             expect(result!.model).toBe('custom-model');
         });
+
+        it('should load store.backend: sqlite', () => {
+            const configPath = path.join(tmpDir, 'store-sqlite.yaml');
+            fs.writeFileSync(configPath, 'store:\n  backend: sqlite\n');
+            const result = loadConfigFile(configPath);
+            expect(result).toBeDefined();
+            expect(result!.store?.backend).toBe('sqlite');
+        });
+
+        it('should load store.backend: file', () => {
+            const configPath = path.join(tmpDir, 'store-file.yaml');
+            fs.writeFileSync(configPath, 'store:\n  backend: file\n');
+            const result = loadConfigFile(configPath);
+            expect(result).toBeDefined();
+            expect(result!.store?.backend).toBe('file');
+        });
+
+        it('should throw for unknown store.backend value', () => {
+            const configPath = path.join(tmpDir, 'store-bad.yaml');
+            fs.writeFileSync(configPath, 'store:\n  backend: postgres\n');
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
+        });
     });
 
     // ========================================================================
@@ -313,6 +335,7 @@ timeout: 300
                 chat: { followUpSuggestions: { enabled: true, count: 3 } },
                 terminal: { enabled: false },
                 notes: { enabled: false },
+                store: { backend: 'file' },
             };
             const override: CLIConfig = {};
             const result = mergeConfig(base, override);
@@ -399,6 +422,21 @@ timeout: 300
             const result = mergeConfig(DEFAULT_CONFIG, { notes: { enabled: true } });
             expect(result.notes.enabled).toBe(true);
         });
+
+        it('should override store.backend from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { store: { backend: 'sqlite' } });
+            expect(result.store.backend).toBe('sqlite');
+        });
+
+        it('should default store.backend to file when omitted', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { model: 'test' });
+            expect(result.store.backend).toBe('file');
+        });
+
+        it('should preserve store.backend default when store section is absent', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.store.backend).toBe('file');
+        });
     });
 
     // ========================================================================
@@ -428,6 +466,18 @@ timeout: 300
             expect(result.model).toBe('gpt-4');
             expect(result.output).toBe('csv');
             expect(result.parallel).toBe(5); // Default
+        });
+
+        it('should include store.backend: file by default', () => {
+            const result = resolveConfig(path.join(tmpDir, 'nonexistent.yaml'));
+            expect(result.store.backend).toBe('file');
+        });
+
+        it('should resolve store.backend: sqlite from config file', () => {
+            const configPath = path.join(tmpDir, 'config-sqlite.yaml');
+            fs.writeFileSync(configPath, 'store:\n  backend: sqlite\n');
+            const result = resolveConfig(configPath);
+            expect(result.store.backend).toBe('sqlite');
         });
     });
 

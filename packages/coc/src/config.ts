@@ -79,6 +79,10 @@ export interface CLIConfig {
     notes?: {
         enabled?: boolean;
     };
+    /** Process store configuration */
+    store?: {
+        backend?: 'file' | 'sqlite';
+    };
 }
 
 // ============================================================================
@@ -164,6 +168,10 @@ export interface ResolvedCLIConfig {
     notes: {
         enabled: boolean;
     };
+    /** Process store configuration */
+    store: {
+        backend: 'file' | 'sqlite';
+    };
 }
 
 // ============================================================================
@@ -203,6 +211,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     notes: {
         enabled: false,
+    },
+    store: {
+        backend: 'file',
     },
 };
 
@@ -360,6 +371,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         },
         notes: {
             enabled: override.notes?.enabled ?? base.notes.enabled,
+        },
+        store: {
+            backend: override.store?.backend ?? base.store.backend,
         },
     };
 }
