@@ -5,7 +5,7 @@ import { NotesSidebar } from './notes/NotesSidebar';
 import { NoteEditor } from './notes/NoteEditor';
 import { CommentsSidebar } from './notes/CommentsSidebar';
 import { useComments } from './notes/useComments';
-import { createTextAnchorFromSelection, findAnchorInDoc } from './notes/commentAnchoring';
+import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './notes/commentAnchoring';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useApp } from '../context/AppContext';
 import { buildNoteHash } from '../layout/Router';
@@ -44,6 +44,38 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
     useEffect(() => {
         setActiveCommentId(null);
     }, [selectedPath]);
+
+    // ── Wrapped delete/resolve/reopen that also update editor marks ─────────
+
+    const handleDeleteThread = useCallback(async (threadId: string) => {
+        await comments.deleteThread(threadId);
+        editorRef.current?.commands.unsetComment(threadId);
+    }, [comments]);
+
+    const handleResolveThread = useCallback(async (threadId: string) => {
+        await comments.resolveThread(threadId);
+        editorRef.current?.commands.unsetComment(threadId);
+    }, [comments]);
+
+    const handleReopenThread = useCallback(async (threadId: string) => {
+        await comments.reopenThread(threadId);
+        const editor = editorRef.current;
+        if (!editor) return;
+        const thread = comments.threads.find(t => t.id === threadId);
+        if (!thread) return;
+        const result = findAnchorInDoc(editor.state.doc, thread.anchor);
+        if (result) {
+            applyCommentMark(editor, threadId, result.from, result.to);
+        }
+    }, [comments]);
+
+    // Expose the wrapped comments for the sidebar
+    const wrappedComments: typeof comments = {
+        ...comments,
+        deleteThread: handleDeleteThread,
+        resolveThread: handleResolveThread,
+        reopenThread: handleReopenThread,
+    };
 
     // ── Comment creation handler ────────────────────────────────────────────
 
@@ -213,9 +245,9 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                             data-testid="comments-panel-toggle"
                             aria-label={commentsPanelOpen ? 'Hide comments' : 'Show comments'}
                         >
-                            💬{comments.threads.length > 0 && (
+                            💬{wrappedComments.threads.length > 0 && (
                                 <span className="ml-1 text-[10px]" data-testid="comments-toggle-count">
-                                    {comments.totalCount}
+                                    {wrappedComments.totalCount}
                                 </span>
                             )}
                         </button>
@@ -255,7 +287,7 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                         notePath={selectedPath}
                         selectedThreadId={activeCommentId}
                         onThreadSelect={handleThreadSelect}
-                        comments={comments}
+                        comments={wrappedComments}
                     />
                 </div>
             )}

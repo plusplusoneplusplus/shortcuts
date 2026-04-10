@@ -20,13 +20,10 @@ vi.mock('../../../../src/server/spa/client/react/layout/Router', () => ({
 }));
 
 // Mock NoteEditor to avoid pulling in the entire Tiptap dependency tree
-const mockOnEditorReady = vi.fn();
-const mockOnCommentActivated = vi.fn();
+let capturedOnEditorReady: ((ed: any) => void) | undefined;
 vi.mock('../../../../src/server/spa/client/react/repos/notes/NoteEditor', () => ({
     NoteEditor: (props: any) => {
-        // Expose callbacks for tests
-        mockOnEditorReady.mockImplementation(() => props.onEditorReady);
-        mockOnCommentActivated.mockImplementation(() => props.onCommentActivated);
+        capturedOnEditorReady = props.onEditorReady;
         return (
             <div
                 data-testid="note-editor"
@@ -47,14 +44,18 @@ vi.mock('../../../../src/server/spa/client/react/shared/ResponsiveSidebar', () =
     ResponsiveSidebar: ({ children }: any) => <div data-testid="responsive-sidebar">{children}</div>,
 }));
 
-// Mock CommentsSidebar
+// Mock CommentsSidebar — capture the comments prop for testing wrapped handlers
+let capturedComments: UseCommentsReturn | undefined;
 vi.mock('../../../../src/server/spa/client/react/repos/notes/CommentsSidebar', () => ({
-    CommentsSidebar: (props: any) => (
-        <div
-            data-testid="comments-sidebar"
-            data-selected-thread={props.selectedThreadId || ''}
-        />
-    ),
+    CommentsSidebar: (props: any) => {
+        capturedComments = props.comments;
+        return (
+            <div
+                data-testid="comments-sidebar"
+                data-selected-thread={props.selectedThreadId || ''}
+            />
+        );
+    },
 }));
 
 // Mock useComments hook
@@ -88,9 +89,12 @@ vi.mock('../../../../src/server/spa/client/react/repos/notes/useComments', () =>
 }));
 
 // Mock commentAnchoring
+const mockFindAnchorInDoc = vi.fn(() => ({ from: 1, to: 5 }));
+const mockApplyCommentMark = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/repos/notes/commentAnchoring', () => ({
     createTextAnchorFromSelection: vi.fn(() => ({ quotedText: 'test', prefix: '', suffix: '' })),
-    findAnchorInDoc: vi.fn(() => ({ from: 1, to: 5 })),
+    findAnchorInDoc: (...args: any[]) => mockFindAnchorInDoc(...args),
+    applyCommentMark: (...args: any[]) => mockApplyCommentMark(...args),
 }));
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -98,6 +102,10 @@ vi.mock('../../../../src/server/spa/client/react/repos/notes/commentAnchoring', 
 describe('NotesView — comments integration', () => {
     beforeEach(() => {
         mockCommentsReturn = makeMockComments();
+        capturedComments = undefined;
+        capturedOnEditorReady = undefined;
+        mockFindAnchorInDoc.mockReturnValue({ from: 1, to: 5 });
+        mockApplyCommentMark.mockClear();
         localStorage.clear();
     });
 
@@ -243,5 +251,101 @@ describe('NotesView — comments integration', () => {
 
         fireEvent.click(toggle);
         expect(toggle.getAttribute('aria-label')).toBe('Hide comments');
+    });
+
+    // ── delete/resolve/reopen mark bridging ─────────────────────────────────
+
+    function renderWithEditor() {
+        const mockEditor = {
+            commands: {
+                unsetComment: vi.fn(),
+            },
+            state: {
+                doc: { textContent: 'Hello world' },
+            },
+        };
+
+        localStorage.setItem('coc-notes-comments-panel-open', 'true');
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+
+        // Simulate editor ready
+        act(() => { capturedOnEditorReady?.(mockEditor as any); });
+
+        return { mockEditor, comments: capturedComments! };
+    }
+
+    it('deleteThread calls unsetComment to remove the mark from the editor', async () => {
+        mockCommentsReturn = makeMockComments({
+            deleteThread: vi.fn().mockResolvedValue(undefined),
+        });
+
+        const { mockEditor, comments } = renderWithEditor();
+        await act(async () => { await comments.deleteThread('thread-1'); });
+
+        expect(mockCommentsReturn.deleteThread).toHaveBeenCalledWith('thread-1');
+        expect(mockEditor.commands.unsetComment).toHaveBeenCalledWith('thread-1');
+    });
+
+    it('resolveThread calls unsetComment to remove the highlight', async () => {
+        mockCommentsReturn = makeMockComments({
+            resolveThread: vi.fn().mockResolvedValue(undefined),
+        });
+
+        const { mockEditor, comments } = renderWithEditor();
+        await act(async () => { await comments.resolveThread('thread-2'); });
+
+        expect(mockCommentsReturn.resolveThread).toHaveBeenCalledWith('thread-2');
+        expect(mockEditor.commands.unsetComment).toHaveBeenCalledWith('thread-2');
+    });
+
+    it('reopenThread re-applies the comment mark via applyCommentMark', async () => {
+        const anchor = { quotedText: 'world', prefix: 'Hello ', suffix: '' };
+        mockCommentsReturn = makeMockComments({
+            reopenThread: vi.fn().mockResolvedValue(undefined),
+            threads: [
+                { id: 'thread-3', anchor, status: 'resolved', comments: [], createdAt: '' },
+            ],
+        });
+        mockFindAnchorInDoc.mockReturnValue({ from: 7, to: 12 });
+
+        const { comments } = renderWithEditor();
+        await act(async () => { await comments.reopenThread('thread-3'); });
+
+        expect(mockCommentsReturn.reopenThread).toHaveBeenCalledWith('thread-3');
+        expect(mockApplyCommentMark).toHaveBeenCalledWith(
+            expect.anything(), 'thread-3', 7, 12,
+        );
+    });
+
+    it('reopenThread does nothing if anchor is not found in document', async () => {
+        const anchor = { quotedText: 'missing', prefix: '', suffix: '' };
+        mockCommentsReturn = makeMockComments({
+            reopenThread: vi.fn().mockResolvedValue(undefined),
+            threads: [
+                { id: 'thread-4', anchor, status: 'resolved', comments: [], createdAt: '' },
+            ],
+        });
+        mockFindAnchorInDoc.mockReturnValue(null);
+
+        const { comments } = renderWithEditor();
+        await act(async () => { await comments.reopenThread('thread-4'); });
+
+        expect(mockCommentsReturn.reopenThread).toHaveBeenCalledWith('thread-4');
+        expect(mockApplyCommentMark).not.toHaveBeenCalled();
+    });
+
+    it('deleteThread works gracefully when no editor is set', async () => {
+        mockCommentsReturn = makeMockComments({
+            deleteThread: vi.fn().mockResolvedValue(undefined),
+        });
+
+        localStorage.setItem('coc-notes-comments-panel-open', 'true');
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        // Do NOT call capturedOnEditorReady — no editor
+
+        await act(async () => { await capturedComments!.deleteThread('thread-5'); });
+
+        expect(mockCommentsReturn.deleteThread).toHaveBeenCalledWith('thread-5');
+        // Should not throw
     });
 });
