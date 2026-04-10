@@ -57,8 +57,8 @@ describe('TaskSearchResults', () => {
         expect(screen.getByTestId('search-result-my-task')).toBeTruthy();
         expect(screen.getByTestId('search-result-my-design')).toBeTruthy();
 
-        // Icons: TaskDocument -> 📝, TaskDocumentGroup -> 📄
-        expect(screen.getByTestId('search-result-my-task').textContent).toContain('📝');
+        // Icons: TaskDocument -> no icon, TaskDocumentGroup -> 📄
+        expect(screen.getByTestId('search-result-my-task').textContent).not.toContain('📝');
         expect(screen.getByTestId('search-result-my-design').textContent).toContain('📄');
     });
 

@@ -243,10 +243,12 @@ export function TaskTreeItem({
                 />
             )}
 
-            {/* Icon */}
-            <span className="flex-shrink-0 text-[11px]">
-                {isFolder ? '📁' : isContext ? 'ℹ️' : isTaskDocumentGroup(item) ? '📄' : '📝'}
-            </span>
+            {/* Icon — only for folders, context items, and document groups */}
+            {(isFolder || isContext || isTaskDocumentGroup(item)) && (
+                <span className="flex-shrink-0 text-[11px]">
+                    {isFolder ? '📁' : isContext ? 'ℹ️' : '📄'}
+                </span>
+            )}
 
             {/* Status */}
             {status && (

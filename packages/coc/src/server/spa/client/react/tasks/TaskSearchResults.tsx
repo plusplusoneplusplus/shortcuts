@@ -80,10 +80,10 @@ export function TaskSearchResults({ results, query, commentCounts, onFileClick, 
                             title={itemPath ?? undefined}
                             data-testid={`search-result-${displayName}`}
                         >
-                            {/* Icon */}
-                            <span className="flex-shrink-0 text-[11px]">
-                                {isGroup ? '📄' : '📝'}
-                            </span>
+                            {/* Icon — only for document groups */}
+                            {isGroup && (
+                                <span className="flex-shrink-0 text-[11px]">📄</span>
+                            )}
 
                             {/* Status */}
                             {status && statusIcon && (

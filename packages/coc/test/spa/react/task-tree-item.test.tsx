@@ -141,10 +141,10 @@ describe('TaskTreeItem — file (TaskDocument) rendering', () => {
         expect(screen.getByRole('checkbox')).toBeTruthy();
     });
 
-    it('renders file icon 📝 for single documents', () => {
+    it('does not render icon for single documents', () => {
         renderItem({ item: makeDocument() });
         const li = screen.getByTestId('task-tree-item-task');
-        expect(li.textContent).toContain('📝');
+        expect(li.textContent).not.toContain('📝');
     });
 
     it('renders checkbox for non-context file items', () => {
