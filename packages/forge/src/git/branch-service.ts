@@ -903,57 +903,6 @@ export class BranchService {
     }
 
     /**
-     * Reorder unpushed commits via non-interactive rebase.
-     * @param repoRoot Repository root path
-     * @param commitOrder Array of commit hashes in desired new order (oldest first)
-     */
-    async rebaseReorder(repoRoot: string, commitOrder: string[]): Promise<GitOperationResult> {
-        if (!commitOrder.length) {
-            return { success: false, error: 'No commits to reorder' };
-        }
-        let tmpDir: string | undefined;
-        try {
-            // Build the todo list for the rebase
-            const todoContent = commitOrder.map(hash => `pick ${hash}`).join('\n') + '\n';
-            tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-reorder-'));
-            const todoPath = path.join(tmpDir, 'todo');
-            fs.writeFileSync(todoPath, todoContent, 'utf-8');
-
-            // Create a script that replaces the rebase todo with our custom order
-            let seqEditor: string;
-            if (process.platform === 'win32') {
-                const scriptPath = path.join(tmpDir, 'editor.cmd');
-                // On Windows, write a batch script that copies our todo file over the rebase todo
-                fs.writeFileSync(scriptPath, `@copy /Y "${todoPath}" %1 >nul\n`, 'utf-8');
-                seqEditor = scriptPath;
-            } else {
-                const scriptPath = path.join(tmpDir, 'editor.sh');
-                fs.writeFileSync(scriptPath, `#!/bin/sh\ncp "${todoPath}" "$1"\n`, { mode: 0o755 });
-                seqEditor = scriptPath;
-            }
-
-            // Find the base commit (parent of the oldest commit in the order)
-            const baseHash = this.execGitSync(`git rev-parse ${commitOrder[0]}~1`, { cwd: repoRoot }).trim();
-
-            await this.execGit(`git rebase -i ${baseHash}`, {
-                cwd: repoRoot,
-                timeout: 600000,
-                env: { GIT_SEQUENCE_EDITOR: seqEditor },
-            });
-
-            return { success: true };
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            getLogger().error('Git', 'Failed to reorder commits', error instanceof Error ? error : undefined);
-            return { success: false, error: errorMessage };
-        } finally {
-            if (tmpDir) {
-                try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* best effort */ }
-            }
-        }
-    }
-
-    /**
      * Reword (rename) the title of a non-HEAD commit using interactive rebase.
      * Uses GIT_SEQUENCE_EDITOR to replace `pick <hash>` with `reword <hash>`
      * and GIT_EDITOR to inject the new title as the commit message.

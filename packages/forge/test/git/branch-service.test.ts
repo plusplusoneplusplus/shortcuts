@@ -1190,61 +1190,6 @@ describe('BranchService.mergeAbort', () => {
     });
 });
 
-// ── rebaseReorder ─────────────────────────────────────────────────
-describe('BranchService.rebaseReorder', () => {
-    let service: BranchService;
-    const mockedMkdtempSync = fs.mkdtempSync as Mock;
-    const mockedWriteFileSync = fs.writeFileSync as Mock;
-    const mockedRmSync = fs.rmSync as Mock;
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-        setLogger(nullLogger);
-        service = new BranchService();
-    });
-
-    it('returns error for empty commit array', async () => {
-        const result = await service.rebaseReorder('/repo', []);
-
-        expect(result.success).toBe(false);
-        expect(result.error).toBe('No commits to reorder');
-    });
-
-    it('calls git rebase -i with GIT_SEQUENCE_EDITOR on success', async () => {
-        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reorder-xyz');
-        mockedWriteFileSync.mockReturnValue(undefined);
-        mockedRmSync.mockReturnValue(undefined);
-        mockedExecSync.mockReturnValueOnce('abc0000\n'); // rev-parse parent
-        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
-
-        const result = await service.rebaseReorder('/repo', ['abc1111', 'abc2222']);
-
-        expect(result.success).toBe(true);
-        expect(mockedExecAsync).toHaveBeenCalledWith(
-            expect.stringContaining('git rebase -i'),
-            expect.objectContaining({
-                cwd: '/repo',
-                timeout: 600000,
-                env: expect.objectContaining({
-                    GIT_SEQUENCE_EDITOR: expect.any(String),
-                }),
-            })
-        );
-    });
-
-    it('returns failure with error message on failure', async () => {
-        mockedMkdtempSync.mockReturnValueOnce('/repo/.git/tmp-reorder-xyz');
-        mockedWriteFileSync.mockReturnValue(undefined);
-        mockedExecSync.mockReturnValueOnce('abc0000\n');
-        mockedExecAsync.mockRejectedValueOnce(new Error('rebase failed'));
-
-        const result = await service.rebaseReorder('/repo', ['abc1111']);
-
-        expect(result.success).toBe(false);
-        expect(result.error).toBe('rebase failed');
-    });
-});
-
 // ── rewordCommit ──────────────────────────────────────────────────
 describe('BranchService.rewordCommit', () => {
     let service: BranchService;

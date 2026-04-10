@@ -16,7 +16,7 @@ import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-uti
 import type { ApiRouteContext } from './api-shared';
 
 export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
-    const { routes, store, getWsServer, gitOpsStore } = ctx;
+    const { routes, store, getWsServer, gitOpsStore, bridge } = ctx;
     const branchService = new BranchService();
 
     // GET /api/workspaces/:id/git/branches — List branches with pagination
@@ -699,10 +699,17 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, missingFields(['commits']));
             }
 
+            if (!bridge?.enqueue) {
+                return handleAPIError(res, conflict('Queue bridge is not available for rebase-reorder'));
+            }
+
             const running = await gitOpsStore.getRunning(id, 'rebase-reorder');
             if (running.length > 0) {
                 return handleAPIError(res, conflict('A rebase-reorder operation is already running'));
             }
+
+            const commits: string[] = body.commits;
+            const displayName = `Reorder ${commits.length} commit${commits.length !== 1 ? 's' : ''}`;
 
             const jobId = `rebase-reorder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const job: GitOpJob = {
@@ -710,22 +717,120 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                 status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
             };
             await gitOpsStore.create(job);
-            sendJSON(res, 202, { jobId });
 
-            branchService.rebaseReorder(ws.rootPath, body.commits).then(async (result) => {
-                await gitOpsStore.update(id, jobId, {
-                    status: result.success ? 'success' : 'failed',
-                    finishedAt: new Date().toISOString(), error: result.error,
-                });
+            const taskId = await bridge.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                displayName,
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: buildRebaseReorderPrompt(ws.rootPath, commits),
+                    workingDirectory: ws.rootPath,
+                    workspaceId: id,
+                },
+                config: { retryOnFailure: false },
+            });
+
+            const onQueueChange = (event: Record<string, unknown>) => {
+                const eventTaskId = (event.taskId ?? (event.task as any)?.id) as string | undefined;
+                if (eventTaskId !== taskId) return;
+                if (event.type !== 'updated') return;
+                const status = (event.task as any)?.status as string | undefined;
+                if (status !== 'completed' && status !== 'failed') return;
+
+                bridge.off?.('queueChange', onQueueChange);
+                gitOpsStore.update(id, jobId, {
+                    status: status === 'completed' ? 'success' : 'failed',
+                    finishedAt: new Date().toISOString(),
+                }).catch(() => {});
                 gitCache.invalidateMutable(id);
                 getWsServer?.()?.broadcastGitChanged(id, 'rebase-reorder');
-            }).catch(async (err) => {
-                await gitOpsStore.update(id, jobId, {
-                    status: 'failed', finishedAt: new Date().toISOString(),
-                    error: err instanceof Error ? err.message : 'Unknown error',
-                });
-                getWsServer?.()?.broadcastGitChanged(id, 'rebase-reorder');
-            });
+            };
+            bridge.on?.('queueChange', onQueueChange);
+
+            sendJSON(res, 202, { taskId, jobId });
         },
     });
+}
+
+/**
+ * Build the AI prompt for an interactive rebase-reorder operation.
+ * The prompt instructs the AI to run git rebase -i, detect merge conflicts,
+ * resolve trivial ones automatically, or abort cleanly on non-trivial conflicts.
+ */
+function buildRebaseReorderPrompt(repoRoot: string, commits: string[]): string {
+    const firstCommit = commits[0];
+    const pickLines = commits.map(h => `pick ${h}`).join('\n');
+    const isWindows = process.platform === 'win32';
+
+    return `You are performing a git commit reorder operation in the repository at: ${repoRoot}
+
+## Objective
+Reorder the following commits into this exact sequence (oldest first):
+${commits.map((h, i) => `  ${i + 1}. ${h}`).join('\n')}
+
+## Step-by-step Instructions
+
+### 1. Find the base commit
+Run: \`git rev-parse ${firstCommit}~1\`
+This gives the parent commit to use as the rebase base. Save this value as BASE_COMMIT.
+
+### 2. Prepare the rebase sequence file
+Create a temporary directory (e.g. under the OS temp folder) and write a file named \`todo\` containing:
+\`\`\`
+${pickLines}
+\`\`\`
+
+### 3. Create the sequence editor helper script
+${isWindows ? `On Windows, create a batch script \`seq-editor.cmd\`:
+\`\`\`
+@copy /Y "C:\\path\\to\\todo" %1 >nul
+\`\`\`
+Replace \`C:\\path\\to\\todo\` with the actual absolute path to the todo file.` : `On Unix/Mac, create a shell script \`seq-editor.sh\`:
+\`\`\`
+#!/bin/sh
+cp "/path/to/todo" "$1"
+\`\`\`
+Replace \`/path/to/todo\` with the actual absolute path to the todo file.
+Make it executable: \`chmod +x seq-editor.sh\``}
+
+### 4. Run the interactive rebase
+Execute from the repo root (${repoRoot}):
+${isWindows ? `\`set GIT_SEQUENCE_EDITOR=C:\\path\\to\\seq-editor.cmd && git -C "${repoRoot}" rebase -i BASE_COMMIT\`` : `\`GIT_SEQUENCE_EDITOR=/path/to/seq-editor.sh git -C "${repoRoot}" rebase -i BASE_COMMIT\``}
+Replace BASE_COMMIT with the value from Step 1.
+
+### 5. Check for conflicts
+After the rebase command completes, run:
+\`git -C "${repoRoot}" status\`
+
+Look for output containing "both modified" or "conflict" to detect merge conflicts.
+
+### 6. Handle conflicts
+If conflicts are detected:
+- Run \`git -C "${repoRoot}" diff\` to inspect the conflict markers.
+- **TRIVIAL conflict** (whitespace-only differences, or non-overlapping hunks where both sides add distinct lines):
+  Resolve it automatically: remove conflict markers, keeping both sides' content, then run:
+  \`git -C "${repoRoot}" add .\`
+  \`git -C "${repoRoot}" rebase --continue\`
+  (If prompted for a commit message, accept the default.)
+- **NON-TRIVIAL conflict** (meaningful code changes in the same lines conflict):
+  Abort immediately: \`git -C "${repoRoot}" rebase --abort\`
+  Then verify the repo is clean: \`git -C "${repoRoot}" status\`
+  Report what conflicted and why the rebase was aborted.
+
+### 7. Clean up
+Remove the temporary directory you created in Step 2.
+
+### 8. Report the result
+State clearly one of:
+- ✅ Reorder completed successfully — all ${commits.length} commits reordered.
+- ✅ Trivial conflict resolved — reorder completed after auto-resolution.
+- ❌ Non-trivial conflict detected — rebase aborted, repository restored to original state. (Describe the conflict.)
+
+## Important constraints
+- Work in: ${repoRoot}
+- Always end with the repository in a clean state (no REBASE_HEAD, no staged conflict markers).
+- If \`git rebase --abort\` was run, confirm with \`git status\` that the working tree is clean.
+- Do NOT push any changes — only local commit reordering.`;
 }

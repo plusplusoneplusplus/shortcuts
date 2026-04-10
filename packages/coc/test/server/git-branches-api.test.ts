@@ -57,9 +57,20 @@ const mockRebaseContinue = vi.fn();
 const mockRebaseAbort = vi.fn();
 const mockMergeContinue = vi.fn();
 const mockMergeAbort = vi.fn();
-const mockRebaseReorder = vi.fn();
 const mockRewordCommit = vi.fn();
 const mockPushUpTo = vi.fn();
+
+// Mock queue bridge for AI-enqueued tasks (e.g. rebase-reorder)
+const mockBridgeEnqueue = vi.fn();
+const mockBridgeOn = vi.fn();
+const mockBridgeOff = vi.fn();
+const mockBridge = {
+    enqueue: mockBridgeEnqueue,
+    on: mockBridgeOn,
+    off: mockBridgeOff,
+    executeFollowUp: vi.fn(),
+    isSessionAlive: vi.fn(async () => true),
+};
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -86,7 +97,6 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             rebaseAbort: mockRebaseAbort,
             mergeContinue: mockMergeContinue,
             mergeAbort: mockMergeAbort,
-            rebaseReorder: mockRebaseReorder,
             rewordCommit: mockRewordCommit,
             pushUpTo: mockPushUpTo,
         })),
@@ -184,10 +194,11 @@ describe('Git Branches API endpoints', () => {
         (store.getWorkspaces as any).mockResolvedValue([
             { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT },
             { id: 'ws-ops-test', name: 'Ops Test Repo', rootPath: '/test/ops-repo' },
+            { id: 'ws-singular-test', name: 'Singular Test Repo', rootPath: '/test/singular-repo' },
         ]);
 
         const routes: Route[] = [];
-        registerApiRoutes(routes, store, undefined, tmpDir);
+        registerApiRoutes(routes, store, mockBridge as any, tmpDir);
         const handleRequest = createRouter({ routes, spaHtml: '<html></html>' });
         server = http.createServer(handleRequest);
         await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -219,8 +230,11 @@ describe('Git Branches API endpoints', () => {
         mockRebaseAbort.mockReset();
         mockMergeContinue.mockReset();
         mockMergeAbort.mockReset();
-        mockRebaseReorder.mockReset();
         mockRewordCommit.mockReset();
+        mockBridgeEnqueue.mockReset();
+        mockBridgeEnqueue.mockResolvedValue('task-mock-default');
+        mockBridgeOn.mockReset();
+        mockBridgeOff.mockReset();
     });
 
     // -----------------------------------------------------------------------
@@ -1301,8 +1315,8 @@ describe('Git Branches API endpoints', () => {
     // -----------------------------------------------------------------------
 
     describe('POST /api/workspaces/:id/git/rebase-reorder', () => {
-        it('should return 202 with jobId for valid commits array', async () => {
-            mockRebaseReorder.mockResolvedValue({ success: true });
+        it('should enqueue an AI task and return 202 with taskId and jobId', async () => {
+            mockBridgeEnqueue.mockResolvedValue('task-reorder-abc123');
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-reorder`, {
                 method: 'POST',
@@ -1311,9 +1325,14 @@ describe('Git Branches API endpoints', () => {
 
             expect(res.status).toBe(202);
             const data = res.json();
-            expect(data.jobId).toBeDefined();
-            expect(typeof data.jobId).toBe('string');
-            await new Promise(resolve => setTimeout(resolve, 200));
+            expect(data.taskId).toBe('task-reorder-abc123');
+            expect(typeof data.jobId).toBe('string'); // backward-compat tracking ID
+            expect(mockBridgeEnqueue).toHaveBeenCalledOnce();
+            const enqueueArg = mockBridgeEnqueue.mock.calls[0][0];
+            expect(enqueueArg.type).toBe('chat');
+            expect(enqueueArg.displayName).toBe('Reorder 2 commits');
+            expect(enqueueArg.payload.prompt).toContain('abc111');
+            expect(enqueueArg.payload.prompt).toContain('abc222');
         });
 
         it('should return 400 when commits field is missing', async () => {
@@ -1326,20 +1345,30 @@ describe('Git Branches API endpoints', () => {
         });
 
         it('should return 409 when a rebase-reorder is already running', async () => {
-            mockRebaseReorder.mockReturnValue(new Promise(() => {})); // never resolves
-
             const res1 = await request(`${base()}/api/workspaces/ws-ops-test/git/rebase-reorder`, {
                 method: 'POST',
                 body: JSON.stringify({ commits: ['abc111'] }),
             });
             expect(res1.status).toBe(202);
 
+            // Second request hits the same workspace — gitOpsStore still shows running job
             const res2 = await request(`${base()}/api/workspaces/ws-ops-test/git/rebase-reorder`, {
                 method: 'POST',
                 body: JSON.stringify({ commits: ['abc222'] }),
             });
             expect(res2.status).toBe(409);
             expect(res2.json().code).toBe('CONFLICT');
+        });
+
+        it('should use singular "commit" for displayName when one commit', async () => {
+            const res = await request(`${base()}/api/workspaces/ws-singular-test/git/rebase-reorder`, {
+                method: 'POST',
+                body: JSON.stringify({ commits: ['abc111'] }),
+            });
+
+            expect(res.status).toBe(202);
+            const enqueueArg = mockBridgeEnqueue.mock.calls[0][0];
+            expect(enqueueArg.displayName).toBe('Reorder 1 commit');
         });
     });
 

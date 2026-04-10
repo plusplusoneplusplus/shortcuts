@@ -49,6 +49,10 @@ export interface QueueExecutorBridge {
     cancelProcess?(processId: string): Promise<void>;
     /** Update the displayName of a queue task associated with a process. */
     updateTaskDisplayName?(processId: string, displayName: string): boolean;
+    /** Subscribe to queue change events (e.g. task completed/failed) for task monitoring. */
+    on?(event: 'queueChange', listener: (event: Record<string, unknown>) => void): void;
+    /** Unsubscribe from queue change events. */
+    off?(event: 'queueChange', listener: (event: Record<string, unknown>) => void): void;
 }
 
 // ============================================================================
