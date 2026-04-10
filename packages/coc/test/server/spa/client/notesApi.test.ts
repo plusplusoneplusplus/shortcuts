@@ -121,4 +121,104 @@ describe('notesApi', () => {
             );
         });
     });
+
+    describe('comment endpoints', () => {
+        it('getComments — calls GET with path query param', async () => {
+            const sidecar = { noteId: 'notes/hello.md', threads: {} };
+            mockOk(sidecar);
+            const result = await notesApi.getComments('ws-1', 'notes/hello.md');
+            expect(result).toEqual(sidecar);
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/comments?path=notes%2Fhello.md',
+                {},
+            );
+        });
+
+        it('saveComments — calls PUT with threads body', async () => {
+            mock204();
+            await notesApi.saveComments('ws-1', 'notes/hello.md', {});
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/comments',
+                expect.objectContaining({
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: 'notes/hello.md', threads: {} }),
+                }),
+            );
+        });
+
+        it('createThread — calls POST with thread payload', async () => {
+            const thread = { id: 't1', anchor: { quotedText: 'x', prefix: '', suffix: '' }, status: 'open', comments: [], createdAt: '2025-01-01T00:00:00Z' };
+            mockOk({ thread });
+            const result = await notesApi.createThread('ws-1', 'notes/hello.md', thread as any);
+            expect(result).toEqual({ thread });
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/comments/thread',
+                expect.objectContaining({
+                    method: 'POST',
+                    body: JSON.stringify({ path: 'notes/hello.md', thread }),
+                }),
+            );
+        });
+
+        it('updateThread — calls PATCH with threadId and status', async () => {
+            const thread = { id: 't1', status: 'resolved' };
+            mockOk({ thread });
+            const result = await notesApi.updateThread('ws-1', 'notes/hello.md', 't1', 'resolved');
+            expect(result).toEqual({ thread });
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/comments/thread',
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ path: 'notes/hello.md', threadId: 't1', status: 'resolved' }),
+                }),
+            );
+        });
+
+        it('deleteThread — calls DELETE with path and threadId query params', async () => {
+            mock204();
+            await notesApi.deleteThread('ws-1', 'notes/hello.md', 't1');
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/comments/thread?path=notes%2Fhello.md&threadId=t1',
+                expect.objectContaining({ method: 'DELETE' }),
+            );
+        });
+
+        it('addComment — calls POST with threadId and content', async () => {
+            const comment = { id: 'c1', body: 'Hello', createdAt: '2025-01-01T00:00:00Z' };
+            mockOk({ comment });
+            const result = await notesApi.addComment('ws-1', 'notes/hello.md', 't1', 'Hello');
+            expect(result).toEqual({ comment });
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/comments/comment',
+                expect.objectContaining({
+                    method: 'POST',
+                    body: JSON.stringify({ path: 'notes/hello.md', threadId: 't1', content: 'Hello' }),
+                }),
+            );
+        });
+
+        it('editComment — calls PATCH with commentId and content', async () => {
+            const comment = { id: 'c1', body: 'Updated', createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-02T00:00:00Z' };
+            mockOk({ comment });
+            const result = await notesApi.editComment('ws-1', 'notes/hello.md', 't1', 'c1', 'Updated');
+            expect(result).toEqual({ comment });
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/comments/comment',
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ path: 'notes/hello.md', threadId: 't1', commentId: 'c1', content: 'Updated' }),
+                }),
+            );
+        });
+
+        it('deleteComment — calls DELETE with path, threadId, and commentId query params', async () => {
+            mock204();
+            await notesApi.deleteComment('ws-1', 'notes/hello.md', 't1', 'c1');
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/workspaces/ws-1/notes/comments/comment?path=notes%2Fhello.md&threadId=t1&commentId=c1',
+                expect.objectContaining({ method: 'DELETE' }),
+            );
+        });
+    });
 });

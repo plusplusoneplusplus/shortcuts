@@ -28,6 +28,34 @@ export interface NoteSearchResponse {
     truncated: boolean;
 }
 
+// ── Comment types (mirrors notes-comments-types.ts) ────────────────────────
+
+export interface TextAnchor {
+    quotedText: string;
+    prefix: string;
+    suffix: string;
+}
+
+export interface Comment {
+    id: string;
+    body: string;
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface CommentThread {
+    id: string;
+    anchor: TextAnchor;
+    status: 'open' | 'resolved';
+    comments: Comment[];
+    createdAt: string;
+}
+
+export interface NoteSidecar {
+    noteId: string;
+    threads: Record<string, CommentThread>;
+}
+
 // ── API helpers ─────────────────────────────────────────────────────────────
 
 export const notesApi = {
@@ -71,5 +99,67 @@ export const notesApi = {
 
     search(wsId: string, query: string): Promise<NoteSearchResponse> {
         return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/search?q=${encodeURIComponent(query)}`);
+    },
+
+    // ── Comment endpoints ───────────────────────────────────────────────────
+
+    getComments(wsId: string, notePath: string): Promise<NoteSidecar> {
+        return fetchApi(
+            `/workspaces/${encodeURIComponent(wsId)}/notes/comments?path=${encodeURIComponent(notePath)}`,
+        );
+    },
+
+    saveComments(wsId: string, notePath: string, threads: Record<string, CommentThread>): Promise<void> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: notePath, threads }),
+        });
+    },
+
+    createThread(wsId: string, notePath: string, thread: CommentThread): Promise<{ thread: CommentThread }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: notePath, thread }),
+        });
+    },
+
+    updateThread(wsId: string, notePath: string, threadId: string, status: 'open' | 'resolved'): Promise<{ thread: CommentThread }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: notePath, threadId, status }),
+        });
+    },
+
+    deleteThread(wsId: string, notePath: string, threadId: string): Promise<void> {
+        return fetchApi(
+            `/workspaces/${encodeURIComponent(wsId)}/notes/comments/thread?path=${encodeURIComponent(notePath)}&threadId=${encodeURIComponent(threadId)}`,
+            { method: 'DELETE' },
+        );
+    },
+
+    addComment(wsId: string, notePath: string, threadId: string, content: string): Promise<{ comment: Comment }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/comment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: notePath, threadId, content }),
+        });
+    },
+
+    editComment(wsId: string, notePath: string, threadId: string, commentId: string, content: string): Promise<{ comment: Comment }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/comments/comment`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: notePath, threadId, commentId, content }),
+        });
+    },
+
+    deleteComment(wsId: string, notePath: string, threadId: string, commentId: string): Promise<void> {
+        return fetchApi(
+            `/workspaces/${encodeURIComponent(wsId)}/notes/comments/comment?path=${encodeURIComponent(notePath)}&threadId=${encodeURIComponent(threadId)}&commentId=${encodeURIComponent(commentId)}`,
+            { method: 'DELETE' },
+        );
     },
 };
