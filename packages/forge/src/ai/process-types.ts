@@ -336,6 +336,21 @@ export interface CodeReviewGroupMetadata {
 }
 
 /**
+ * A message queued on the server while an AI response is in progress.
+ * Persisted on the AIProcess so it survives chat switches and page refreshes.
+ */
+export interface PendingMessage {
+    /** Unique identifier (crypto.randomUUID) */
+    id: string;
+    /** Message content */
+    content: string;
+    /** Interaction mode when the message was queued */
+    mode?: string;
+    /** ISO 8601 timestamp of when the message was queued */
+    createdAt: string;
+}
+
+/**
  * A tracked AI process
  */
 export interface AIProcess {
@@ -420,6 +435,13 @@ export interface AIProcess {
     /** Running total of token usage across all turns in this session */
     cumulativeTokenUsage?: TokenUsage;
 
+    // ========================================================================
+    // Pending Messages (Added 2026-04)
+    // ========================================================================
+
+    /** Messages queued on the server while an AI response is in progress */
+    pendingMessages?: PendingMessage[];
+
     /** True when the stale task detector has flagged this process as stale (running past timeout) */
     stale?: boolean;
 
@@ -485,6 +507,9 @@ export interface SerializedAIProcess {
     currentTokens?: number;
     /** Running total of token usage across all turns */
     cumulativeTokenUsage?: TokenUsage;
+
+    /** Messages queued on the server while an AI response is in progress */
+    pendingMessages?: PendingMessage[];
 }
 
 /**
@@ -594,6 +619,8 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
         tokenLimit: process.tokenLimit,
         currentTokens: process.currentTokens,
         cumulativeTokenUsage: process.cumulativeTokenUsage,
+        // Pending messages (plain JSON, no Date conversion needed)
+        pendingMessages: process.pendingMessages,
     };
 }
 
@@ -691,6 +718,8 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         tokenLimit: serialized.tokenLimit,
         currentTokens: serialized.currentTokens,
         cumulativeTokenUsage: serialized.cumulativeTokenUsage,
+        // Pending messages (plain JSON, no Date conversion needed)
+        pendingMessages: serialized.pendingMessages,
     };
 }
 

@@ -59,3 +59,50 @@ describe('serializeProcess / deserializeProcess round-trip', () => {
         expect(deserialized.conversationTurns![0].images).toBeUndefined();
     });
 });
+
+describe('serializeProcess / deserializeProcess — pendingMessages', () => {
+    it('should round-trip pendingMessages array', () => {
+        const pendingMessages = [
+            { id: 'msg-1', content: 'Fix the bug', mode: 'ask', createdAt: '2026-04-10T00:00:00.000Z' },
+            { id: 'msg-2', content: 'Then deploy', createdAt: '2026-04-10T00:01:00.000Z' },
+        ];
+        const process = makeMinimalProcess({ pendingMessages });
+
+        const serialized = serializeProcess(process);
+        expect(serialized.pendingMessages).toEqual(pendingMessages);
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.pendingMessages).toEqual(pendingMessages);
+    });
+
+    it('should handle undefined pendingMessages', () => {
+        const process = makeMinimalProcess();
+
+        const serialized = serializeProcess(process);
+        expect(serialized.pendingMessages).toBeUndefined();
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.pendingMessages).toBeUndefined();
+    });
+
+    it('should handle empty pendingMessages array', () => {
+        const process = makeMinimalProcess({ pendingMessages: [] });
+
+        const serialized = serializeProcess(process);
+        expect(serialized.pendingMessages).toEqual([]);
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.pendingMessages).toEqual([]);
+    });
+
+    it('should preserve optional mode field when undefined', () => {
+        const pendingMessages = [
+            { id: 'msg-no-mode', content: 'No mode', createdAt: '2026-04-10T00:00:00.000Z' },
+        ];
+        const process = makeMinimalProcess({ pendingMessages });
+
+        const serialized = serializeProcess(process);
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.pendingMessages![0].mode).toBeUndefined();
+    });
+});

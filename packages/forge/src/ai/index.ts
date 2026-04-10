@@ -142,6 +142,7 @@ export {
     DiscoveryProcessMetadata,
     CodeReviewGroupMetadata,
     AIProcess,
+    PendingMessage,
     SerializedAIProcess,
     TrackedProcessFields,
     ConversationTurn,

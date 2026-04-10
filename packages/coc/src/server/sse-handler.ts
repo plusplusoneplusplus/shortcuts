@@ -36,6 +36,15 @@ export interface MessageSteeringPayload {
     turnIndex: number;
 }
 
+/** Fired when a pending message is persisted on the process (queued while AI is busy). */
+export interface PendingMessageAddedPayload {
+    /** The persisted pending message. */
+    id: string;
+    content: string;
+    mode?: string;
+    createdAt: string;
+}
+
 // ============================================================================
 // SSE Emitter Helpers
 // ============================================================================
@@ -56,6 +65,19 @@ export function emitMessageSteering(store: ProcessStore, processId: string, payl
     store.emitProcessEvent(processId, {
         type: 'message-steering',
         turnIndex: payload.turnIndex,
+    } as ProcessOutputEvent);
+}
+
+/** Emit a `pending-message-added` event on a process's SSE channel. */
+export function emitPendingMessageAdded(store: ProcessStore, processId: string, payload: PendingMessageAddedPayload): void {
+    store.emitProcessEvent(processId, {
+        type: 'pending-message-added',
+        pendingMessage: {
+            id: payload.id,
+            content: payload.content,
+            mode: payload.mode,
+            createdAt: payload.createdAt,
+        },
     } as ProcessOutputEvent);
 }
 
@@ -206,6 +228,10 @@ export async function handleProcessStream(
             sendEvent(res, 'message-steering', {
                 turnIndex: event.turnIndex,
                 ...(event.optimisticId !== undefined ? { optimisticId: event.optimisticId } : {}),
+            });
+        } else if (event.type === 'pending-message-added') {
+            sendEvent(res, 'pending-message-added', {
+                pendingMessage: event.pendingMessage,
             });
         } else if (event.type === 'hook-step') {
             sendEvent(res, 'hook-step', { hookStep: event.hookStep });

@@ -149,6 +149,24 @@ export function useChatSSE({
             } catch { /* ignore */ }
         });
 
+        es.addEventListener('pending-message-added', (event: Event) => {
+            try {
+                const { pendingMessage } = JSON.parse((event as MessageEvent).data);
+                if (pendingMessage?.id) {
+                    setPendingQueue(prev => {
+                        // Avoid duplicates — another tab may have already added this entry
+                        if (prev.some(m => m.id === pendingMessage.id)) return prev;
+                        return [...prev, {
+                            id: pendingMessage.id,
+                            content: pendingMessage.content,
+                            deliveryMode: 'enqueue' as const,
+                            status: 'queued' as const,
+                        }];
+                    });
+                }
+            } catch { /* ignore */ }
+        });
+
         const closeSSE = () => {
             es.close();
             eventSourceRef.current = null;

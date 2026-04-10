@@ -30,7 +30,7 @@ export interface HookStepEvent {
 }
 
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -87,6 +87,8 @@ export interface ProcessOutputEvent {
     backgroundTotalActive?: number;
     /** Whether the session is waiting for background tasks to drain (for 'background-tasks' events). */
     backgroundWaitingForDrain?: boolean;
+    /** The pending message that was added (for 'pending-message-added' events). */
+    pendingMessage?: { id: string; content: string; mode?: string; createdAt: string };
 }
 
 /**

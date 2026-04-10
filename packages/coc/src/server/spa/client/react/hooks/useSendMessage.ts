@@ -133,6 +133,7 @@ export function useSendMessage({
                     { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1 },
                 ];
             });
+            const drainedMsgId = next.id;
             fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -140,6 +141,10 @@ export function useSendMessage({
             })
                 .then(async (response) => {
                     if (!response.ok) { removeStreamingPlaceholder(); return; }
+                    // Remove the consumed pending message from the server
+                    fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/pending-messages/${encodeURIComponent(drainedMsgId)}`, {
+                        method: 'DELETE',
+                    }).catch(() => {});
                     await waitForSendCompletion(processId);
                 })
                 .catch(() => { removeStreamingPlaceholder(); })
@@ -196,10 +201,21 @@ export function useSendMessage({
                         ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
                     }),
                 }).catch(() => {});
+            } else {
+                // Persist enqueued message on the server so it survives chat switches / refreshes
+                fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/pending-messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: rawContent, mode: selectedMode }),
+                })
+                    .then(async (resp) => {
+                        if (!resp.ok) return;
+                        const { message } = await resp.json();
+                        // Reconcile local queue entry with server-assigned ID
+                        setPendingQueue(prev => prev.map(m => m.id === qm.id ? { ...m, id: message.id, status: 'queued' as const } : m));
+                    })
+                    .catch(() => {});
             }
-            // For 'enqueue' mode: no POST needed — the message will be sent when
-            // flushQueueRef drains after the current turn completes. The server's
-            // per-process serialization in peek() ensures safe ordering.
             clearImages();
             clearPaste();
             return;

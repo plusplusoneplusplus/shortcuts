@@ -204,7 +204,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         } catch { /* keep current turns */ }
     }, [setTurnsAndRef]);
 
-    const { sendFollowUp, closeFollowUpStream, onSendComplete } = useSendMessage({
+    const { sendFollowUp, flushQueueRef, closeFollowUpStream, onSendComplete } = useSendMessage({
         processId,
         taskId,
         inputDisabled,
@@ -338,13 +338,24 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 const cached = appState.conversationCache[taskId];
                 if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
                     setTurnsAndRef(cached.turns);
-                    // Background-refresh metadata
+                    // Background-refresh metadata + restore pending messages
                     fetchApi(`/processes/${encodeURIComponent(pid)}`)
                         .then((data: any) => {
                             setProcessDetails(data?.process || null);
                             const processMode = data?.process?.metadata?.mode;
                             if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
                                 setSelectedMode(processMode);
+                            }
+                            // Restore server-persisted pending messages
+                            const serverPending: any[] = data?.process?.pendingMessages ?? [];
+                            if (serverPending.length > 0) {
+                                setPendingQueue(serverPending.map((m: any) => ({
+                                    id: m.id,
+                                    content: m.content,
+                                    deliveryMode: 'enqueue' as const,
+                                    status: 'queued' as const,
+                                })));
+                                setTimeout(() => flushQueueRef.current?.(), 0);
                             }
                         })
                         .catch(() => { /* metadata refresh is best-effort */ });
@@ -369,6 +380,20 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                         }
                     } else {
                         setTurnsAndRef(loadedTurns);
+                    }
+
+                    // Restore server-persisted pending messages
+                    const serverPending: any[] = procData?.process?.pendingMessages ?? [];
+                    if (serverPending.length > 0) {
+                        setPendingQueue(serverPending.map((m: any) => ({
+                            id: m.id,
+                            content: m.content,
+                            deliveryMode: 'enqueue' as const,
+                            status: 'queued' as const,
+                        })));
+                        if (!sending) {
+                            setTimeout(() => flushQueueRef.current?.(), 0);
+                        }
                     }
                 }
             } catch (err: any) {

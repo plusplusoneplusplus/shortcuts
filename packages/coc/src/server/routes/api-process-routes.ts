@@ -19,7 +19,7 @@ import {
 } from '../api-handler';
 import type { QueueExecutorBridge } from '../api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, internalError, APIError } from '../errors';
-import { handleProcessStream, emitMessageQueued } from '../sse-handler';
+import { handleProcessStream, emitMessageQueued, emitPendingMessageAdded } from '../sse-handler';
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../image-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
@@ -516,6 +516,69 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 turnIndex,
                 ...(isPasteExternalized ? { pasteExternalized: true } : {}),
             });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // Pending messages endpoints
+    // ------------------------------------------------------------------
+
+    // POST /api/processes/:id/pending-messages — Queue a message while AI is busy
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/processes\/([^/]+)\/pending-messages$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const proc = await store.getProcess(id, wsId);
+            if (!proc) {
+                return handleAPIError(res, notFound('Process'));
+            }
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!body.content || typeof body.content !== 'string') {
+                return handleAPIError(res, missingFields(['content']));
+            }
+
+            const pendingMsg = {
+                id: crypto.randomUUID(),
+                content: body.content as string,
+                mode: typeof body.mode === 'string' ? body.mode : undefined,
+                createdAt: new Date().toISOString(),
+            };
+
+            const existing = proc.pendingMessages ?? [];
+            await store.updateProcess(id, {
+                pendingMessages: [...existing, pendingMsg],
+            });
+
+            emitPendingMessageAdded(store, id, pendingMsg);
+
+            sendJSON(res, 201, { message: pendingMsg });
+        },
+    });
+
+    // DELETE /api/processes/:id/pending-messages/:msgId — Remove a consumed pending message
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/processes\/([^/]+)\/pending-messages\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const msgId = decodeURIComponent(match![2]);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const proc = await store.getProcess(id, wsId);
+            if (!proc) {
+                return handleAPIError(res, notFound('Process'));
+            }
+
+            const existing = proc.pendingMessages ?? [];
+            const filtered = existing.filter(m => m.id !== msgId);
+            await store.updateProcess(id, { pendingMessages: filtered });
+
+            res.writeHead(204);
+            res.end();
         },
     });
 
