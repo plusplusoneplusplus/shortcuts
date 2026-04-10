@@ -80,6 +80,50 @@ turndown.addRule('taskItem', {
     },
 });
 
+// GFM table: <table>/<thead>/<tbody>/<tr>/<th>/<td> → pipe-table markdown
+turndown.addRule('tableCell', {
+    filter: ['th', 'td'],
+    replacement(content) {
+        const cell = content.replace(/\n+/g, ' ').trim();
+        const escaped = cell.replace(/\|/g, '\\|');
+        return `| ${escaped} `;
+    },
+});
+
+turndown.addRule('tableRow', {
+    filter: 'tr',
+    replacement(content, node) {
+        const row = `${content}|\n`;
+        if (node.parentNode && node.parentNode.nodeName === 'THEAD') {
+            const cells = Array.from(node.querySelectorAll('th'));
+            const separators = cells.map((th) => {
+                const style = (th as Element).getAttribute('style') ?? '';
+                const align = style.match(/text-align:\s*(\w+)/i)?.[1] ?? '';
+                if (align === 'center') return '| :---: ';
+                if (align === 'right') return '| ---: ';
+                return '| --- ';
+            });
+            const separator = separators.join('') + '|\n';
+            return row + separator;
+        }
+        return row;
+    },
+});
+
+turndown.addRule('tableSectionPassthrough', {
+    filter: ['thead', 'tbody'],
+    replacement(content) {
+        return content;
+    },
+});
+
+turndown.addRule('table', {
+    filter: 'table',
+    replacement(content) {
+        return `\n\n${content.trim()}\n\n`;
+    },
+});
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**

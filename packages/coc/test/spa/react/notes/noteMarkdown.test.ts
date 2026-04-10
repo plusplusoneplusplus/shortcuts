@@ -250,4 +250,102 @@ describe('noteMarkdown', () => {
             expect(rt.endsWith('\n\n')).toBe(false);
         });
     });
+
+    // ── Table support ───────────────────────────────────────────────────
+
+    describe('table support', () => {
+        function roundTrip(md: string): string {
+            return htmlToMarkdown(markdownToHtml(md));
+        }
+
+        it('htmlToMarkdown — simple 2×2 table', () => {
+            const html = '<table><thead><tr><th>A</th><th>B</th></tr></thead>' +
+                         '<tbody><tr><td>1</td><td>2</td></tr></tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('| A | B |');
+            expect(md).toContain('| --- |');
+            expect(md).toContain('| 1 | 2 |');
+        });
+
+        it('htmlToMarkdown — header-only table (no <tbody>)', () => {
+            const html = '<table><thead><tr><th>H1</th><th>H2</th></tr></thead></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('| H1 | H2 |');
+            expect(md).toContain('| --- |');
+            const lines = norm(md).split('\n').filter(Boolean);
+            expect(lines).toHaveLength(2);
+        });
+
+        it('htmlToMarkdown — alignment (center and right)', () => {
+            const html =
+              '<table><thead><tr>' +
+              '<th style="text-align: left">L</th>' +
+              '<th style="text-align: center">C</th>' +
+              '<th style="text-align: right">R</th>' +
+              '</tr></thead></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('| --- |');
+            expect(md).toContain('| :---: |');
+            expect(md).toContain('| ---: |');
+        });
+
+        it('htmlToMarkdown — cell content with inline formatting (bold)', () => {
+            const html =
+              '<table><thead><tr><th>Name</th></tr></thead>' +
+              '<tbody><tr><td><strong>Alice</strong></td></tr></tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('**Alice**');
+        });
+
+        it('htmlToMarkdown — pipe characters in cell content are escaped', () => {
+            const html =
+              '<table><thead><tr><th>Code</th></tr></thead>' +
+              '<tbody><tr><td>a | b</td></tr></tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('a \\| b');
+            const bodyRow = norm(md).split('\n').find(l => l.includes('a'));
+            // Strip escaped pipes before splitting to verify cell count
+            const unescaped = bodyRow?.replace(/\\\|/g, '') ?? '';
+            expect(unescaped.split('|').filter(Boolean)).toHaveLength(1);
+        });
+
+        it('htmlToMarkdown — empty cells produce blank cell slots', () => {
+            const html =
+              '<table><thead><tr><th>A</th><th>B</th></tr></thead>' +
+              '<tbody><tr><td></td><td>val</td></tr></tbody></table>';
+            const md = htmlToMarkdown(html);
+            const bodyRow = norm(md).split('\n').find(l => l.includes('val')) ?? '';
+            expect(bodyRow.startsWith('|')).toBe(true);
+            expect(bodyRow.endsWith('|')).toBe(true);
+            expect((bodyRow.match(/\|/g) ?? []).length).toBeGreaterThanOrEqual(3);
+        });
+
+        it('round-trip — simple table', () => {
+            const md = '| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |';
+            const rt = norm(roundTrip(md));
+            expect(rt).toContain('| Header 1 | Header 2 |');
+            expect(rt).toContain('| --- |');
+            expect(rt).toContain('| Cell 1 | Cell 2 |');
+        });
+
+        it('round-trip — table mixed with other content', () => {
+            const md = [
+              '# Title',
+              '',
+              'Intro paragraph.',
+              '',
+              '| Col A | Col B |',
+              '| --- | --- |',
+              '| x | y |',
+              '',
+              'Outro paragraph.',
+            ].join('\n');
+            const rt = norm(roundTrip(md));
+            expect(rt).toContain('# Title');
+            expect(rt).toContain('Intro paragraph');
+            expect(rt).toContain('| Col A | Col B |');
+            expect(rt).toContain('| x | y |');
+            expect(rt).toContain('Outro paragraph');
+        });
+    });
 });
