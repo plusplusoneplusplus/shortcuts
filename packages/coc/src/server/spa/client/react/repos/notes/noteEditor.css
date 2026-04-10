@@ -141,3 +141,80 @@
         background: rgba(0, 120, 212, 0.22);
     }
 }
+
+/* ── Comment highlights ─────────────────────────────────────────────────── */
+
+/* Inline comment marks (rendered by @sereneinserenade/tiptap-comment-extension) */
+.note-editor .ProseMirror span[data-comment-id] {
+    background-color: rgba(255, 212, 0, 0.2);
+    border-bottom: 2px solid rgba(255, 212, 0, 0.6);
+    cursor: pointer;
+    transition: background-color 0.15s;
+    border-radius: 1px;
+    padding: 0.05rem 0;
+}
+
+.note-editor .ProseMirror span[data-comment-id]:hover {
+    background-color: rgba(255, 212, 0, 0.35);
+}
+
+/* Active comment — cursor is inside this mark */
+.note-editor .ProseMirror span[data-comment-id].comment-active {
+    background-color: rgba(255, 212, 0, 0.45);
+    border-bottom-color: rgba(255, 212, 0, 0.9);
+}
+
+/* Resolved comment — dimmed, dashed underline */
+.note-editor .ProseMirror span[data-comment-id].comment-resolved {
+    background-color: rgba(128, 128, 128, 0.1);
+    border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+}
+
+/* Block comment decorations (rendered by blockComment.ts plugin) */
+.note-editor .ProseMirror .block-comment {
+    border-left: 3px solid rgba(255, 212, 0, 0.6);
+    padding-left: 8px;
+    background-color: rgba(255, 212, 0, 0.05);
+    transition: background-color 0.15s, border-left-color 0.15s;
+}
+
+.note-editor .ProseMirror .block-comment:hover {
+    background-color: rgba(255, 212, 0, 0.1);
+}
+
+.note-editor .ProseMirror .block-comment.block-comment-active {
+    border-left-color: rgba(255, 212, 0, 0.9);
+    background-color: rgba(255, 212, 0, 0.12);
+}
+
+.note-editor .ProseMirror .block-comment.block-comment-resolved {
+    border-left: 2px dashed rgba(128, 128, 128, 0.4);
+    background-color: rgba(128, 128, 128, 0.03);
+}
+
+/* Dark mode — comments */
+@media (prefers-color-scheme: dark) {
+    .note-editor .ProseMirror span[data-comment-id] {
+        background-color: rgba(255, 212, 0, 0.15);
+        border-bottom-color: rgba(255, 212, 0, 0.4);
+    }
+    .note-editor .ProseMirror span[data-comment-id]:hover {
+        background-color: rgba(255, 212, 0, 0.25);
+    }
+    .note-editor .ProseMirror span[data-comment-id].comment-active {
+        background-color: rgba(255, 212, 0, 0.35);
+        border-bottom-color: rgba(255, 212, 0, 0.7);
+    }
+    .note-editor .ProseMirror span[data-comment-id].comment-resolved {
+        background-color: rgba(128, 128, 128, 0.08);
+        border-bottom-color: rgba(128, 128, 128, 0.3);
+    }
+    .note-editor .ProseMirror .block-comment {
+        border-left-color: rgba(255, 212, 0, 0.4);
+        background-color: rgba(255, 212, 0, 0.04);
+    }
+    .note-editor .ProseMirror .block-comment.block-comment-active {
+        border-left-color: rgba(255, 212, 0, 0.7);
+        background-color: rgba(255, 212, 0, 0.08);
+    }
+}

@@ -24,6 +24,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@octokit/rest": "^22.0.1",
     "@plusplusoneplusplus/forge": "^1.1.0",
+    "@sereneinserenade/tiptap-comment-extension": "^0.2.0",
     "@tiptap/core": "^2.27.2",
     "@tiptap/extension-highlight": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",
