@@ -52,6 +52,9 @@ export interface CLIConfig {
     notes?: {
         enabled?: boolean;
     };
+    store?: {
+        backend?: 'file' | 'sqlite';
+    };
 }
 
 /** Data wiper instance for clearing server data (opaque handle). */

@@ -9,6 +9,8 @@
  */
 
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as url from 'url';
 import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { MEMORY_CONSOLIDATION_INSTRUCTIONS } from '@plusplusoneplusplus/forge';
@@ -22,6 +24,9 @@ import { validateExportPayload } from './export-import-types';
 import type { CoCExportPayload, ImportMode } from './export-import-types';
 import type { ProcessWebSocketServer } from './websocket';
 import type { QueuePersistence, CLIConfig } from './export-import-types';
+import { sendSSE } from './wiki/ask-handler';
+import { StorageMigrationEngine } from './storage-migration';
+import type { MigrationProgress } from './storage-migration';
 
 // ============================================================================
 // Token Management
@@ -79,6 +84,7 @@ class TokenManager {
 
 const wipeTokenManager = new TokenManager();
 const importTokenManager = new TokenManager();
+const migrateTokenManager = new TokenManager();
 
 // Thin wrappers preserving the original exported API
 function generateWipeToken() { return wipeTokenManager.generate(); }
@@ -89,11 +95,16 @@ function generateImportToken() { return importTokenManager.generate(); }
 function validateImportToken(token: string) { return importTokenManager.validate(token); }
 function resetImportToken() { importTokenManager.reset(); }
 
+function generateMigrateToken() { return migrateTokenManager.generate(); }
+function validateMigrateToken(token: string) { return migrateTokenManager.validate(token); }
+function resetMigrateToken() { migrateTokenManager.reset(); }
+
 export {
     TokenManager, TOKEN_EXPIRY_MS,
     generateWipeToken, validateWipeToken, resetWipeToken,
     generateImportToken, validateImportToken, resetImportToken,
-    wipeTokenManager, importTokenManager,
+    generateMigrateToken, validateMigrateToken, resetMigrateToken,
+    wipeTokenManager, importTokenManager, migrateTokenManager,
 };
 
 // ============================================================================
@@ -143,6 +154,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
     // Route-scoped token managers — isolated per server instance; TTL configurable for tests.
     const routeWipeTokenMgr = new TokenManager(options.tokenTtlMs);
     const routeImportTokenMgr = new TokenManager(options.tokenTtlMs);
+    const routeMigrateTokenMgr = new TokenManager(options.tokenTtlMs);
 
     // ------------------------------------------------------------------
     // GET /api/admin/data/wipe-token — Generate a wipe confirmation token
@@ -550,6 +562,141 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             setTimeout(() => {
                 process.exit(exitCode);
             }, 200);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // Storage Migration Endpoints
+    // ------------------------------------------------------------------
+    let activeMigration: { controller: AbortController; running: boolean } | null = null;
+
+    // ------------------------------------------------------------------
+    // GET /api/admin/storage/status — Current storage backend info
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/admin/storage/status',
+        handler: async (_req, res) => {
+            try {
+                const config = configFunctions?.loadConfigFile?.(resolvedConfigPath);
+                const backend = config?.store?.backend ?? 'file';
+
+                const workspaces = await store.getWorkspaces();
+                const allProcesses = await store.getAllProcesses();
+
+                const dbPath = path.join(dataDir, 'processes.db');
+                const dbExists = fs.existsSync(dbPath);
+
+                const result: Record<string, unknown> = {
+                    backend,
+                    stats: {
+                        processes: allProcesses.length,
+                        workspaces: workspaces.length,
+                    },
+                };
+
+                if (backend === 'sqlite' && dbExists) {
+                    result.dbPath = dbPath;
+                }
+
+                sendJSON(res, 200, result);
+            } catch (err) {
+                handleAPIError(res, err);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/admin/storage/migrate-token — Generate a migration token
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/admin/storage/migrate-token',
+        handler: async (_req, res) => {
+            const mt = routeMigrateTokenMgr.generate();
+            sendJSON(res, 200, {
+                token: mt.token,
+                expiresIn: routeMigrateTokenMgr.ttl / 1000,
+            });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/admin/storage/migrate?confirm=<token> — Run migration
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/admin/storage/migrate',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const confirmToken = typeof parsed.query.confirm === 'string' ? parsed.query.confirm : '';
+
+            if (!confirmToken) {
+                return handleAPIError(res, badRequest('Missing confirmation token. GET /api/admin/storage/migrate-token first.'));
+            }
+
+            if (!routeMigrateTokenMgr.validate(confirmToken)) {
+                return handleAPIError(res, forbidden('Invalid or expired confirmation token'));
+            }
+
+            if (activeMigration?.running) {
+                sendJSON(res, 409, { error: 'Migration already in progress' });
+                return;
+            }
+
+            // SSE headers
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+            });
+
+            const controller = new AbortController();
+            activeMigration = { controller, running: true };
+
+            req.on('close', () => {
+                if (activeMigration?.running) {
+                    controller.abort();
+                }
+            });
+
+            const engine = new StorageMigrationEngine({
+                dataDir,
+                dbPath: path.join(dataDir, 'processes.db'),
+                onProgress: (event: MigrationProgress) => {
+                    sendSSE(res, event as unknown as Record<string, unknown>);
+                },
+                signal: controller.signal,
+            });
+
+            try {
+                const summary = await engine.run();
+                sendSSE(res, { type: 'done', success: true, ...summary });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                sendSSE(res, { type: 'error', message });
+                sendSSE(res, { type: 'done', success: false, error: message });
+            } finally {
+                activeMigration = null;
+                res.end();
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/admin/storage/migrate/cancel — Cancel active migration
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/admin/storage/migrate/cancel',
+        handler: async (_req, res) => {
+            if (!activeMigration?.running) {
+                sendJSON(res, 409, { error: 'No active migration to cancel' });
+                return;
+            }
+            activeMigration.controller.abort();
+            sendJSON(res, 200, { success: true });
         },
     });
 }
