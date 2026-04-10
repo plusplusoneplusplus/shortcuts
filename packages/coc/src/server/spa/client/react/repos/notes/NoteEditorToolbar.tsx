@@ -40,6 +40,64 @@ function Sep() {
     return <div className="w-px h-5 mx-1 bg-[#e0e0e0] dark:bg-[#3c3c3c]" />;
 }
 
+// ── Table contextual controls ───────────────────────────────────────────────
+
+interface TableControlsProps {
+    editor: Editor;
+}
+
+function TableControls({ editor }: TableControlsProps) {
+    if (!editor.isActive('table')) return null;
+
+    const tc = () => editor.chain().focus();
+
+    return (
+        <>
+            <Sep />
+            {/* Column operations */}
+            <button type="button" title="Add column before" aria-label="Add column before"
+                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                onMouseDown={(e) => { e.preventDefault(); tc().addColumnBefore().run(); }}>
+                ◀+
+            </button>
+            <button type="button" title="Add column after" aria-label="Add column after"
+                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                onMouseDown={(e) => { e.preventDefault(); tc().addColumnAfter().run(); }}>
+                +▶
+            </button>
+            <button type="button" title="Delete column" aria-label="Delete column"
+                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                onMouseDown={(e) => { e.preventDefault(); tc().deleteColumn().run(); }}>
+                ✕col
+            </button>
+            <Sep />
+            {/* Row operations */}
+            <button type="button" title="Add row before" aria-label="Add row before"
+                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                onMouseDown={(e) => { e.preventDefault(); tc().addRowBefore().run(); }}>
+                ▲+
+            </button>
+            <button type="button" title="Add row after" aria-label="Add row after"
+                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                onMouseDown={(e) => { e.preventDefault(); tc().addRowAfter().run(); }}>
+                +▼
+            </button>
+            <button type="button" title="Delete row" aria-label="Delete row"
+                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                onMouseDown={(e) => { e.preventDefault(); tc().deleteRow().run(); }}>
+                ✕row
+            </button>
+            <Sep />
+            {/* Table-level */}
+            <button type="button" title="Delete table" aria-label="Delete table"
+                className="h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                onMouseDown={(e) => { e.preventDefault(); tc().deleteTable().run(); }}>
+                ✕tbl
+            </button>
+        </>
+    );
+}
+
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
 export function NoteEditorToolbar({ editor }: NoteEditorToolbarProps) {
@@ -92,6 +150,18 @@ export function NoteEditorToolbar({ editor }: NoteEditorToolbarProps) {
             {/* Misc */}
             <TB editor={editor} label="Link" icon="🔗" command={handleLink} activeName="link" />
             <TB editor={editor} label="Horizontal rule" icon="—" command={() => c().setHorizontalRule().run()} />
+
+            {/* Table — insert */}
+            <Sep />
+            <TB
+                editor={editor}
+                label="Insert table"
+                icon="⊞"
+                command={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+            />
+
+            {/* Table — contextual operations (visible only inside a table) */}
+            <TableControls editor={editor} />
         </div>
     );
 }
