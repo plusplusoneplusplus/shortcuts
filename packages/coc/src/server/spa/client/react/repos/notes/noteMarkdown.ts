@@ -131,10 +131,12 @@ turndown.addRule('tableRow', {
     filter: 'tr',
     replacement(content, node) {
         const row = `${content}|\n`;
-        if (node.parentNode && node.parentNode.nodeName === 'THEAD') {
-            const cells = Array.from(node.querySelectorAll('th'));
-            const separators = cells.map((th) => {
-                const style = (th as Element).getAttribute('style') ?? '';
+        const isInThead = node.parentNode && node.parentNode.nodeName === 'THEAD';
+        const thCells = Array.from(node.querySelectorAll('th'));
+        if (isInThead || thCells.length > 0) {
+            const cells = thCells.length > 0 ? thCells : Array.from(node.querySelectorAll('td'));
+            const separators = cells.map((cell) => {
+                const style = (cell as Element).getAttribute('style') ?? '';
                 const align = style.match(/text-align:\s*(\w+)/i)?.[1] ?? '';
                 if (align === 'center') return '| :---: ';
                 if (align === 'right') return '| ---: ';
@@ -157,7 +159,8 @@ turndown.addRule('tableSectionPassthrough', {
 turndown.addRule('table', {
     filter: 'table',
     replacement(content) {
-        return `\n\n${content.trim()}\n\n`;
+        const normalized = content.trim().replace(/\n{2,}/g, '\n');
+        return `\n\n${normalized}\n\n`;
     },
 });
 

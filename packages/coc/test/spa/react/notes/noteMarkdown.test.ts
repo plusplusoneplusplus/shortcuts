@@ -351,6 +351,59 @@ describe('noteMarkdown', () => {
             expect((bodyRow.match(/\|/g) ?? []).length).toBeGreaterThanOrEqual(3);
         });
 
+        it('htmlToMarkdown — Tiptap table HTML (no <thead>, <th> in <tbody>)', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th><p>H1</p></th><th><p>H2</p></th></tr>' +
+                '<tr><td><p>C1</p></td><td><p>C2</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('| H1 | H2 |');
+            expect(md).toContain('| --- |');
+            expect(md).toContain('| C1 | C2 |');
+            const lines = norm(md).split('\n').filter(Boolean);
+            expect(lines).toHaveLength(3);
+        });
+
+        it('htmlToMarkdown — Tiptap table with alignment (no <thead>)', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th style="text-align: left"><p>L</p></th><th style="text-align: center"><p>C</p></th><th style="text-align: right"><p>R</p></th></tr>' +
+                '<tr><td><p>a</p></td><td><p>b</p></td><td><p>c</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('| --- |');
+            expect(md).toContain('| :---: |');
+            expect(md).toContain('| ---: |');
+        });
+
+        it('htmlToMarkdown — Tiptap empty 3x3 table survives', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th><p></p></th><th><p></p></th><th><p></p></th></tr>' +
+                '<tr><td><p></p></td><td><p></p></td><td><p></p></td></tr>' +
+                '<tr><td><p></p></td><td><p></p></td><td><p></p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('| --- |');
+            const lines = norm(md).split('\n').filter(Boolean);
+            expect(lines).toHaveLength(4); // header + separator + 2 body rows
+        });
+
+        it('round-trip — Tiptap table HTML survives save/reload cycle', () => {
+            const tiptapHtml =
+                '<table><tbody>' +
+                '<tr><th><p>Name</p></th><th><p>Value</p></th></tr>' +
+                '<tr><td><p>foo</p></td><td><p>bar</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(tiptapHtml);
+            const reloadedHtml = markdownToHtml(md);
+            expect(reloadedHtml).toContain('<table>');
+            expect(reloadedHtml).toContain('<th');
+            expect(reloadedHtml).toContain('Name');
+            expect(reloadedHtml).toContain('bar');
+        });
+
         it('round-trip — simple table', () => {
             const md = '| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |';
             const rt = norm(roundTrip(md));
