@@ -53,6 +53,83 @@ function formatDuration(startTime?: number, endTime?: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// SkillHoverPopover — shown when hovering over "N skills"
+// ---------------------------------------------------------------------------
+
+interface SkillHoverPopoverProps {
+    skillNames: string[];
+    anchorRef: React.RefObject<HTMLSpanElement | null>;
+}
+
+function SkillHoverPopover({ skillNames, anchorRef }: SkillHoverPopoverProps) {
+    if (!anchorRef.current) return null;
+    const rect = anchorRef.current.getBoundingClientRect();
+
+    return (
+        <div
+            className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[200px] max-w-[400px]"
+            style={{ top: rect.bottom + 4, left: rect.left }}
+            data-testid="skill-hover-popover"
+        >
+            {skillNames.map(name => (
+                <div
+                    key={name}
+                    className="flex items-center gap-2 px-2.5 py-1 text-xs"
+                    data-testid="skill-popover-row"
+                >
+                    <span className="shrink-0">🛠</span>
+                    <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
+                        {name}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// SkillHoverSpan — a span that shows a skill popover on hover
+// ---------------------------------------------------------------------------
+
+interface SkillHoverSpanProps {
+    text: string;
+    skillNames: string[];
+    testId?: string;
+}
+
+function SkillHoverSpan({ text, skillNames, testId }: SkillHoverSpanProps) {
+    const [hovered, setHovered] = useState(false);
+    const anchorRef = useRef<HTMLSpanElement | null>(null);
+    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const showPopover = useCallback(() => {
+        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
+        setHovered(true);
+    }, []);
+
+    const hidePopover = useCallback(() => {
+        graceTimer.current = setTimeout(() => setHovered(false), 150);
+    }, []);
+
+    return (
+        <span
+            ref={anchorRef}
+            onMouseEnter={showPopover}
+            onMouseLeave={hidePopover}
+            className="underline decoration-dotted cursor-default"
+            data-testid={testId}
+        >
+            {text}
+            {hovered && skillNames.length > 0 && (
+                <span onMouseEnter={showPopover} onMouseLeave={hidePopover}>
+                    <SkillHoverPopover skillNames={skillNames} anchorRef={anchorRef} />
+                </span>
+            )}
+        </span>
+    );
+}
+
+// ---------------------------------------------------------------------------
 // CommitHoverPopover — shown when hovering over "N commits" / "N fixups"
 // ---------------------------------------------------------------------------
 
@@ -246,7 +323,7 @@ export function WhisperCollapsedGroup({
 }: WhisperCollapsedGroupProps) {
     const [expanded, setExpanded] = useState(false);
 
-    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'file' }> = [];
+    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'file' | 'skill' }> = [];
     if (summary.toolCallCount > 0) {
         headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
     }
@@ -265,7 +342,7 @@ export function WhisperCollapsedGroup({
     if (summary.skillCount && summary.skillCount > 0) {
         headerParts.push({
             text: `${summary.skillCount} skill${summary.skillCount !== 1 ? 's' : ''}`,
-            title: summary.skillNames?.join(', '),
+            kind: 'skill',
         });
     }
     const duration = formatDuration(summary.startTime, summary.endTime);
@@ -286,8 +363,10 @@ export function WhisperCollapsedGroup({
             headerElements.push(
                 <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-file-hover" />,
             );
-        } else if (part.title) {
-            headerElements.push(<span key={`part-${idx}`} title={part.title}>{part.text}</span>);
+        } else if (part.kind === 'skill' && summary.skillNames && summary.skillNames.length > 0) {
+            headerElements.push(
+                <SkillHoverSpan key={`part-${idx}`} text={part.text} skillNames={summary.skillNames} testId="whisper-skill-hover" />,
+            );
         } else {
             headerElements.push(<span key={`part-${idx}`}>{part.text}</span>);
         }

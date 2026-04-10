@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, act } from '@testing-library/react';
 import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/processes/WhisperCollapsedGroup';
 import type { WhisperSummary, FileEdit } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
 
@@ -255,5 +255,111 @@ describe('WhisperCollapsedGroup — FileHoverPopover', () => {
         const row = container.querySelector('[data-testid="file-popover-row"]');
         expect(row?.textContent).toContain('+10');
         expect(row?.textContent).not.toContain('−');
+    });
+});
+
+// ── Skill count header tests ───────────────────────────────────────────────
+
+describe('WhisperCollapsedGroup — skill count in header', () => {
+    it('shows plural "3 skills" when skillCount > 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 5,
+            messageCount: 1,
+            skillCount: 3,
+            skillNames: ['code-review', 'impl', 'test-gap-analysis'],
+        });
+        const text = getHeaderText(container);
+        expect(text).toContain('3 skills');
+    });
+
+    it('shows singular "1 skill" when skillCount === 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 2,
+            messageCount: 0,
+            skillCount: 1,
+            skillNames: ['impl'],
+        });
+        const text = getHeaderText(container);
+        expect(text).toContain('1 skill');
+        expect(text).not.toContain('1 skills');
+    });
+
+    it('omits skill segment when skillCount is 0', () => {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 1,
+            skillCount: 0,
+        });
+        const text = getHeaderText(container);
+        expect(text).not.toMatch(/\bskill/);
+    });
+
+    it('omits skill segment when skillCount is undefined', () => {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 1,
+        });
+        const text = getHeaderText(container);
+        expect(text).not.toMatch(/\bskill/);
+    });
+
+    it('renders skill hover span with data-testid', () => {
+        const { container } = renderHeader({
+            toolCallCount: 1,
+            messageCount: 0,
+            skillCount: 2,
+            skillNames: ['code-review', 'impl'],
+        });
+        const span = container.querySelector('[data-testid="whisper-skill-hover"]');
+        expect(span).not.toBeNull();
+        expect(span?.textContent).toContain('2 skills');
+    });
+});
+
+// ── SkillHoverPopover tests ────────────────────────────────────────────────
+
+describe('WhisperCollapsedGroup — SkillHoverPopover', () => {
+    function renderAndHoverSkills(skillNames: string[]) {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 0,
+            skillCount: skillNames.length,
+            skillNames,
+        });
+        const span = container.querySelector('[data-testid="whisper-skill-hover"]') as HTMLElement;
+        if (span) {
+            fireEvent.mouseEnter(span);
+        }
+        return container;
+    }
+
+    it('popover renders skill rows with icon and name', () => {
+        const container = renderAndHoverSkills(['code-review', 'impl', 'test-gap-analysis']);
+        const popover = container.querySelector('[data-testid="skill-hover-popover"]');
+        expect(popover).not.toBeNull();
+        const rows = container.querySelectorAll('[data-testid="skill-popover-row"]');
+        expect(rows).toHaveLength(3);
+        expect(rows[0].textContent).toContain('🛠');
+        expect(rows[0].textContent).toContain('code-review');
+        expect(rows[1].textContent).toContain('impl');
+        expect(rows[2].textContent).toContain('test-gap-analysis');
+    });
+
+    it('popover shows single skill correctly', () => {
+        const container = renderAndHoverSkills(['impl']);
+        const rows = container.querySelectorAll('[data-testid="skill-popover-row"]');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toContain('impl');
+    });
+
+    it('popover disappears on mouse leave', () => {
+        vi.useFakeTimers();
+        const container = renderAndHoverSkills(['impl', 'code-review']);
+        expect(container.querySelector('[data-testid="skill-hover-popover"]')).not.toBeNull();
+        const span = container.querySelector('[data-testid="whisper-skill-hover"]') as HTMLElement;
+        fireEvent.mouseLeave(span);
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(container.querySelector('[data-testid="skill-hover-popover"]')).toBeNull();
+        vi.useRealTimers();
     });
 });
