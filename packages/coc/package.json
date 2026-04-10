@@ -27,6 +27,7 @@
     "@sereneinserenade/tiptap-comment-extension": "^0.2.0",
     "@tiptap/core": "^2.27.2",
     "@tiptap/extension-highlight": "^2.27.2",
+    "@tiptap/extension-image": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",
     "@tiptap/extension-placeholder": "^2.27.2",
     "@tiptap/extension-table": "^2.27.2",

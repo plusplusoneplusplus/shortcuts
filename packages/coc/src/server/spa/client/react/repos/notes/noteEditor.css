@@ -142,6 +142,22 @@
     }
 }
 
+/* ── Images ──────────────────────────────────────────────────────────────── */
+
+.note-editor .ProseMirror img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin: 0.5em 0;
+    cursor: default;
+    display: block;
+}
+
+.note-editor .ProseMirror img.ProseMirror-selectednode {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
+}
+
 /* ── Comment highlights ─────────────────────────────────────────────────── */
 
 /* Inline comment marks (rendered by @sereneinserenade/tiptap-comment-extension) */

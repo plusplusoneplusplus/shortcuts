@@ -11,10 +11,11 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
+import Image from '@tiptap/extension-image';
 import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
 import { notesApi } from '../notesApi';
 import type { CommentThread } from '../notesApi';
-import { markdownToHtml, htmlToMarkdown } from './noteMarkdown';
+import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToApi, rewriteImageSrcToRelative } from './noteMarkdown';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import './noteEditor.css';
@@ -42,6 +43,7 @@ export function NoteEditor({
     const [loadError, setLoadError] = useState<string | null>(null);
     const [saveState, setSaveState] = useState<SaveState>('idle');
     const [dirty, setDirty] = useState(false);
+    const [uploadingImage, setUploadingImage] = useState(false);
 
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingContentRef = useRef<string | null>(null);
@@ -79,6 +81,7 @@ export function NoteEditor({
             TableCell,
             TableHeader,
             Highlight.configure({ multicolor: true }),
+            Image.configure({ inline: false, allowBase64: false }),
             ...(commentsEnabled
                 ? [
                     CommentExtension.configure({
@@ -89,6 +92,49 @@ export function NoteEditor({
                 ]
                 : []),
         ],
+        editorProps: {
+            handlePaste: (view, event) => {
+                const items = event.clipboardData?.items;
+                if (!items) return false;
+
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.type.startsWith('image/')) {
+                        event.preventDefault();
+                        const file = item.getAsFile();
+                        if (!file) continue;
+
+                        const reader = new FileReader();
+                        reader.onload = async (e) => {
+                            const dataUrl = e.target?.result as string;
+                            if (!dataUrl || !notePathRef.current) return;
+
+                            setUploadingImage(true);
+                            try {
+                                const result = await notesApi.uploadImage(
+                                    workspaceIdRef.current,
+                                    file.name || 'pasted-image',
+                                    dataUrl,
+                                );
+                                const apiUrl = `/api/workspaces/${encodeURIComponent(workspaceIdRef.current)}/notes/image?path=${encodeURIComponent(result.path)}`;
+                                view.dispatch(
+                                    view.state.tr.replaceSelectionWith(
+                                        view.state.schema.nodes.image.create({ src: apiUrl, alt: file.name || '' }),
+                                    ),
+                                );
+                            } catch (err) {
+                                console.error('Failed to upload pasted image:', err);
+                            } finally {
+                                setUploadingImage(false);
+                            }
+                        };
+                        reader.readAsDataURL(file);
+                        return true;
+                    }
+                }
+                return false;
+            },
+        },
         onUpdate: ({ editor: ed }) => {
             setDirty(true);
             scheduleSave(ed);
@@ -142,7 +188,8 @@ export function NoteEditor({
 
     function scheduleSave(ed: { getHTML: () => string }) {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-        const md = htmlToMarkdown(ed.getHTML());
+        let md = htmlToMarkdown(ed.getHTML());
+        md = rewriteImageSrcToRelative(md);
         pendingContentRef.current = md;
         saveTimerRef.current = setTimeout(() => flushSave(), 1500);
     }
@@ -169,7 +216,8 @@ export function NoteEditor({
             .getContent(workspaceId, notePath)
             .then(({ content }) => {
                 if (cancelled) return;
-                const html = markdownToHtml(content);
+                let html = markdownToHtml(content);
+                html = rewriteImageSrcToApi(html, workspaceId);
                 editor?.commands.setContent(html);
                 setDirty(false);
 
@@ -292,6 +340,11 @@ export function NoteEditor({
 
             {/* Save indicator */}
             <div className="absolute bottom-3 right-3 text-xs select-none" data-testid="save-indicator">
+                {uploadingImage && (
+                    <span className="text-[#888] mr-2">
+                        <span className="animate-spin inline-block mr-1">📷</span>Uploading…
+                    </span>
+                )}
                 {saveState === 'saving' && (
                     <span className="text-[#888]">
                         <span className="animate-spin inline-block mr-1">⏳</span>Saving…

@@ -263,6 +263,43 @@ export function htmlToMarkdownWithComments(
     return result;
 }
 
+// ── Image URL rewriting ─────────────────────────────────────────────────────
+
+/**
+ * Rewrite relative `.attachments/...` image paths in HTML to API-served URLs.
+ * Called after `markdownToHtml()` when loading content into the editor.
+ *
+ * Converts: `<img src=".attachments/uuid.png">`
+ * To:       `<img src="/api/workspaces/<wsId>/notes/image?path=.attachments/uuid.png">`
+ */
+export function rewriteImageSrcToApi(html: string, workspaceId: string): string {
+    if (!html) return html;
+    const apiPrefix = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=`;
+    return html.replace(
+        /(<img\s[^>]*?)src="(\.attachments\/[^"]+)"/gi,
+        (_match, prefix: string, relPath: string) => {
+            return `${prefix}src="${apiPrefix}${encodeURIComponent(relPath)}"`;
+        },
+    );
+}
+
+/**
+ * Rewrite API-served image URLs back to relative `.attachments/...` paths.
+ * Called before `htmlToMarkdown()` when saving editor content.
+ *
+ * Converts: `![alt](/api/workspaces/<wsId>/notes/image?path=.attachments/uuid.png)`
+ * To:       `![alt](.attachments/uuid.png)`
+ */
+export function rewriteImageSrcToRelative(markdown: string): string {
+    if (!markdown) return markdown;
+    return markdown.replace(
+        /!\[([^\]]*)\]\(\/api\/workspaces\/[^/]+\/notes\/image\?path=([^)]+)\)/g,
+        (_match, alt: string, encodedPath: string) => {
+            return `![${alt}](${decodeURIComponent(encodedPath)})`;
+        },
+    );
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**

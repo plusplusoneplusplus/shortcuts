@@ -101,6 +101,16 @@ export const notesApi = {
         return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/search?q=${encodeURIComponent(query)}`);
     },
 
+    // ── Image endpoints ─────────────────────────────────────────────────────
+
+    uploadImage(wsId: string, fileName: string, data: string): Promise<{ path: string }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName, data }),
+        });
+    },
+
     // ── Comment endpoints ───────────────────────────────────────────────────
 
     getComments(wsId: string, notePath: string): Promise<NoteSidecar> {

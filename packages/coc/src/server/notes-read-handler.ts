@@ -74,6 +74,8 @@ async function buildTree(dir: string, basePath: string): Promise<TreeNode[]> {
 
     const nodes: TreeNode[] = [];
     for (const entry of entries) {
+        // Skip hidden directories (e.g. .attachments)
+        if (entry.isDirectory() && entry.name.startsWith('.')) continue;
         const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
             const children = await buildTree(path.join(dir, entry.name), entryPath);
