@@ -8,8 +8,6 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import type {
     AutoFolderContext,
     ConversationTurn,
@@ -25,6 +23,9 @@ import {
     toForwardSlashes,
     toNativePath,
 } from '@plusplusoneplusplus/forge';
+import * as fs from 'fs';
+import * as path from 'path';
+import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
 import type { ChatMode, ChatPayload, RunScriptPayload } from '../task-types';
 import {
     hasCommitChatContext,
@@ -34,7 +35,6 @@ import {
     isRunScriptPayload,
     isRunWorkflowPayload,
 } from '../task-types';
-import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
 import { createUpdateTaskStatusTool } from '../update-task-status-tool';
 
 // ============================================================================
@@ -223,8 +223,6 @@ export function prependSelectedSkillsDirective(prompt: string, selectedSkills?: 
     const directive = [
         '<selected_skills>',
         `The user explicitly selected these skills: ${uniqueSkills.join(', ')}.`,
-        'Use the native skill system and invoke each selected skill immediately before proceeding with the request.',
-        'Do not inline or restate the skill bodies yourself.',
         '</selected_skills>',
     ].join('\n');
 
