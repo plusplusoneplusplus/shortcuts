@@ -86,6 +86,14 @@ describe('NewChatArea', () => {
         expect(btn.disabled).toBe(true);
     });
 
+    it('send button has tooltip with keyboard shortcut hints', () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        const btn = screen.getByTestId('new-chat-send-btn');
+        expect(btn.getAttribute('title')).toBe(
+            'Send (Enter) · Shift+Enter for newline',
+        );
+    });
+
     it('send button is enabled after typing', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;

@@ -212,4 +212,14 @@ describe('FollowUpInputArea — cursor regression', () => {
     });
 });
 
+describe('FollowUpInputArea — Send button tooltip', () => {
+    it('renders a title with keyboard shortcut hints', () => {
+        render(<FollowUpInputArea {...makeProps()} />);
+        const btn = screen.getByTestId('activity-chat-send-btn');
+        expect(btn.getAttribute('title')).toBe(
+            'Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline',
+        );
+    });
+});
+
 

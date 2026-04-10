@@ -404,6 +404,24 @@ describe('ItemConversationPanel', () => {
         expect(sendBtn.hasAttribute('disabled') || sendBtn.closest('button')?.disabled).toBeTruthy();
     });
 
+    it('send button has tooltip with keyboard shortcut hints', async () => {
+        fetchMock.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve(makeProcessResponse()),
+        });
+
+        render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
+        });
+
+        const sendBtn = screen.getByTestId('item-conversation-send');
+        expect(sendBtn.getAttribute('title')).toBe(
+            'Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline',
+        );
+    });
+
     it('shows error state when fetch fails', async () => {
         fetchMock.mockRejectedValue(new Error('Network error'));
 

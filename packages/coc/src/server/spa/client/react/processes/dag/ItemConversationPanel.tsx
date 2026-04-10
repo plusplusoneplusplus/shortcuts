@@ -372,7 +372,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                     data-testid="item-conversation-textarea"
                     className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
                 />
-                <Button disabled={inputDisabled || !inputValue.trim()} onClick={() => void sendFollowUp()} data-testid="item-conversation-send">
+                <Button disabled={inputDisabled || !inputValue.trim()} onClick={() => void sendFollowUp()} data-testid="item-conversation-send" title="Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline">
                     {sending ? '...' : 'Send'}
                 </Button>
             </div>

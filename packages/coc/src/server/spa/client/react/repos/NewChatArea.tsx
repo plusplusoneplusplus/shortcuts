@@ -158,6 +158,7 @@ export function NewChatArea({ workspaceId }: NewChatAreaProps) {
                         className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => { void handleSend(); }}
                         data-testid="new-chat-send-btn"
+                        title="Send (Enter) · Shift+Enter for newline"
                     >
                         {sending ? '...' : 'Send'}
                     </button>
