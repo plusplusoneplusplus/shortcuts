@@ -75,6 +75,8 @@ export interface ProcessOutputEvent {
     deliveryMode?: 'immediate' | 'enqueue';
     /** 1-based queue position; 0 for immediate mode (for 'message-queued' events). */
     queuePosition?: number;
+    /** Client-provided optimistic ID echoed back for reconciliation (for 'message-queued' / 'message-steering' events). */
+    optimisticId?: string;
     /** Hook step event data (for 'hook-step' events). */
     hookStep?: HookStepEvent;
     /** Active background agents (for 'background-tasks' events). */

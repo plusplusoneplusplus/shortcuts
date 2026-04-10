@@ -134,4 +134,29 @@ describe('SessionManager', () => {
         await expect(manager.abortAll()).resolves.not.toThrow();
         expect(manager.count()).toBe(0);
     });
+
+    // ── getSession ─────────────────────────────────────────────────────────
+
+    it('getSession returns undefined for unknown ID', () => {
+        expect(manager.getSession('ghost')).toBeUndefined();
+    });
+
+    it('getSession returns undefined for a session without send()', () => {
+        const s = makeSession('no-send');
+        manager.track(s);
+        expect(manager.getSession('no-send')).toBeUndefined();
+    });
+
+    it('getSession returns the session when it has a send() method', () => {
+        const s = {
+            sessionId: 'streamable',
+            destroy: vi.fn().mockResolvedValue(undefined),
+            send: vi.fn().mockResolvedValue(undefined),
+        };
+        manager.track(s);
+        const result = manager.getSession('streamable');
+        expect(result).toBeDefined();
+        expect(result!.sessionId).toBe('streamable');
+        expect(result!.send).toBe(s.send);
+    });
 });

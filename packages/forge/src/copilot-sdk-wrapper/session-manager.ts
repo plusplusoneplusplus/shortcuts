@@ -7,6 +7,7 @@
  */
 
 import { createSessionLogger } from '../ai-logger';
+import type { IStreamableSession } from './streaming-session';
 
 /**
  * Minimal interface for a session that can be tracked and aborted.
@@ -36,6 +37,21 @@ export class SessionManager {
      */
     untrack(sessionId: string): void {
         this.activeSessions.delete(sessionId);
+    }
+
+    /**
+     * Retrieve a tracked session by ID, narrowed to IStreamableSession
+     * (which is a superset of IAbortableSession). Returns undefined if
+     * the session is not tracked or does not have a `send` method.
+     */
+    getSession(sessionId: string): IStreamableSession | undefined {
+        const session = this.activeSessions.get(sessionId);
+        if (!session) return undefined;
+        // Only return if it looks like a streamable session (has send)
+        if ('send' in session && typeof (session as any).send === 'function') {
+            return session as unknown as IStreamableSession;
+        }
+        return undefined;
     }
 
     /**

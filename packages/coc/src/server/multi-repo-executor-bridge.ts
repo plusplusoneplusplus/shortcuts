@@ -244,6 +244,20 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
+     * Steer a running process by injecting an immediate message.
+     * Searches across all per-repo bridges for the process.
+     */
+    async steerProcess(processId: string, message: string): Promise<boolean> {
+        for (const { bridge } of this.bridges.values()) {
+            if (bridge.steerProcess) {
+                const steered = await bridge.steerProcess(processId, message);
+                if (steered) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Check whether any per-repo bridge has an active session for this process.
      * If no per-repo bridges exist yet, falls back to checking the store + AI service directly.
      */

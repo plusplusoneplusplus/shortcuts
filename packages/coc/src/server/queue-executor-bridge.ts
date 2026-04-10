@@ -27,6 +27,7 @@ export interface QueueExecutorBridge {
     isSessionAlive(processId: string): Promise<boolean>;
     requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void>;
     cancelProcess?(processId: string): Promise<void>;
+    steerProcess?(processId: string, message: string): Promise<boolean>;
 }
 
 function pathsReferToSameWorkspace(leftPath: string, rightPath: string): boolean {
@@ -119,6 +120,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     async isSessionAlive(_processId: string): Promise<boolean> { return true; }
+
+    async steerProcess(processId: string, message: string): Promise<boolean> {
+        try {
+            const proc = await this.store.getProcess(processId);
+            if (!proc?.sdkSessionId) return false;
+            return await this.aiService.steerSession(proc.sdkSessionId, message);
+        } catch { return false; }
+    }
 
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames);

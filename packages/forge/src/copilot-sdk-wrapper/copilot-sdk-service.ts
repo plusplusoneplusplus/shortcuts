@@ -144,6 +144,17 @@ export class CopilotSDKService {
         return this.sessionManager.abort(sessionId);
     }
 
+    /**
+     * Steer a running session by injecting an immediate message.
+     * Returns true if the session was found and the message was sent.
+     */
+    public async steerSession(sessionId: string, prompt: string): Promise<boolean> {
+        const session = this.sessionManager.getSession(sessionId);
+        if (!session?.send) return false;
+        await session.send({ prompt, mode: 'immediate' });
+        return true;
+    }
+
     public hasActiveSession(sessionId: string): boolean { return this.sessionManager.has(sessionId); }
 
     public getActiveSessionCount(): number { return this.sessionManager.count(); }

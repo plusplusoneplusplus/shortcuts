@@ -446,6 +446,30 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     const parentTask = bridge.findTaskByProcessId?.(id);
                     if (parentTask && parentTask.status === 'completed' && bridge.requeueForFollowUp) {
                         await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages, selectedSkillNames);
+                    } else if (parentTask && parentTask.status === 'running' && deliveryMode === 'immediate' && bridge.steerProcess) {
+                        const steered = await bridge.steerProcess(id, messageContent);
+                        if (!steered) {
+                            // Steering failed (no active SDK session); fall through to enqueue
+                            await bridge.enqueue({
+                                type: 'chat',
+                                priority: 'normal',
+                                payload: {
+                                    kind: 'chat',
+                                    prompt: messageContent,
+                                    processId: id,
+                                    attachments,
+                                    imageTempDir,
+                                    images: validatedImages,
+                                    workingDirectory: proc.workingDirectory,
+                                    readonly: (proc as any).payload?.readonly,
+                                    ...(selectedSkillNames && selectedSkillNames.length > 0 ? { context: { skills: selectedSkillNames } } : {}),
+                                    ...(modeOverride ? { mode: modeOverride } : {}),
+                                    deliveryMode,
+                                },
+                                config: {},
+                                displayName,
+                            });
+                        }
                     } else {
                         await bridge.enqueue({
                             type: 'chat',

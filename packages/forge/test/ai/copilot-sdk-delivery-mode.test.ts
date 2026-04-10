@@ -128,10 +128,10 @@ describe('CopilotSDKService - Delivery Mode', () => {
         const session = sdkModule.sessions[0].session;
         expect(session.send).toHaveBeenCalledTimes(1);
         const sendArgs = session.send.mock.calls[0][0];
-        expect(sendArgs.deliveryMode).toBe('enqueue');
+        expect(sendArgs.mode).toBe('enqueue');
     });
 
-    it('should forward deliveryMode: "immediate" to session.send()', async () => {
+    it('should forward deliveryMode: "immediate" to session.send() as mode', async () => {
         const sdkModule = wireStreamingService();
 
         await sendStreamingMessage(sdkModule, { deliveryMode: 'immediate' });
@@ -139,10 +139,10 @@ describe('CopilotSDKService - Delivery Mode', () => {
         const session = sdkModule.sessions[0].session;
         expect(session.send).toHaveBeenCalledTimes(1);
         const sendArgs = session.send.mock.calls[0][0];
-        expect(sendArgs.deliveryMode).toBe('immediate');
+        expect(sendArgs.mode).toBe('immediate');
     });
 
-    it('should not include deliveryMode when it is undefined', async () => {
+    it('should not include mode when deliveryMode is undefined', async () => {
         const sdkModule = wireStreamingService();
 
         await sendStreamingMessage(sdkModule, {});
@@ -150,7 +150,7 @@ describe('CopilotSDKService - Delivery Mode', () => {
         const session = sdkModule.sessions[0].session;
         expect(session.send).toHaveBeenCalledTimes(1);
         const sendArgs = session.send.mock.calls[0][0];
-        expect(sendArgs.deliveryMode).toBeUndefined();
+        expect(sendArgs.mode).toBeUndefined();
     });
 
     // ========================================================================
@@ -232,7 +232,7 @@ describe('CopilotSDKService - Delivery Mode', () => {
         });
 
         const sendArgs = resumedSessionResult.session.send.mock.calls[0][0];
-        expect(sendArgs.deliveryMode).toBe('immediate');
+        expect(sendArgs.mode).toBe('immediate');
 
         resumedSessionResult.dispatchEvent({ type: 'assistant.message', data: { content: 'ok' } });
         resumedSessionResult.dispatchEvent({ type: 'session.idle', data: {} });
@@ -302,6 +302,6 @@ describe('CopilotSDKService - Delivery Mode', () => {
         const sendArgs = session.send.mock.calls[0][0];
         // Only prompt and attachments should be set; deliveryMode should be absent/undefined
         expect(sendArgs).toHaveProperty('prompt', 'test prompt');
-        expect(sendArgs.deliveryMode).toBeUndefined();
+        expect(sendArgs.mode).toBeUndefined();
     });
 });

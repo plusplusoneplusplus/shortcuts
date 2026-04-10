@@ -47,6 +47,8 @@ export interface QueueExecutorBridge {
     requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
+    /** Steer a running process by injecting an immediate message into its SDK session. */
+    steerProcess?(processId: string, message: string): Promise<boolean>;
     /** Update the displayName of a queue task associated with a process. */
     updateTaskDisplayName?(processId: string, displayName: string): boolean;
     /** Subscribe to queue change events (e.g. task completed/failed) for task monitoring. */

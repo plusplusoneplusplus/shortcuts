@@ -21,6 +21,7 @@ export interface MockCopilotSDKService {
     isAvailable: ReturnType<typeof vi.fn>;
     transform: ReturnType<typeof vi.fn>;
     abortSession: ReturnType<typeof vi.fn>;
+    steerSession: ReturnType<typeof vi.fn>;
 }
 
 /** Configuration for SDK service mock behavior */
@@ -43,6 +44,7 @@ export interface MockSDKServiceResult {
     mockIsAvailable: ReturnType<typeof vi.fn>;
     mockTransform: ReturnType<typeof vi.fn>;
     mockAbortSession: ReturnType<typeof vi.fn>;
+    mockSteerSession: ReturnType<typeof vi.fn>;
     /** Reset all mocks to their initial configured state */
     resetAll: () => void;
 }
@@ -73,12 +75,14 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
     const mockIsAvailable = vi.fn().mockResolvedValue(availableResult);
     const mockTransform = vi.fn().mockResolvedValue('Generated Title');
     const mockAbortSession = vi.fn().mockResolvedValue(true);
+    const mockSteerSession = vi.fn().mockResolvedValue(true);
 
     const service: MockCopilotSDKService = {
         sendMessage: mockSendMessage,
         isAvailable: mockIsAvailable,
         transform: mockTransform,
         abortSession: mockAbortSession,
+        steerSession: mockSteerSession,
     };
 
     const resetAll = () => {
@@ -86,6 +90,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockIsAvailable.mockReset().mockResolvedValue(availableResult);
         mockTransform.mockReset().mockResolvedValue('Generated Title');
         mockAbortSession.mockReset().mockResolvedValue(true);
+        mockSteerSession.mockReset().mockResolvedValue(true);
     };
 
     return {
@@ -94,6 +99,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockIsAvailable,
         mockTransform,
         mockAbortSession,
+        mockSteerSession,
         resetAll,
     };
 }
@@ -113,6 +119,7 @@ export function createMockBridge(overrides?: Partial<QueueExecutorBridge>): Queu
         enqueue: overrides?.enqueue ?? vi.fn().mockResolvedValue('mock-task-id'),
         requeueForFollowUp: overrides?.requeueForFollowUp ?? vi.fn().mockResolvedValue(undefined),
         cancelProcess: overrides?.cancelProcess ?? vi.fn().mockResolvedValue(undefined),
+        steerProcess: overrides?.steerProcess ?? vi.fn().mockResolvedValue(true),
     };
 }
 

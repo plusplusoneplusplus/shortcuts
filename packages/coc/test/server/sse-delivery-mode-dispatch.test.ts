@@ -272,4 +272,71 @@ describe('SSE handler — message-queued / message-steering dispatch', () => {
         const mqFrame = frames.find(f => f.event === 'message-queued');
         expect(mqFrame).toBeDefined();
     });
+
+    // -------------------------------------------------------------------------
+    // optimisticId forwarding
+    // -------------------------------------------------------------------------
+
+    it('relays optimisticId in message-queued SSE payload when present', async () => {
+        const proc = createProcessFixture({ id: 'opt-mq', status: 'running' });
+        store.processes.set(proc.id, proc);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req, res, 'opt-mq', store);
+
+        outputCallback!({
+            type: 'message-queued',
+            turnIndex: 1,
+            deliveryMode: 'immediate',
+            queuePosition: 0,
+            optimisticId: 'opt-123',
+        } as ProcessOutputEvent);
+
+        const frames = parseSSEFrames(res._chunks);
+        const mq = frames.find(f => f.event === 'message-queued');
+        expect(mq).toBeDefined();
+        expect((mq!.data as any).optimisticId).toBe('opt-123');
+    });
+
+    it('omits optimisticId from message-queued when not present in event', async () => {
+        const proc = createProcessFixture({ id: 'no-opt-mq', status: 'running' });
+        store.processes.set(proc.id, proc);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req, res, 'no-opt-mq', store);
+
+        outputCallback!({
+            type: 'message-queued',
+            turnIndex: 2,
+            deliveryMode: 'enqueue',
+            queuePosition: 1,
+        } as ProcessOutputEvent);
+
+        const frames = parseSSEFrames(res._chunks);
+        const mq = frames.find(f => f.event === 'message-queued');
+        expect(mq).toBeDefined();
+        expect((mq!.data as any)).not.toHaveProperty('optimisticId');
+    });
+
+    it('relays optimisticId in message-steering SSE payload when present', async () => {
+        const proc = createProcessFixture({ id: 'opt-ms', status: 'running' });
+        store.processes.set(proc.id, proc);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req, res, 'opt-ms', store);
+
+        outputCallback!({
+            type: 'message-steering',
+            turnIndex: 3,
+            optimisticId: 'opt-456',
+        } as ProcessOutputEvent);
+
+        const frames = parseSSEFrames(res._chunks);
+        const ms = frames.find(f => f.event === 'message-steering');
+        expect(ms).toBeDefined();
+        expect((ms!.data as any).optimisticId).toBe('opt-456');
+    });
 });

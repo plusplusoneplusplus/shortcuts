@@ -53,7 +53,7 @@ export interface IStreamableSession {
     send?: (options: {
         prompt: string;
         attachments?: Attachment[];
-        deliveryMode?: DeliveryMode;
+        mode?: DeliveryMode;
     }) => Promise<string | void>;
     destroy(): Promise<void>;
 }
@@ -256,7 +256,7 @@ export class StreamingSession {
             );
         }
 
-        this.session.send!({ prompt, attachments, deliveryMode }).catch(error => {
+        this.session.send!({ prompt, attachments, mode: deliveryMode }).catch(error => {
             this.settleError(error instanceof Error ? error : new Error(String(error)));
         });
     }
