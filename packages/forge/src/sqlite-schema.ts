@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * Read the current schema version from the database.
@@ -17,11 +17,16 @@ export function getSchemaVersion(db: Database.Database): number {
  * Run all PRAGMAs, CREATE TABLE, and CREATE INDEX statements inside a
  * transaction.  Every statement uses IF NOT EXISTS so the function is
  * idempotent — safe to call on an already-initialised database.
+ *
+ * For existing databases, incremental migrations are applied after the
+ * idempotent schema creation, then the version is stamped.
  */
 export function initializeDatabase(db: Database.Database): void {
     // PRAGMAs must run outside the transaction
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
+
+    const versionBefore = getSchemaVersion(db);
 
     const migrate = db.transaction(() => {
         // ── processes ────────────────────────────────────────────────
@@ -52,7 +57,8 @@ export function initializeDatabase(db: Database.Database): void {
                 cumulative_token_usage TEXT,
                 stale                 INTEGER DEFAULT 0,
                 data_file_path        TEXT,
-                archived              INTEGER DEFAULT 0
+                archived              INTEGER DEFAULT 0,
+                seen_at               TEXT
             )
         `);
 
@@ -203,9 +209,24 @@ export function initializeDatabase(db: Database.Database): void {
                 ON schedule_runs(status);
         `);
 
+        // ── incremental migrations for existing databases ───────────
+        if (versionBefore >= 1 && versionBefore < 2) {
+            migrateV1toV2(db);
+        }
+
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
     });
 
     migrate();
+}
+
+/**
+ * V1 → V2: add `seen_at TEXT` column to `processes`.
+ */
+function migrateV1toV2(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'seen_at')) {
+        db.exec('ALTER TABLE processes ADD COLUMN seen_at TEXT');
+    }
 }

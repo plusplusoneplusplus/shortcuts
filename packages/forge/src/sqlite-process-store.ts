@@ -80,6 +80,7 @@ interface ProcessRow {
     stale: number;
     data_file_path: string | null;
     archived: number;
+    seen_at: string | null;
 }
 
 interface TurnRow {
@@ -1124,6 +1125,66 @@ export class SqliteProcessStore implements ProcessStore {
     async requestFlush(id: string): Promise<void> {
         const handler = this.flushHandlers.get(id);
         if (handler) { await handler(); }
+    }
+
+    // ========================================================================
+    // Seen state (read/unread tracking)
+    // ========================================================================
+
+    /**
+     * Get the seen map for a workspace: processId → seenAt timestamp.
+     */
+    getSeenMap(workspaceId: string): Record<string, string> {
+        const rows = this.db.prepare(
+            'SELECT id, seen_at FROM processes WHERE workspace_id = ? AND seen_at IS NOT NULL'
+        ).all(workspaceId) as Array<{ id: string; seen_at: string }>;
+        const map: Record<string, string> = {};
+        for (const row of rows) {
+            map[row.id] = row.seen_at;
+        }
+        return map;
+    }
+
+    /**
+     * Mark a single process as seen.
+     */
+    markSeen(processId: string, seenAt: string): void {
+        this.db.prepare('UPDATE processes SET seen_at = ? WHERE id = ?').run(seenAt, processId);
+    }
+
+    /**
+     * Batch-mark multiple processes as seen within a single transaction.
+     */
+    markManySeen(entries: Array<{ processId: string; seenAt: string }>): void {
+        const stmt = this.db.prepare('UPDATE processes SET seen_at = ? WHERE id = ?');
+        const batch = this.db.transaction((items: Array<{ processId: string; seenAt: string }>) => {
+            for (const { processId, seenAt } of items) {
+                stmt.run(seenAt, processId);
+            }
+        });
+        batch(entries);
+    }
+
+    /**
+     * Mark a process as unseen (set seen_at to NULL).
+     */
+    markUnseen(processId: string): void {
+        this.db.prepare('UPDATE processes SET seen_at = NULL WHERE id = ?').run(processId);
+    }
+
+    /**
+     * Count unseen completed/failed processes for a workspace.
+     * A process is "unseen" when seen_at IS NULL or seen_at != end_time.
+     */
+    getUnseenCount(workspaceId: string): number {
+        const row = this.db.prepare(
+            `SELECT COUNT(*) as cnt FROM processes
+             WHERE workspace_id = ?
+               AND status IN ('completed', 'failed')
+               AND end_time IS NOT NULL
+               AND (seen_at IS NULL OR seen_at != end_time)`
+        ).get(workspaceId) as { cnt: number };
+        return row.cnt;
     }
 
     // ========================================================================
