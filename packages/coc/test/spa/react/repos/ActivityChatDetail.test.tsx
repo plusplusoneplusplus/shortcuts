@@ -1303,4 +1303,94 @@ describe('ActivityChatDetail', () => {
             });
         });
     });
+
+    // ── processId-based loading (post history refactor) ────────────────────
+
+    describe('processId-based loading', () => {
+        it('skips /queue/ fetch when taskId is a processId', async () => {
+            const proc = makeProcess({ id: 'queue_abc', title: 'My Chat' });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_abc': { body: { process: proc, conversation: proc } },
+                '/models': { body: [] },
+            });
+
+            render(<Wrap><ActivityChatDetail taskId="queue_abc" /></Wrap>);
+
+            await waitFor(() => {
+                const queueCalls = fetchMock.mock.calls.filter(
+                    ([url]: [string]) => typeof url === 'string' && url.includes('/queue/queue_abc'),
+                );
+                expect(queueCalls).toHaveLength(0);
+            });
+
+            // Should have fetched /processes/queue_abc directly
+            await waitFor(() => {
+                const processCalls = fetchMock.mock.calls.filter(
+                    ([url]: [string]) => typeof url === 'string' && url.includes('/processes/queue_abc'),
+                );
+                expect(processCalls.length).toBeGreaterThanOrEqual(1);
+            });
+        });
+
+        it('uses /queue/ fetch for raw (non-processId) taskId', async () => {
+            setupStandardFetch();
+            render(<Wrap><ActivityChatDetail taskId="raw-task-id" /></Wrap>);
+
+            await waitFor(() => {
+                const queueCalls = fetchMock.mock.calls.filter(
+                    ([url]: [string]) => typeof url === 'string' && url.includes('/queue/raw-task-id'),
+                );
+                expect(queueCalls.length).toBeGreaterThanOrEqual(1);
+            });
+        });
+
+        it('resolves processId correctly when taskId is already a processId', async () => {
+            const proc = makeProcess({
+                id: 'queue_abc',
+                title: 'My Chat',
+                conversationTurns: [
+                    { role: 'user', content: 'Hello', turnIndex: 0, timeline: [] },
+                ],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_abc': { body: { process: proc, conversation: proc } },
+                '/models': { body: [] },
+            });
+
+            render(<Wrap><ActivityChatDetail taskId="queue_abc" /></Wrap>);
+
+            // Should NOT produce a double-prefixed /processes/queue_queue_abc call
+            await waitFor(() => {
+                const badCalls = fetchMock.mock.calls.filter(
+                    ([url]: [string]) => typeof url === 'string' && url.includes('queue_queue_'),
+                );
+                expect(badCalls).toHaveLength(0);
+            });
+        });
+
+        it('loads conversation turns from process data for processId taskId', async () => {
+            const proc = makeProcess({
+                id: 'queue_abc',
+                title: 'History Chat',
+                conversationTurns: [
+                    { role: 'user', content: 'First message', turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'Bot reply', turnIndex: 1, timeline: [] },
+                ],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_abc': { body: { process: proc, conversation: proc } },
+                '/models': { body: [] },
+            });
+
+            render(<Wrap><ActivityChatDetail taskId="queue_abc" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByText('First message')).toBeTruthy();
+                expect(screen.getByText('Bot reply')).toBeTruthy();
+            });
+        });
+    });
 });

@@ -18,6 +18,8 @@ import { ActivityDetailPane } from './ActivityDetailPane';
 import { useUnseenActivity } from '../hooks/useUnseenActivity';
 import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 import { useNotifications } from '../context/NotificationContext';
+import type { ProcessHistoryItem } from '../../../../shared/process-history-item';
+import { isQueueProcessId } from '../utils/queue-process-id';
 
 export interface RepoActivityTabProps {
     workspaceId: string;
@@ -26,7 +28,7 @@ export interface RepoActivityTabProps {
 export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
-    const [history, setHistory] = useState<any[]>([]);
+    const [history, setHistory] = useState<ProcessHistoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
@@ -54,6 +56,13 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [selectedTask, setSelectedTask] = useState<any>(null);
     const selectedTaskRef = useRef<any>(null);
 
+    const fetchHistory = useCallback(async () => {
+        const data = await fetchApi(
+            `/api/workspaces/${encodeURIComponent(workspaceId)}/history`
+        ).catch(() => null);
+        setHistory((data?.history as ProcessHistoryItem[]) || []);
+    }, [workspaceId]);
+
     const fetchQueue = useCallback(async () => {
         try {
             const data = await fetchApi('/queue?repoId=' + encodeURIComponent(workspaceId));
@@ -65,9 +74,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             setIsPaused(!!nextStats?.isPaused);
             setPauseReason(nextStats?.pauseReason);
             setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
-            const historyData = await fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId)).catch(() => null);
-            const nextHistory = historyData?.history || [];
-            setHistory(nextHistory);
+            await fetchHistory();
 
             queueDispatch({
                 type: 'REPO_QUEUE_UPDATED',
@@ -80,7 +87,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             setHistory([]);
         }
         setLoading(false);
-    }, [workspaceId, queueDispatch]);
+    }, [workspaceId, queueDispatch, fetchHistory]);
 
     useEffect(() => {
         setLoading(true);
@@ -104,11 +111,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         prevRunningIdsRef.current = currIds;
 
         if (hasDeparture) {
-            fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId))
-                .then((data: any) => {
-                    if (data?.history) setHistory(data.history);
-                })
-                .catch(() => {});
+            fetchHistory();
         }
 
         if (repoQueue?.stats?.isPaused !== undefined) {
@@ -130,10 +133,16 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         if (allTasks.find(t => t.id === selectedTaskId)) return;
 
         let cancelled = false;
-        fetchApi(`/queue/${encodeURIComponent(selectedTaskId)}`)
+        const probeUrl = isQueueProcessId(selectedTaskId)
+            ? `/processes/${encodeURIComponent(selectedTaskId)}`
+            : `/queue/${encodeURIComponent(selectedTaskId)}`;
+        fetchApi(probeUrl)
             .then((data: any) => {
                 if (cancelled) return;
-                if (!data?.task) throw new Error('not found');
+                const found = isQueueProcessId(selectedTaskId)
+                    ? !!data?.process
+                    : !!data?.task;
+                if (!found) throw new Error('not found');
             })
             .catch(() => {
                 if (cancelled) return;

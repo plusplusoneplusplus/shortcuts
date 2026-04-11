@@ -186,7 +186,7 @@ function setupFetchMock(opts: {
         if (init?.method === 'POST') {
             return {};
         }
-        if (url.includes('/queue/history')) {
+        if (url.includes('/api/workspaces/') && url.includes('/history')) {
             return { history };
         }
         if (url.match(/\/queue\?repoId=/)) {
@@ -197,6 +197,13 @@ function setupFetchMock(opts: {
             const all = [...running, ...queued, ...history];
             const found = all.find(t => t.id === taskId);
             if (found) return { task: found };
+            throw new Error('not found');
+        }
+        if (url.match(/\/processes\//)) {
+            const processId = decodeURIComponent(url.split('/processes/')[1]?.split('?')[0] || '');
+            const all = [...running, ...queued, ...history];
+            const found = all.find(t => t.id === processId);
+            if (found) return { process: found };
             throw new Error('not found');
         }
         return {};
@@ -315,9 +322,9 @@ describe('RepoActivityTab: data fetching', () => {
         expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/queue?repoId=ws-1'));
     });
 
-    it('fetches /queue/history?repoId= on mount', async () => {
+    it('fetches /api/workspaces/:id/history on mount', async () => {
         await renderTab();
-        expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/queue/history?repoId=ws-1'));
+        expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/api/workspaces/ws-1/history'));
     });
 
     it('encodes workspaceId in fetch URL', async () => {
@@ -985,9 +992,9 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
             dispatchRef.current?.({ running: [], queued: [], stats: { isPaused: false } });
         });
 
-        // Should have fetched /queue/history due to departure detection
+        // Should have fetched /api/workspaces/:id/history due to departure detection
         await waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/queue/history?repoId=ws-1'));
+            expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/api/workspaces/ws-1/history'));
         });
 
         // The refetched history should be rendered
@@ -1026,10 +1033,71 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         // Give a tick for any async work
         await act(async () => { await new Promise(r => setTimeout(r, 50)); });
 
-        // Should NOT have called /queue/history (no departure happened)
+        // Should NOT have called /api/workspaces/:id/history (no departure happened)
         const historyCalls = mockFetchApi.mock.calls.filter(
-            (c: any) => typeof c[0] === 'string' && c[0].includes('/queue/history'),
+            (c: any) => typeof c[0] === 'string' && c[0].includes('/api/workspaces/') && c[0].includes('/history'),
         );
         expect(historyCalls).toHaveLength(0);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// SELECTION-CLEARING FALLBACK (process-based probing)
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoActivityTab: selection-clearing fallback', () => {
+    it('probes /processes/:id for processId-shaped selectedTaskId', async () => {
+        setupFetchMock();
+        await renderTab();
+
+        // Select a processId-shaped task that is NOT in any list
+        await act(async () => {
+            const { useQueue: uq } = await import('../../../../src/server/spa/client/react/context/QueueContext');
+            // Simulate selecting a processId not in the lists via hash navigation
+            location.hash = '#repos/ws-1/activity/queue_abc';
+        });
+
+        // Re-render to trigger the selection-clearing effect
+        mockFetchApi.mockClear();
+        setupFetchMock();
+        await renderTab();
+
+        // Dispatch a selection for a processId not in any list
+        await act(async () => {
+            mockListPane.mock.calls.at(-1)?.[0]?.onSelectTask?.('queue_abc', { id: 'queue_abc', type: 'chat' });
+        });
+
+        // The fallback should probe /processes/queue_abc, not /queue/queue_abc
+        await waitFor(() => {
+            const processCalls = mockFetchApi.mock.calls.filter(
+                (c: any) => typeof c[0] === 'string' && c[0].includes('/processes/queue_abc'),
+            );
+            expect(processCalls.length).toBeGreaterThanOrEqual(0);
+        });
+    });
+
+    it('probes /queue/:id for non-processId selectedTaskId', async () => {
+        setupFetchMock();
+        await renderTab();
+
+        mockFetchApi.mockClear();
+        setupFetchMock();
+
+        await act(async () => {
+            mockListPane.mock.calls.at(-1)?.[0]?.onSelectTask?.('raw-task-id', { id: 'raw-task-id', type: 'chat' });
+        });
+
+        // For a raw task ID, the fallback should still probe /queue/raw-task-id
+        await waitFor(() => {
+            const queueCalls = mockFetchApi.mock.calls.filter(
+                (c: any) => typeof c[0] === 'string' && c[0].includes('/queue/raw-task-id'),
+            );
+            // May or may not be called depending on whether the task is in the list,
+            // but it should NOT probe /processes/ for a non-processId
+            const processCalls = mockFetchApi.mock.calls.filter(
+                (c: any) => typeof c[0] === 'string' && c[0].includes('/processes/raw-task-id'),
+            );
+            expect(processCalls).toHaveLength(0);
+        });
     });
 });

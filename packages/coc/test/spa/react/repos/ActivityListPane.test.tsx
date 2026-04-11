@@ -22,6 +22,9 @@ import { renderWithProviders } from '../test-utils';
 import {
     ActivityListPane,
     taskMatchesFilter,
+    taskMatchesSearch,
+    getTaskTypeIcon,
+    getTaskPromptPreview,
 } from '../../../../src/server/spa/client/react/repos/ActivityListPane';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -1213,12 +1216,12 @@ describe('ActivityListPane', () => {
         });
 
         it('DELETE called when confirmed', async () => {
-            renderPane({ history: [makeHistoryTask()], onMarkUnread: vi.fn() });
+            renderPane({ history: [makeHistoryTask()], onMarkUnread: vi.fn(), workspaceId: 'ws-1' });
             fireEvent.contextMenu(document.querySelector('[data-task-id="h-1"]')!);
             fireEvent.click(screen.getByText(/Delete 1 chats/));
             await waitFor(() => {
                 expect(globalThis.fetch).toHaveBeenCalledWith(
-                    expect.stringContaining('/queue/history/'),
+                    expect.stringContaining('/api/workspaces/ws-1/history/'),
                     expect.objectContaining({ method: 'DELETE' }),
                 );
             });
@@ -1259,11 +1262,66 @@ describe('ActivityListPane', () => {
             expect(screen.queryByText(/Use the deploy skill/)).toBeNull();
         });
     });
-});
 
-// ════════════════════════════════════════════════════════════════════════
-// taskMatchesFilter unit tests (pure function — no rendering)
-// ════════════════════════════════════════════════════════════════════════
+    // ── History card rendering — ProcessHistoryItem fields ──────────────
+
+    describe('History card: endTime fallback', () => {
+        it('renders timestamp from endTime when completedAt is absent', () => {
+            const task = makeHistoryTask({
+                completedAt: undefined,
+                endTime: new Date('2026-01-15T10:00:00Z').getTime(),
+            });
+            renderPane({ history: [task] });
+            // The formatRelativeTime call should produce a timestamp string
+            const card = document.querySelector('[data-task-id="h-1"]')!;
+            expect(card).toBeTruthy();
+            // Should contain tabular-nums span with text (not empty)
+            const timestampEl = card.querySelector('.tabular-nums');
+            expect(timestampEl?.textContent).not.toBe('');
+        });
+
+        it('renders empty timestamp when both completedAt and endTime are absent', () => {
+            const task = makeHistoryTask({
+                completedAt: undefined,
+                endTime: undefined,
+            });
+            renderPane({ history: [task] });
+            const card = document.querySelector('[data-task-id="h-1"]')!;
+            const timestampEl = card.querySelector('.tabular-nums');
+            expect(timestampEl?.textContent).toBe('');
+        });
+    });
+
+    describe('History card: title fallback', () => {
+        it('renders title field when displayName is absent', () => {
+            const task = makeHistoryTask({
+                displayName: undefined,
+                title: 'My Chat Title',
+            });
+            renderPane({ history: [task] });
+            expect(screen.getByText('My Chat Title')).toBeTruthy();
+        });
+
+        it('prefers displayName over title', () => {
+            const task = makeHistoryTask({
+                displayName: 'Display Name',
+                title: 'Title Name',
+            });
+            renderPane({ history: [task] });
+            expect(screen.getByText('Display Name')).toBeTruthy();
+            expect(screen.queryByText('Title Name')).toBeNull();
+        });
+
+        it('falls back to type when both displayName and title are absent', () => {
+            const task = makeHistoryTask({
+                displayName: undefined,
+                title: undefined,
+            });
+            renderPane({ history: [task] });
+            expect(screen.getByText('chat')).toBeTruthy();
+        });
+    });
+});
 
 describe('taskMatchesFilter: exclusion logic', () => {
     it('returns true when excludedTypes is empty', () => {
@@ -1312,5 +1370,108 @@ describe('taskMatchesFilter: exclusion logic', () => {
 
     it('handles unknown type without exclusion', () => {
         expect(taskMatchesFilter({ type: 'custom', payload: {} }, new Set(['chat']))).toBe(true);
+    });
+
+    // ── Flat mode field (ProcessHistoryItem shape) ──
+
+    it('excludes by flat mode field when payload.mode is absent', () => {
+        expect(taskMatchesFilter({ type: 'chat', mode: 'ask' }, new Set(['ask']))).toBe(false);
+    });
+
+    it('includes by flat mode field when not excluded', () => {
+        expect(taskMatchesFilter({ type: 'chat', mode: 'ask' }, new Set(['plan']))).toBe(true);
+    });
+
+    it('prefers payload.mode over flat mode', () => {
+        expect(taskMatchesFilter({ type: 'chat', mode: 'plan', payload: { mode: 'ask' } }, new Set(['ask']))).toBe(false);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// taskMatchesSearch: promptPreview support
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('taskMatchesSearch: promptPreview support', () => {
+    it('matches by promptPreview field', () => {
+        expect(taskMatchesSearch({ promptPreview: 'hello world' }, 'hello')).toBe(true);
+    });
+
+    it('does not match when promptPreview does not contain query', () => {
+        expect(taskMatchesSearch({ promptPreview: 'hello world' }, 'goodbye')).toBe(false);
+    });
+
+    it('prefers prompt over promptPreview', () => {
+        expect(taskMatchesSearch({ prompt: 'first', promptPreview: 'second' }, 'first')).toBe(true);
+    });
+
+    it('falls back to promptPreview when prompt is absent', () => {
+        expect(taskMatchesSearch({ promptPreview: 'fallback text' }, 'fallback')).toBe(true);
+    });
+
+    it('returns true for empty query', () => {
+        expect(taskMatchesSearch({ promptPreview: 'anything' }, '')).toBe(true);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// getTaskTypeIcon: flat mode and scheduleId
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('getTaskTypeIcon: flat mode and scheduleId', () => {
+    it('returns 💡 for chat with flat mode=ask', () => {
+        expect(getTaskTypeIcon({ type: 'chat', mode: 'ask' })).toBe('💡');
+    });
+
+    it('returns 📋 for chat with flat mode=plan', () => {
+        expect(getTaskTypeIcon({ type: 'chat', mode: 'plan' })).toBe('📋');
+    });
+
+    it('returns 🤖 for chat with no mode', () => {
+        expect(getTaskTypeIcon({ type: 'chat' })).toBe('🤖');
+    });
+
+    it('returns 📅 for flat scheduleId', () => {
+        expect(getTaskTypeIcon({ type: 'chat', scheduleId: 's1' })).toBe('📅');
+    });
+
+    it('returns 📅 for payload.scheduleId', () => {
+        expect(getTaskTypeIcon({ type: 'chat', payload: { scheduleId: 's1' } })).toBe('📅');
+    });
+
+    it('prefers payload.mode over flat mode', () => {
+        expect(getTaskTypeIcon({ type: 'chat', mode: 'ask', payload: { mode: 'plan' } })).toBe('📋');
+    });
+
+    it('returns ▶️ for run-workflow', () => {
+        expect(getTaskTypeIcon({ type: 'run-workflow' })).toBe('▶️');
+    });
+
+    it('returns 🛠️ for run-script', () => {
+        expect(getTaskTypeIcon({ type: 'run-script' })).toBe('🛠️');
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// getTaskPromptPreview: promptPreview field
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('getTaskPromptPreview: promptPreview field', () => {
+    it('uses promptPreview when prompt is absent', () => {
+        expect(getTaskPromptPreview({ promptPreview: 'short text' })).toBe('short text');
+    });
+
+    it('truncates long promptPreview', () => {
+        const longText = 'a'.repeat(100);
+        const result = getTaskPromptPreview({ promptPreview: longText });
+        expect(result.length).toBeLessThanOrEqual(60);
+        expect(result).toContain('…');
+    });
+
+    it('prefers prompt over promptPreview', () => {
+        expect(getTaskPromptPreview({ prompt: 'direct', promptPreview: 'preview' })).toBe('direct');
+    });
+
+    it('returns empty for skill invocation prompt', () => {
+        expect(getTaskPromptPreview({ promptPreview: 'Use the impl skill.' })).toBe('');
     });
 });

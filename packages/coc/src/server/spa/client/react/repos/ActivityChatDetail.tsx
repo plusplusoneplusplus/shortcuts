@@ -20,7 +20,7 @@ import { useSlashCommands } from './useSlashCommands';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles } from '../utils/conversationScan';
-import { toQueueProcessId } from '../utils/queue-process-id';
+import { toQueueProcessId, isQueueProcessId } from '../utils/queue-process-id';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { getDraft, setDraft, pruneExpired } from '../hooks/useDraftStore';
 import { buildMetadataProcess } from '../utils/chatUtils';
@@ -118,7 +118,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     followUpInputRef.current = followUpInput;
     selectedModeRef.current = selectedMode;
 
-    const processId = task?.processId ?? (taskId ? toQueueProcessId(taskId) : null);
+    const processId = task?.processId ?? (taskId
+        ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
+        : null);
     const isPending = task?.status === 'queued';
     const isTerminal = task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
     const inputDisabled = loading || isPending || task?.status === 'cancelled' || task?.status === 'cancelling' || sessionExpired;
@@ -317,6 +319,33 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
         (async () => {
             try {
+                // If taskId is already a processId (history item), skip queue fetch
+                if (isQueueProcessId(taskId)) {
+                    const pid = taskId;
+                    const processData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+                    if (loadCounterRef.current !== loadId) return;
+                    const loadedProcess = processData?.process ?? null;
+                    setTask(loadedProcess ? {
+                        id: taskId,
+                        processId: pid,
+                        status: loadedProcess.status,
+                        type: loadedProcess.type ?? 'chat',
+                        payload: loadedProcess.payload ?? {},
+                        metadata: loadedProcess.metadata ?? {},
+                        displayName: loadedProcess.title,
+                    } : null);
+                    const processMode = loadedProcess?.metadata?.mode;
+                    if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
+                        setSelectedMode(processMode);
+                    }
+                    const turns = getConversationTurns(processData);
+                    setTurnsAndRef(turns);
+                    setProcessDetails(loadedProcess);
+                    setLoading(false);
+                    return;
+                }
+
+                // Existing path for running/queued tasks (taskId is a raw queue task id)
                 const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
                 if (loadCounterRef.current !== loadId) return;
                 const loadedTask = queueData?.task ?? null;
@@ -333,7 +362,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     return;
                 }
 
-                const pid = loadedTask?.processId ?? toQueueProcessId(taskId);
+                const pid = loadedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
 
                 // Check shared conversation cache
                 const cached = appState.conversationCache[taskId];
@@ -436,7 +465,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
                 const refreshedTask = queueData?.task ?? null;
 
-                const pid = refreshedTask?.processId ?? toQueueProcessId(taskId);
+                const pid = refreshedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
                 if (!refreshedTask?.processId && refreshedTask?.status === 'queued') {
                     setTask(refreshedTask);
                     return;

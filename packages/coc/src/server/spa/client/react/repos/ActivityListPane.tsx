@@ -11,7 +11,7 @@ import { Card, Button, cn, FilterDropdown } from '../shared';
 import type { FilterItem } from '../shared';
 import { getApiBase } from '../utils/config';
 import { copyToClipboard, formatDuration, formatRelativeTime } from '../utils/format';
-import { toQueueProcessId } from '../utils/queue-process-id';
+import { ensureQueueProcessId } from '../utils/queue-process-id';
 import { buildRows } from '../processes/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
@@ -46,7 +46,7 @@ export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolea
     // Parent 'chat' exclusion hides all chat tasks (including those with modes)
     if (task.type === 'chat') {
         if (excludedTypes.has('chat')) return false;
-        const mode = task.payload?.mode as string | undefined;
+        const mode = (task.payload?.mode ?? task.mode) as string | undefined;
         if (mode) return !excludedTypes.has(mode);
         return true;
     }
@@ -57,7 +57,7 @@ export function taskMatchesSearch(task: any, query: string): boolean {
     if (!query) return true;
     const q = query.toLowerCase();
     const title = (task.displayName || task.title || '').toLowerCase();
-    const prompt = (task.prompt || task.payload?.promptContent || task.payload?.prompt || '').toLowerCase();
+    const prompt = (task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '').toLowerCase();
     return title.includes(q) || prompt.includes(q);
 }
 
@@ -65,10 +65,11 @@ export function taskMatchesSearch(task: any, query: string): boolean {
 export function getTaskTypeIcon(task: any): string {
     const type = task.type as string;
     const payload = task.payload || {};
-    if (payload.scheduleId) return '📅';
+    const mode = payload.mode ?? task.mode;
+    if (payload.scheduleId || task.scheduleId) return '📅';
     if (type === 'chat') {
-        if (payload.mode === 'ask') return '💡';
-        if (payload.mode === 'plan') return '📋';
+        if (mode === 'ask') return '💡';
+        if (mode === 'plan') return '📋';
         return '🤖';
     }
     if (type === 'run-workflow') return '▶️';
@@ -78,7 +79,7 @@ export function getTaskTypeIcon(task: any): string {
 
 /** Extract a short preview of the user prompt from the task payload. */
 export function getTaskPromptPreview(task: any): string {
-    const text = task.prompt || task.payload?.promptContent || task.payload?.prompt || '';
+    const text = task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '';
     if (!text || /^Use the \S+ skill\.$/.test(text)) return '';
     return text.length > 60 ? text.substring(0, 57) + '…' : text;
 }
@@ -213,7 +214,7 @@ export function ActivityListPane({
             if (!types.has(type)) continue;
             if (type === 'chat') {
                 const chatTasks = allTasks.filter((t: any) => t.type === 'chat');
-                const modes = new Set(chatTasks.map((t: any) => t.payload?.mode as string).filter(Boolean));
+                const modes = new Set(chatTasks.map((t: any) => (t.payload?.mode ?? t.mode) as string).filter(Boolean));
                 const children = Object.entries(CHAT_MODE_LABELS)
                     .filter(([mode]) => modes.has(mode))
                     .map(([mode, modeLabel]) => ({ value: mode, label: modeLabel }));
@@ -283,7 +284,10 @@ export function ActivityListPane({
     };
 
     const deleteChatDirect = async (taskId: string) => {
-        const res = await fetch(getApiBase() + '/queue/history/' + encodeURIComponent(taskId), { method: 'DELETE' });
+        const url = workspaceId
+            ? getApiBase() + '/api/workspaces/' + encodeURIComponent(workspaceId) + '/history/' + encodeURIComponent(taskId)
+            : getApiBase() + '/queue/history/' + encodeURIComponent(taskId);
+        const res = await fetch(url, { method: 'DELETE' });
         if (res.ok) {
             fetchQueue();
         }
@@ -476,7 +480,7 @@ export function ActivityListPane({
 
     const handleRenameConfirm = useCallback(async (newTitle: string) => {
         if (!renameTarget) return;
-        const processId = toQueueProcessId(renameTarget.taskId);
+        const processId = ensureQueueProcessId(renameTarget.taskId);
         setRenameTarget(null);
         try {
             await fetchApi(`/processes/${encodeURIComponent(processId)}`, {
@@ -535,7 +539,7 @@ export function ActivityListPane({
                 ...(ids.length === 1 ? [{
                     label: 'Rename', icon: '✏️', onClick: () => {
                         const task = history.find(t => t.id === ids[0]);
-                        setRenameTarget({ taskId: ids[0], title: task?.displayName || task?.type || '' });
+                        setRenameTarget({ taskId: ids[0], title: task?.displayName || task?.title || task?.type || '' });
                         closeContextMenu();
                     },
                 }] : []),
@@ -575,7 +579,7 @@ export function ActivityListPane({
                 ...(isUnseen && onMarkRead ? [{ label: 'Mark as Read', icon: '✓', onClick: () => onMarkRead(taskId) }] : []),
                 ...(!isUnseen && onMarkUnread ? [{ label: 'Mark as Unread', icon: '●', onClick: () => onMarkUnread(taskId) }] : []),
                 { label: 'Rename', icon: '✏️', onClick: () => {
-                    setRenameTarget({ taskId, title: task?.displayName || task?.type || '' });
+                    setRenameTarget({ taskId, title: task?.displayName || task?.title || task?.type || '' });
                     closeContextMenu();
                 }},
                 ...(isArchived && onUnarchiveChat ? [{ label: 'Unarchive', icon: '📤', onClick: () => onUnarchiveChat(taskId) }] : []),
@@ -949,13 +953,13 @@ export function ActivityListPane({
                                                     <span className="shrink-0">
                                                         {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                                     </span>
-                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
-                                                        {task.displayName || task.type || 'Task'}
+                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.title || task.type || 'Task'}>
+                                                        {task.displayName || task.title || task.type || 'Task'}
                                                     </span>
                                                     {hasPinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                                                 </span>
                                                 <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
-                                                    {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                    {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
                                                 </span>
                                             </div>
                                             {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
@@ -1039,13 +1043,13 @@ export function ActivityListPane({
                                                     <span className="shrink-0">
                                                         {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                                     </span>
-                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
-                                                        {task.displayName || task.type || 'Task'}
+                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.title || task.type || 'Task'}>
+                                                        {task.displayName || task.title || task.type || 'Task'}
                                                     </span>
                                                     {hasUnpinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                                                 </span>
                                                 <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
-                                                    {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                    {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
                                                 </span>
                                             </div>
                                             {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
@@ -1116,12 +1120,12 @@ export function ActivityListPane({
                                                 <span className="shrink-0">
                                                     {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                                 </span>
-                                                <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
-                                                    {task.displayName || task.type || 'Task'}
+                                                <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.title || task.type || 'Task'}>
+                                                    {task.displayName || task.title || task.type || 'Task'}
                                                 </span>
                                             </span>
                                             <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
-                                                {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
                                             </span>
                                         </div>
                                         {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
