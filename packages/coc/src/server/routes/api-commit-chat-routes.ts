@@ -15,8 +15,8 @@ import { CommitChatBindingStore } from '../commit-chat-binding-store';
 const COMMIT_HASH_RE = /^[a-f0-9]{4,40}$/;
 
 export function registerCommitChatRoutes(ctx: ApiRouteContext): void {
-    const { routes, store, dataDir } = ctx;
-    const bindingStore = new CommitChatBindingStore(dataDir ?? '');
+    const { routes, store, db } = ctx;
+    const bindingStore = new CommitChatBindingStore(db!);
 
     // POST /api/workspaces/:id/commit-chat-bindings/rebind — Re-map binding
     // Registered before /:hash routes as a defensive measure.

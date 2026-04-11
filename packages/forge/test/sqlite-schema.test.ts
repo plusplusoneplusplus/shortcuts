@@ -16,7 +16,7 @@ describe('sqlite-schema', () => {
         db.close();
     });
 
-    it('creates all 6 tables', () => {
+    it('creates all 7 tables', () => {
         initializeDatabase(db);
 
         const tables = db
@@ -30,6 +30,7 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('wikis');
         expect(tables).toContain('queue_tasks');
         expect(tables).toContain('queue_repo_state');
+        expect(tables).toContain('commit_chat_bindings');
     });
 
     it('creates all expected indexes', () => {
@@ -55,6 +56,7 @@ describe('sqlite-schema', () => {
             'idx_schedule_runs_schedule_id',
             'idx_schedule_runs_repo_id',
             'idx_schedule_runs_status',
+            'idx_commit_chat_bindings_workspace',
         ];
 
         for (const name of expected) {
@@ -89,7 +91,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(2);
+        expect(SCHEMA_VERSION).toBe(3);
     });
 
     it('is idempotent — calling initializeDatabase twice does not throw', () => {
@@ -224,8 +226,8 @@ describe('sqlite-schema', () => {
             // Run initialization (should migrate V1 → V2)
             initializeDatabase(db);
 
-            // Version should be 2
-            expect(getSchemaVersion(db)).toBe(2);
+            // Version should be current
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
 
             // seen_at column should exist
             const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
@@ -240,11 +242,11 @@ describe('sqlite-schema', () => {
 
         it('migration is idempotent on a V2 database', () => {
             initializeDatabase(db);
-            expect(getSchemaVersion(db)).toBe(2);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
 
             // Run again — should not throw
             expect(() => initializeDatabase(db)).not.toThrow();
-            expect(getSchemaVersion(db)).toBe(2);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
         });
     });
 });

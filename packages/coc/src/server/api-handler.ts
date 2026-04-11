@@ -17,7 +17,8 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType } from '@plusplusoneplusplus/forge';
-import { GitOpsStore } from '@plusplusoneplusplus/forge';
+import { GitOpsStore, SqliteProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
+import Database from 'better-sqlite3';
 import type { Attachment, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { Route } from './types';
 import { registerSkillRoutes } from './skill-handler';
@@ -197,7 +198,7 @@ export function stripExcludedFields(process: any, exclude?: string[]): any {
  * Register all API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge, dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined): void {
+export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge, dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined, db?: Database.Database): void {
     // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).
     const MUTATION_METHODS = new Set(['POST', 'PATCH', 'DELETE']);
     const _origPush = routes.push.bind(routes);
@@ -231,7 +232,17 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         const gitOpsStore = new GitOpsStore({ dataDir: dataDir ?? undefined });
         gitOpsStore.markStaleRunningJobs().catch(() => {});
 
-        const ctx: ApiRouteContext = { routes, store, bridge, dataDir, getWsServer, gitOpsStore };
+        let resolvedDb: Database.Database;
+        if (db) {
+            resolvedDb = db;
+        } else if (store instanceof SqliteProcessStore) {
+            resolvedDb = store.getDatabase();
+        } else {
+            resolvedDb = new Database(':memory:');
+            initializeDatabase(resolvedDb);
+        }
+
+        const ctx: ApiRouteContext = { routes, store, bridge, dataDir, getWsServer, gitOpsStore, db: resolvedDb };
 
         registerApiWorkspaceRoutes(ctx);
         registerApiGitRoutes(ctx);

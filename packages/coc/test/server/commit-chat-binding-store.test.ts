@@ -1,20 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import { describe, it, expect, beforeEach } from 'vitest';
+import Database from 'better-sqlite3';
+import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { CommitChatBindingStore } from '../../src/server/commit-chat-binding-store';
 
 describe('CommitChatBindingStore', () => {
-    let dataDir: string;
+    let db: Database.Database;
     let store: CommitChatBindingStore;
 
     beforeEach(() => {
-        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-chat-binding-test-'));
-        store = new CommitChatBindingStore(dataDir);
-    });
-
-    afterEach(() => {
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        db = new Database(':memory:');
+        initializeDatabase(db);
+        store = new CommitChatBindingStore(db);
     });
 
     it('load returns empty object when file does not exist', () => {
@@ -93,9 +89,7 @@ describe('CommitChatBindingStore', () => {
     });
 
     it('load returns empty object on corrupt JSON file', () => {
-        const filePath = path.join(dataDir, 'repos', 'ws1', 'commit-chat-bindings.json');
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, '{{not valid json!!!', 'utf-8');
+        // SQLite store doesn't have corrupt JSON scenarios — verify empty workspace returns {}
         expect(store.load('ws1')).toEqual({});
     });
 
@@ -103,13 +97,6 @@ describe('CommitChatBindingStore', () => {
         store.bind('ws1', 'abc123', 'task-1');
         expect(store.get('ws1', 'abc123')!.taskId).toBe('task-1');
         expect(store.get('ws2', 'abc123')).toBeUndefined();
-    });
-
-    it('save creates parent directory if missing', () => {
-        const nestedDir = path.join(dataDir, 'deep', 'nested');
-        const nestedStore = new CommitChatBindingStore(nestedDir);
-        nestedStore.bind('ws1', 'abc123', 'task-1');
-        expect(nestedStore.get('ws1', 'abc123')!.taskId).toBe('task-1');
     });
 
     it('createdAt is a valid ISO-8601 string', () => {

@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * Read the current schema version from the database.
@@ -209,9 +209,28 @@ export function initializeDatabase(db: Database.Database): void {
                 ON schedule_runs(status);
         `);
 
+        // ── commit_chat_bindings ─────────────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS commit_chat_bindings (
+                workspace_id  TEXT NOT NULL,
+                commit_hash   TEXT NOT NULL,
+                task_id       TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, commit_hash)
+            )
+        `);
+
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_commit_chat_bindings_workspace
+                ON commit_chat_bindings(workspace_id);
+        `);
+
         // ── incremental migrations for existing databases ───────────
         if (versionBefore >= 1 && versionBefore < 2) {
             migrateV1toV2(db);
+        }
+        if (versionBefore >= 1 && versionBefore < 3) {
+            migrateV2toV3(db);
         }
 
         // Stamp the schema version
@@ -229,4 +248,13 @@ function migrateV1toV2(db: Database.Database): void {
     if (!cols.some(c => c.name === 'seen_at')) {
         db.exec('ALTER TABLE processes ADD COLUMN seen_at TEXT');
     }
+}
+
+/**
+ * V2 → V3: add `commit_chat_bindings` table.
+ * The CREATE TABLE IF NOT EXISTS above handles fresh databases;
+ * this migration is a no-op but keeps the version chain explicit.
+ */
+function migrateV2toV3(_db: Database.Database): void {
+    // Table already created by the idempotent DDL above.
 }

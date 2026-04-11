@@ -1,17 +1,13 @@
 /**
  * CommitChatBindingStore
  *
- * Per-workspace JSON store mapping commitHash → taskId for the commit-chat feature.
- * Follows the same persistence pattern as RepoScheduleOverrideStore.
- *
- * Storage: ~/.coc/repos/<workspaceId>/commit-chat-bindings.json
+ * Per-workspace SQLite store mapping commitHash → taskId for the commit-chat feature.
+ * Uses the shared `processes.db` database (same pattern as SqliteQueuePersistence).
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import * as fs from 'fs';
-import { atomicWriteJson } from './shared/fs-utils';
-import { getRepoDataPath } from './paths';
+import type Database from 'better-sqlite3';
 
 // ============================================================================
 // Types
@@ -25,7 +21,7 @@ export interface CommitChatBinding {
 }
 
 /**
- * Top-level shape of commit-chat-bindings.json.
+ * Map of commitHash → CommitChatBinding.
  * Keys are full commit hashes (40-char hex).
  */
 export interface CommitChatBindings {
@@ -37,50 +33,67 @@ export interface CommitChatBindings {
 // ============================================================================
 
 export class CommitChatBindingStore {
-    private readonly dataDir: string;
-    private static readonly FILENAME = 'commit-chat-bindings.json';
+    private readonly db: Database.Database;
+    private readonly stmtList: Database.Statement;
+    private readonly stmtGet: Database.Statement;
+    private readonly stmtBind: Database.Statement;
+    private readonly stmtUnbind: Database.Statement;
+    private readonly stmtRebind: Database.Transaction<(newHash: string, workspaceId: string, oldHash: string) => number>;
 
-    constructor(dataDir: string) {
-        this.dataDir = dataDir;
+    constructor(db: Database.Database) {
+        this.db = db;
+        this.stmtList = db.prepare(
+            'SELECT commit_hash, task_id, created_at FROM commit_chat_bindings WHERE workspace_id = ?',
+        );
+        this.stmtGet = db.prepare(
+            'SELECT task_id, created_at FROM commit_chat_bindings WHERE workspace_id = ? AND commit_hash = ?',
+        );
+        this.stmtBind = db.prepare(
+            'INSERT OR REPLACE INTO commit_chat_bindings (workspace_id, commit_hash, task_id, created_at) VALUES (?, ?, ?, ?)',
+        );
+        this.stmtUnbind = db.prepare(
+            'DELETE FROM commit_chat_bindings WHERE workspace_id = ? AND commit_hash = ?',
+        );
+
+        const deleteStmt = db.prepare(
+            'DELETE FROM commit_chat_bindings WHERE workspace_id = ? AND commit_hash = ?',
+        );
+        const updateStmt = db.prepare(
+            'UPDATE commit_chat_bindings SET commit_hash = ? WHERE workspace_id = ? AND commit_hash = ?',
+        );
+        this.stmtRebind = db.transaction((newHash: string, workspaceId: string, oldHash: string) => {
+            deleteStmt.run(workspaceId, newHash);
+            const info = updateStmt.run(newHash, workspaceId, oldHash);
+            return info.changes;
+        });
     }
 
-    /** Load all bindings for a workspace. Returns {} on missing/corrupt file. */
+    /** Load all bindings for a workspace. Returns {} when none exist. */
     load(workspaceId: string): CommitChatBindings {
-        const filePath = getRepoDataPath(this.dataDir, workspaceId, CommitChatBindingStore.FILENAME);
-        try {
-            if (!fs.existsSync(filePath)) return {};
-            const raw = fs.readFileSync(filePath, 'utf-8');
-            return JSON.parse(raw) as CommitChatBindings;
-        } catch {
-            return {};
+        const rows = this.stmtList.all(workspaceId) as Array<{ commit_hash: string; task_id: string; created_at: string }>;
+        const result: CommitChatBindings = {};
+        for (const row of rows) {
+            result[row.commit_hash] = { taskId: row.task_id, createdAt: row.created_at };
         }
-    }
-
-    /** Persist the full bindings map atomically. */
-    save(workspaceId: string, bindings: CommitChatBindings): void {
-        const filePath = getRepoDataPath(this.dataDir, workspaceId, CommitChatBindingStore.FILENAME);
-        atomicWriteJson(filePath, bindings);
+        return result;
     }
 
     /** Get the binding for a single commit, or undefined. */
     get(workspaceId: string, commitHash: string): CommitChatBinding | undefined {
-        return this.load(workspaceId)[commitHash];
+        const row = this.stmtGet.get(workspaceId, commitHash) as { task_id: string; created_at: string } | undefined;
+        if (!row) return undefined;
+        return { taskId: row.task_id, createdAt: row.created_at };
     }
 
     /** Create or overwrite the binding for a commit. */
     bind(workspaceId: string, commitHash: string, taskId: string): void {
-        const bindings = this.load(workspaceId);
-        bindings[commitHash] = { taskId, createdAt: new Date().toISOString() };
-        this.save(workspaceId, bindings);
+        this.stmtBind.run(workspaceId, commitHash, taskId, new Date().toISOString());
     }
 
     /** Remove the binding for a commit. No-op if not present. Returns true if a binding was removed. */
     unbind(workspaceId: string, commitHash: string): boolean {
-        const bindings = this.load(workspaceId);
-        if (!(commitHash in bindings)) return false;
-        delete bindings[commitHash];
-        this.save(workspaceId, bindings);
-        return true;
+        const info = this.stmtUnbind.run(workspaceId, commitHash);
+        return info.changes > 0;
     }
 
     /**
@@ -89,12 +102,8 @@ export class CommitChatBindingStore {
      * No-op if oldHash has no binding. Returns true if the rebind occurred.
      */
     rebind(workspaceId: string, oldHash: string, newHash: string): boolean {
-        const bindings = this.load(workspaceId);
-        if (!(oldHash in bindings)) return false;
-        bindings[newHash] = bindings[oldHash];
-        delete bindings[oldHash];
-        this.save(workspaceId, bindings);
-        return true;
+        const changes = this.stmtRebind(newHash, workspaceId, oldHash);
+        return changes > 0;
     }
 
     /** Return all bindings for a workspace (convenience alias for load). */

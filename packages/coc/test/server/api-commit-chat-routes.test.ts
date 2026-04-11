@@ -14,9 +14,8 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
 import * as http from 'http';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import Database from 'better-sqlite3';
+import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/api-handler';
 import type { Route } from '../../src/server/types';
@@ -95,19 +94,21 @@ describe('Commit-Chat Binding API endpoints', () => {
     let server: http.Server;
     let port: number;
     let store: MockProcessStore;
-    let dataDir: string;
+    let db: Database.Database;
 
     const WORKSPACE_ID = 'ws-chat-test';
 
     beforeAll(async () => {
-        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-chat-api-test-'));
+        db = new Database(':memory:');
+        initializeDatabase(db);
+
         store = createMockProcessStore();
         (store.getWorkspaces as any).mockResolvedValue([
             { id: WORKSPACE_ID, name: 'Test Repo', rootPath: '/test/repo' },
         ]);
 
         const routes: Route[] = [];
-        registerApiRoutes(routes, store, undefined, dataDir);
+        registerApiRoutes(routes, store, undefined, undefined, undefined, db);
         const handleRequest = createRouter({ routes, spaHtml: '<html></html>' });
         server = http.createServer(handleRequest);
         await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -116,7 +117,7 @@ describe('Commit-Chat Binding API endpoints', () => {
 
     afterAll(async () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        db.close();
     });
 
     const base = () => `http://127.0.0.1:${port}`;
