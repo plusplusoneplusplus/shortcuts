@@ -11,7 +11,7 @@ import { sendJSON } from './api-handler';
 import { toProcessHistoryItem } from './shared/process-history-item';
 import type { Route } from './types';
 
-const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 200;
 
 export function registerProcessHistoryRoutes(
@@ -60,7 +60,7 @@ export function registerProcessHistoryRoutes(
             const seenMap = store.getSeenMap?.(workspaceId) ?? {};
             const history = page.map(proc => toProcessHistoryItem(proc, seenMap[proc.id]));
 
-            sendJSON(res, 200, { history, hasMore });
+            sendJSON(res, 200, { history, hasMore, offset: parsedOffset, limit });
         },
     });
 }

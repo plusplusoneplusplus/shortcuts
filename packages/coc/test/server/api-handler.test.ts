@@ -905,13 +905,13 @@ describe('API Handler', () => {
             expect(body2.offset).toBe(3);
         });
 
-        it('should default to limit=50 offset=0', async () => {
+        it('should default to limit=100 offset=0', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/processes`, makeProcess());
 
             const res = await request(`${srv.url}/api/processes`);
             const body = JSON.parse(res.body);
-            expect(body.limit).toBe(50);
+            expect(body.limit).toBe(100);
             expect(body.offset).toBe(0);
         });
     });

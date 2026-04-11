@@ -45,7 +45,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, badRequest('Summaries not supported by this store'));
             }
             const filter = parseQueryParams(req.url || '/');
-            const limit = filter.limit ?? 50;
+            const limit = filter.limit ?? 100;
             const offset = filter.offset ?? 0;
             const paginatedFilter: ProcessFilter = { ...filter, limit, offset };
             const { entries, total } = await store.getProcessSummaries(paginatedFilter);
@@ -79,7 +79,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ? (await store.getProcessSummaries(countFilter)).total
                 : (await store.getAllProcesses(countFilter)).length;
 
-            const limit = filter.limit ?? 50;
+            const limit = filter.limit ?? 100;
             const offset = filter.offset ?? 0;
             const paginatedFilter: ProcessFilter = { ...filter, limit, offset };
             const processes = await store.getAllProcesses(paginatedFilter);

@@ -119,6 +119,8 @@ export interface ProcessHistoryItem {
 export interface ProcessHistoryResponse {
     history: ProcessHistoryItem[];
     hasMore: boolean;
+    offset: number;
+    limit: number;
 }
 
 export interface ClientTokenUsageStatsEntry {

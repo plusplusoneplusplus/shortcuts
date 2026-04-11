@@ -122,7 +122,7 @@ describe('Process History REST API', () => {
         const res = await getJSON(historyUrl());
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body).toEqual({ history: [], hasMore: false });
+        expect(body).toEqual({ history: [], hasMore: false, offset: 0, limit: 100 });
     });
 
     it('returns completed processes in history', async () => {
@@ -199,6 +199,8 @@ describe('Process History REST API', () => {
         const body = JSON.parse(res.body);
         expect(body.history).toHaveLength(3);
         expect(body.hasMore).toBe(true);
+        expect(body.limit).toBe(3);
+        expect(body.offset).toBe(0);
     });
 
     it('hasMore is false when results fit within limit', async () => {
@@ -209,18 +211,23 @@ describe('Process History REST API', () => {
         const body = JSON.parse(res.body);
         expect(body.history).toHaveLength(2);
         expect(body.hasMore).toBe(false);
+        expect(body.limit).toBe(10);
+        expect(body.offset).toBe(0);
     });
 
-    it('defaults limit to 50', async () => {
-        // Just verify it doesn't error with no limit param
+    it('defaults limit to 100', async () => {
         const res = await getJSON(historyUrl());
         expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.limit).toBe(100);
+        expect(body.offset).toBe(0);
     });
 
     it('clamps limit to 200', async () => {
         const res = await getJSON(historyUrl(wsId, 'limit=500'));
         expect(res.status).toBe(200);
-        // Can't easily verify the clamp without 200+ processes, but no error = good
+        const body = JSON.parse(res.body);
+        expect(body.limit).toBe(200);
     });
 
     it('respects offset parameter', async () => {
@@ -234,6 +241,8 @@ describe('Process History REST API', () => {
         const res = await getJSON(historyUrl(wsId, 'limit=2&offset=2'));
         const body = JSON.parse(res.body);
         expect(body.history).toHaveLength(2);
+        expect(body.offset).toBe(2);
+        expect(body.limit).toBe(2);
     });
 
     it('returns 400 for invalid offset (non-numeric)', async () => {
