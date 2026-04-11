@@ -72,7 +72,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             queueDispatch({
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: workspaceId,
-                queue: { queued: nextQueued, running: nextRunning, stats: nextStats },
+                queue: { queued: nextQueued, running: nextRunning, history: nextHistory, stats: nextStats },
             });
         } catch {
             setRunning([]);
@@ -92,6 +92,9 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         if (!repoQueue) return;
         setRunning(repoQueue.running);
         setQueued(repoQueue.queued);
+        if (repoQueue.history) {
+            setHistory(repoQueue.history);
+        }
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
             setPauseReason(repoQueue.stats.pauseReason);

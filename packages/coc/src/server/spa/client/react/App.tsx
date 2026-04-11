@@ -117,6 +117,9 @@ function AppInner() {
         const data = await fetchApi('/queue').catch(() => null);
         if (data && Array.isArray(data.queued) && Array.isArray(data.running)) {
             queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
+            if (data.history) {
+                queueDispatch({ type: 'SET_HISTORY', history: data.history });
+            }
         }
     }, [queueDispatch]);
 
@@ -167,9 +170,9 @@ function AppInner() {
                         queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: String(msg.queue.repoId), queue: msg.queue });
                     } else {
                         queueDispatch({ type: 'QUEUE_UPDATED', queue: msg.queue });
-                        fetchApi('/queue/history').then(data => {
-                            if (data?.history) queueDispatch({ type: 'SET_HISTORY', history: data.history });
-                        }).catch(() => { /* ignore */ });
+                        if (msg.queue.history) {
+                            queueDispatch({ type: 'SET_HISTORY', history: msg.queue.history });
+                        }
                     }
                 }
                 break;

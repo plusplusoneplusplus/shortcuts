@@ -25,7 +25,7 @@ export interface QueueContextState {
     running: any[];
     history: any[];
     stats: QueueStats;
-    repoQueueMap: Record<string, { queued: any[]; running: any[]; stats: QueueStats }>;
+    repoQueueMap: Record<string, { queued: any[]; running: any[]; history?: any[]; stats: QueueStats }>;
     /** Per-workspace count of chats currently streaming (follow-up SSE). */
     streamingChatWorkspaces: Record<string, number>;
     showDialog: boolean;
@@ -126,8 +126,8 @@ const initialState: QueueContextState = {
 // ── Actions ────────────────────────────────────────────────────────────
 
 export type QueueAction =
-    | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; stats: any } }
-    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; stats?: any } }
+    | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; history?: any[]; stats: any } }
+    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; history?: any[]; stats?: any } }
     | { type: 'REPO_QUEUE_STATS_UPDATED'; repoId: string; stats: Partial<QueueStats> }
     | { type: 'SET_HISTORY'; history: any[] }
     | { type: 'DRAIN_START'; queued: number; running: number }
@@ -157,6 +157,7 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
                 ...state,
                 queued: action.queue.queued || [],
                 running: action.queue.running || [],
+                history: action.queue.history ?? state.history,
                 stats: action.queue.stats || state.stats,
                 queueInitialized: true,
             };
@@ -166,6 +167,7 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             const repoData = {
                 queued: action.queue.queued ?? existingRepo?.queued ?? [],
                 running: action.queue.running ?? existingRepo?.running ?? [],
+                history: action.queue.history ?? existingRepo?.history ?? [],
                 stats: mergeQueueStats(action.queue.stats, existingRepo?.stats),
             };
             return {

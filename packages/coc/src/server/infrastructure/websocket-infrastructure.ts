@@ -124,6 +124,11 @@ export function createWebSocketInfrastructure(
     const mapRunning = (t: any) => ({
         ...mapQueued(t), startedAt: t.startedAt,
     });
+    const mapHistory = (t: any) => ({
+        ...mapRunning(t), completedAt: t.completedAt,
+        folderPath: t.folderPath, prompt: (t.payload as any)?.prompt,
+        title: t.title,
+    });
 
     // Bridge queue change events from all repos to WebSocket
     bridge.on('queueChange', (event: { repoPath: string; repoId: string; type: string; taskId?: string }) => {
@@ -136,6 +141,7 @@ export function createWebSocketInfrastructure(
                 repoId: event.repoId,
                 queued: repoManager.getQueued().map(mapQueued),
                 running: repoManager.getRunning().map(mapRunning),
+                history: repoManager.getHistory().map(mapHistory),
                 stats: { queued: repoStats.queued, running: repoStats.running, total: repoStats.total, isPaused: repoStats.isPaused, isDraining: repoStats.isDraining },
             },
         } as any);
@@ -143,6 +149,7 @@ export function createWebSocketInfrastructure(
         // 2) Global aggregate broadcast (no repoId) for top-level stats badge
         const allQueued: any[] = [];
         const allRunning: any[] = [];
+        const allHistory: any[] = [];
         const combinedStats = { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false };
         let allPaused = true;
         let anyManager = false;
@@ -151,6 +158,7 @@ export function createWebSocketInfrastructure(
         for (const [, manager] of registry.getAllQueues()) {
             allQueued.push(...manager.getQueued());
             allRunning.push(...manager.getRunning());
+            allHistory.push(...manager.getHistory());
             const s = manager.getStats();
             combinedStats.queued += s.queued;
             combinedStats.running += s.running;
@@ -170,6 +178,7 @@ export function createWebSocketInfrastructure(
             queue: {
                 queued: allQueued.map(mapQueued),
                 running: allRunning.map(mapRunning),
+                history: allHistory.map(mapHistory),
                 stats: combinedStats,
             },
         } as any);

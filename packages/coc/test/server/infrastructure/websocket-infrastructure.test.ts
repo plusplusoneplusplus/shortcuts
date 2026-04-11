@@ -46,10 +46,12 @@ function makeRegistry(): any {
         getStats: vi.fn().mockReturnValue({ queued: 0, running: 0, total: 0, isPaused: false, isDraining: false }),
         getQueued: vi.fn().mockReturnValue([]),
         getRunning: vi.fn().mockReturnValue([]),
+        getHistory: vi.fn().mockReturnValue([]),
     };
     return {
         getQueueForRepo: vi.fn().mockReturnValue(mockManager),
         getAllQueues: vi.fn().mockReturnValue(new Map()),
+        _mockManager: mockManager,
     };
 }
 
@@ -198,6 +200,64 @@ describe('createWebSocketInfrastructure', () => {
 
             const aggregate = broadcast.mock.calls[1][0] as any;
             expect(aggregate.queue.repoId).toBeUndefined();
+        });
+
+        it('per-repo broadcast includes history array', () => {
+            const historyTask = { id: 'h1', repoId: 'r1', status: 'completed', completedAt: '2026-01-01', payload: { prompt: 'do stuff' }, title: 'Task 1' };
+            registry._mockManager.getHistory.mockReturnValue([historyTask]);
+
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'repo-1', type: 'completed' });
+
+            const perRepo = broadcast.mock.calls[0][0] as any;
+            expect(perRepo.queue.history).toBeDefined();
+            expect(perRepo.queue.history).toHaveLength(1);
+            expect(perRepo.queue.history[0].id).toBe('h1');
+            expect(perRepo.queue.history[0].completedAt).toBe('2026-01-01');
+            expect(perRepo.queue.history[0].title).toBe('Task 1');
+        });
+
+        it('aggregate broadcast includes history from all managers', () => {
+            const historyA = { id: 'ha', repoId: 'a', status: 'completed', completedAt: '2026-01-01', payload: {} };
+            const historyB = { id: 'hb', repoId: 'b', status: 'failed', completedAt: '2026-01-02', payload: {} };
+            const managerA = {
+                getQueued: vi.fn().mockReturnValue([]),
+                getRunning: vi.fn().mockReturnValue([]),
+                getHistory: vi.fn().mockReturnValue([historyA]),
+                getStats: vi.fn().mockReturnValue({ queued: 0, running: 0, total: 0, isPaused: false, isDraining: false }),
+            };
+            const managerB = {
+                getQueued: vi.fn().mockReturnValue([]),
+                getRunning: vi.fn().mockReturnValue([]),
+                getHistory: vi.fn().mockReturnValue([historyB]),
+                getStats: vi.fn().mockReturnValue({ queued: 0, running: 0, total: 0, isPaused: false, isDraining: false }),
+            };
+            registry.getAllQueues.mockReturnValue(new Map([['a', managerA], ['b', managerB]]));
+
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'a', type: 'completed' });
+
+            const aggregate = broadcast.mock.calls[1][0] as any;
+            expect(aggregate.queue.history).toHaveLength(2);
+            const ids = aggregate.queue.history.map((h: any) => h.id);
+            expect(ids).toContain('ha');
+            expect(ids).toContain('hb');
+        });
+
+        it('history is empty array when no tasks in history', () => {
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'r1', type: 'enqueued' });
+
+            const perRepo = broadcast.mock.calls[0][0] as any;
+            expect(perRepo.queue.history).toEqual([]);
+            const aggregate = broadcast.mock.calls[1][0] as any;
+            expect(aggregate.queue.history).toEqual([]);
         });
     });
 
