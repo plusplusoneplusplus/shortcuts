@@ -54,8 +54,8 @@ describe('useUnseenActivity', () => {
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
 
         await waitFor(() => {
-            expect(result.current.unseenTaskIds.has('a')).toBe(false);
-            expect(result.current.unseenTaskIds.has('b')).toBe(true);
+            expect(result.current.unseenProcessIds.has('a')).toBe(false);
+            expect(result.current.unseenProcessIds.has('b')).toBe(true);
         });
         expect(mockFetchSeenMap).toHaveBeenCalledWith('ws1');
     });
@@ -95,7 +95,7 @@ describe('useUnseenActivity', () => {
         // New task appears
         const updated = [...history, ...makeTasks('c')];
         rerender({ h: updated });
-        expect(result.current.unseenTaskIds.has('c')).toBe(true);
+        expect(result.current.unseenProcessIds.has('c')).toBe(true);
         expect(result.current.unseenCount).toBe(1);
     });
 
@@ -118,14 +118,14 @@ describe('useUnseenActivity', () => {
         const { result: result3 } = renderHook(() => useUnseenActivity('ws1', reCompleted, null));
 
         await waitFor(() => {
-            expect(result3.current.unseenTaskIds.has('a')).toBe(true);
+            expect(result3.current.unseenProcessIds.has('a')).toBe(true);
         });
 
         act(() => {
             result3.current.markSeen('a');
         });
 
-        expect(result3.current.unseenTaskIds.has('a')).toBe(false);
+        expect(result3.current.unseenProcessIds.has('a')).toBe(false);
     });
 
     it('markSeen calls patchSeenState API (debounced)', async () => {
@@ -149,7 +149,7 @@ describe('useUnseenActivity', () => {
         const { result: r2 } = renderHook(() => useUnseenActivity('ws1', history2, null));
 
         await waitFor(() => {
-            expect(r2.current.unseenTaskIds.has('b')).toBe(true);
+            expect(r2.current.unseenProcessIds.has('b')).toBe(true);
         });
 
         act(() => {
@@ -176,14 +176,14 @@ describe('useUnseenActivity', () => {
         );
 
         await waitFor(() => {
-            expect(result.current.unseenTaskIds.has('b')).toBe(true);
+            expect(result.current.unseenProcessIds.has('b')).toBe(true);
         });
 
         // Select task 'b' → auto-marks as seen
         rerender({ sel: 'b' });
 
         await waitFor(() => {
-            expect(result.current.unseenTaskIds.has('b')).toBe(false);
+            expect(result.current.unseenProcessIds.has('b')).toBe(false);
         });
     });
 
@@ -203,7 +203,7 @@ describe('useUnseenActivity', () => {
         // Task 'a' completes again with different timestamp
         const reCompleted = [{ ...history[0], completedAt: '2026-03-09T01:00:00Z-new' }];
         rerender({ h: reCompleted });
-        expect(result.current.unseenTaskIds.has('a')).toBe(true);
+        expect(result.current.unseenProcessIds.has('a')).toBe(true);
     });
 
     it('returns empty set for empty history', async () => {
@@ -214,7 +214,7 @@ describe('useUnseenActivity', () => {
         });
 
         expect(result.current.unseenCount).toBe(0);
-        expect(result.current.unseenTaskIds.size).toBe(0);
+        expect(result.current.unseenProcessIds.size).toBe(0);
     });
 
     it('skips tasks without completedAt', async () => {
@@ -272,9 +272,9 @@ describe('useUnseenActivity', () => {
             result.current.markUnseen('a');
         });
 
-        expect(result.current.unseenTaskIds.has('a')).toBe(true);
+        expect(result.current.unseenProcessIds.has('a')).toBe(true);
         expect(result.current.unseenCount).toBe(1);
-        expect(result.current.unseenTaskIds.has('b')).toBe(false);
+        expect(result.current.unseenProcessIds.has('b')).toBe(false);
     });
 
     it('markUnseen calls deleteSeenEntry API', async () => {
@@ -313,7 +313,7 @@ describe('useUnseenActivity', () => {
         const { result: r2 } = renderHook(() => useUnseenActivity('ws1', history2, null));
 
         await waitFor(() => {
-            expect(r2.current.unseenTaskIds.has('b')).toBe(true);
+            expect(r2.current.unseenProcessIds.has('b')).toBe(true);
         });
 
         act(() => {
@@ -345,9 +345,9 @@ describe('useUnseenActivity', () => {
             r2.current.markTasksSeen([newHistory[0], newHistory[1]]);
         });
 
-        expect(r2.current.unseenTaskIds.has('a')).toBe(false);
-        expect(r2.current.unseenTaskIds.has('b')).toBe(false);
-        expect(r2.current.unseenTaskIds.has('c')).toBe(true);
+        expect(r2.current.unseenProcessIds.has('a')).toBe(false);
+        expect(r2.current.unseenProcessIds.has('b')).toBe(false);
+        expect(r2.current.unseenProcessIds.has('c')).toBe(true);
         expect(r2.current.unseenCount).toBe(1);
     });
 
@@ -390,7 +390,7 @@ describe('useUnseenActivity', () => {
         const { result: r2 } = renderHook(() => useUnseenActivity('ws1', newHistory, null));
 
         await waitFor(() => {
-            expect(r2.current.unseenTaskIds.has('a')).toBe(true);
+            expect(r2.current.unseenProcessIds.has('a')).toBe(true);
         });
 
         mockPatchSeenState.mockClear();
@@ -399,7 +399,7 @@ describe('useUnseenActivity', () => {
         });
 
         // Should remain unseen since completedAt is missing
-        expect(r2.current.unseenTaskIds.has('a')).toBe(true);
+        expect(r2.current.unseenProcessIds.has('a')).toBe(true);
     });
 
     describe('localStorage migration', () => {
@@ -413,7 +413,7 @@ describe('useUnseenActivity', () => {
 
             await waitFor(() => {
                 // 'a' should be seen (migrated from localStorage)
-                expect(result.current.unseenTaskIds.has('a')).toBe(false);
+                expect(result.current.unseenProcessIds.has('a')).toBe(false);
             });
 
             // Should have called patchSeenState with the migrated entries
@@ -434,8 +434,8 @@ describe('useUnseenActivity', () => {
             const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
 
             await waitFor(() => {
-                expect(result.current.unseenTaskIds.has('a')).toBe(false);
-                expect(result.current.unseenTaskIds.has('b')).toBe(false);
+                expect(result.current.unseenProcessIds.has('a')).toBe(false);
+                expect(result.current.unseenProcessIds.has('b')).toBe(false);
             });
         });
     });

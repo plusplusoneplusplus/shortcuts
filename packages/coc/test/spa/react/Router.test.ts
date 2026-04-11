@@ -769,6 +769,10 @@ describe('parseActivityDeepLink', () => {
     it('handles task IDs with special characters', () => {
         expect(parseActivityDeepLink('#repos/r1/activity/task%20with%20spaces')).toBe('task with spaces');
     });
+
+    it('preserves queue_ processId prefix (no stripping)', () => {
+        expect(parseActivityDeepLink('#repos/ws1/activity/queue_abc123')).toBe('queue_abc123');
+    });
 });
 
 // ─── activity deep-link integration ─────────────────────────────
@@ -840,6 +844,11 @@ describe('handleHash activity dispatch simulation', () => {
         const dispatches = simulateActivityHash('#repos/r1/activity/task-1');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
         expect(dispatches).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: 'task-1' });
+    });
+
+    it('dispatches SELECT_QUEUE_TASK with full processId (queue_ prefix preserved)', () => {
+        const dispatches = simulateActivityHash('#repos/r1/activity/queue_abc123');
+        expect(dispatches).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: 'queue_abc123' });
     });
 });
 

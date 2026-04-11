@@ -19,7 +19,7 @@ import { useUnseenActivity } from '../hooks/useUnseenActivity';
 import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 import { useNotifications } from '../context/NotificationContext';
 import type { ProcessHistoryItem } from '../../../../shared/process-history-item';
-import { isQueueProcessId } from '../utils/queue-process-id';
+import { isQueueProcessId, toQueueProcessId, toTaskId } from '../utils/queue-process-id';
 
 export interface RepoActivityTabProps {
     workspaceId: string;
@@ -51,6 +51,15 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
     const repoQueue = queueState.repoQueueMap[workspaceId];
+
+    /** Match a task against selectedTaskId which may be a processId (queue_xxx). */
+    function findBySelectedId(tasks: any[], selectedId: string): any | undefined {
+        return tasks.find((t: any) =>
+            t.id === selectedId ||
+            t.processId === selectedId ||
+            (!isQueueProcessId(t.id) && toQueueProcessId(t.id) === selectedId)
+        );
+    }
 
     // Track the selected task object for detail pane routing
     const [selectedTask, setSelectedTask] = useState<any>(null);
@@ -130,19 +139,20 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     useEffect(() => {
         if (!selectedTaskId || loading) return;
         const allTasks = [...running, ...queued, ...history];
-        if (allTasks.find(t => t.id === selectedTaskId)) return;
+        if (findBySelectedId(allTasks, selectedTaskId)) return;
 
         let cancelled = false;
-        const probeUrl = isQueueProcessId(selectedTaskId)
-            ? `/processes/${encodeURIComponent(selectedTaskId)}`
-            : `/queue/${encodeURIComponent(selectedTaskId)}`;
-        fetchApi(probeUrl)
+        // selectedTaskId is always a processId; probe /processes/ first, fall back to /queue/
+        const probeProcess = fetchApi(`/processes/${encodeURIComponent(selectedTaskId)}`)
             .then((data: any) => {
                 if (cancelled) return;
-                const found = isQueueProcessId(selectedTaskId)
-                    ? !!data?.process
-                    : !!data?.task;
-                if (!found) throw new Error('not found');
+                if (data?.process) return; // found
+                // Not found as process — try queue with derived bare taskId
+                const bareId = isQueueProcessId(selectedTaskId) ? toTaskId(selectedTaskId) : selectedTaskId;
+                return fetchApi(`/queue/${encodeURIComponent(bareId)}`).then((qData: any) => {
+                    if (cancelled) return;
+                    if (!qData?.task) throw new Error('not found');
+                });
             })
             .catch(() => {
                 if (cancelled) return;
@@ -154,6 +164,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
                     location.hash = activityBase;
                 }
             });
+        void probeProcess;
         return () => { cancelled = true; };
     }, [selectedTaskId, running, queued, history, loading, queueDispatch, workspaceId]);
 
@@ -165,7 +176,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             return;
         }
         const allTasks = [...running, ...queued, ...history];
-        const found = allTasks.find(t => t.id === selectedTaskId) || null;
+        const found = findBySelectedId(allTasks, selectedTaskId) || null;
         setSelectedTask(found);
         selectedTaskRef.current = found;
     }, [selectedTaskId, running, queued, history]);
@@ -176,7 +187,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     }, [selectedTaskId]);
 
     // Track unseen activity for completed tasks
-    const { unseenTaskIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
+    const { unseenProcessIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
     const { markReadByProcessId } = useNotifications();
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
@@ -185,17 +196,19 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflow/' + encodeURIComponent(processId);
             return;
         }
-        if (selectedTaskId === id) {
+        // Derive processId for seen-state, notifications, and URL
+        const processId = isQueueProcessId(id) ? id : (task?.processId ?? toQueueProcessId(id));
+        if (selectedTaskId === processId) {
             queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
             if (isMobile) setMobileShowDetail(true);
             return;
         }
-        markSeen(id);
-        markReadByProcessId(id);
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id, repoId: workspaceId });
+        markSeen(processId);
+        markReadByProcessId(processId);
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
         setSelectedTask(task || null);
         selectedTaskRef.current = task || null;
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(id);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(processId);
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId]);
 
@@ -209,7 +222,11 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     useEffect(() => {
         if (!selectedTaskId) return;
         const timer = setTimeout(() => {
-            const el = document.querySelector(`[data-task-id="${CSS.escape(selectedTaskId)}"]`);
+            let el = document.querySelector(`[data-task-id="${CSS.escape(selectedTaskId)}"]`);
+            // Fallback: selectedTaskId is processId but card has bare taskId
+            if (!el && isQueueProcessId(selectedTaskId)) {
+                el = document.querySelector(`[data-task-id="${CSS.escape(toTaskId(selectedTaskId))}"]`);
+            }
             el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }, 100);
         return () => clearTimeout(timer);
@@ -277,7 +294,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             isMobile={isMobile}
             now={now}
             workspaceId={workspaceId}
-            unseenTaskIds={unseenTaskIds}
+            unseenProcessIds={unseenProcessIds}
             onMarkAllRead={markTasksSeen}
             onMarkRead={markSeen}
             onMarkUnread={markUnseen}

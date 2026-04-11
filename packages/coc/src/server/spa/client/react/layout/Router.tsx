@@ -362,11 +362,13 @@ export function Router() {
                     } else if (parts[2] === 'schedules') {
                         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
                     }
-                    // Activity deep-link handling — select queue task when task ID present
+                    // Activity deep-link handling — select task when ID present
+                    // The rawId may be a processId (e.g. queue_abc123) or a bare
+                    // taskId. Store it as-is; ActivityChatDetail routes correctly
+                    // based on isQueueProcessId().
                     if (parts[2] === 'activity' && parts[3]) {
                         const rawId = decodeURIComponent(parts[3]);
-                        const taskId = isQueueProcessId(rawId) ? toTaskId(rawId) : rawId;
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId });
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
                     } else if (parts[2] === 'activity') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
                     }

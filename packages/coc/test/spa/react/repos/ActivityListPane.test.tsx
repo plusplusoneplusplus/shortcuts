@@ -605,7 +605,7 @@ describe('ActivityListPane', () => {
             it('"Mark as Read" shown for unseen task', () => {
                 renderPane({
                     history: [makeHistoryTask()],
-                    unseenTaskIds: new Set(['h-1']),
+                    unseenProcessIds: new Set(['h-1']),
                     onMarkRead: vi.fn(),
                 });
                 fireEvent.contextMenu(document.querySelector('[data-task-id="h-1"]')!);
@@ -742,7 +742,7 @@ describe('ActivityListPane', () => {
             });
 
             it('bulk "Mark as Read" shown when any unseen', () => {
-                renderThreeHistoryTasks({ unseenTaskIds: new Set(['h-1', 'h-2']) });
+                renderThreeHistoryTasks({ unseenProcessIds: new Set(['h-1', 'h-2']) });
                 selectRange();
                 fireEvent.contextMenu(document.querySelector('[data-task-id="h-1"]')!);
                 expect(screen.getByText(/Mark as Read/)).toBeTruthy();
@@ -934,7 +934,7 @@ describe('ActivityListPane', () => {
         it('unseen dot shown on completed task', () => {
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
             });
             expect(screen.getByTestId('unseen-dot')).toBeTruthy();
         });
@@ -943,7 +943,7 @@ describe('ActivityListPane', () => {
             mockPinnedChatIds = new Set(['h-1']);
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
             });
             expect(screen.getByTestId('unseen-dot')).toBeTruthy();
         });
@@ -951,7 +951,7 @@ describe('ActivityListPane', () => {
         it('unseen task title is bold', () => {
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
             });
             const card = document.querySelector('[data-task-id="h-1"]');
             const boldSpan = card!.querySelector('.font-semibold');
@@ -962,7 +962,7 @@ describe('ActivityListPane', () => {
         it('unseen count badge in header', () => {
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
             });
             expect(screen.getByTestId('unseen-count-badge')).toBeTruthy();
             expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
@@ -971,7 +971,7 @@ describe('ActivityListPane', () => {
         it('mark all read button shown', () => {
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
                 onMarkAllRead: vi.fn(),
             });
             expect(screen.getByTestId('mark-all-read-btn')).toBeTruthy();
@@ -981,7 +981,7 @@ describe('ActivityListPane', () => {
             mockArchivedChatIds = new Set(['h-1']);
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
             });
             // Expand the archived section
             fireEvent.click(screen.getByTestId('archived-chats-section-toggle'));
@@ -995,7 +995,7 @@ describe('ActivityListPane', () => {
             mockPinnedChatIds = new Set(['h-1']);
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
                 onMarkAllRead: vi.fn(),
             });
             expect(screen.getByTestId('mark-all-read-pinned-btn')).toBeTruthy();
@@ -1006,7 +1006,7 @@ describe('ActivityListPane', () => {
             const onMarkAllRead = vi.fn();
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
                 onMarkAllRead,
             });
             fireEvent.click(screen.getByTestId('mark-all-read-pinned-btn'));
@@ -1018,7 +1018,7 @@ describe('ActivityListPane', () => {
             mockPinnedChatIds = new Set(['h-1']);
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(),
+                unseenProcessIds: new Set(),
                 onMarkAllRead: vi.fn(),
             });
             expect(screen.queryByTestId('mark-all-read-pinned-btn')).toBeNull();
@@ -1031,7 +1031,7 @@ describe('ActivityListPane', () => {
                     makeHistoryTask({ id: 'p-1', displayName: 'Pinned 1' }),
                     makeHistoryTask({ id: 'p-2', displayName: 'Pinned 2' }),
                 ],
-                unseenTaskIds: new Set(['p-1', 'p-2']),
+                unseenProcessIds: new Set(['p-1', 'p-2']),
             });
             expect(screen.getByTestId('unseen-pinned-count-badge')).toBeTruthy();
             expect(screen.getByTestId('unseen-pinned-count-badge').textContent).toBe('2');
@@ -1044,7 +1044,7 @@ describe('ActivityListPane', () => {
             mockArchivedChatIds = new Set(['h-1']);
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
                 onMarkAllRead: vi.fn(),
             });
             expect(screen.getByTestId('mark-all-read-archived-btn')).toBeTruthy();
@@ -1055,7 +1055,7 @@ describe('ActivityListPane', () => {
             const onMarkAllRead = vi.fn();
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(['h-1']),
+                unseenProcessIds: new Set(['h-1']),
                 onMarkAllRead,
             });
             fireEvent.click(screen.getByTestId('mark-all-read-archived-btn'));
@@ -1067,7 +1067,7 @@ describe('ActivityListPane', () => {
             mockArchivedChatIds = new Set(['h-1']);
             renderPane({
                 history: [makeHistoryTask()],
-                unseenTaskIds: new Set(),
+                unseenProcessIds: new Set(),
                 onMarkAllRead: vi.fn(),
             });
             expect(screen.queryByTestId('mark-all-read-archived-btn')).toBeNull();
@@ -1081,7 +1081,7 @@ describe('ActivityListPane', () => {
                     makeHistoryTask({ id: 'a-2', displayName: 'Archived 2' }),
                     makeHistoryTask({ id: 'a-3', displayName: 'Archived 3' }),
                 ],
-                unseenTaskIds: new Set(['a-1', 'a-3']),
+                unseenProcessIds: new Set(['a-1', 'a-3']),
             });
             expect(screen.getByTestId('unseen-archived-count-badge')).toBeTruthy();
             expect(screen.getByTestId('unseen-archived-count-badge').textContent).toBe('2');

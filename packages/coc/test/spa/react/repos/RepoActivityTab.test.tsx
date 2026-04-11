@@ -132,7 +132,7 @@ const mockMarkUnseen = vi.fn();
 let mockUnseenTaskIds = new Set<string>();
 vi.mock('../../../../src/server/spa/client/react/hooks/useUnseenActivity', () => ({
     useUnseenActivity: () => ({
-        unseenTaskIds: mockUnseenTaskIds,
+        unseenProcessIds: mockUnseenTaskIds,
         markSeen: mockMarkSeen,
         markAllSeen: mockMarkAllSeen,
         markTasksSeen: mockMarkTasksSeen,
@@ -399,7 +399,8 @@ describe('RepoActivityTab: task selection', () => {
 
         await waitFor(() => {
             const lastDetailProps = mockDetailPane.mock.calls.at(-1)?.[0];
-            expect(lastDetailProps?.selectedTaskId).toBe('r1');
+            // selectTask derives processId from task.processId
+            expect(lastDetailProps?.selectedTaskId).toBe('proc-r1');
         });
     });
 
@@ -412,7 +413,8 @@ describe('RepoActivityTab: task selection', () => {
             fireEvent.click(screen.getByTestId('task-r1'));
         });
 
-        expect(location.hash).toContain('/activity/r1');
+        // URL now uses processId derived from task.processId
+        expect(location.hash).toContain('/activity/proc-r1');
     });
 
     it('clicking run-workflow task routes to /workflow/ hash', async () => {
@@ -433,12 +435,12 @@ describe('RepoActivityTab: task selection', () => {
         setupFetchMock({ running: [r1] });
         await renderTab();
 
-        // First click — selects
+        // First click — selects (derives processId)
         await act(async () => {
             fireEvent.click(screen.getByTestId('task-r1'));
         });
         await waitFor(() => {
-            expect(mockDetailPane.mock.calls.at(-1)?.[0]?.selectedTaskId).toBe('r1');
+            expect(mockDetailPane.mock.calls.at(-1)?.[0]?.selectedTaskId).toBe('proc-r1');
         });
 
         // Second click — same task = refresh, not re-select
@@ -460,7 +462,8 @@ describe('RepoActivityTab: task selection', () => {
             fireEvent.click(screen.getByTestId('task-r1'));
         });
 
-        expect(mockMarkSeen).toHaveBeenCalledWith('r1');
+        // markSeen is called with the derived processId
+        expect(mockMarkSeen).toHaveBeenCalledWith('proc-r1');
     });
 
     it('selecting task calls markReadByProcessId', async () => {
@@ -472,7 +475,8 @@ describe('RepoActivityTab: task selection', () => {
             fireEvent.click(screen.getByTestId('task-r1'));
         });
 
-        expect(mockMarkReadByProcessId).toHaveBeenCalledWith('r1');
+        // markReadByProcessId uses the derived processId
+        expect(mockMarkReadByProcessId).toHaveBeenCalledWith('proc-r1');
     });
 
     it('selected task object is passed to detail pane', async () => {
@@ -713,11 +717,11 @@ describe('RepoActivityTab: provider wiring', () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe('RepoActivityTab: unseen activity wiring', () => {
-    it('passes unseenTaskIds to list pane', async () => {
+    it('passes unseenProcessIds to list pane', async () => {
         mockUnseenTaskIds = new Set(['h1', 'h2']);
         await renderTab();
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
-        expect(lastProps?.unseenTaskIds).toBe(mockUnseenTaskIds);
+        expect(lastProps?.unseenProcessIds).toBe(mockUnseenTaskIds);
     });
 
     it('passes markTasksSeen as onMarkAllRead to list pane', async () => {
@@ -747,7 +751,8 @@ describe('RepoActivityTab: unseen activity wiring', () => {
             fireEvent.click(screen.getByTestId('task-h1'));
         });
 
-        expect(mockMarkSeen).toHaveBeenCalledWith('h1');
+        // history tasks have no processId, so derived via toQueueProcessId
+        expect(mockMarkSeen).toHaveBeenCalledWith('queue_h1');
     });
 
     it('auto-marks deep-linked task via markReadByProcessId', async () => {
@@ -759,7 +764,8 @@ describe('RepoActivityTab: unseen activity wiring', () => {
             fireEvent.click(screen.getByTestId('task-r1'));
         });
 
-        expect(mockMarkReadByProcessId).toHaveBeenCalledWith('r1');
+        // markReadByProcessId uses the derived processId
+        expect(mockMarkReadByProcessId).toHaveBeenCalledWith('proc-r1');
     });
 });
 

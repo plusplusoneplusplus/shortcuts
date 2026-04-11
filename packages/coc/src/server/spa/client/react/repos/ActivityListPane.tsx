@@ -11,7 +11,7 @@ import { Card, Button, cn, FilterDropdown } from '../shared';
 import type { FilterItem } from '../shared';
 import { getApiBase } from '../utils/config';
 import { copyToClipboard, formatDuration, formatRelativeTime } from '../utils/format';
-import { ensureQueueProcessId } from '../utils/queue-process-id';
+import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { buildRows } from '../processes/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
@@ -95,8 +95,8 @@ export interface ActivityListPaneProps {
     isMobile: boolean;
     now: number;
     workspaceId?: string;
-    /** Set of task IDs with unseen activity (bold + dot indicator). */
-    unseenTaskIds?: Set<string>;
+    /** Set of process IDs with unseen activity (bold + dot indicator). */
+    unseenProcessIds?: Set<string>;
     /** Mark all completed tasks as read (receives the currently-filtered task list). */
     onMarkAllRead?: (tasks: any[]) => void;
     /** Mark a single completed task as read. */
@@ -133,7 +133,7 @@ export function ActivityListPane({
     isMobile,
     now,
     workspaceId,
-    unseenTaskIds,
+    unseenProcessIds,
     onMarkAllRead,
     onMarkRead,
     onMarkUnread,
@@ -149,6 +149,15 @@ export function ActivityListPane({
 }: ActivityListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
+
+    /** Check if a task is the currently selected one (processId-aware). */
+    const isSelected = useCallback((taskId: string): boolean => {
+        if (!selectedTaskId) return false;
+        if (taskId === selectedTaskId) return true;
+        // selectedTaskId is a processId; check if bare taskId matches via prefix
+        if (!isQueueProcessId(taskId) && toQueueProcessId(taskId) === selectedTaskId) return true;
+        return false;
+    }, [selectedTaskId]);
     const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
@@ -499,8 +508,8 @@ export function ActivityListPane({
         // Bulk context menu for multi-selected completed tasks
         if (contextMenu.bulkIds) {
             const ids = contextMenu.bulkIds;
-            const anyUnseen   = ids.some(id => unseenTaskIds?.has(id));
-            const anySeen     = ids.some(id => !unseenTaskIds?.has(id));
+            const anyUnseen   = ids.some(id => unseenProcessIds?.has(id));
+            const anySeen     = ids.some(id => !unseenProcessIds?.has(id));
             const anyPinned   = ids.some(id => pinnedChatIds?.has(id));
             const anyUnpinned = ids.some(id => !pinnedChatIds?.has(id));
             const anyArchived   = ids.some(id => archivedChatIds?.has(id));
@@ -569,7 +578,7 @@ export function ActivityListPane({
             ];
         }
         if (taskStatus === 'completed') {
-            const isUnseen = unseenTaskIds?.has(taskId) ?? false;
+            const isUnseen = unseenProcessIds?.has(taskId) ?? false;
             const isPinned = pinnedChatIds?.has(taskId) ?? false;
             const isArchived = archivedChatIds?.has(taskId) ?? false;
             const task = history.find(t => t.id === taskId);
@@ -609,7 +618,7 @@ export function ActivityListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, running, history, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
+    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
@@ -797,7 +806,7 @@ export function ActivityListPane({
                                         task={task}
                                         status="running"
                                         now={now}
-                                        selected={selectedTaskId === task.id}
+                                        selected={isSelected(task.id)}
                                         isPinned={pinnedChatIds?.has(task.id) ?? false}
                                         isAutopilotPaused={isAutopilotPaused}
                                         dense={isDense}
@@ -865,7 +874,7 @@ export function ActivityListPane({
                                                     task={item}
                                                     status="queued"
                                                     now={now}
-                                                    selected={selectedTaskId === item.id}
+                                                    selected={isSelected(item.id)}
                                                     isAutopilotPaused={isAutopilotPaused}
                                                     dense={isDense}
                                                     onClick={() => onSelectTask(item.id, item)}
@@ -900,14 +909,14 @@ export function ActivityListPane({
                                 data-testid="pinned-chats-section-toggle"
                             >
                                 {showPinned ? '▼' : '▶'} 📌 Pinned ({filteredPinned.length + pinnedRunningCount})
-                                {unseenTaskIds && (() => {
-                                    const count = filteredPinned.filter(t => unseenTaskIds.has(t.id)).length;
+                                {unseenProcessIds && (() => {
+                                    const count = filteredPinned.filter(t => unseenProcessIds.has(t.id)).length;
                                     return count > 0 ? (
                                         <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-pinned-count-badge">{count}</span>
                                     ) : null;
                                 })()}
                             </button>
-                            {onMarkAllRead && unseenTaskIds && filteredPinned.some(t => unseenTaskIds.has(t.id)) && (
+                            {onMarkAllRead && unseenProcessIds && filteredPinned.some(t => unseenProcessIds.has(t.id)) && (
                                 <button
                                     className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
                                     onClick={() => onMarkAllRead(filteredPinned)}
@@ -920,7 +929,7 @@ export function ActivityListPane({
                         {showPinned && (
                             <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                                 {filteredPinned.map(task => {
-                                    const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                    const isUnseen = unseenProcessIds?.has(task.id) ?? false;
                                     const hasPinnedDraft = !!getDraft(task.id);
                                     const isHistorySelected = selectedHistoryIds.has(task.id);
                                     return (
@@ -930,7 +939,7 @@ export function ActivityListPane({
                                                 isDense ? "px-2 py-2.5 md:py-1 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500" : "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
                                                 isHistorySelected
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
-                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
+                                                    : isSelected(task.id) && "ring-2 ring-[#0078d4]",
                                                 selectedHistoryIds.size > 0 && "select-none"
                                             )}
                                             onClick={e => {
@@ -985,14 +994,14 @@ export function ActivityListPane({
                                 onClick={() => { setShowHistory(!showHistory); setSelectedHistoryIds(new Set()); setAnchorHistoryId(null); }}
                             >
                                 {showHistory ? '▼' : '▶'} Completed Tasks ({filteredUnpinned.length})
-                                {unseenTaskIds && (() => {
-                                    const count = filteredUnpinned.filter(t => unseenTaskIds.has(t.id)).length;
+                                {unseenProcessIds && (() => {
+                                    const count = filteredUnpinned.filter(t => unseenProcessIds.has(t.id)).length;
                                     return count > 0 ? (
                                         <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-count-badge">{count}</span>
                                     ) : null;
                                 })()}
                             </button>
-                            {onMarkAllRead && unseenTaskIds && filteredUnpinned.some(t => unseenTaskIds.has(t.id)) && (
+                            {onMarkAllRead && unseenProcessIds && filteredUnpinned.some(t => unseenProcessIds.has(t.id)) && (
                                 <button
                                     className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
                                     onClick={() => onMarkAllRead(filteredUnpinned)}
@@ -1011,7 +1020,7 @@ export function ActivityListPane({
                         {showHistory && (
                             <div className={cn("flex flex-col mt-1", isDense ? "gap-0.5" : "gap-1")}>
                                 {filteredUnpinned.map(task => {
-                                    const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                    const isUnseen = unseenProcessIds?.has(task.id) ?? false;
                                     const hasUnpinnedDraft = !!getDraft(task.id);
                                     const isHistorySelected = selectedHistoryIds.has(task.id);
                                     return (
@@ -1021,7 +1030,7 @@ export function ActivityListPane({
                                                 isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
                                                 isHistorySelected
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
-                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
+                                                    : isSelected(task.id) && "ring-2 ring-[#0078d4]",
                                                 selectedHistoryIds.size > 0 && "select-none"
                                             )}
                                             onClick={e => {
@@ -1075,14 +1084,14 @@ export function ActivityListPane({
                             data-testid="archived-chats-section-toggle"
                         >
                             {showArchived ? '▼' : '▶'} 📦 Archived ({filteredArchived.length})
-                            {unseenTaskIds && (() => {
-                                const count = filteredArchived.filter(t => unseenTaskIds.has(t.id)).length;
+                            {unseenProcessIds && (() => {
+                                const count = filteredArchived.filter(t => unseenProcessIds.has(t.id)).length;
                                 return count > 0 ? (
                                     <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-archived-count-badge">{count}</span>
                                 ) : null;
                             })()}
                         </button>
-                        {onMarkAllRead && unseenTaskIds && filteredArchived.some(t => unseenTaskIds.has(t.id)) && (
+                        {onMarkAllRead && unseenProcessIds && filteredArchived.some(t => unseenProcessIds.has(t.id)) && (
                             <button
                                 className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
                                 onClick={() => onMarkAllRead(filteredArchived)}
@@ -1095,13 +1104,13 @@ export function ActivityListPane({
                     {showArchived && (
                         <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                             {filteredArchived.map(task => {
-                                const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                const isUnseen = unseenProcessIds?.has(task.id) ?? false;
                                 return (
                                     <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
                                     <Card
                                         className={cn(
                                             isDense ? "px-2 py-2.5 md:py-1 cursor-pointer opacity-70" : "p-2 cursor-pointer opacity-70",
-                                            selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                            isSelected(task.id) && "ring-2 ring-[#0078d4]"
                                         )}
                                         onClick={() => {
                                             if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }

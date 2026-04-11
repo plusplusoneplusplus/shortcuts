@@ -14,18 +14,18 @@ import { fetchSeenMap, patchSeenState, deleteSeenEntry } from './seenStateApi';
 const STORAGE_PREFIX = 'coc-unseen-';
 
 export interface UseUnseenActivityResult {
-    /** Set of task IDs that have unseen activity. */
-    unseenTaskIds: Set<string>;
+    /** Set of process IDs that have unseen activity. */
+    unseenProcessIds: Set<string>;
     /** Number of tasks with unseen activity. */
     unseenCount: number;
-    /** Mark a task as seen (call when user selects a task). */
-    markSeen: (taskId: string) => void;
+    /** Mark a process as seen (call when user selects a task). */
+    markSeen: (processId: string) => void;
     /** Mark all history tasks as seen. */
     markAllSeen: () => void;
     /** Mark a specific subset of tasks as seen (e.g. the currently filtered list). */
     markTasksSeen: (tasks: any[]) => void;
-    /** Mark a task as unseen/unread (removes it from the seen map). */
-    markUnseen: (taskId: string) => void;
+    /** Mark a process as unseen/unread (removes it from the seen map). */
+    markUnseen: (processId: string) => void;
 }
 
 export function useUnseenActivity(
@@ -148,7 +148,7 @@ export function useUnseenActivity(
     }, [selectedTaskId, history, schedulePatch]);
 
     // Compute the unseen set.
-    const unseenTaskIds = useMemo(() => {
+    const unseenProcessIds = useMemo(() => {
         const unseen = new Set<string>();
         for (const task of history) {
             if (!task.completedAt) continue;
@@ -161,13 +161,13 @@ export function useUnseenActivity(
     }, [history, seenMap]);
 
     // Mark a specific task as seen.
-    const markSeen = useCallback((taskId: string) => {
-        const task = history.find(t => t.id === taskId);
+    const markSeen = useCallback((processId: string) => {
+        const task = history.find(t => t.id === processId);
         if (task?.completedAt) {
             setSeenMap(prev => {
-                if (prev[taskId] === task.completedAt) return prev;
-                schedulePatch([{ processId: taskId, seenAt: task.completedAt }]);
-                return { ...prev, [taskId]: task.completedAt };
+                if (prev[processId] === task.completedAt) return prev;
+                schedulePatch([{ processId, seenAt: task.completedAt }]);
+                return { ...prev, [processId]: task.completedAt };
             });
         }
     }, [history, schedulePatch]);
@@ -209,15 +209,15 @@ export function useUnseenActivity(
     }, [schedulePatch]);
 
     // Mark a specific task as unseen/unread.
-    const markUnseen = useCallback((taskId: string) => {
+    const markUnseen = useCallback((processId: string) => {
         setSeenMap(prev => {
-            if (!(taskId in prev)) return prev;
+            if (!(processId in prev)) return prev;
             const updated = { ...prev };
-            delete updated[taskId];
-            deleteSeenEntry(workspaceId, taskId).catch(() => {});
+            delete updated[processId];
+            deleteSeenEntry(workspaceId, processId).catch(() => {});
             return updated;
         });
     }, [workspaceId]);
 
-    return { unseenTaskIds, unseenCount: unseenTaskIds.size, markSeen, markAllSeen, markTasksSeen, markUnseen };
+    return { unseenProcessIds, unseenCount: unseenProcessIds.size, markSeen, markAllSeen, markTasksSeen, markUnseen };
 }

@@ -3,8 +3,6 @@
  * into the input shape expected by NotificationContext.addNotification().
  */
 
-import { isQueueProcessId, toTaskId } from './queue-process-id';
-
 export interface ProcessLike {
     id: string;
     status: string;
@@ -49,7 +47,7 @@ export function buildNotificationEntry(process: ProcessLike, workspaceName?: str
         type: STATUS_TYPE_MAP[process.status] ?? 'info',
         title,
         detail,
-        processId: isQueueProcessId(process.id) ? toTaskId(process.id) : process.id,
+        processId: process.id,
         ...(workspaceId ? { workspaceId } : {}),
     };
 }

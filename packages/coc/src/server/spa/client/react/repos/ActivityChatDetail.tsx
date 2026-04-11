@@ -20,7 +20,7 @@ import { useSlashCommands } from './useSlashCommands';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles } from '../utils/conversationScan';
-import { toQueueProcessId, isQueueProcessId } from '../utils/queue-process-id';
+import { toQueueProcessId, isQueueProcessId, toTaskId } from '../utils/queue-process-id';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { getDraft, setDraft, pruneExpired } from '../hooks/useDraftStore';
 import { buildMetadataProcess } from '../utils/chatUtils';
@@ -319,34 +319,42 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
         (async () => {
             try {
-                // If taskId is already a processId (history item), skip queue fetch
+                // If taskId is already a processId (history item or processId-keyed selection),
+                // try loading from /processes/ first.
                 if (isQueueProcessId(taskId)) {
                     const pid = taskId;
                     const processData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
                     if (loadCounterRef.current !== loadId) return;
                     const loadedProcess = processData?.process ?? null;
-                    setTask(loadedProcess ? {
-                        id: taskId,
-                        processId: pid,
-                        status: loadedProcess.status,
-                        type: loadedProcess.type ?? 'chat',
-                        payload: loadedProcess.payload ?? {},
-                        metadata: loadedProcess.metadata ?? {},
-                        displayName: loadedProcess.title,
-                    } : null);
-                    const processMode = loadedProcess?.metadata?.mode;
-                    if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
-                        setSelectedMode(processMode);
+
+                    if (loadedProcess) {
+                        setTask({
+                            id: taskId,
+                            processId: pid,
+                            status: loadedProcess.status,
+                            type: loadedProcess.type ?? 'chat',
+                            payload: loadedProcess.payload ?? {},
+                            metadata: loadedProcess.metadata ?? {},
+                            displayName: loadedProcess.title,
+                        });
+                        const processMode = loadedProcess?.metadata?.mode;
+                        if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
+                            setSelectedMode(processMode);
+                        }
+                        const turns = getConversationTurns(processData);
+                        setTurnsAndRef(turns);
+                        setProcessDetails(loadedProcess);
+                        setLoading(false);
+                        return;
                     }
-                    const turns = getConversationTurns(processData);
-                    setTurnsAndRef(turns);
-                    setProcessDetails(loadedProcess);
-                    setLoading(false);
-                    return;
+                    // Process not found — may be a pending queue task whose process
+                    // hasn't been created yet. Fall through to queue fetch using
+                    // the derived bare taskId.
                 }
 
-                // Existing path for running/queued tasks (taskId is a raw queue task id)
-                const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
+                // Queue fetch path — taskId may be bare or a processId that fell through
+                const effectiveTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
+                const queueData = await fetchApi(`/queue/${encodeURIComponent(effectiveTaskId)}`);
                 if (loadCounterRef.current !== loadId) return;
                 const loadedTask = queueData?.task ?? null;
                 if (loadedTask?.payload?.mode && ['ask', 'plan', 'autopilot'].includes(loadedTask.payload.mode)) {
@@ -462,7 +470,29 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
         (async () => {
             try {
-                const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
+                // For processId-keyed taskIds, try loading process directly first
+                if (isQueueProcessId(taskId)) {
+                    const procData = await fetchApi(`/processes/${encodeURIComponent(taskId)}`);
+                    if (procData?.process) {
+                        setTask({
+                            id: taskId,
+                            processId: taskId,
+                            status: procData.process.status,
+                            type: procData.process.type ?? 'chat',
+                            payload: procData.process.payload ?? {},
+                            metadata: procData.process.metadata ?? {},
+                            displayName: procData.process.title,
+                        });
+                        setProcessDetails(procData.process);
+                        const refreshedTurns = getConversationTurns(procData);
+                        setTurnsAndRef(refreshedTurns);
+                        return;
+                    }
+                    // Fall through to queue fetch with bare taskId
+                }
+
+                const effectiveTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
+                const queueData = await fetchApi(`/queue/${encodeURIComponent(effectiveTaskId)}`);
                 const refreshedTask = queueData?.task ?? null;
 
                 const pid = refreshedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
