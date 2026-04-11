@@ -120,8 +120,10 @@ export function useSendMessage({
     useEffect(() => {
         flushQueueRef.current = () => {
             if (pendingQueue.length === 0 || !processId) return;
-            const [next, ...rest] = pendingQueue;
-            setPendingQueue(rest);
+            // Server drains 'enqueue' messages; client only drains 'immediate' (steering)
+            const immediateMsg = pendingQueue.find(m => m.deliveryMode === 'immediate');
+            if (!immediateMsg) return;
+            setPendingQueue(prev => prev.filter(m => m.id !== immediateMsg.id));
             setSending(true);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
             const timestamp = new Date().toISOString();
@@ -129,15 +131,15 @@ export function useSendMessage({
                 const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
                 return [
                     ...prev,
-                    { role: 'user' as const, content: next.content, timestamp, timeline: [], turnIndex: nextIdx },
+                    { role: 'user' as const, content: immediateMsg.content, timestamp, timeline: [], turnIndex: nextIdx },
                     { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1 },
                 ];
             });
-            const drainedMsgId = next.id;
+            const drainedMsgId = immediateMsg.id;
             fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: next.content, mode: selectedModeRef.current, deliveryMode: next.deliveryMode }),
+                body: JSON.stringify({ content: immediateMsg.content, mode: selectedModeRef.current, deliveryMode: immediateMsg.deliveryMode }),
             })
                 .then(async (response) => {
                     if (!response.ok) { removeStreamingPlaceholder(); return; }
@@ -202,7 +204,8 @@ export function useSendMessage({
                     }),
                 }).catch(() => {});
             } else {
-                // Persist enqueued message on the server so it survives chat switches / refreshes
+                // Persist enqueued message on the server so it survives chat switches / refreshes.
+                // Server-side drain handles delivery — remove from local queue after persist.
                 fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/pending-messages`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -210,9 +213,8 @@ export function useSendMessage({
                 })
                     .then(async (resp) => {
                         if (!resp.ok) return;
-                        const { message } = await resp.json();
-                        // Reconcile local queue entry with server-assigned ID
-                        setPendingQueue(prev => prev.map(m => m.id === qm.id ? { ...m, id: message.id, status: 'queued' as const } : m));
+                        // Server now owns this message; remove from local drain queue
+                        setPendingQueue(prev => prev.filter(m => m.id !== qm.id));
                     })
                     .catch(() => {});
             }

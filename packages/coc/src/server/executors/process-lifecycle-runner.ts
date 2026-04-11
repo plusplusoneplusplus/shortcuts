@@ -81,6 +81,8 @@ export interface LifecycleRunnerOptions {
     executeByTypeFn: (task: QueuedTask, prompt: string) => Promise<unknown>;
     /** Resolve the working directory for a given task. */
     getWorkingDirectoryFn: (task: QueuedTask) => string | undefined;
+    /** Drain one pending message after task completes (server-side follow-up drain). */
+    onDrainPendingMessages?: (processId: string, taskId: string) => Promise<void>;
 }
 
 // ============================================================================
@@ -146,6 +148,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 );
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
+                // Drain pending messages after follow-up completion
+                if (opts.onDrainPendingMessages) {
+                    try { await opts.onDrainPendingMessages(followUpPayload.processId!, task.id); } catch { /* non-fatal */ }
+                }
                 return { success: true, durationMs: duration };
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
@@ -310,6 +316,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 const finalStatus = currentProc?.status === 'cancelled' ? 'cancelled' : 'completed';
                 if (!TERMINAL_STATUSES.has(currentProc?.status ?? '')) {
                     this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
+                }
+
+                // Drain pending messages after task completion
+                if (finalStatus === 'completed' && opts.onDrainPendingMessages) {
+                    try { await opts.onDrainPendingMessages(processId, task.id); } catch { /* non-fatal */ }
                 }
 
                 setTimeout(() => this.onGenerateTitle(processId, combinedTurns), 0);

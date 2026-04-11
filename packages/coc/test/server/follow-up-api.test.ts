@@ -672,9 +672,9 @@ describe('POST /api/processes/:id/message', () => {
             };
             await store.addProcess(proc);
 
-            // First follow-up
+            // First follow-up: process is completed → enqueue
             await postJSON(`${baseUrl}/api/processes/proc-8/message`, { content: 'First' });
-            // Second follow-up
+            // Second follow-up: process is now running → buffered as pending message
             await postJSON(`${baseUrl}/api/processes/proc-8/message`, { content: 'Second' });
 
             // Handler persists user turns atomically
@@ -682,9 +682,12 @@ describe('POST /api/processes/:id/message', () => {
             expect(updated?.conversationTurns).toHaveLength(2);
             expect(updated?.conversationTurns![0].content).toBe('First');
             expect(updated?.conversationTurns![1].content).toBe('Second');
-            // Verify both enqueue calls were made
+            // First follow-up enqueues (process was completed), second buffers as pending
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
-            expect(enqueueFn).toHaveBeenCalledTimes(2);
+            expect(enqueueFn).toHaveBeenCalledTimes(1);
+            // Second follow-up is buffered in pendingMessages for server-side drain
+            expect(updated?.pendingMessages).toHaveLength(1);
+            expect(updated?.pendingMessages![0].content).toBe('Second');
         });
 
         it('should set status to running and enqueue with correct content', async () => {
@@ -866,7 +869,7 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
 
     describe('concurrent follow-ups', () => {
-        it('should handle two simultaneous follow-ups by enqueuing both', async () => {
+        it('should handle two simultaneous follow-ups without errors', async () => {
             const proc: AIProcess = {
                 id: 'proc-concurrent',
                 type: 'clarification',
@@ -887,9 +890,13 @@ describe('POST /api/processes/:id/message', () => {
             expect(res1.status).toBe(202);
             expect(res2.status).toBe(202);
 
-            // Handler no longer saves turns; verify both enqueue calls were made
+            // With server-side drain, one request may enqueue while the other
+            // buffers as a pending message (depending on race timing).
+            // Both requests must succeed (202).
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
-            expect(enqueueFn.mock.calls.length).toBeGreaterThanOrEqual(2);
+            const updated = await store.getProcess('proc-concurrent');
+            const pendingCount = updated?.pendingMessages?.length ?? 0;
+            expect(enqueueFn.mock.calls.length + pendingCount).toBeGreaterThanOrEqual(2);
         });
 
         it('should assign unique turnIndex values to concurrent requests', async () => {
@@ -1426,6 +1433,263 @@ describe('POST /api/processes/:id/message', () => {
             const call = enqueueFn.mock.calls[0][0];
             expect(call.payload.prompt).toBe('Fix the bug');
             expect(call.payload.prompt).not.toContain('<selected_skills>');
+        });
+    });
+
+    // ========================================================================
+    // Server-side pending message buffering
+    // ========================================================================
+
+    describe('server-side pending message buffering', () => {
+        it('should buffer follow-up as pending message when task is running with enqueue delivery', async () => {
+            const bridgeWithRunning = createMockBridge();
+            (bridgeWithRunning as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'task-running-1', type: 'chat', status: 'running' });
+
+            const freshRoutes: Route[] = [];
+            registerApiRoutes(freshRoutes, store, bridgeWithRunning);
+            const freshHandler = createRequestHandler({ routes: freshRoutes, spaHtml: generateDashboardHtml(), store });
+            const freshServer = http.createServer(freshHandler);
+            await new Promise<void>((resolve, reject) => {
+                freshServer.on('error', reject);
+                freshServer.listen(0, 'localhost', () => resolve());
+            });
+            const freshUrl = `http://localhost:${(freshServer.address() as { port: number }).port}`;
+
+            const proc: AIProcess = {
+                id: 'proc-running-buf',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'running',
+                startTime: new Date(),
+                sdkSessionId: 'sess-run',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${freshUrl}/api/processes/proc-running-buf/message`, {
+                content: 'Queued while running',
+            });
+
+            expect(res.status).toBe(202);
+            // enqueue should NOT be called — message is buffered instead
+            expect(bridgeWithRunning.enqueue as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+            // Verify pending message was stored
+            const updated = await store.getProcess('proc-running-buf');
+            expect(updated?.pendingMessages).toHaveLength(1);
+            expect(updated?.pendingMessages![0].content).toBe('Queued while running');
+            expect(updated?.pendingMessages![0].id).toBeDefined();
+            expect(updated?.pendingMessages![0].createdAt).toBeDefined();
+
+            await new Promise<void>((resolve) => freshServer.close(() => resolve()));
+        });
+
+        it('should buffer follow-up when task is queued', async () => {
+            const bridgeWithQueued = createMockBridge();
+            (bridgeWithQueued as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'task-queued-1', type: 'chat', status: 'queued' });
+
+            const freshRoutes: Route[] = [];
+            registerApiRoutes(freshRoutes, store, bridgeWithQueued);
+            const freshHandler = createRequestHandler({ routes: freshRoutes, spaHtml: generateDashboardHtml(), store });
+            const freshServer = http.createServer(freshHandler);
+            await new Promise<void>((resolve, reject) => {
+                freshServer.on('error', reject);
+                freshServer.listen(0, 'localhost', () => resolve());
+            });
+            const freshUrl = `http://localhost:${(freshServer.address() as { port: number }).port}`;
+
+            const proc: AIProcess = {
+                id: 'proc-queued-buf',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'queued',
+                startTime: new Date(),
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${freshUrl}/api/processes/proc-queued-buf/message`, {
+                content: 'Queued while queued',
+            });
+
+            expect(res.status).toBe(202);
+            expect(bridgeWithQueued.enqueue as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+            const updated = await store.getProcess('proc-queued-buf');
+            expect(updated?.pendingMessages).toHaveLength(1);
+            expect(updated?.pendingMessages![0].content).toBe('Queued while queued');
+
+            await new Promise<void>((resolve) => freshServer.close(() => resolve()));
+        });
+
+        it('should buffer follow-up when task not found but process is non-terminal', async () => {
+            // Default mock bridge has no findTaskByProcessId → returns undefined
+            const proc: AIProcess = {
+                id: 'proc-nonterminal-buf',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'running',
+                startTime: new Date(),
+                sdkSessionId: 'sess-nt',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-nonterminal-buf/message`, {
+                content: 'Follow-up to running process',
+            });
+
+            expect(res.status).toBe(202);
+            // No parentTask found, but priorStatus is 'running' (non-terminal) → buffer
+            const updated = await store.getProcess('proc-nonterminal-buf');
+            expect(updated?.pendingMessages).toHaveLength(1);
+            expect(updated?.pendingMessages![0].content).toBe('Follow-up to running process');
+        });
+
+        it('should enqueue when task not found and process was terminal (failed)', async () => {
+            const proc: AIProcess = {
+                id: 'proc-failed-enqueue',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'failed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-fail',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-failed-enqueue/message`, {
+                content: 'Retry after failure',
+            });
+
+            expect(res.status).toBe(202);
+            // No parentTask found, priorStatus is 'failed' (terminal) → enqueue
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalled();
+            const call = enqueueFn.mock.calls[0][0];
+            expect(call.payload.prompt).toBe('Retry after failure');
+        });
+
+        it('should buffer follow-up with mode override when task is running', async () => {
+            const bridgeWithRunning = createMockBridge();
+            (bridgeWithRunning as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'task-running-mode', type: 'chat', status: 'running' });
+
+            const freshRoutes: Route[] = [];
+            registerApiRoutes(freshRoutes, store, bridgeWithRunning);
+            const freshHandler = createRequestHandler({ routes: freshRoutes, spaHtml: generateDashboardHtml(), store });
+            const freshServer = http.createServer(freshHandler);
+            await new Promise<void>((resolve, reject) => {
+                freshServer.on('error', reject);
+                freshServer.listen(0, 'localhost', () => resolve());
+            });
+            const freshUrl = `http://localhost:${(freshServer.address() as { port: number }).port}`;
+
+            const proc: AIProcess = {
+                id: 'proc-running-mode',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'running',
+                startTime: new Date(),
+                sdkSessionId: 'sess-mode',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${freshUrl}/api/processes/proc-running-mode/message`, {
+                content: 'Switch mode',
+                mode: 'autopilot',
+            });
+
+            expect(res.status).toBe(202);
+            const updated = await store.getProcess('proc-running-mode');
+            expect(updated?.pendingMessages).toHaveLength(1);
+            expect(updated?.pendingMessages![0].mode).toBe('autopilot');
+
+            await new Promise<void>((resolve) => freshServer.close(() => resolve()));
+        });
+
+        it('should buffer when steering fails for immediate delivery on running task', async () => {
+            const bridgeWithFailedSteer = createMockBridge();
+            (bridgeWithFailedSteer as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'task-steer-fail', type: 'chat', status: 'running' });
+            (bridgeWithFailedSteer as any).steerProcess = vi.fn().mockResolvedValue(false);
+
+            const freshRoutes: Route[] = [];
+            registerApiRoutes(freshRoutes, store, bridgeWithFailedSteer);
+            const freshHandler = createRequestHandler({ routes: freshRoutes, spaHtml: generateDashboardHtml(), store });
+            const freshServer = http.createServer(freshHandler);
+            await new Promise<void>((resolve, reject) => {
+                freshServer.on('error', reject);
+                freshServer.listen(0, 'localhost', () => resolve());
+            });
+            const freshUrl = `http://localhost:${(freshServer.address() as { port: number }).port}`;
+
+            const proc: AIProcess = {
+                id: 'proc-steer-fail',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'running',
+                startTime: new Date(),
+                sdkSessionId: 'sess-steer',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${freshUrl}/api/processes/proc-steer-fail/message`, {
+                content: 'Steering failed message',
+                deliveryMode: 'immediate',
+            });
+
+            expect(res.status).toBe(202);
+            // Steering failed → should buffer as pending, not enqueue
+            expect(bridgeWithFailedSteer.enqueue as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+            const updated = await store.getProcess('proc-steer-fail');
+            expect(updated?.pendingMessages).toHaveLength(1);
+            expect(updated?.pendingMessages![0].content).toBe('Steering failed message');
+
+            await new Promise<void>((resolve) => freshServer.close(() => resolve()));
+        });
+
+        it('should accumulate multiple pending messages in order', async () => {
+            const bridgeWithRunning = createMockBridge();
+            (bridgeWithRunning as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'task-multi-pend', type: 'chat', status: 'running' });
+
+            const freshRoutes: Route[] = [];
+            registerApiRoutes(freshRoutes, store, bridgeWithRunning);
+            const freshHandler = createRequestHandler({ routes: freshRoutes, spaHtml: generateDashboardHtml(), store });
+            const freshServer = http.createServer(freshHandler);
+            await new Promise<void>((resolve, reject) => {
+                freshServer.on('error', reject);
+                freshServer.listen(0, 'localhost', () => resolve());
+            });
+            const freshUrl = `http://localhost:${(freshServer.address() as { port: number }).port}`;
+
+            const proc: AIProcess = {
+                id: 'proc-multi-pend',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'running',
+                startTime: new Date(),
+                sdkSessionId: 'sess-multi-pend',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${freshUrl}/api/processes/proc-multi-pend/message`, { content: 'First pending' });
+            await postJSON(`${freshUrl}/api/processes/proc-multi-pend/message`, { content: 'Second pending' });
+            await postJSON(`${freshUrl}/api/processes/proc-multi-pend/message`, { content: 'Third pending' });
+
+            const updated = await store.getProcess('proc-multi-pend');
+            expect(updated?.pendingMessages).toHaveLength(3);
+            expect(updated?.pendingMessages![0].content).toBe('First pending');
+            expect(updated?.pendingMessages![1].content).toBe('Second pending');
+            expect(updated?.pendingMessages![2].content).toBe('Third pending');
+
+            await new Promise<void>((resolve) => freshServer.close(() => resolve()));
         });
     });
 });

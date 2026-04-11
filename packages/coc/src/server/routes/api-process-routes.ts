@@ -33,6 +33,9 @@ const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 
 /** Terminal statuses that cannot be cancelled. */
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
 
+/** Non-terminal statuses where a task may still be executing. */
+const NONTERMINAL_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'created']);
+
 /**
  * Synthesize a minimal AIProcess from a QueuedTask.
  * Used when a process record hasn't been created yet (task is still queued).
@@ -483,6 +486,24 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             );
             const turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
 
+            // Helper: buffer a follow-up as a pending message for server-side drain.
+            // The server drains pending messages when the running task completes,
+            // avoiding duplicate task IDs in the queue.
+            const bufferAsPendingMessage = async () => {
+                const pendingMsg = {
+                    id: crypto.randomUUID(),
+                    content: messageContent,
+                    ...(modeOverride ? { mode: modeOverride } : {}),
+                    createdAt: new Date().toISOString(),
+                };
+                const current = await store.getProcess(id);
+                const existing = current?.pendingMessages ?? [];
+                await store.updateProcess(id, {
+                    pendingMessages: [...existing, pendingMsg],
+                });
+                emitPendingMessageAdded(store, id, pendingMsg);
+            };
+
             try {
                 if (bridge.enqueue) {
                     const displayName = truncateDisplayName(messageContent.trim());
@@ -492,29 +513,18 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     } else if (parentTask && parentTask.status === 'running' && deliveryMode === 'immediate' && bridge.steerProcess) {
                         const steered = await bridge.steerProcess(id, messageContent);
                         if (!steered) {
-                            // Steering failed (no active SDK session); fall through to enqueue
-                            await bridge.enqueue({
-                                ...(isQueueProcessId(id) ? { id: toTaskId(id), processId: id } : {}),
-                                type: 'chat',
-                                priority: 'normal',
-                                payload: {
-                                    kind: 'chat',
-                                    prompt: messageContent,
-                                    processId: id,
-                                    attachments,
-                                    imageTempDir,
-                                    images: validatedImages,
-                                    workingDirectory: proc.workingDirectory,
-                                    readonly: (proc as any).payload?.readonly,
-                                    ...(selectedSkillNames && selectedSkillNames.length > 0 ? { context: { skills: selectedSkillNames } } : {}),
-                                    ...(modeOverride ? { mode: modeOverride } : {}),
-                                    deliveryMode,
-                                },
-                                config: {},
-                                displayName,
-                            });
+                            // Steering failed (no active SDK session); buffer for server-side drain
+                            await bufferAsPendingMessage();
                         }
+                    } else if (
+                        (parentTask && (parentTask.status === 'running' || parentTask.status === 'queued')) ||
+                        (!parentTask && NONTERMINAL_STATUSES.has(priorStatus))
+                    ) {
+                        // Task running/queued, or task not found but process was non-terminal:
+                        // buffer as pending message — server drains on task completion
+                        await bufferAsPendingMessage();
                     } else {
+                        // Terminal status (failed/cancelled) or restart fallback → enqueue
                         await bridge.enqueue({
                             ...(isQueueProcessId(id) ? { id: toTaskId(id), processId: id } : {}),
                             type: 'chat',

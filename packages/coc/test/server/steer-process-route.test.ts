@@ -145,7 +145,7 @@ describe('POST /api/processes/:id/message — steer running task', () => {
         expect(enqueueMock).not.toHaveBeenCalled();
     });
 
-    it('falls back to enqueue when steerProcess returns false', async () => {
+    it('falls back to buffering as pending message when steerProcess returns false', async () => {
         findTaskMock.mockReturnValue({ id: 'task-1', type: 'chat', status: 'running' });
         steerProcessMock.mockResolvedValue(false);
 
@@ -156,10 +156,14 @@ describe('POST /api/processes/:id/message — steer running task', () => {
 
         expect(resp.status).toBe(202);
         expect(steerProcessMock).toHaveBeenCalledOnce();
-        expect(enqueueMock).toHaveBeenCalledOnce();
+        // Steering failure now buffers as pending message instead of enqueueing
+        expect(enqueueMock).not.toHaveBeenCalled();
+        const proc = store.processes.get('proc-running');
+        expect(proc?.pendingMessages).toHaveLength(1);
+        expect(proc?.pendingMessages![0].content).toBe('fallback msg');
     });
 
-    it('enqueues normally when deliveryMode is enqueue even if task is running', async () => {
+    it('buffers as pending message when deliveryMode is enqueue and task is running', async () => {
         findTaskMock.mockReturnValue({ id: 'task-1', type: 'chat', status: 'running' });
 
         const resp = await request(`${baseUrl}/api/processes/proc-running/message`, {
@@ -169,10 +173,14 @@ describe('POST /api/processes/:id/message — steer running task', () => {
 
         expect(resp.status).toBe(202);
         expect(steerProcessMock).not.toHaveBeenCalled();
-        expect(enqueueMock).toHaveBeenCalledOnce();
+        // Running task with enqueue delivery → buffer instead of creating duplicate task
+        expect(enqueueMock).not.toHaveBeenCalled();
+        const proc = store.processes.get('proc-running');
+        expect(proc?.pendingMessages).toHaveLength(1);
+        expect(proc?.pendingMessages![0].content).toBe('queue me');
     });
 
-    it('enqueues normally when no parent task is found', async () => {
+    it('buffers as pending message when no parent task is found and process is non-terminal', async () => {
         findTaskMock.mockReturnValue(undefined);
 
         const resp = await request(`${baseUrl}/api/processes/proc-running/message`, {
@@ -182,7 +190,11 @@ describe('POST /api/processes/:id/message — steer running task', () => {
 
         expect(resp.status).toBe(202);
         expect(steerProcessMock).not.toHaveBeenCalled();
-        expect(enqueueMock).toHaveBeenCalledOnce();
+        // Non-terminal process with no parent task → buffer for server-side drain
+        expect(enqueueMock).not.toHaveBeenCalled();
+        const proc = store.processes.get('proc-running');
+        expect(proc?.pendingMessages).toHaveLength(1);
+        expect(proc?.pendingMessages![0].content).toBe('no parent');
     });
 
     it('requeues completed tasks normally (unchanged behavior)', async () => {

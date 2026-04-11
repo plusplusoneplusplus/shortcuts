@@ -117,7 +117,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             if (isMemoryAggregatePayload(task.payload)) {
                 return await this.executors.memoryAggregateExecutor.execute(task);
             }
-            return await this.executors.runner.run(task, { cancelledTasks: this.cancelledTasks, executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills), executeByTypeFn: (t, p) => this.executors.dispatch(t, p), getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t) });
+            return await this.executors.runner.run(task, {
+                cancelledTasks: this.cancelledTasks,
+                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills),
+                executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
+                getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
+                onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
+            });
         } finally {
             this.cancelledTasks.delete(task.id);
         }
@@ -149,6 +155,18 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames);
+    }
+
+    /**
+     * Drain one pending message from the process store and requeue it.
+     * Called by the lifecycle runner after a task completes.
+     */
+    private async drainPendingMessages(processId: string, taskId: string): Promise<void> {
+        const proc = await this.store.getProcess(processId);
+        if (!proc?.pendingMessages?.length) return;
+        const [nextMsg, ...rest] = proc.pendingMessages;
+        await this.store.updateProcess(processId, { pendingMessages: rest });
+        await this.requeueForFollowUp(taskId, nextMsg.content, undefined, undefined, nextMsg.mode);
     }
 }
 

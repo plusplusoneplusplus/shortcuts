@@ -352,3 +352,114 @@ describe('ProcessLifecycleRunner — cancellation detection', () => {
         expect(proc?.status).toBe('cancelled');
     });
 });
+
+// ============================================================================
+// Pending messages drain on task completion
+// ============================================================================
+
+describe('ProcessLifecycleRunner — pending messages drain', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('calls onDrainPendingMessages after successful new task completion', async () => {
+        const drainFn = vi.fn().mockResolvedValue(undefined);
+        const task = makeTask();
+        const opts = makeOpts({ onDrainPendingMessages: drainFn });
+
+        await runner.run(task, opts);
+
+        const processId = `queue_${task.id}`;
+        expect(drainFn).toHaveBeenCalledOnce();
+        expect(drainFn).toHaveBeenCalledWith(processId, task.id);
+    });
+
+    it('calls onDrainPendingMessages after successful follow-up completion', async () => {
+        const drainFn = vi.fn().mockResolvedValue(undefined);
+        const processId = 'existing-process';
+        // Set up a process in the store for the follow-up
+        store.processes.set(processId, {
+            id: processId,
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'running',
+            startTime: new Date(),
+            conversationTurns: [
+                { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            ],
+        } as any);
+
+        const followUpTask = makeTask({
+            id: 'followup-task-1',
+            payload: {
+                kind: 'chat',
+                prompt: 'Follow-up question',
+                processId,
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+
+        const opts = makeOpts({ onDrainPendingMessages: drainFn });
+        await runner.run(followUpTask, opts);
+
+        expect(drainFn).toHaveBeenCalledOnce();
+        expect(drainFn).toHaveBeenCalledWith(processId, followUpTask.id);
+    });
+
+    it('does not call onDrainPendingMessages when task fails', async () => {
+        const drainFn = vi.fn().mockResolvedValue(undefined);
+        const task = makeTask();
+        const opts = makeOpts({
+            onDrainPendingMessages: drainFn,
+            executeByTypeFn: vi.fn().mockRejectedValue(new Error('execution error')),
+        });
+
+        await runner.run(task, opts);
+
+        expect(drainFn).not.toHaveBeenCalled();
+    });
+
+    it('does not call onDrainPendingMessages when task is cancelled', async () => {
+        const drainFn = vi.fn().mockResolvedValue(undefined);
+        const cancelledTasks = new Set<string>();
+        const task = makeTask();
+        cancelledTasks.add(task.id);
+
+        const opts = makeOpts({
+            onDrainPendingMessages: drainFn,
+            cancelledTasks,
+        });
+
+        await runner.run(task, opts);
+
+        expect(drainFn).not.toHaveBeenCalled();
+    });
+
+    it('does not crash when onDrainPendingMessages throws', async () => {
+        const drainFn = vi.fn().mockRejectedValue(new Error('drain failed'));
+        const task = makeTask();
+        const opts = makeOpts({ onDrainPendingMessages: drainFn });
+
+        const result = await runner.run(task, opts);
+
+        // Task should still succeed despite drain error
+        expect(result.success).toBe(true);
+        expect(drainFn).toHaveBeenCalledOnce();
+    });
+
+    it('works without onDrainPendingMessages callback (backward compat)', async () => {
+        const task = makeTask();
+        const opts = makeOpts(); // no onDrainPendingMessages
+
+        const result = await runner.run(task, opts);
+
+        expect(result.success).toBe(true);
+    });
+});
