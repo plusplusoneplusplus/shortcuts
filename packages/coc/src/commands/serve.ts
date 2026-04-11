@@ -21,8 +21,8 @@ import {
     cyan,
 } from '../logger';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
-import { FileProcessStore, SqliteProcessStore, setLogger, initAIServiceLogger } from '@plusplusoneplusplus/forge';
-import { resolveLoggingConfig, loadConfigFile } from '../config';
+import { setLogger, initAIServiceLogger } from '@plusplusoneplusplus/forge';
+import { resolveLoggingConfig, loadConfigFile, createProcessStore } from '../config';
 import { setServerLogger, getServerLogger } from '../server/server-logger';
 import type { ServeCommandOptions } from '../server/types';
 
@@ -62,10 +62,7 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
     try {
         const { createExecutionServer } = await import('../server/index');
 
-        const storeBackend = fileConfig?.store?.backend ?? 'file';
-        const store = storeBackend === 'sqlite'
-            ? new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') })
-            : new FileProcessStore({ dataDir });
+        const store = createProcessStore(dataDir, fileConfig?.store?.backend);
 
         const server = await createExecutionServer({
             port,

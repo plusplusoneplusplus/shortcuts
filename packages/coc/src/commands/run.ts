@@ -15,8 +15,6 @@ import {
     executeWorkflow,
     flattenWorkflowResult,
     setLogger,
-    FileProcessStore,
-    SqliteProcessStore,
 } from '@plusplusoneplusplus/forge';
 import type {
     WorkflowConfig,
@@ -41,7 +39,7 @@ import {
     bold,
 } from '../logger';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
-import { resolveLoggingConfig, loadConfigFile } from '../config';
+import { resolveLoggingConfig, loadConfigFile, createProcessStore } from '../config';
 import type { CLIConfig } from '../config';
 import { formatResults, formatSummary, formatDuration } from '../output-formatter';
 import type { OutputFormat } from '../output-formatter';
@@ -348,11 +346,14 @@ async function persistProcess(
             },
         };
         const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
-        const storeBackend = fileConfig?.store?.backend ?? 'file';
-        const store = storeBackend === 'sqlite'
-            ? new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') })
-            : new FileProcessStore({ dataDir });
-        await store.addProcess(process);
+        const store = createProcessStore(dataDir, fileConfig?.store?.backend);
+        try {
+            await store.addProcess(process);
+        } finally {
+            if ('close' in store && typeof store.close === 'function') {
+                store.close();
+            }
+        }
     } catch (err) {
         // Persistence errors should never fail the run command
         printError(`Failed to persist process: ${err instanceof Error ? err.message : String(err)}`);

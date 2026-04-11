@@ -428,14 +428,14 @@ timeout: 300
             expect(result.store.backend).toBe('sqlite');
         });
 
-        it('should default store.backend to file when omitted', () => {
+        it('should default store.backend to sqlite when omitted', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { model: 'test' });
-            expect(result.store.backend).toBe('file');
+            expect(result.store.backend).toBe('sqlite');
         });
 
         it('should preserve store.backend default when store section is absent', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
-            expect(result.store.backend).toBe('file');
+            expect(result.store.backend).toBe('sqlite');
         });
     });
 
@@ -468,9 +468,9 @@ timeout: 300
             expect(result.parallel).toBe(5); // Default
         });
 
-        it('should include store.backend: file by default', () => {
+        it('should include store.backend: sqlite by default', () => {
             const result = resolveConfig(path.join(tmpDir, 'nonexistent.yaml'));
-            expect(result.store.backend).toBe('file');
+            expect(result.store.backend).toBe('sqlite');
         });
 
         it('should resolve store.backend: sqlite from config file', () => {

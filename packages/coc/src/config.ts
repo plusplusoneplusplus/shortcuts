@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import yaml from 'js-yaml';
+import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { validateConfigWithSchema } from './config/schema';
 
 // ============================================================================
@@ -213,7 +214,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     store: {
-        backend: 'file',
+        backend: 'sqlite',
     },
 };
 
@@ -451,4 +452,22 @@ export function resolveLoggingConfig(
     const pretty = loggingConfig?.pretty ?? 'auto';
     const stores = loggingConfig?.stores ?? {};
     return { level, dir, pretty, stores };
+}
+
+// ============================================================================
+// Process Store Factory
+// ============================================================================
+
+/**
+ * Create a process store based on the configured backend.
+ * Defaults to SQLite when no backend is specified.
+ */
+export function createProcessStore(
+    dataDir: string,
+    backend?: 'file' | 'sqlite',
+): FileProcessStore | SqliteProcessStore {
+    const resolved = backend ?? 'sqlite';
+    return resolved === 'sqlite'
+        ? new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') })
+        : new FileProcessStore({ dataDir });
 }

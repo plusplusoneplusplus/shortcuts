@@ -579,7 +579,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
         handler: async (_req, res) => {
             try {
                 const config = configFunctions?.loadConfigFile?.(resolvedConfigPath);
-                const backend = config?.store?.backend ?? 'file';
+                const backend = config?.store?.backend ?? 'sqlite';
 
                 const workspaces = await store.getWorkspaces();
                 const allProcesses = await store.getAllProcesses();

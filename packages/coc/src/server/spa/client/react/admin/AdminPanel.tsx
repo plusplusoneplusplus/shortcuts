@@ -13,7 +13,6 @@ import { PromptsPanel } from './PromptsPanel';
 import { useApp } from '../context/AppContext';
 import { FeatureTip } from '../welcome/FeatureTip';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
-import { ENABLE_SQLITE_BACKEND } from '../featureFlags';
 import type { AdminSubTab } from '../types/dashboard';
 
 const StorageSection = lazy(() => import('./StorageSection'));
@@ -948,14 +947,10 @@ export function AdminPanel() {
                 {activeTab === 'data' && (
                     <Card className="p-2 md:p-3">
                         {/* Storage Backend */}
-                        {ENABLE_SQLITE_BACKEND && (
-                            <>
-                                <Suspense fallback={<Spinner size="sm" />}>
-                                    <StorageSection />
-                                </Suspense>
-                                <hr className={dividerClass} />
-                            </>
-                        )}
+                        <Suspense fallback={<Spinner size="sm" />}>
+                            <StorageSection />
+                        </Suspense>
+                        <hr className={dividerClass} />
 
                         {/* Export */}
                         <div>

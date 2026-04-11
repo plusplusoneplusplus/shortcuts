@@ -101,7 +101,7 @@ describe('Serve Command', () => {
         process.removeAllListeners('SIGINT');
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         // Remove any listeners added during test
         process.removeAllListeners('SIGINT');
         // Restore original listeners
@@ -110,6 +110,13 @@ describe('Serve Command', () => {
         }
         stderrSpy.mockRestore();
         setColorEnabled(true);
+        // Close any SQLite stores created during the test to release file locks
+        for (const call of mockCreateExecutionServer.mock.calls) {
+            const store = call[0]?.store;
+            if (store && typeof store.close === 'function') {
+                store.close();
+            }
+        }
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -402,13 +409,15 @@ describe('Serve Command', () => {
             expect(opts.store).toBeDefined();
         });
 
-        it('should pass a FileProcessStore instance as store', async () => {
-            const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
+        it('should pass a SqliteProcessStore instance as store by default', async () => {
+            const { SqliteProcessStore } = await import('@plusplusoneplusplus/forge');
 
             await runServeWithSigint({ dataDir: tmpDir, open: false });
 
             const opts = mockCreateExecutionServer.mock.calls[0][0];
-            expect(opts.store).toBeInstanceOf(FileProcessStore);
+            expect(opts.store).toBeInstanceOf(SqliteProcessStore);
+            // Close the SQLite database to release the file lock before tmpDir cleanup
+            (opts.store as InstanceType<typeof SqliteProcessStore>).close();
         });
 
         it('should configure FileProcessStore with the resolved dataDir', async () => {
@@ -479,14 +488,16 @@ describe('Serve Command', () => {
             expect(opts.store).toBeInstanceOf(FileProcessStore);
         });
 
-        it('should default to FileProcessStore when store config is absent', async () => {
+        it('should default to SqliteProcessStore when store config is absent', async () => {
             mockLoadConfigFile.mockReturnValue(undefined);
-            const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
+            const { SqliteProcessStore } = await import('@plusplusoneplusplus/forge');
 
             await runServeWithSigint({ dataDir: tmpDir, open: false });
 
             const opts = mockCreateExecutionServer.mock.calls[0][0];
-            expect(opts.store).toBeInstanceOf(FileProcessStore);
+            expect(opts.store).toBeInstanceOf(SqliteProcessStore);
+            // Close the SQLite database to release the file lock before tmpDir cleanup
+            (opts.store as InstanceType<typeof SqliteProcessStore>).close();
         });
     });
 });

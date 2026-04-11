@@ -2,7 +2,7 @@
  * StorageSection — displays current storage backend info and drives
  * the SQLite migration flow (confirm → stream progress → done/error).
  *
- * Gated behind ENABLE_SQLITE_BACKEND in AdminPanel via React.lazy.
+ * Loaded lazily in AdminPanel via React.lazy.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
