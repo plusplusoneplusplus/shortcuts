@@ -1076,6 +1076,38 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         );
         expect(historyCalls).toHaveLength(0);
     });
+
+    it('refetches history when a completed task arrives in running (follow-up re-queue)', async () => {
+        const h1 = makeHistoryTask('h1');
+        setupFetchMock({ history: [h1] });
+        const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
+
+        await act(async () => {
+            renderWithProviders(
+                React.createElement(React.Fragment, null,
+                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(WsSimulator, { dispatchRef }),
+                ),
+            );
+        });
+        await waitFor(() => {
+            expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument();
+        });
+
+        // Reset to track new calls after mount
+        mockFetchApi.mockClear();
+        setupFetchMock({ running: [{ ...h1, status: 'running' }], history: [] });
+
+        // Simulate WS push: h1 now appears in running (follow-up re-queued it)
+        await act(async () => {
+            dispatchRef.current?.({ running: [{ ...h1, status: 'running' }], queued: [], stats: { isPaused: false } });
+        });
+
+        // Should have refetched history because h1 arrived from history into running
+        await waitFor(() => {
+            expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/workspaces/ws-1/history'));
+        });
+    });
 });
 
 // ═══════════════════════════════════════════════════════════════════════

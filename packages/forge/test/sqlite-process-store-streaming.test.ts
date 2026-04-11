@@ -247,6 +247,24 @@ describe('SqliteProcessStore — appendConversationTurn', () => {
         }));
         expect(result).toBeUndefined();
     });
+
+    it('onProcessChange includes process object after appendConversationTurn', async () => {
+        await store.addProcess(makeProcess('at-evt'));
+        const changes: Array<{ type: string; process?: any }> = [];
+        store.onProcessChange = (event) => changes.push(event);
+
+        await store.appendConversationTurn(
+            'at-evt',
+            (idx) => ({ role: 'user', content: 'hi', timestamp: new Date(), turnIndex: idx, timeline: [] }),
+            { additionalUpdates: { status: 'completed' } },
+        );
+
+        expect(changes).toHaveLength(1);
+        expect(changes[0].type).toBe('process-updated');
+        expect(changes[0].process).toBeDefined();
+        expect(changes[0].process.id).toBe('at-evt');
+        expect(changes[0].process.status).toBe('completed');
+    });
 });
 
 // ============================================================================

@@ -911,7 +911,8 @@ export class SqliteProcessStore implements ProcessStore {
         appendTxn();
 
         if (appendResult) {
-            this.onProcessChange?.({ type: 'process-updated' });
+            const updated = await this.getProcess(processId);
+            this.onProcessChange?.({ type: 'process-updated', process: updated ?? undefined });
         }
 
         return appendResult;

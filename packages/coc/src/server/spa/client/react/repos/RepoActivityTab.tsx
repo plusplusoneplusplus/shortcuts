@@ -131,14 +131,17 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         setRunning(repoQueue.running);
         setQueued(repoQueue.queued);
 
-        // Detect task departures: if a previously-running ID disappeared, refetch
-        // history from the authoritative HTTP endpoint.
+        // Detect task departures or arrivals and refetch history.
+        // Departure: a previously-running ID disappeared (task completed/failed).
+        // Arrival: a new running ID exists in our local history (follow-up re-queue).
         const currIds = repoQueue.running.map((t: any) => t.id);
         const prevIds = prevRunningIdsRef.current;
         const hasDeparture = prevIds.some(id => !currIds.includes(id));
+        const historyIds = new Set(history.map((t: any) => t.id));
+        const hasArrivalFromHistory = currIds.some(id => !prevIds.includes(id) && historyIds.has(id));
         prevRunningIdsRef.current = currIds;
 
-        if (hasDeparture) {
+        if (hasDeparture || hasArrivalFromHistory) {
             fetchHistory();
         }
 

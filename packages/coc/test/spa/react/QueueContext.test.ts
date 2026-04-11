@@ -71,7 +71,7 @@ describe('QueueContext reducer', () => {
             expect(result.queueInitialized).toBe(true);
         });
 
-        it('does not modify history (managed by SET_HISTORY)', () => {
+        it('preserves history items not present in running or queued', () => {
             const state = makeState({ history: [{ id: 'h1' }] });
             const result = queueReducer(state, {
                 type: 'QUEUE_UPDATED',
@@ -81,7 +81,32 @@ describe('QueueContext reducer', () => {
                     stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
                 },
             });
-            // QUEUE_UPDATED never touches history
+            expect(result.history).toEqual([{ id: 'h1' }]);
+        });
+
+        it('evicts history items that appear in running (follow-up re-queue)', () => {
+            const state = makeState({ history: [{ id: 'h1' }, { id: 'h2' }] });
+            const result = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: {
+                    queued: [],
+                    running: [{ id: 'h1' }],
+                    stats: { queued: 0, running: 1, total: 1, isPaused: false, isDraining: false },
+                },
+            });
+            expect(result.history).toEqual([{ id: 'h2' }]);
+        });
+
+        it('evicts history items that appear in queued', () => {
+            const state = makeState({ history: [{ id: 'h1' }, { id: 'h2' }] });
+            const result = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: {
+                    queued: [{ id: 'h2' }],
+                    running: [],
+                    stats: { queued: 1, running: 0, total: 1, isPaused: false, isDraining: false },
+                },
+            });
             expect(result.history).toEqual([{ id: 'h1' }]);
         });
     });

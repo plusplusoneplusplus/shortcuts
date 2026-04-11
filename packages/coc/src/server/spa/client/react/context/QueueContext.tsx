@@ -153,11 +153,16 @@ export type QueueAction =
 export function queueReducer(state: QueueContextState, action: QueueAction): QueueContextState {
     switch (action.type) {
         case 'QUEUE_UPDATED': {
+            const activeIds = new Set([
+                ...(action.queue.running || []).map((t: any) => t.id),
+                ...(action.queue.queued || []).map((t: any) => t.id),
+            ]);
             return {
                 ...state,
                 queued: action.queue.queued || [],
                 running: action.queue.running || [],
                 stats: action.queue.stats || state.stats,
+                history: state.history.filter((t: any) => !activeIds.has(t.id)),
                 queueInitialized: true,
             };
         }

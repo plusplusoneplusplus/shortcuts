@@ -96,9 +96,23 @@ describe('queueReducer', () => {
                     stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
                 },
             });
-            // QUEUE_UPDATED does not touch history
+            // QUEUE_UPDATED preserves history items not in running/queued
             expect(result.history).toHaveLength(1);
             expect(result.history[0].id).toBe('existing');
+        });
+
+        it('evicts history items that now appear in running (follow-up re-queue)', () => {
+            const state = makeState({ history: [{ id: 'h1' }, { id: 'h2' }] });
+            const result = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: {
+                    queued: [],
+                    running: [{ id: 'h1' }],
+                    stats: { queued: 0, running: 1, total: 1, isPaused: false, isDraining: false },
+                },
+            });
+            expect(result.history).toHaveLength(1);
+            expect(result.history[0].id).toBe('h2');
         });
     });
 
