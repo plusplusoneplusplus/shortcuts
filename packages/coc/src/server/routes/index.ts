@@ -42,6 +42,7 @@ import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
 import { registerDbBrowserRoutes } from '../db-browser-handler';
+import { registerSeenStateRoutes } from '../seen-state-handler';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
@@ -117,6 +118,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerReplicateApplyRoutes(routes, store);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
+    registerSeenStateRoutes(routes, store as any);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerAdminRoutes(routes, {
