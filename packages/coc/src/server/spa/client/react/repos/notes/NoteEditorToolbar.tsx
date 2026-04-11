@@ -3,8 +3,10 @@ import type { Editor } from '@tiptap/react';
 
 export interface NoteEditorToolbarProps {
     editor: Editor | null;
-    onCommentCreate?: () => void;
     hidden?: boolean;
+    commentsPanelOpen?: boolean;
+    onToggleCommentsPanel?: () => void;
+    commentCount?: number;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -223,52 +225,9 @@ function TableControls({ editor }: TableControlsProps) {
     );
 }
 
-// ── Comment button ──────────────────────────────────────────────────────────
-
-interface CommentButtonProps {
-    editor: Editor;
-    onCommentCreate: () => void;
-}
-
-function CommentButton({ editor, onCommentCreate }: CommentButtonProps) {
-    const [hasSelection, setHasSelection] = useState(false);
-
-    useEffect(() => {
-        const update = () => setHasSelection(!editor.state.selection.empty);
-        editor.on('selectionUpdate', update);
-        editor.on('transaction', update);
-        return () => {
-            editor.off('selectionUpdate', update);
-            editor.off('transaction', update);
-        };
-    }, [editor]);
-
-    return (
-        <button
-            type="button"
-            title="Add comment (Ctrl+Shift+M)"
-            aria-label="Add comment"
-            disabled={!hasSelection}
-            className={
-                'h-7 w-7 rounded flex items-center justify-center text-xs ' +
-                (hasSelection
-                    ? 'hover:bg-[#e0e0e0] dark:hover:bg-[#505050] cursor-pointer'
-                    : 'opacity-40 cursor-not-allowed')
-            }
-            onMouseDown={(e) => {
-                e.preventDefault();
-                if (hasSelection) onCommentCreate();
-            }}
-            data-testid="toolbar-comment-btn"
-        >
-            💬
-        </button>
-    );
-}
-
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, onCommentCreate, hidden }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount }: NoteEditorToolbarProps) {
     if (!editor || hidden) return null;
 
     const c = editor.chain().focus.bind(editor.chain());
@@ -332,11 +291,28 @@ export function NoteEditorToolbar({ editor, onCommentCreate, hidden }: NoteEdito
             {/* Table — contextual operations (visible only inside a table) */}
             <TableControls editor={editor} />
 
-            {/* Comment */}
-            {onCommentCreate && (
+            {/* Comments panel toggle */}
+            {onToggleCommentsPanel && (
                 <>
-                    <Sep />
-                    <CommentButton editor={editor} onCommentCreate={onCommentCreate} />
+                    <div className="ml-auto" />
+                    <button
+                        type="button"
+                        className={
+                            'text-xs px-2 py-0.5 rounded ' +
+                            (commentsPanelOpen
+                                ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
+                                : 'text-[#888] hover:text-[#333] dark:hover:text-white')
+                        }
+                        onClick={onToggleCommentsPanel}
+                        data-testid="comments-panel-toggle"
+                        aria-label={commentsPanelOpen ? 'Hide comments' : 'Show comments'}
+                    >
+                        💬{(commentCount ?? 0) > 0 && (
+                            <span className="ml-1 text-[10px]" data-testid="comments-toggle-count">
+                                {commentCount}
+                            </span>
+                        )}
+                    </button>
                 </>
             )}
         </div>

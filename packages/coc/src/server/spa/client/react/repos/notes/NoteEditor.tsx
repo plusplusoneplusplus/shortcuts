@@ -19,6 +19,7 @@ import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToApi, rewriteImageSrcTo
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { SourceEditor } from '../../shared/SourceEditor';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
+import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import './noteEditor.css';
 
 export type NoteViewMode = 'rich' | 'source';
@@ -31,6 +32,9 @@ export interface NoteEditorProps {
     onCommentCreate?: () => void;
     commentsEnabled?: boolean;
     onViewModeChange?: (mode: NoteViewMode) => void;
+    commentsPanelOpen?: boolean;
+    onToggleCommentsPanel?: () => void;
+    commentCount?: number;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -43,12 +47,16 @@ export function NoteEditor({
     onCommentCreate,
     commentsEnabled = true,
     onViewModeChange,
+    commentsPanelOpen,
+    onToggleCommentsPanel,
+    commentCount,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [saveState, setSaveState] = useState<SaveState>('idle');
     const [dirty, setDirty] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
     // Source mode state
     const [viewMode, setViewModeRaw] = useState<NoteViewMode>('rich');
@@ -535,7 +543,13 @@ export function NoteEditor({
                 )}
             </div>
 
-            <NoteEditorToolbar editor={editor} onCommentCreate={onCommentCreate} hidden={viewMode === 'source'} />
+            <NoteEditorToolbar
+                editor={editor}
+                hidden={viewMode === 'source'}
+                commentsPanelOpen={commentsPanelOpen}
+                onToggleCommentsPanel={onToggleCommentsPanel}
+                commentCount={commentCount}
+            />
 
             {viewMode === 'source' ? (
                 <div className="flex-1 overflow-y-auto" onPaste={handleSourcePaste} data-testid="note-source-container">
@@ -546,9 +560,36 @@ export function NoteEditor({
                     />
                 </div>
             ) : (
-                <div className="flex-1 overflow-y-auto">
+                <div
+                    className="flex-1 overflow-y-auto"
+                    onContextMenu={(e) => {
+                        if (editor && !editor.state.selection.empty) {
+                            e.preventDefault();
+                            setContextMenu({ x: e.clientX, y: e.clientY });
+                        }
+                    }}
+                >
                     <EditorContent editor={editor} />
                 </div>
+            )}
+
+            {/* Right-click context menu for adding comments */}
+            {contextMenu && (
+                <ContextMenu
+                    position={contextMenu}
+                    items={[
+                        {
+                            label: 'Add comment',
+                            icon: '💬',
+                            disabled: editor?.state.selection.empty ?? true,
+                            onClick: () => {
+                                onCommentCreate?.();
+                                setContextMenu(null);
+                            },
+                        },
+                    ]}
+                    onClose={() => setContextMenu(null)}
+                />
             )}
 
             {/* Save indicator */}

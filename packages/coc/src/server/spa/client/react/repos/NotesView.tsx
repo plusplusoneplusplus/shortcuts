@@ -233,28 +233,7 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                         )}
                     </div>
                 )}
-                {/* Desktop/tablet comments toggle */}
-                {!isMobile && selectedPath && noteViewMode === 'rich' && (
-                    <div className="flex items-center justify-end px-2 py-0.5">
-                        <button
-                            className={
-                                'text-xs px-2 py-0.5 rounded ' +
-                                (commentsPanelOpen
-                                    ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
-                                    : 'text-[#888] hover:text-[#333] dark:hover:text-white')
-                            }
-                            onClick={() => setCommentsPanelOpen((v) => !v)}
-                            data-testid="comments-panel-toggle"
-                            aria-label={commentsPanelOpen ? 'Hide comments' : 'Show comments'}
-                        >
-                            💬{wrappedComments.threads.length > 0 && (
-                                <span className="ml-1 text-[10px]" data-testid="comments-toggle-count">
-                                    {wrappedComments.totalCount}
-                                </span>
-                            )}
-                        </button>
-                    </div>
-                )}
+                {/* Desktop/tablet comments toggle — now merged into NoteEditorToolbar */}
                 <NoteEditor
                     workspaceId={workspaceId}
                     notePath={selectedPath}
@@ -263,6 +242,9 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                     onCommentCreate={handleCommentCreate}
                     commentsEnabled={true}
                     onViewModeChange={setNoteViewMode}
+                    commentsPanelOpen={commentsPanelOpen}
+                    onToggleCommentsPanel={() => setCommentsPanelOpen((v) => !v)}
+                    commentCount={wrappedComments.totalCount}
                 />
             </div>
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, fireEvent, screen, cleanup, act } from '@testing-library/react';
+import { render, fireEvent, screen, cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/repos/notes/NoteEditorToolbar';
@@ -13,7 +13,7 @@ function createTestEditor(content = '<p>Hello world</p>') {
     });
 }
 
-describe('NoteEditorToolbar — comment button', () => {
+describe('NoteEditorToolbar — comments panel toggle', () => {
     let editor: Editor;
 
     afterEach(() => {
@@ -22,101 +22,95 @@ describe('NoteEditorToolbar — comment button', () => {
         vi.restoreAllMocks();
     });
 
-    it('renders comment button when onCommentCreate is provided', () => {
+    it('renders toggle when onToggleCommentsPanel is provided', () => {
         editor = createTestEditor();
-        render(<NoteEditorToolbar editor={editor} onCommentCreate={() => {}} />);
-
-        expect(screen.getByTestId('toolbar-comment-btn')).toBeInTheDocument();
+        render(<NoteEditorToolbar editor={editor} onToggleCommentsPanel={() => {}} />);
+        expect(screen.getByTestId('comments-panel-toggle')).toBeInTheDocument();
     });
 
-    it('hides comment button when onCommentCreate is not provided', () => {
+    it('does not render toggle when onToggleCommentsPanel is omitted', () => {
         editor = createTestEditor();
         render(<NoteEditorToolbar editor={editor} />);
-
-        expect(screen.queryByTestId('toolbar-comment-btn')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('comments-panel-toggle')).not.toBeInTheDocument();
     });
 
-    it('disables comment button when selection is empty', () => {
+    it('shows active style when commentsPanelOpen is true', () => {
         editor = createTestEditor();
-        render(<NoteEditorToolbar editor={editor} onCommentCreate={() => {}} />);
-
-        const btn = screen.getByTestId('toolbar-comment-btn');
-        expect(btn).toBeDisabled();
-        expect(btn.className).toContain('opacity-40');
-        expect(btn.className).toContain('cursor-not-allowed');
+        render(
+            <NoteEditorToolbar
+                editor={editor}
+                commentsPanelOpen={true}
+                onToggleCommentsPanel={() => {}}
+            />,
+        );
+        const btn = screen.getByTestId('comments-panel-toggle');
+        expect(btn.className).toContain('bg-[#e8e8e8]');
+        expect(btn.getAttribute('aria-label')).toBe('Hide comments');
     });
 
-    it('enables comment button when text is selected', async () => {
+    it('shows inactive style when commentsPanelOpen is false', () => {
         editor = createTestEditor();
-        render(<NoteEditorToolbar editor={editor} onCommentCreate={() => {}} />);
-
-        // Select "world"
-        act(() => {
-            editor.commands.setTextSelection({ from: 7, to: 12 });
-        });
-
-        const btn = screen.getByTestId('toolbar-comment-btn');
-        expect(btn).not.toBeDisabled();
-        expect(btn.className).not.toContain('opacity-40');
+        render(
+            <NoteEditorToolbar
+                editor={editor}
+                commentsPanelOpen={false}
+                onToggleCommentsPanel={() => {}}
+            />,
+        );
+        const btn = screen.getByTestId('comments-panel-toggle');
+        expect(btn.className).toContain('text-[#888]');
+        expect(btn.getAttribute('aria-label')).toBe('Show comments');
     });
 
-    it('calls onCommentCreate when comment button is clicked with selection', () => {
-        const onCommentCreate = vi.fn();
+    it('shows count badge when commentCount > 0', () => {
         editor = createTestEditor();
-        render(<NoteEditorToolbar editor={editor} onCommentCreate={onCommentCreate} />);
-
-        // Select text first
-        act(() => {
-            editor.commands.setTextSelection({ from: 7, to: 12 });
-        });
-
-        fireEvent.mouseDown(screen.getByTestId('toolbar-comment-btn'));
-        expect(onCommentCreate).toHaveBeenCalledTimes(1);
+        render(
+            <NoteEditorToolbar
+                editor={editor}
+                onToggleCommentsPanel={() => {}}
+                commentCount={5}
+            />,
+        );
+        const badge = screen.getByTestId('comments-toggle-count');
+        expect(badge.textContent).toBe('5');
     });
 
-    it('does not call onCommentCreate when clicked without selection', () => {
-        const onCommentCreate = vi.fn();
+    it('hides count badge when commentCount is 0', () => {
         editor = createTestEditor();
-        render(<NoteEditorToolbar editor={editor} onCommentCreate={onCommentCreate} />);
-
-        fireEvent.mouseDown(screen.getByTestId('toolbar-comment-btn'));
-        expect(onCommentCreate).not.toHaveBeenCalled();
+        render(
+            <NoteEditorToolbar
+                editor={editor}
+                onToggleCommentsPanel={() => {}}
+                commentCount={0}
+            />,
+        );
+        expect(screen.queryByTestId('comments-toggle-count')).not.toBeInTheDocument();
     });
 
-    it('prevents default on mouseDown to keep editor focus', () => {
+    it('calls onToggleCommentsPanel on click', () => {
+        const onToggle = vi.fn();
         editor = createTestEditor();
-        render(<NoteEditorToolbar editor={editor} onCommentCreate={() => {}} />);
-
-        act(() => {
-            editor.commands.setTextSelection({ from: 7, to: 12 });
-        });
-
-        const btn = screen.getByTestId('toolbar-comment-btn');
-        const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
-        const prevented = !btn.dispatchEvent(event);
-        expect(prevented).toBe(true);
+        render(
+            <NoteEditorToolbar
+                editor={editor}
+                onToggleCommentsPanel={onToggle}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('comments-panel-toggle'));
+        expect(onToggle).toHaveBeenCalledTimes(1);
     });
 
-    it('shows a separator before the comment button', () => {
+    it('toggle is right-aligned via ml-auto spacer', () => {
         editor = createTestEditor();
         const { container } = render(
-            <NoteEditorToolbar editor={editor} onCommentCreate={() => {}} />,
+            <NoteEditorToolbar
+                editor={editor}
+                onToggleCommentsPanel={() => {}}
+            />,
         );
-
-        // The comment button should be preceded by a separator div
-        const btn = screen.getByTestId('toolbar-comment-btn');
-        const prev = btn.previousElementSibling;
-        expect(prev).not.toBeNull();
-        // The separator has the class w-px
-        expect(prev!.className).toContain('w-px');
-    });
-
-    it('has correct aria-label and title', () => {
-        editor = createTestEditor();
-        render(<NoteEditorToolbar editor={editor} onCommentCreate={() => {}} />);
-
-        const btn = screen.getByTestId('toolbar-comment-btn');
-        expect(btn.getAttribute('aria-label')).toBe('Add comment');
-        expect(btn.getAttribute('title')).toBe('Add comment (Ctrl+Shift+M)');
+        const toggle = screen.getByTestId('comments-panel-toggle');
+        const spacer = toggle.previousElementSibling;
+        expect(spacer).not.toBeNull();
+        expect(spacer!.className).toContain('ml-auto');
     });
 });
