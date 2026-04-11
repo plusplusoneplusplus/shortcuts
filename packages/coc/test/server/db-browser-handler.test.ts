@@ -224,4 +224,117 @@ describe('DB Browser Handler', () => {
             expect(wsIds).toContain('ws-test');
         });
     });
+
+    // ── Sorting ─────────────────────────────────────────────────────────
+
+    describe('GET /api/admin/db/tables/:name — sorting', () => {
+        it('should sort rows ascending by a valid column', async () => {
+            const srv = await startSqliteServer();
+
+            // Insert multiple workspaces to have sortable data
+            await sqliteStore!.registerWorkspace({ id: 'ws-b', name: 'Bravo', rootPath: '/tmp/b' });
+            await sqliteStore!.registerWorkspace({ id: 'ws-a', name: 'Alpha', rootPath: '/tmp/a' });
+            await sqliteStore!.registerWorkspace({ id: 'ws-c', name: 'Charlie', rootPath: '/tmp/c' });
+
+            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id&order=asc`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            const ids = body.rows.map((r: any) => r.id);
+            const sorted = [...ids].sort();
+            expect(ids).toEqual(sorted);
+        });
+
+        it('should sort rows descending when order=desc', async () => {
+            const srv = await startSqliteServer();
+
+            await sqliteStore!.registerWorkspace({ id: 'ws-b', name: 'Bravo', rootPath: '/tmp/b' });
+            await sqliteStore!.registerWorkspace({ id: 'ws-a', name: 'Alpha', rootPath: '/tmp/a' });
+            await sqliteStore!.registerWorkspace({ id: 'ws-c', name: 'Charlie', rootPath: '/tmp/c' });
+
+            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id&order=desc`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            const ids = body.rows.map((r: any) => r.id);
+            const sorted = [...ids].sort().reverse();
+            expect(ids).toEqual(sorted);
+        });
+
+        it('should default to ascending when order param is missing', async () => {
+            const srv = await startSqliteServer();
+
+            await sqliteStore!.registerWorkspace({ id: 'ws-b', name: 'Bravo', rootPath: '/tmp/b' });
+            await sqliteStore!.registerWorkspace({ id: 'ws-a', name: 'Alpha', rootPath: '/tmp/a' });
+
+            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            const ids = body.rows.map((r: any) => r.id);
+            const sorted = [...ids].sort();
+            expect(ids).toEqual(sorted);
+        });
+
+        it('should ignore invalid sort column (SQL injection prevention)', async () => {
+            const srv = await startSqliteServer();
+
+            // Attempt SQL injection via sort column
+            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id;DROP%20TABLE%20workspaces&order=asc`);
+            expect(res.status).toBe(200);
+
+            // Table should still be accessible (no injection happened)
+            const body = JSON.parse(res.body);
+            expect(body.table).toBe('workspaces');
+            expect(Array.isArray(body.rows)).toBe(true);
+        });
+
+        it('should ignore non-existent column name', async () => {
+            const srv = await startSqliteServer();
+
+            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=nonexistent_column&order=asc`);
+            expect(res.status).toBe(200);
+
+            // Should return rows without sorting (no error)
+            const body = JSON.parse(res.body);
+            expect(body.table).toBe('workspaces');
+            expect(Array.isArray(body.rows)).toBe(true);
+        });
+
+        it('should treat invalid order value as ascending', async () => {
+            const srv = await startSqliteServer();
+
+            await sqliteStore!.registerWorkspace({ id: 'ws-b', name: 'Bravo', rootPath: '/tmp/b' });
+            await sqliteStore!.registerWorkspace({ id: 'ws-a', name: 'Alpha', rootPath: '/tmp/a' });
+
+            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id&order=INVALID`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            const ids = body.rows.map((r: any) => r.id);
+            const sorted = [...ids].sort();
+            expect(ids).toEqual(sorted);
+        });
+
+        it('should work with sorting and pagination together', async () => {
+            const srv = await startSqliteServer();
+
+            await sqliteStore!.registerWorkspace({ id: 'ws-b', name: 'Bravo', rootPath: '/tmp/b' });
+            await sqliteStore!.registerWorkspace({ id: 'ws-a', name: 'Alpha', rootPath: '/tmp/a' });
+            await sqliteStore!.registerWorkspace({ id: 'ws-c', name: 'Charlie', rootPath: '/tmp/c' });
+
+            // Page 1, size 2, sorted desc by id
+            const res = await request(`${srv.url}/api/admin/db/tables/workspaces?sort=id&order=desc&page=1&pageSize=2`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.pageSize).toBe(2);
+            expect(body.rows.length).toBeLessThanOrEqual(2);
+            // First rows should be the highest IDs
+            const ids = body.rows.map((r: any) => r.id);
+            for (let i = 1; i < ids.length; i++) {
+                expect(ids[i - 1] >= ids[i]).toBe(true);
+            }
+        });
+    });
 });

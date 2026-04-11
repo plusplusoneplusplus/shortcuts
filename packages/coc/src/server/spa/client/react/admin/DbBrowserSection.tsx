@@ -73,6 +73,8 @@ export function DbBrowserSection() {
     const [selectedTable, setSelectedTable] = useState<string | null>(null);
     const [tableData, setTableData] = useState<TableData | null>(null);
     const [page, setPage] = useState(1);
+    const [sortColumn, setSortColumn] = useState<string | null>(null);
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
     const [loading, setLoading] = useState(true);
     const [dataLoading, setDataLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -101,11 +103,15 @@ export function DbBrowserSection() {
     }, []);
 
     // Fetch table data
-    const fetchTableData = useCallback(async (tableName: string, p: number) => {
+    const fetchTableData = useCallback(async (tableName: string, p: number, sort: string | null, order: 'asc' | 'desc' | null) => {
         setDataLoading(true);
         setError(null);
         try {
             const params = new URLSearchParams({ page: String(p), pageSize: '50' });
+            if (sort && order) {
+                params.set('sort', sort);
+                params.set('order', order);
+            }
             const res = await fetch(`${getApiBase()}/admin/db/tables/${encodeURIComponent(tableName)}?${params}`);
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
@@ -124,12 +130,27 @@ export function DbBrowserSection() {
 
     useEffect(() => {
         if (selectedTable) {
-            fetchTableData(selectedTable, page);
+            fetchTableData(selectedTable, page, sortColumn, sortOrder);
         }
-    }, [selectedTable, page, fetchTableData]);
+    }, [selectedTable, page, sortColumn, sortOrder, fetchTableData]);
 
     const handleTableSelect = (name: string) => {
         setSelectedTable(name);
+        setPage(1);
+        setSortColumn(null);
+        setSortOrder(null);
+    };
+
+    const handleSort = (colName: string) => {
+        if (sortColumn !== colName) {
+            setSortColumn(colName);
+            setSortOrder('asc');
+        } else if (sortOrder === 'asc') {
+            setSortOrder('desc');
+        } else {
+            setSortColumn(null);
+            setSortOrder(null);
+        }
         setPage(1);
     };
 
@@ -200,11 +221,16 @@ export function DbBrowserSection() {
                                         {tableData.columns.map(col => (
                                             <th
                                                 key={col.name}
-                                                className="px-2 py-1.5 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap"
-                                                title={`${col.type}${col.pk ? ' (PK)' : ''}${col.notnull ? ' NOT NULL' : ''}`}
+                                                className="px-2 py-1.5 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap cursor-pointer select-none hover:text-[var(--text-primary)] transition-colors"
+                                                title={`${col.type}${col.pk ? ' (PK)' : ''}${col.notnull ? ' NOT NULL' : ''} — Click to sort`}
+                                                onClick={() => handleSort(col.name)}
+                                                data-testid={`db-sort-${col.name}`}
                                             >
                                                 {col.name}
                                                 {col.pk && <span className="ml-1 text-[var(--accent)]">🔑</span>}
+                                                {sortColumn === col.name && (
+                                                    <span className="ml-1 text-[var(--accent)]">{sortOrder === 'asc' ? '▲' : '▼'}</span>
+                                                )}
                                             </th>
                                         ))}
                                     </tr>

@@ -84,13 +84,21 @@ export function registerDbBrowserRoutes(routes: Route[], store: ProcessStore): v
                 const columns = db.prepare(`PRAGMA table_info("${tableName}")`).all() as {
                     cid: number; name: string; type: string; notnull: number; dflt_value: unknown; pk: number;
                 }[];
+                const columnNames = new Set(columns.map(c => c.name));
+
+                // Parse sort params
+                const sortColumn = parsed.query.sort as string | undefined;
+                const sortOrderRaw = (parsed.query.order as string || '').toLowerCase();
+                const sortOrder = sortOrderRaw === 'desc' ? 'DESC' : 'ASC';
+                const hasValidSort = sortColumn !== undefined && sortColumn !== '' && columnNames.has(sortColumn);
 
                 // Row count
                 const total = (db.prepare(`SELECT COUNT(*) AS cnt FROM "${tableName}"`).get() as { cnt: number }).cnt;
                 const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
                 // Row data
-                const rows = db.prepare(`SELECT * FROM "${tableName}" LIMIT ? OFFSET ?`).all(pageSize, offset);
+                const orderClause = hasValidSort ? ` ORDER BY "${sortColumn}" ${sortOrder}` : '';
+                const rows = db.prepare(`SELECT * FROM "${tableName}"${orderClause} LIMIT ? OFFSET ?`).all(pageSize, offset);
 
                 sendJSON(res, 200, {
                     table: tableName,
