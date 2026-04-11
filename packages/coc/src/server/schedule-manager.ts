@@ -14,6 +14,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import * as yaml from 'js-yaml';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { TargetType, ChatMode } from './task-types';
 import { getErrorMessage } from './shared/fs-utils';
 import { ScheduleYamlPersistence } from './schedule-yaml-persistence';
@@ -623,7 +624,7 @@ export class ScheduleManager extends EventEmitter {
                         repoId,
                     });
                     run.taskId = taskId;
-                    run.processId = `queue_${taskId}`;
+                    run.processId = toQueueProcessId(taskId);
                 } else if (schedule.targetType === 'script') {
                     const taskId = this.queueManager.enqueue({
                         type: 'run-script',
@@ -639,7 +640,7 @@ export class ScheduleManager extends EventEmitter {
                         repoId,
                     });
                     run.taskId = taskId;
-                    run.processId = `queue_${taskId}`;
+                    run.processId = toQueueProcessId(taskId);
                 }
             }
 

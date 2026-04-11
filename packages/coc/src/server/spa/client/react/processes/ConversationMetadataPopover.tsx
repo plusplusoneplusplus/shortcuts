@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { formatDuration } from '../utils/format';
+import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { BottomSheet } from '../shared/BottomSheet';
 
@@ -61,7 +62,7 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
 
     const processId = toStringValue(process.id);
     const queueTaskId = toStringValue(process?.metadata?.queueTaskId)
-        || (processId?.startsWith('queue_') ? processId.slice('queue_'.length) : null);
+        || (processId && isQueueProcessId(processId) ? toTaskId(processId) : null);
     const startedAt = process.startTime || process.startedAt || process.createdAt;
     const endedAt = process.endTime || process.completedAt;
     const startedMs = startedAt ? new Date(startedAt).getTime() : NaN;

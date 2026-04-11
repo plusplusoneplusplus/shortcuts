@@ -7,6 +7,7 @@ import { createContext, useContext, useReducer, useEffect, type ReactNode, type 
 import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, TasksPanelNavState } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
+import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
 
 // ── Sidebar persistence ────────────────────────────────────────────────
 
@@ -375,8 +376,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'INVALIDATE_CONVERSATION': {
             const cache = { ...state.conversationCache };
             delete cache[action.processId];
-            if (action.processId.startsWith('queue_')) {
-                delete cache[action.processId.slice('queue_'.length)];
+            if (isQueueProcessId(action.processId)) {
+                delete cache[toTaskId(action.processId)];
             }
             return { ...state, conversationCache: cache };
         }

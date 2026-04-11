@@ -12,6 +12,7 @@
 
 import { spawn } from 'child_process';
 import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { RunScriptPayload } from '../task-types';
 import { BaseExecutor } from './base-executor';
 import { formatScriptResponse } from '../task-strategies/run-script-strategy';
@@ -46,7 +47,7 @@ export class ShellExecutor extends BaseExecutor {
      */
     async execute(task: QueuedTask): Promise<ShellExecutionResult> {
         const payload = task.payload as unknown as RunScriptPayload;
-        const processId = `queue_${task.id}`;
+        const processId = toQueueProcessId(task.id);
         const cwd = payload.workingDirectory || this.defaultWorkingDirectory;
 
         const shellResult = await this.spawnScript(payload.script, cwd, task);

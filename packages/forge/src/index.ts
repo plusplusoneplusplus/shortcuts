@@ -791,6 +791,13 @@ export {
     // Utilities
     generateTaskId,
 
+    // Queue process ID helpers
+    QUEUE_PROCESS_PREFIX,
+    toQueueProcessId,
+    toTaskId,
+    isQueueProcessId,
+    ensureQueueProcessId,
+
     // Task Queue Manager
     TaskQueueManager,
     createTaskQueueManager,

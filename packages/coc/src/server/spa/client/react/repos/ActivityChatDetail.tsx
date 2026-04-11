@@ -20,6 +20,7 @@ import { useSlashCommands } from './useSlashCommands';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles } from '../utils/conversationScan';
+import { toQueueProcessId } from '../utils/queue-process-id';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { getDraft, setDraft, pruneExpired } from '../hooks/useDraftStore';
 import { buildMetadataProcess } from '../utils/chatUtils';
@@ -117,7 +118,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     followUpInputRef.current = followUpInput;
     selectedModeRef.current = selectedMode;
 
-    const processId = task?.processId ?? (taskId ? `queue_${taskId}` : null);
+    const processId = task?.processId ?? (taskId ? toQueueProcessId(taskId) : null);
     const isPending = task?.status === 'queued';
     const isTerminal = task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
     const inputDisabled = loading || isPending || task?.status === 'cancelled' || task?.status === 'cancelling' || sessionExpired;
@@ -332,7 +333,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     return;
                 }
 
-                const pid = loadedTask?.processId ?? `queue_${taskId}`;
+                const pid = loadedTask?.processId ?? toQueueProcessId(taskId);
 
                 // Check shared conversation cache
                 const cached = appState.conversationCache[taskId];
@@ -435,7 +436,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
                 const refreshedTask = queueData?.task ?? null;
 
-                const pid = refreshedTask?.processId ?? `queue_${taskId}`;
+                const pid = refreshedTask?.processId ?? toQueueProcessId(taskId);
                 if (!refreshedTask?.processId && refreshedTask?.status === 'queued') {
                     setTask(refreshedTask);
                     return;

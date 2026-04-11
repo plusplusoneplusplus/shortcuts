@@ -34,6 +34,7 @@ import {
     LogCategory,
     mergeConsecutiveContentItems,
     modelMetadataStore,
+    toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import {
@@ -157,7 +158,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         }
 
         // New task: create a process entry
-        const processId = `queue_${task.id}`;
+        const processId = toQueueProcessId(task.id);
         const prompt = applySkillContent(extractPrompt(task), task);
         const selectedSkills = isChatPayload(task.payload)
             ? (task.payload as ChatPayload).context?.skills

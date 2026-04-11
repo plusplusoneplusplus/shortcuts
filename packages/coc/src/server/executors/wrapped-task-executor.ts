@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import type { ProcessStore, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
-import { resolveSkill, SkillResolverError, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { resolveSkill, SkillResolverError, getLogger, LogCategory, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import type { ITaskExecutor } from './executor-types';
 
@@ -55,7 +55,7 @@ export class WrappedTaskExecutor {
 
     async execute(task: QueuedTask, prompt: string): Promise<unknown> {
         const payload = task.payload as unknown as ChatPayload;
-        const processId = `queue_${task.id}`;
+        const processId = toQueueProcessId(task.id);
 
         // Step 1: before-script
         if (payload.beforeScript) {

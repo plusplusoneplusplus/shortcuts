@@ -34,6 +34,7 @@ import {
     buildDeepModePrompt,
     buildPlanGenerationSystemPrompt,
     gatherFeatureContext,
+    toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import { resolveTaskRoot } from '../task-root-resolver';
@@ -130,7 +131,7 @@ export class TaskGenerationExecutor extends ChatBaseExecutor {
         });
 
         // Update process store with the enriched prompt BEFORE calling super.execute()
-        const processId = `queue_${task.id}`;
+        const processId = toQueueProcessId(task.id);
         const enrichedPreview = aiPrompt.length > 80 ? aiPrompt.substring(0, 77) + '...' : aiPrompt;
         try {
             await this.store.updateProcess(processId, {

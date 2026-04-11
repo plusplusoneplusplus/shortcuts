@@ -3,7 +3,7 @@ import { isChatPayload, isMemoryAggregatePayload } from './task-types';
 import { applyFollowUpToTask } from './shared/queue-utils';
 import { processToQueuedTask } from './shared/process-history-mapper';
 import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, normalizeExecutionPath, resolveToolCallCacheOptions, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
+import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, normalizeExecutionPath, resolveToolCallCacheOptions, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
 import { BaseExecutor } from './executors/base-executor';
 import { resolveSkillConfig } from './executors/skill-config-resolver';
@@ -97,7 +97,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
         // Fallback: task not in in-memory queue (e.g. after server restart).
         // Reconstruct from the process store and enqueue as a new task.
-        const processId = `queue_${taskId}`;
+        const processId = toQueueProcessId(taskId);
         const proc = await this.store.getProcess(processId) ?? await this.store.getProcess(taskId);
         if (!proc) throw new Error(`Task ${taskId} not found`);
         const reconstructed = processToQueuedTask(proc);
@@ -124,7 +124,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     cancel(taskId: string): void { this.cancelledTasks.add(taskId); }
 
     async cancelProcess(processId: string): Promise<void> {
-        const taskId = processId.replace('queue_', '');
+        const taskId = toTaskId(processId);
         // Route through QueueExecutor so both cancelledTasks sets are updated
         // and the queue slot is freed once the SDK abort propagates
         if (this.queueExecutor) {

@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
-import { FileMemoryStore as PipelineMemoryStore, MEMORY_CONSOLIDATION_INSTRUCTIONS } from '@plusplusoneplusplus/forge';
+import { FileMemoryStore as PipelineMemoryStore, MEMORY_CONSOLIDATION_INSTRUCTIONS, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { createCLIAIInvoker } from '../../ai-invoker';
 import type { MemoryAggregatePayload } from '../task-types';
 import { readMemoryConfig } from './memory-config-handler';
@@ -56,7 +56,7 @@ export class MemoryAggregateExecutor {
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
         const payload = task.payload as unknown as MemoryAggregatePayload;
         const { repoId, sources, model } = payload;
-        const processId = `queue_${task.id}`;
+        const processId = toQueueProcessId(task.id);
 
         if (inProgress.has(repoId)) {
             return { success: false, error: new Error('Consolidation already in progress for this repo'), durationMs: 0 };

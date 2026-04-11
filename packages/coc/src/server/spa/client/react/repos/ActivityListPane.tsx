@@ -11,6 +11,7 @@ import { Card, Button, cn, FilterDropdown } from '../shared';
 import type { FilterItem } from '../shared';
 import { getApiBase } from '../utils/config';
 import { copyToClipboard, formatDuration, formatRelativeTime } from '../utils/format';
+import { toQueueProcessId } from '../utils/queue-process-id';
 import { buildRows } from '../processes/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
@@ -475,7 +476,7 @@ export function ActivityListPane({
 
     const handleRenameConfirm = useCallback(async (newTitle: string) => {
         if (!renameTarget) return;
-        const processId = `queue_${renameTarget.taskId}`;
+        const processId = toQueueProcessId(renameTarget.taskId);
         setRenameTarget(null);
         try {
             await fetchApi(`/processes/${encodeURIComponent(processId)}`, {

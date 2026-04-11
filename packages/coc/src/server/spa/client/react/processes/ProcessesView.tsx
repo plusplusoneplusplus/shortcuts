@@ -12,6 +12,7 @@ import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { toQueueProcessId } from '../utils/queue-process-id';
 import { ActivityListPane } from '../repos/ActivityListPane';
 import { ActivityDetailPane } from '../repos/ActivityDetailPane';
 import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
@@ -154,7 +155,7 @@ export function ProcessesView() {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id });
         setSelectedTask(task || null);
         selectedTaskRef.current = task || null;
-        location.hash = '#process/queue_' + encodeURIComponent(id);
+        location.hash = '#process/' + encodeURIComponent(toQueueProcessId(id));
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, isMobile, selectedTaskId]);
 

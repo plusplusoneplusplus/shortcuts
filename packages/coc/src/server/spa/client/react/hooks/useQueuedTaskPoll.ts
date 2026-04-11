@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { fetchApi } from './useApi';
 import { getConversationTurns } from '../chat/chatConversationUtils';
+import { toQueueProcessId } from '../utils/queue-process-id';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
@@ -24,7 +25,7 @@ export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, se
                 if (t && t.status !== 'queued') {
                     setTask(t);
                     if (t.processId || t.status === 'running') {
-                        const pid = t.processId ?? `queue_${taskId}`;
+                        const pid = t.processId ?? toQueueProcessId(taskId);
                         const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
                         setProcessDetails(procData?.process || null);
                         const loadedTurns = getConversationTurns(procData, t);

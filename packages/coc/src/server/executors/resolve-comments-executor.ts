@@ -15,6 +15,7 @@
  */
 
 import type { ProcessStore, QueuedTask, Tool } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import { createResolveCommentTool } from '../resolve-comment-tool';
 import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
@@ -55,7 +56,7 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const rc = payload.context?.resolveComments;
         const aiPrompt = payload.prompt;
-        const processId = `queue_${task.id}`;
+        const processId = toQueueProcessId(task.id);
 
         const rdcm = payload.context?.resolveDiffCommentsMulti;
         const payloadCommentIds = rc?.commentIds ?? rdcm?.files?.flatMap((f: any) => f.commentIds) ?? [];
@@ -156,7 +157,7 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
         prompt: string,
         _workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions> {
-        const processId = `queue_${task.id}`;
+        const processId = toQueueProcessId(task.id);
         const { tool, getResolvedIds } = createResolveCommentTool();
         this.resolvedIdGetters.set(processId, getResolvedIds);
         const payload = task.payload as unknown as ChatPayload;

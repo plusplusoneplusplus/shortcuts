@@ -10,6 +10,7 @@
  */
 
 import { sendJSON, sendError } from '../api-handler';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import * as url from 'url';
 import * as fs from 'fs';
@@ -335,7 +336,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
 
             // Fallback: check process store for completed/historical tasks
             if (store) {
-                const processId = `queue_${id}`;
+                const processId = toQueueProcessId(id);
                 const proc = await store.getProcess(processId) ?? await store.getProcess(id);
                 if (proc) {
                     const reconstructed = processToTaskDetail(proc);

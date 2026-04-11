@@ -9,7 +9,7 @@
  */
 
 import type { ConversationTurn, CopilotSDKService, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 
 export function generateTitleIfNeeded(
     processId: string,
@@ -34,8 +34,8 @@ export function generateTitleIfNeeded(
                 // requeueForFollowUp (and the api-handler fallback path) both overwrite
                 // displayName with the follow-up message text, so we restore it here
                 // on every turn to keep the two in sync.
-                if (processId.startsWith('queue_') && queueManager) {
-                    const taskId = processId.replace('queue_', '');
+                if (isQueueProcessId(processId) && queueManager) {
+                    const taskId = toTaskId(processId);
                     queueManager.updateTask(taskId, { displayName: existing.title });
                 }
                 return;
@@ -64,8 +64,8 @@ export function generateTitleIfNeeded(
             );
             if (title) {
                 await store.updateProcess(processId, { title });
-                if (processId.startsWith('queue_') && queueManager) {
-                    const taskId = processId.replace('queue_', '');
+                if (isQueueProcessId(processId) && queueManager) {
+                    const taskId = toTaskId(processId);
                     queueManager.updateTask(taskId, { displayName: title });
                 }
             }

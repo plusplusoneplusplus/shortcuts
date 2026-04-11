@@ -4,6 +4,7 @@
  */
 
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 
 export interface HistorySummary {
     id: string;
@@ -58,7 +59,7 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
         : undefined;
 
     return {
-        id: proc.id.replace(/^queue_/, ''),
+        id: isQueueProcessId(proc.id) ? toTaskId(proc.id) : proc.id,
         processId: proc.id,
         status: proc.status,
         type: proc.type,
@@ -91,7 +92,7 @@ function mapProcessStatus(status: string): string {
  */
 export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
     return {
-        id: proc.id.replace(/^queue_/, ''),
+        id: isQueueProcessId(proc.id) ? toTaskId(proc.id) : proc.id,
         type: proc.type === 'clarification' ? 'chat' : proc.type,
         status: mapProcessStatus(proc.status) as any,
         payload: {
@@ -119,7 +120,7 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
  */
 export function processToQueuedTask(proc: AIProcess): Partial<QueuedTask> {
     return {
-        id: proc.id.replace(/^queue_/, ''),
+        id: isQueueProcessId(proc.id) ? toTaskId(proc.id) : proc.id,
         type: proc.type === 'clarification' ? 'chat' : proc.type,
         status: 'queued' as any,
         payload: {

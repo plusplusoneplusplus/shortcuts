@@ -16,6 +16,9 @@ import {
     QueueExecutor,
     TaskQueueManager,
     getCopilotSDKService,
+    toQueueProcessId,
+    isQueueProcessId,
+    toTaskId,
 } from '@plusplusoneplusplus/forge';
 import type { ProcessStore, QueueChangeEvent, CreateTaskInput, QueuedTask, QueueStats, Attachment } from '@plusplusoneplusplus/forge';
 import { applyFollowUpToTask } from './shared/queue-utils';
@@ -329,7 +332,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         }
         // Fallback: task not in any in-memory queue (e.g. after server restart).
         // Reconstruct from the process store and enqueue via the bridge.
-        const processId = `queue_${taskId}`;
+        const processId = toQueueProcessId(taskId);
         const proc = await this.store.getProcess(processId) ?? await this.store.getProcess(taskId);
         if (!proc) throw new Error(`Task ${taskId} not found in any queue`);
         const rootPath = proc.workingDirectory || process.cwd();
@@ -359,8 +362,8 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      * Returns true if the task was found and updated.
      */
     updateTaskDisplayName(processId: string, displayName: string): boolean {
-        if (!processId.startsWith('queue_')) return false;
-        const taskId = processId.replace(/^queue_/, '');
+        if (!isQueueProcessId(processId)) return false;
+        const taskId = toTaskId(processId);
         const manager = this.findManagerForTask(taskId);
         if (!manager) return false;
         return manager.updateTask(taskId, { displayName });

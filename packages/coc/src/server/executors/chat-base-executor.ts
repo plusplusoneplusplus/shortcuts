@@ -39,6 +39,7 @@ import {
     TASK_FILTER,
     ToolCallCapture,
     rewriteLargePrompt,
+    toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
@@ -172,7 +173,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * 10. In finally: cleanup images, session, flush handler, persist output
      */
     async execute(task: QueuedTask, prompt: string): Promise<ChatModeExecutionResult> {
-        const processId = `queue_${task.id}`;
+        const processId = toQueueProcessId(task.id);
         const payload = task.payload as unknown as ChatPayload;
         const workingDirectory = payload.workingDirectory || payload.folderPath || this.defaultWorkingDirectory;
 

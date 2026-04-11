@@ -11,6 +11,7 @@ import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
 import { isTerminalEnabled, isNotesEnabled } from '../utils/config';
+import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
 import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 
@@ -287,8 +288,8 @@ export function Router() {
             if (tab === 'processes') {
                 const processId = parseProcessDeepLink('#' + hash);
                 if (processId) {
-                    if (processId.startsWith('queue_')) {
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId.substring('queue_'.length) });
+                    if (isQueueProcessId(processId)) {
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: toTaskId(processId) });
                         dispatch({ type: 'SELECT_PROCESS', id: null });
                     } else {
                         dispatch({ type: 'SELECT_PROCESS', id: processId });
@@ -364,7 +365,7 @@ export function Router() {
                     // Activity deep-link handling — select queue task when task ID present
                     if (parts[2] === 'activity' && parts[3]) {
                         const rawId = decodeURIComponent(parts[3]);
-                        const taskId = rawId.startsWith('queue_') ? rawId.substring('queue_'.length) : rawId;
+                        const taskId = isQueueProcessId(rawId) ? toTaskId(rawId) : rawId;
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId });
                     } else if (parts[2] === 'activity') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });

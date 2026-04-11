@@ -5,6 +5,7 @@
  */
 
 import { sendJSON, sendError } from '../api-handler';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     serializeTask,
@@ -36,7 +37,7 @@ export function registerQueueFollowUpRoutes(routes: Route[], ctx: QueueRouteCont
                 return sendError(res, 404, 'Task not found');
             }
 
-            const pid = task.processId ?? `queue_${taskId}`;
+            const pid = task.processId ?? toQueueProcessId(taskId);
 
             // Reject concurrent resume requests synchronously, before any await,
             // so the guard reliably catches overlapping requests in the event loop.
@@ -106,7 +107,7 @@ export function registerQueueFollowUpRoutes(routes: Route[], ctx: QueueRouteCont
                 try {
                     const newTaskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
                     const newTask = bridge.findManagerForTask(newTaskId)?.getTask(newTaskId);
-                    const newProcessId = newTask?.processId ?? `queue_${newTaskId}`;
+                    const newProcessId = newTask?.processId ?? toQueueProcessId(newTaskId);
 
                     process.stderr.write(`[Queue] resume-chat cold taskId=${taskId} -> newTaskId=${newTaskId}\n`);
                     sendJSON(res, 200, {

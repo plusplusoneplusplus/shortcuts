@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import type { ProcessStore, AIInvoker, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { FileMemoryStore as PipelineMemoryStore } from '@plusplusoneplusplus/forge';
+import { FileMemoryStore as PipelineMemoryStore, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { readMemoryConfig } from './memory-config-handler';
@@ -212,7 +212,7 @@ export function registerRepoMemoryRoutes(
                     if (active) {
                         consolidationStatus = active.status === 'running' ? 'running' : 'queued';
                         consolidationTaskId = active.id;
-                        consolidationProcessId = active.processId ?? `queue_${active.id}`;
+                        consolidationProcessId = active.processId ?? toQueueProcessId(active.id);
                     }
                 }
 
@@ -434,7 +434,7 @@ export function registerRepoMemoryRoutes(
                     sendJson(res, {
                         status: 'already-running',
                         taskId: active.id,
-                        processId: active.processId ?? `queue_${active.id}`,
+                        processId: active.processId ?? toQueueProcessId(active.id),
                     }, 409);
                     return;
                 }
@@ -467,7 +467,7 @@ export function registerRepoMemoryRoutes(
                     displayName: 'Memory Consolidation',
                 });
 
-                sendJson(res, { taskId, processId: `queue_${taskId}` }, 202);
+                sendJson(res, { taskId, processId: toQueueProcessId(taskId) }, 202);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }

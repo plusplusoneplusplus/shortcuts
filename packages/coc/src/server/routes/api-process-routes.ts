@@ -12,7 +12,7 @@ import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment,
 } from '@plusplusoneplusplus/forge';
-import { deserializeProcess, PASTE_THRESHOLD } from '@plusplusoneplusplus/forge';
+import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, stripExcludedFields,
@@ -261,7 +261,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             await store.updateProcess(id, updates);
 
             // Sync queue task displayName when title is updated
-            if (body.title !== undefined && id.startsWith('queue_') && bridge) {
+            if (body.title !== undefined && isQueueProcessId(id) && bridge) {
                 bridge.updateTaskDisplayName?.(id, body.title);
             }
 

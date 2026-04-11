@@ -1,5 +1,5 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
-import { approveAllPermissions } from '@plusplusoneplusplus/forge';
+import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext } from '../task-types';
 import type { ExecutionContext } from '../task-strategies';
@@ -123,7 +123,7 @@ export class ExecutorRegistry {
 
     /** Build execution context for strategy-based execution. */
     buildExecutionContext(task: QueuedTask): ExecutionContext {
-        return { processId: `queue_${task.id}`, store: this.store, approvePermissions: this.approvePermissions, workingDirectory: this.getWorkingDirectory(task) };
+        return { processId: toQueueProcessId(task.id), store: this.store, approvePermissions: this.approvePermissions, workingDirectory: this.getWorkingDirectory(task) };
     }
 
     /** Create a skill execution callback that invokes the AI service directly. */

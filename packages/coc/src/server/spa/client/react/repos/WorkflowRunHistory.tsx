@@ -9,6 +9,7 @@ import { Badge } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
 import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format';
+import { toQueueProcessId } from '../utils/queue-process-id';
 
 export interface WorkflowRunHistoryProps {
     workspaceId: string;
@@ -50,7 +51,7 @@ export function WorkflowRunHistory({ workspaceId, pipelineName, refreshKey }: Wo
     );
 
     const handleSelectTask = (task: any) => {
-        const processId = task.processId || `queue_${task.id}`;
+        const processId = task.processId || toQueueProcessId(task.id);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/pipelines/' + encodeURIComponent(pipelineName) + '/run/' + encodeURIComponent(processId);
     };
 

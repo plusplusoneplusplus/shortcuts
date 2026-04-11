@@ -455,9 +455,39 @@ export function comparePriority(a: QueuedTask, b: QueuedTask): number {
 /**
  * Generate a unique task ID.
  * Format: `<timestamp>-<random>` (e.g., `1771242852770-g94u3ig`).
- * The queue executor bridge prefixes this with the process type
- * to form the process ID (e.g., `queue-1771242852770-g94u3ig`).
+ * The queue executor bridge prefixes this with `queue_`
+ * to form the process ID (e.g., `queue_1771242852770-g94u3ig`).
  */
 export function generateTaskId(): string {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+// ============================================================================
+// Queue Process ID Helpers
+// ============================================================================
+
+/** Prefix used to derive a process ID from a queue task ID. */
+export const QUEUE_PROCESS_PREFIX = 'queue_';
+
+/** Build a process ID from a task ID: `queue_${taskId}`. */
+export function toQueueProcessId(taskId: string): string {
+    return `${QUEUE_PROCESS_PREFIX}${taskId}`;
+}
+
+/** Strip the `queue_` prefix and return the task ID. Throws if the prefix is missing. */
+export function toTaskId(processId: string): string {
+    if (!processId.startsWith(QUEUE_PROCESS_PREFIX)) {
+        throw new Error(`Expected process ID to start with "${QUEUE_PROCESS_PREFIX}", got "${processId}"`);
+    }
+    return processId.slice(QUEUE_PROCESS_PREFIX.length);
+}
+
+/** Check whether an ID is a queue-derived process ID. */
+export function isQueueProcessId(id: string): boolean {
+    return id.startsWith(QUEUE_PROCESS_PREFIX);
+}
+
+/** Return a queue process ID, adding the prefix only if it is missing. */
+export function ensureQueueProcessId(id: string): string {
+    return id.startsWith(QUEUE_PROCESS_PREFIX) ? id : `${QUEUE_PROCESS_PREFIX}${id}`;
 }

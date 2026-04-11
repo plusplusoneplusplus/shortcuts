@@ -13,6 +13,7 @@ import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu
 import { fetchApi } from '../hooks/useApi';
 import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '../utils/format';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
+import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { getApiBase } from '../utils/config';
 
 export interface TypeFilterOptions {
@@ -105,7 +106,7 @@ export function ProcessesSidebar() {
     const filteredLegacy = useMemo(() => {
         return state.processes
             .filter((p: any) => {
-                if (p.id?.startsWith('queue_')) return false;
+                if (isQueueProcessId(p.id)) return false;
                 if (p.parentProcessId) return false;
                 if (state.workspace !== '__all' && p.workspaceId !== state.workspace) return false;
                 if (state.statusFilter !== '__all' && p.status !== state.statusFilter) return false;
@@ -140,7 +141,7 @@ export function ProcessesSidebar() {
     const openTaskInRoute = useCallback((task: any) => {
         const processId = typeof task?.processId === 'string' && task.processId
             ? task.processId
-            : `queue_${task.id}`;
+            : toQueueProcessId(task.id);
         const nextHash = '#process/' + encodeURIComponent(processId);
 
         if (location.hash !== nextHash) {

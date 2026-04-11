@@ -22,6 +22,7 @@ import {
     compileToWorkflow,
     executeWorkflow,
     flattenWorkflowResult,
+    toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { RunWorkflowPayload } from '../task-types';
 import { BaseExecutor } from './base-executor';
@@ -70,7 +71,7 @@ export class WorkflowExecutor extends BaseExecutor {
             mcpServers: payload.mcpServers,
         });
 
-        const processId = `queue_${task.id}`;
+        const processId = toQueueProcessId(task.id);
         const childProcessIds: string[] = [];
 
         const result = await executeWorkflow(config, {

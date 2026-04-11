@@ -24,6 +24,7 @@
  */
 
 import { sendJSON, sendError, parseBody } from '../api-handler';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import * as url from 'url';
 import {
@@ -348,7 +349,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
 
             // The taskId is now treated as a processId (they are the same after 001-003 migration).
             // Try both queue_<taskId> (the processId format) and taskId directly.
-            const processId = `queue_${taskId}`;
+            const processId = toQueueProcessId(taskId);
 
             if (store) {
                 let found = false;

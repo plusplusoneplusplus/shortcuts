@@ -8,7 +8,7 @@
  * GET  /api/queue/models — List available AI models
  */
 
-import { getActiveModels, modelMetadataStore } from '@plusplusoneplusplus/forge';
+import { getActiveModels, modelMetadataStore, ensureQueueProcessId } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../api-handler';
 import type { Route } from '../types';
 import {
@@ -272,7 +272,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
                 : undefined;
             const filePaths: string[] = body.processIds.map((id: string) => {
                 const trimmed = id.trim();
-                const normalized = trimmed.startsWith('queue_') ? trimmed : `queue_${trimmed}`;
+                const normalized = ensureQueueProcessId(trimmed);
                 return store!.getProcessFilePath!(workspaceId, normalized);
             });
 
