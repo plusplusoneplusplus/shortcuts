@@ -17,6 +17,7 @@ import {
 import { useApp } from './AppContext';
 import { useQueue } from './QueueContext';
 import { fetchApi } from '../hooks/useApi';
+import { fetchUnseenCount } from '../hooks/seenStateApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { countTasks } from '../repos/repoGrouping';
 
@@ -37,7 +38,7 @@ const ReposContext = createContext<ReposContextValue | null>(null);
 
 export function ReposProvider({ children }: { children: ReactNode }) {
     const { dispatch } = useApp();
-    const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { dispatch: queueDispatch } = useQueue();
 
     const [repos, setRepos] = useState<RepoData[]>([]);
     const [loading, setLoading] = useState(true);
@@ -51,22 +52,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const processThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const gitInfoAbortRef = useRef<AbortController | null>(null);
 
-    // Bump this counter whenever the user marks tasks as read/unread so the
-    // useMemo below re-evaluates (localStorage changes don't update queueState).
-    const [seenVersion, setSeenVersion] = useState(0);
-    useEffect(() => {
-        const handler = () => setSeenVersion(v => v + 1);
-        window.addEventListener('coc-seen-updated', handler);
-        return () => window.removeEventListener('coc-seen-updated', handler);
-    }, []);
-
-    // Compute per-repo unseen counts for the tab strip badge.
-    // History is no longer stored in QueueContext (authoritative source = HTTP).
-    // Unseen counts are computed within each RepoActivityTab from local state.
-    const unseenCounts = useMemo(() => {
-        const counts: Record<string, number> = {};
-        return counts;
-    }, [queueState.repoQueueMap, seenVersion]);
+    // Per-repo unseen counts, fetched from the server.
+    const [unseenCounts, setUnseenCounts] = useState<Record<string, number>>({});
 
     // Seed repoQueueMap from /api/queue/repos (single call for all repos)
     const seedRepoQueueStats = useCallback(async (enriched: RepoData[]) => {
@@ -93,6 +80,19 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             }
         } catch { /* fire-and-forget */ }
     }, [queueDispatch]);
+
+    // Fetch per-repo unseen counts from the server
+    const refreshUnseenCounts = useCallback(async (wsIds: string[]) => {
+        try {
+            const counts: Record<string, number> = {};
+            await Promise.all(wsIds.map(async (id) => {
+                try {
+                    counts[id] = await fetchUnseenCount(id);
+                } catch { counts[id] = 0; }
+            }));
+            setUnseenCounts(counts);
+        } catch { /* fire-and-forget */ }
+    }, []);
 
     const fetchRepos = useCallback(async () => {
         try {
@@ -149,6 +149,9 @@ export function ReposProvider({ children }: { children: ReactNode }) {
 
             // Seed per-repo queue stats for card badges
             seedRepoQueueStats(enriched);
+
+            // Fetch per-repo unseen counts from server
+            refreshUnseenCounts(enriched.map(r => r.workspace.id));
 
             // Clear selection if repo was removed
             if (selectedRepoIdRef.current && !enriched.find(r => r.workspace.id === selectedRepoIdRef.current)) {

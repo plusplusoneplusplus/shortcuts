@@ -1,10 +1,26 @@
 /**
  * Tests for useUnseenActivity — tracks unseen completed tasks in the activity tab.
+ *
+ * The hook now uses server-side persistence via seenStateApi.
+ * Tests mock the API layer and verify optimistic local state updates.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useUnseenActivity } from '../../../../src/server/spa/client/react/hooks/useUnseenActivity';
+import * as seenStateApi from '../../../../src/server/spa/client/react/hooks/seenStateApi';
+
+// Mock the API module
+vi.mock('../../../../src/server/spa/client/react/hooks/seenStateApi', () => ({
+    fetchSeenMap: vi.fn(),
+    patchSeenState: vi.fn(),
+    deleteSeenEntry: vi.fn(),
+    fetchUnseenCount: vi.fn(),
+}));
+
+const mockFetchSeenMap = vi.mocked(seenStateApi.fetchSeenMap);
+const mockPatchSeenState = vi.mocked(seenStateApi.patchSeenState);
+const mockDeleteSeenEntry = vi.mocked(seenStateApi.deleteSeenEntry);
 
 function makeTasks(...ids: string[]) {
     return ids.map(id => ({
@@ -17,28 +33,64 @@ function makeTasks(...ids: string[]) {
 
 describe('useUnseenActivity', () => {
     beforeEach(() => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
         localStorage.clear();
+        mockFetchSeenMap.mockResolvedValue({});
+        mockPatchSeenState.mockResolvedValue({});
+        mockDeleteSeenEntry.mockResolvedValue(undefined);
     });
 
     afterEach(() => {
+        vi.useRealTimers();
+        vi.clearAllMocks();
         localStorage.clear();
     });
 
-    it('seeds all existing history as seen on first visit', () => {
-        const history = makeTasks('a', 'b', 'c');
+    it('loads seen map from server on mount', async () => {
+        const serverMap = { a: '2026-03-09T00:00:00Z-a' };
+        mockFetchSeenMap.mockResolvedValue(serverMap);
+
+        const history = makeTasks('a', 'b');
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-        expect(result.current.unseenCount).toBe(0);
-        expect(result.current.unseenTaskIds.size).toBe(0);
+
+        await waitFor(() => {
+            expect(result.current.unseenTaskIds.has('a')).toBe(false);
+            expect(result.current.unseenTaskIds.has('b')).toBe(true);
+        });
+        expect(mockFetchSeenMap).toHaveBeenCalledWith('ws1');
     });
 
-    it('marks a new task as unseen when it appears after initial load', () => {
+    it('seeds all tasks as seen on first visit (empty server map)', async () => {
+        mockFetchSeenMap.mockResolvedValue({});
+        const history = makeTasks('a', 'b', 'c');
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
+        });
+
+        // Should have called patchSeenState to seed all tasks
+        await waitFor(() => {
+            expect(mockPatchSeenState).toHaveBeenCalled();
+        });
+    });
+
+    it('marks a new task as unseen when it appears after initial load', async () => {
         const history = makeTasks('a', 'b');
+        // Server has both seen
+        mockFetchSeenMap.mockResolvedValue({
+            a: history[0].completedAt,
+            b: history[1].completedAt,
+        });
+
         const { result, rerender } = renderHook(
             ({ h }) => useUnseenActivity('ws1', h, null),
             { initialProps: { h: history } },
         );
-        // Initial: all seen
-        expect(result.current.unseenCount).toBe(0);
+
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
+        });
 
         // New task appears
         const updated = [...history, ...makeTasks('c')];
@@ -47,48 +99,106 @@ describe('useUnseenActivity', () => {
         expect(result.current.unseenCount).toBe(1);
     });
 
-    it('marks task as seen when markSeen is called', () => {
+    it('marks task as seen when markSeen is called', async () => {
+        mockFetchSeenMap.mockResolvedValue({});
         const history = makeTasks('a');
-        // Set up prior state where 'a' was never seen
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
 
-        expect(result.current.unseenTaskIds.has('a')).toBe(true);
-
-        act(() => {
-            result.current.markSeen('a');
+        // Wait for initialization + seeding
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
         });
 
-        expect(result.current.unseenTaskIds.has('a')).toBe(false);
-        expect(result.current.unseenCount).toBe(0);
+        // Simulate re-completion (new timestamp makes it unseen)
+        const reCompleted = [{ ...history[0], completedAt: '2026-03-10T00:00:00Z' }];
+        const { result: result2 } = renderHook(() => useUnseenActivity('ws1', reCompleted, null));
+
+        // Since this is a new hook instance, we need the server to return the old map
+        mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
+        const { result: result3 } = renderHook(() => useUnseenActivity('ws1', reCompleted, null));
+
+        await waitFor(() => {
+            expect(result3.current.unseenTaskIds.has('a')).toBe(true);
+        });
+
+        act(() => {
+            result3.current.markSeen('a');
+        });
+
+        expect(result3.current.unseenTaskIds.has('a')).toBe(false);
     });
 
-    it('auto-marks selected task as seen', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+    it('markSeen calls patchSeenState API (debounced)', async () => {
+        mockFetchSeenMap.mockResolvedValue({});
+        const history = makeTasks('a');
+
+        // Pre-set server state to make 'a' unseen
+        mockFetchSeenMap.mockResolvedValue({});
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        // Wait for seeding
+        await waitFor(() => {
+            expect(mockPatchSeenState).toHaveBeenCalled();
+        });
+        mockPatchSeenState.mockClear();
+
+        // Make it unseen by changing completedAt
+        // Actually, let's just test markSeen directly after rerender with new task
+        const history2 = [...history, ...makeTasks('b')];
+        mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
+        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', history2, null));
+
+        await waitFor(() => {
+            expect(r2.current.unseenTaskIds.has('b')).toBe(true);
+        });
+
+        act(() => {
+            r2.current.markSeen('b');
+        });
+
+        // Advance debounce timer
+        act(() => {
+            vi.advanceTimersByTime(200);
+        });
+
+        expect(mockPatchSeenState).toHaveBeenCalledWith('ws1', expect.arrayContaining([
+            expect.objectContaining({ processId: 'b' }),
+        ]));
+    });
+
+    it('auto-marks selected task as seen', async () => {
         const history = makeTasks('a', 'b');
+        mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
+
         const { result, rerender } = renderHook(
             ({ sel }) => useUnseenActivity('ws1', history, sel),
             { initialProps: { sel: null as string | null } },
         );
 
-        expect(result.current.unseenTaskIds.has('a')).toBe(true);
-        expect(result.current.unseenTaskIds.has('b')).toBe(true);
+        await waitFor(() => {
+            expect(result.current.unseenTaskIds.has('b')).toBe(true);
+        });
 
-        // Select task 'a'
-        rerender({ sel: 'a' });
-        expect(result.current.unseenTaskIds.has('a')).toBe(false);
-        expect(result.current.unseenTaskIds.has('b')).toBe(true);
+        // Select task 'b' → auto-marks as seen
+        rerender({ sel: 'b' });
+
+        await waitFor(() => {
+            expect(result.current.unseenTaskIds.has('b')).toBe(false);
+        });
     });
 
-    it('detects re-completion as unseen (different completedAt)', () => {
+    it('detects re-completion as unseen (different completedAt)', async () => {
         const history = makeTasks('a');
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({ a: history[0].completedAt }));
+        mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
+
         const { result, rerender } = renderHook(
             ({ h }) => useUnseenActivity('ws1', h, null),
             { initialProps: { h: history } },
         );
 
-        expect(result.current.unseenCount).toBe(0);
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
+        });
 
         // Task 'a' completes again with different timestamp
         const reCompleted = [{ ...history[0], completedAt: '2026-03-09T01:00:00Z-new' }];
@@ -96,124 +206,67 @@ describe('useUnseenActivity', () => {
         expect(result.current.unseenTaskIds.has('a')).toBe(true);
     });
 
-    it('persists seen state to localStorage', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
-        const history = makeTasks('a');
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+    it('returns empty set for empty history', async () => {
+        const { result } = renderHook(() => useUnseenActivity('ws1', [], null));
 
-        act(() => {
-            result.current.markSeen('a');
+        await waitFor(() => {
+            expect(mockFetchSeenMap).toHaveBeenCalled();
         });
 
-        const stored = JSON.parse(localStorage.getItem('coc-unseen-ws1')!);
-        expect(stored['a']).toBe(history[0].completedAt);
-    });
-
-    it('loads previously persisted seen state', () => {
-        const history = makeTasks('a', 'b');
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({ a: history[0].completedAt }));
-
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-        expect(result.current.unseenTaskIds.has('a')).toBe(false);
-        expect(result.current.unseenTaskIds.has('b')).toBe(true);
-    });
-
-    it('uses separate storage per workspace', () => {
-        const history = makeTasks('a');
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({ a: history[0].completedAt }));
-
-        const { result: r1 } = renderHook(() => useUnseenActivity('ws1', history, null));
-        const { result: r2 } = renderHook(() => useUnseenActivity('ws2', history, null));
-
-        // ws1 has prior state, 'a' is seen
-        expect(r1.current.unseenTaskIds.has('a')).toBe(false);
-        // ws2 has no prior state, first visit seeds all as seen
-        expect(r2.current.unseenTaskIds.has('a')).toBe(false);
-    });
-
-    it('returns empty set for empty history', () => {
-        const { result } = renderHook(() => useUnseenActivity('ws1', [], null));
         expect(result.current.unseenCount).toBe(0);
         expect(result.current.unseenTaskIds.size).toBe(0);
     });
 
-    it('skips tasks without completedAt', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+    it('skips tasks without completedAt', async () => {
+        mockFetchSeenMap.mockResolvedValue({});
         const history = [{ id: 'x', status: 'running' }];
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        await waitFor(() => {
+            expect(mockFetchSeenMap).toHaveBeenCalled();
+        });
+
         expect(result.current.unseenCount).toBe(0);
     });
 
-    it('marks all tasks as seen when markAllSeen is called', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+    it('marks all tasks as seen when markAllSeen is called', async () => {
         const history = makeTasks('a', 'b', 'c');
+        mockFetchSeenMap.mockResolvedValue({});
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
 
-        expect(result.current.unseenCount).toBe(3);
-
-        act(() => {
-            result.current.markAllSeen();
+        // Wait for seeding
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
         });
 
-        expect(result.current.unseenCount).toBe(0);
-        expect(result.current.unseenTaskIds.size).toBe(0);
-    });
+        // Make some unseen by simulating new completions
+        const newHistory = history.map(t => ({ ...t, completedAt: t.completedAt + '-v2' }));
+        mockFetchSeenMap.mockResolvedValue(Object.fromEntries(history.map(t => [t.id, t.completedAt])));
+        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', newHistory, null));
 
-    it('markAllSeen persists to localStorage', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
-        const history = makeTasks('a', 'b');
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-
-        act(() => {
-            result.current.markAllSeen();
+        await waitFor(() => {
+            expect(r2.current.unseenCount).toBe(3);
         });
 
-        const stored = JSON.parse(localStorage.getItem('coc-unseen-ws1')!);
-        expect(stored['a']).toBe(history[0].completedAt);
-        expect(stored['b']).toBe(history[1].completedAt);
+        act(() => {
+            r2.current.markAllSeen();
+        });
+
+        expect(r2.current.unseenCount).toBe(0);
     });
 
-    it('preserves seen state when history starts empty then loads (page refresh)', () => {
-        // Simulate: user marked all read → page refresh → history starts as []
+    it('marks a seen task as unseen when markUnseen is called', async () => {
         const history = makeTasks('a', 'b');
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({
+        mockFetchSeenMap.mockResolvedValue({
             a: history[0].completedAt,
             b: history[1].completedAt,
-        }));
-
-        // Render with empty history (before API response)
-        const { result, rerender } = renderHook(
-            ({ h }) => useUnseenActivity('ws1', h, null),
-            { initialProps: { h: [] as any[] } },
-        );
-        expect(result.current.unseenCount).toBe(0);
-
-        // History loads from server
-        rerender({ h: history });
-        // Previously-seen tasks must stay seen
-        expect(result.current.unseenTaskIds.has('a')).toBe(false);
-        expect(result.current.unseenTaskIds.has('b')).toBe(false);
-        expect(result.current.unseenCount).toBe(0);
-    });
-
-    it('markAllSeen is a no-op when all tasks are already seen', () => {
-        const history = makeTasks('a', 'b');
-        // First visit seeds all as seen
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-        expect(result.current.unseenCount).toBe(0);
-
-        act(() => {
-            result.current.markAllSeen();
         });
 
-        expect(result.current.unseenCount).toBe(0);
-    });
-
-    it('marks a seen task as unseen when markUnseen is called', () => {
-        const history = makeTasks('a', 'b');
-        // First visit seeds all as seen
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-        expect(result.current.unseenCount).toBe(0);
+
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
+        });
 
         act(() => {
             result.current.markUnseen('a');
@@ -224,143 +277,178 @@ describe('useUnseenActivity', () => {
         expect(result.current.unseenTaskIds.has('b')).toBe(false);
     });
 
-    it('markUnseen persists to localStorage', () => {
-        const history = makeTasks('a', 'b');
+    it('markUnseen calls deleteSeenEntry API', async () => {
+        const history = makeTasks('a');
+        mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
+
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-        expect(result.current.unseenCount).toBe(0);
+
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
+        });
 
         act(() => {
             result.current.markUnseen('a');
         });
 
-        const stored = JSON.parse(localStorage.getItem('coc-unseen-ws1')!);
-        expect(stored['a']).toBeUndefined();
-        expect(stored['b']).toBe(history[1].completedAt);
+        expect(mockDeleteSeenEntry).toHaveBeenCalledWith('ws1', 'a');
     });
 
-    it('markUnseen is a no-op for a task not in seen map', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+    it('markUnseen is a no-op for a task not in seen map', async () => {
+        mockFetchSeenMap.mockResolvedValue({});
         const history = makeTasks('a');
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
 
-        // 'a' is already unseen
-        expect(result.current.unseenTaskIds.has('a')).toBe(true);
-
-        act(() => {
-            result.current.markUnseen('a');
+        // Wait for seeding
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
         });
 
-        // Still unseen, no error
-        expect(result.current.unseenTaskIds.has('a')).toBe(true);
+        mockDeleteSeenEntry.mockClear();
+
+        // markUnseen on already-unseen should not call API after unseeding via recompletion
+        // Actually, after seeding all are seen. Let's test with a truly unseen task
+        const history2 = [...history, ...makeTasks('b')];
+        mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
+        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', history2, null));
+
+        await waitFor(() => {
+            expect(r2.current.unseenTaskIds.has('b')).toBe(true);
+        });
+
+        act(() => {
+            r2.current.markUnseen('b'); // 'b' is already unseen (not in seen map)
+        });
+
+        expect(mockDeleteSeenEntry).not.toHaveBeenCalled();
     });
 
-    it('markTasksSeen marks only the provided tasks as seen', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+    it('markTasksSeen marks only the provided tasks as seen', async () => {
         const history = makeTasks('a', 'b', 'c');
+        mockFetchSeenMap.mockResolvedValue({});
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
 
-        expect(result.current.unseenCount).toBe(3);
-
-        // Mark only 'a' and 'b' as seen, leaving 'c' unseen
-        act(() => {
-            result.current.markTasksSeen([history[0], history[1]]);
+        // Wait for seeding, then change completedAt to make them unseen
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
         });
 
-        expect(result.current.unseenTaskIds.has('a')).toBe(false);
-        expect(result.current.unseenTaskIds.has('b')).toBe(false);
-        expect(result.current.unseenTaskIds.has('c')).toBe(true);
-        expect(result.current.unseenCount).toBe(1);
-    });
+        const newHistory = history.map(t => ({ ...t, completedAt: t.completedAt + '-v2' }));
+        mockFetchSeenMap.mockResolvedValue(Object.fromEntries(history.map(t => [t.id, t.completedAt])));
+        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', newHistory, null));
 
-    it('markTasksSeen persists to localStorage', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
-        const history = makeTasks('a', 'b', 'c');
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-
-        act(() => {
-            result.current.markTasksSeen([history[0]]);
+        await waitFor(() => {
+            expect(r2.current.unseenCount).toBe(3);
         });
 
-        const stored = JSON.parse(localStorage.getItem('coc-unseen-ws1')!);
-        expect(stored['a']).toBe(history[0].completedAt);
-        expect(stored['b']).toBeUndefined();
-        expect(stored['c']).toBeUndefined();
+        act(() => {
+            r2.current.markTasksSeen([newHistory[0], newHistory[1]]);
+        });
+
+        expect(r2.current.unseenTaskIds.has('a')).toBe(false);
+        expect(r2.current.unseenTaskIds.has('b')).toBe(false);
+        expect(r2.current.unseenTaskIds.has('c')).toBe(true);
+        expect(r2.current.unseenCount).toBe(1);
     });
 
-    it('markTasksSeen is a no-op when given an empty list', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+    it('markTasksSeen is a no-op when given an empty list', async () => {
         const history = makeTasks('a', 'b');
+        mockFetchSeenMap.mockResolvedValue({});
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
 
-        expect(result.current.unseenCount).toBe(2);
-
-        act(() => {
-            result.current.markTasksSeen([]);
+        // Wait for seeding, then make unseen
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
         });
 
-        expect(result.current.unseenCount).toBe(2);
+        const newHistory = history.map(t => ({ ...t, completedAt: t.completedAt + '-v2' }));
+        mockFetchSeenMap.mockResolvedValue(Object.fromEntries(history.map(t => [t.id, t.completedAt])));
+        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', newHistory, null));
+
+        await waitFor(() => {
+            expect(r2.current.unseenCount).toBe(2);
+        });
+
+        act(() => {
+            r2.current.markTasksSeen([]);
+        });
+
+        expect(r2.current.unseenCount).toBe(2);
     });
 
-    it('markTasksSeen is a no-op for tasks without completedAt', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+    it('markTasksSeen ignores tasks without completedAt', async () => {
+        const history = makeTasks('a');
+        mockFetchSeenMap.mockResolvedValue({});
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        await waitFor(() => {
+            expect(result.current.unseenCount).toBe(0);
+        });
+
+        const newHistory = [{ ...history[0], completedAt: history[0].completedAt + '-v2' }];
+        mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
+        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', newHistory, null));
+
+        await waitFor(() => {
+            expect(r2.current.unseenTaskIds.has('a')).toBe(true);
+        });
+
+        mockPatchSeenState.mockClear();
+        act(() => {
+            r2.current.markTasksSeen([{ id: 'a' }]); // no completedAt
+        });
+
+        // Should remain unseen since completedAt is missing
+        expect(r2.current.unseenTaskIds.has('a')).toBe(true);
+    });
+
+    describe('localStorage migration', () => {
+        it('migrates localStorage data to server on first load', async () => {
+            const history = makeTasks('a', 'b');
+            const localData = { a: history[0].completedAt };
+            localStorage.setItem('coc-unseen-ws1', JSON.stringify(localData));
+            mockFetchSeenMap.mockResolvedValue({});
+
+            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+            await waitFor(() => {
+                // 'a' should be seen (migrated from localStorage)
+                expect(result.current.unseenTaskIds.has('a')).toBe(false);
+            });
+
+            // Should have called patchSeenState with the migrated entries
+            expect(mockPatchSeenState).toHaveBeenCalledWith('ws1', expect.arrayContaining([
+                { processId: 'a', seenAt: history[0].completedAt },
+            ]));
+
+            // localStorage key should be removed after migration
+            expect(localStorage.getItem('coc-unseen-ws1')).toBeNull();
+        });
+
+        it('merges localStorage with existing server data', async () => {
+            const history = makeTasks('a', 'b');
+            const localData = { b: history[1].completedAt };
+            localStorage.setItem('coc-unseen-ws1', JSON.stringify(localData));
+            mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
+
+            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenTaskIds.has('a')).toBe(false);
+                expect(result.current.unseenTaskIds.has('b')).toBe(false);
+            });
+        });
+    });
+
+    it('handles server error gracefully', async () => {
+        mockFetchSeenMap.mockRejectedValue(new Error('Server unavailable'));
         const history = makeTasks('a');
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
 
-        act(() => {
-            result.current.markTasksSeen([{ id: 'a' }]); // no completedAt
+        // Should still render without crashing — starts with empty map
+        await waitFor(() => {
+            // After error, seeding should make all seen
+            expect(result.current.unseenCount).toBe(0);
         });
-
-        expect(result.current.unseenTaskIds.has('a')).toBe(true);
-    });
-
-    it('dispatches coc-seen-updated custom event when markSeen is called', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
-        const history = makeTasks('a');
-        const events: Event[] = [];
-        const handler = (e: Event) => events.push(e);
-        window.addEventListener('coc-seen-updated', handler);
-
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-
-        act(() => {
-            result.current.markSeen('a');
-        });
-
-        window.removeEventListener('coc-seen-updated', handler);
-        expect(events.length).toBeGreaterThan(0);
-    });
-
-    it('dispatches coc-seen-updated when markAllSeen is called', () => {
-        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
-        const history = makeTasks('a', 'b');
-        const events: Event[] = [];
-        const handler = (e: Event) => events.push(e);
-        window.addEventListener('coc-seen-updated', handler);
-
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-
-        act(() => {
-            result.current.markAllSeen();
-        });
-
-        window.removeEventListener('coc-seen-updated', handler);
-        expect(events.length).toBeGreaterThan(0);
-    });
-
-    it('dispatches coc-seen-updated when markUnseen is called', () => {
-        const history = makeTasks('a');
-        const events: Event[] = [];
-        const handler = (e: Event) => events.push(e);
-        window.addEventListener('coc-seen-updated', handler);
-
-        // Seed first visit (all seen), then mark unseen
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
-
-        act(() => {
-            result.current.markUnseen('a');
-        });
-
-        window.removeEventListener('coc-seen-updated', handler);
-        expect(events.length).toBeGreaterThan(0);
     });
 });

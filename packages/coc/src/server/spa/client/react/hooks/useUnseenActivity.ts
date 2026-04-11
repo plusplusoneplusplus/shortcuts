@@ -4,30 +4,14 @@
  * Tasks that complete while the user is viewing another task are "unseen"
  * and surfaced via bold styling + dot indicator in the activity list.
  *
- * State is persisted per-workspace in localStorage so it survives page reloads.
+ * State is persisted server-side (SQLite `seen_at` column on `processes`).
+ * On first load, existing localStorage data is migrated to the server.
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { fetchSeenMap, patchSeenState, deleteSeenEntry } from './seenStateApi';
 
 const STORAGE_PREFIX = 'coc-unseen-';
-
-/** Read the seen map from localStorage, returning null if the key doesn't exist. */
-function loadSeenMap(storageKey: string): Record<string, string> | null {
-    try {
-        const raw = localStorage.getItem(storageKey);
-        if (raw) return JSON.parse(raw);
-    } catch { /* corrupt or unavailable */ }
-    return null;
-}
-
-function persistSeenMap(storageKey: string, map: Record<string, string>): void {
-    try {
-        localStorage.setItem(storageKey, JSON.stringify(map));
-        // Notify same-tab listeners (e.g. sidebar badge) that seen state changed.
-        window.dispatchEvent(new CustomEvent('coc-seen-updated', { detail: { storageKey } }));
-    }
-    catch { /* quota or unavailable */ }
-}
 
 export interface UseUnseenActivityResult {
     /** Set of task IDs that have unseen activity. */
@@ -49,50 +33,119 @@ export function useUnseenActivity(
     history: any[],
     selectedTaskId: string | null,
 ): UseUnseenActivityResult {
-    const storageKey = STORAGE_PREFIX + workspaceId;
-
-    // Whether this workspace had prior seen-state in localStorage.
-    const hadPriorStateRef = useRef<boolean>(loadSeenMap(storageKey) !== null);
-
-    const [seenMap, setSeenMap] = useState<Record<string, string>>(() => {
-        return loadSeenMap(storageKey) ?? {};
-    });
-
-    // Persist to localStorage whenever seenMap changes.
-    useEffect(() => {
-        persistSeenMap(storageKey, seenMap);
-    }, [seenMap, storageKey]);
-
-    // On first visit (no prior localStorage), seed all existing history as seen
-    // so we don't flash everything as "unseen" on initial load.
+    const [seenMap, setSeenMap] = useState<Record<string, string>>({});
+    const initializedRef = useRef(false);
     const seededRef = useRef(false);
+
+    // Debounce batch for patchSeenState calls
+    const pendingEntriesRef = useRef<Array<{ processId: string; seenAt: string }>>([]);
+    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const flushPending = useCallback(() => {
+        if (pendingEntriesRef.current.length === 0) return;
+        const entries = pendingEntriesRef.current;
+        pendingEntriesRef.current = [];
+        patchSeenState(workspaceId, entries).catch(() => { /* fire-and-forget */ });
+    }, [workspaceId]);
+
+    const schedulePatch = useCallback((entries: Array<{ processId: string; seenAt: string }>) => {
+        pendingEntriesRef.current.push(...entries);
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = setTimeout(flushPending, 100);
+    }, [flushPending]);
+
+    // Load initial seen map from server + handle localStorage migration
     useEffect(() => {
-        if (hadPriorStateRef.current || seededRef.current || history.length === 0) return;
-        seededRef.current = true;
-        setSeenMap(prev => {
-            const updated = { ...prev };
-            let changed = false;
-            for (const task of history) {
-                if (task.completedAt && !updated[task.id]) {
-                    updated[task.id] = task.completedAt;
-                    changed = true;
+        let cancelled = false;
+        initializedRef.current = false;
+        seededRef.current = false;
+
+        (async () => {
+            try {
+                const serverMap = await fetchSeenMap(workspaceId);
+                if (cancelled) return;
+
+                // One-time localStorage migration
+                const storageKey = STORAGE_PREFIX + workspaceId;
+                let localMap: Record<string, string> | null = null;
+                try {
+                    const raw = localStorage.getItem(storageKey);
+                    if (raw) localMap = JSON.parse(raw);
+                } catch { /* corrupt or unavailable */ }
+
+                if (localMap && Object.keys(localMap).length > 0) {
+                    // Merge localStorage entries into server state
+                    const merged = { ...serverMap };
+                    const migrationEntries: Array<{ processId: string; seenAt: string }> = [];
+                    for (const [processId, seenAt] of Object.entries(localMap)) {
+                        if (!merged[processId]) {
+                            merged[processId] = seenAt;
+                            migrationEntries.push({ processId, seenAt });
+                        }
+                    }
+                    if (migrationEntries.length > 0) {
+                        patchSeenState(workspaceId, migrationEntries).catch(() => {});
+                    }
+                    // Remove localStorage key after migration
+                    try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+                    if (!cancelled) setSeenMap(merged);
+                } else {
+                    if (!cancelled) setSeenMap(serverMap);
+                }
+
+                if (!cancelled) initializedRef.current = true;
+            } catch {
+                // Server unavailable — start with empty map
+                if (!cancelled) {
+                    setSeenMap({});
+                    initializedRef.current = true;
                 }
             }
-            return changed ? updated : prev;
-        });
-    }, [history]);
+        })();
+
+        return () => {
+            cancelled = true;
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = null;
+            }
+        };
+    }, [workspaceId]);
+
+    // First-visit seeding: when server map is empty and no localStorage key exists,
+    // seed all completed tasks as seen so we don't flash everything as "unseen".
+    useEffect(() => {
+        if (!initializedRef.current || seededRef.current || history.length === 0) return;
+        if (Object.keys(seenMap).length > 0) return; // already has data
+        seededRef.current = true;
+
+        const entries: Array<{ processId: string; seenAt: string }> = [];
+        const updated: Record<string, string> = {};
+        for (const task of history) {
+            if (task.completedAt) {
+                updated[task.id] = task.completedAt;
+                entries.push({ processId: task.id, seenAt: task.completedAt });
+            }
+        }
+        if (entries.length > 0) {
+            setSeenMap(updated);
+            patchSeenState(workspaceId, entries).catch(() => {});
+        }
+    }, [history, seenMap, workspaceId]);
 
     // Auto-mark currently selected task as seen when it appears in history.
     useEffect(() => {
-        if (!selectedTaskId) return;
+        if (!selectedTaskId || !initializedRef.current) return;
         const task = history.find(t => t.id === selectedTaskId);
         if (task?.completedAt) {
             setSeenMap(prev => {
                 if (prev[selectedTaskId] === task.completedAt) return prev;
-                return { ...prev, [selectedTaskId]: task.completedAt };
+                const updated = { ...prev, [selectedTaskId]: task.completedAt };
+                schedulePatch([{ processId: selectedTaskId, seenAt: task.completedAt }]);
+                return updated;
             });
         }
-    }, [selectedTaskId, history]);
+    }, [selectedTaskId, history, schedulePatch]);
 
     // Compute the unseen set.
     const unseenTaskIds = useMemo(() => {
@@ -113,40 +166,47 @@ export function useUnseenActivity(
         if (task?.completedAt) {
             setSeenMap(prev => {
                 if (prev[taskId] === task.completedAt) return prev;
+                schedulePatch([{ processId: taskId, seenAt: task.completedAt }]);
                 return { ...prev, [taskId]: task.completedAt };
             });
         }
-    }, [history]);
+    }, [history, schedulePatch]);
 
     // Mark all history tasks as seen.
     const markAllSeen = useCallback(() => {
         setSeenMap(prev => {
             const updated = { ...prev };
+            const entries: Array<{ processId: string; seenAt: string }> = [];
             let changed = false;
             for (const task of history) {
                 if (task.completedAt && updated[task.id] !== task.completedAt) {
                     updated[task.id] = task.completedAt;
+                    entries.push({ processId: task.id, seenAt: task.completedAt });
                     changed = true;
                 }
             }
+            if (entries.length > 0) schedulePatch(entries);
             return changed ? updated : prev;
         });
-    }, [history]);
+    }, [history, schedulePatch]);
 
     // Mark a specific subset of tasks as seen (e.g. the currently filtered list).
     const markTasksSeen = useCallback((tasks: any[]) => {
         setSeenMap(prev => {
             const updated = { ...prev };
+            const entries: Array<{ processId: string; seenAt: string }> = [];
             let changed = false;
             for (const task of tasks) {
                 if (task.completedAt && updated[task.id] !== task.completedAt) {
                     updated[task.id] = task.completedAt;
+                    entries.push({ processId: task.id, seenAt: task.completedAt });
                     changed = true;
                 }
             }
+            if (entries.length > 0) schedulePatch(entries);
             return changed ? updated : prev;
         });
-    }, []);
+    }, [schedulePatch]);
 
     // Mark a specific task as unseen/unread.
     const markUnseen = useCallback((taskId: string) => {
@@ -154,43 +214,10 @@ export function useUnseenActivity(
             if (!(taskId in prev)) return prev;
             const updated = { ...prev };
             delete updated[taskId];
+            deleteSeenEntry(workspaceId, taskId).catch(() => {});
             return updated;
         });
-    }, []);
-
-    // Periodically clean up entries for tasks no longer in history (limit map growth).
-    const lastCleanupRef = useRef(0);
-    useEffect(() => {
-        if (history.length === 0) return; // don't wipe seenMap before history loads
-        const now = Date.now();
-        if (now - lastCleanupRef.current < 60_000) return; // at most once per minute
-        lastCleanupRef.current = now;
-        const historyIds = new Set(history.map(t => t.id));
-        setSeenMap(prev => {
-            const keys = Object.keys(prev);
-            const stale = keys.filter(id => !historyIds.has(id));
-            if (stale.length === 0) return prev;
-            const cleaned = { ...prev };
-            for (const id of stale) delete cleaned[id];
-            return cleaned;
-        });
-    }, [history]);
+    }, [workspaceId]);
 
     return { unseenTaskIds, unseenCount: unseenTaskIds.size, markSeen, markAllSeen, markTasksSeen, markUnseen };
-}
-
-/**
- * Pure helper: compute the unseen count for a workspace from localStorage + history.
- * Safe to call outside of React (no hooks).
- */
-export function computeUnseenCount(workspaceId: string, history: any[]): number {
-    const storageKey = STORAGE_PREFIX + workspaceId;
-    const seenMap = loadSeenMap(storageKey) ?? {};
-    let count = 0;
-    for (const task of history) {
-        if (!task.completedAt) continue;
-        const seen = seenMap[task.id];
-        if (!seen || seen !== task.completedAt) count++;
-    }
-    return count;
 }
