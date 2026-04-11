@@ -1082,18 +1082,6 @@ export function ActivityListPane({
                                 })}
                             </div>
                         )}
-                        {showHistory && hasMore && onLoadMore && (
-                            <div className="px-4 py-2">
-                                <button
-                                    onClick={onLoadMore}
-                                    disabled={loadingMore}
-                                    className="w-full text-xs text-[#848484] dark:text-[#858585] hover:text-[#3c3c3c] dark:hover:text-[#cccccc] disabled:opacity-50 disabled:cursor-not-allowed py-1"
-                                    data-testid="activity-load-more-btn"
-                                >
-                                    {loadingMore ? 'Loading…' : 'Load more'}
-                                </button>
-                            </div>
-                        )}
                     </div>
                 )}
             {filteredArchived.length > 0 && (
@@ -1165,6 +1153,18 @@ export function ActivityListPane({
                             })}
                         </div>
                     )}
+                </div>
+            )}
+            {hasMore && onLoadMore && (
+                <div className="px-4 py-2">
+                    <button
+                        onClick={onLoadMore}
+                        disabled={loadingMore}
+                        className="w-full text-xs text-[#848484] dark:text-[#858585] hover:text-[#3c3c3c] dark:hover:text-[#cccccc] disabled:opacity-50 disabled:cursor-not-allowed py-1"
+                        data-testid="activity-load-more-btn"
+                    >
+                        {loadingMore ? 'Loading…' : 'Load more'}
+                    </button>
                 </div>
             )}
         </div>

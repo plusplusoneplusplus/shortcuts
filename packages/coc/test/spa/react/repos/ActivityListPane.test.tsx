@@ -1357,11 +1357,26 @@ describe('ActivityListPane', () => {
             expect(screen.getByTestId('activity-load-more-btn')).toHaveProperty('disabled', true);
         });
 
-        it('hides Load more when Completed Tasks section is collapsed', () => {
+        it('keeps Load more visible when Completed Tasks section is collapsed', () => {
             renderPane({ history: [makeHistoryTask()], hasMore: true, onLoadMore: vi.fn() });
             // showHistory starts as true; click to collapse
             fireEvent.click(screen.getByText(/Completed Tasks/));
-            expect(screen.queryByTestId('activity-load-more-btn')).toBeNull();
+            expect(screen.getByTestId('activity-load-more-btn')).toBeTruthy();
+        });
+
+        it('renders Load more button after the Archived section', () => {
+            mockArchivedChatIds = new Set(['h-a']);
+            renderPane({
+                history: [makeHistoryTask({ id: 'h-1' }), makeHistoryTask({ id: 'h-a' })],
+                hasMore: true,
+                onLoadMore: vi.fn(),
+            });
+            const btn = screen.getByTestId('activity-load-more-btn');
+            const archivedToggle = screen.getByTestId('archived-chats-section-toggle');
+            // Load more button should appear after the archived section in the DOM
+            const comparison = archivedToggle.compareDocumentPosition(btn);
+            // DOCUMENT_POSITION_FOLLOWING = 4
+            expect(comparison & 4).toBeTruthy();
         });
     });
 });
