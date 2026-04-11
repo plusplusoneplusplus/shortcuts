@@ -14,7 +14,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         queued: [],
         running: [],
         history: [],
-        stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+        stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
         repoQueueMap: {},
         streamingChatWorkspaces: {},
         showDialog: false,
@@ -55,7 +55,7 @@ describe('queueReducer', () => {
                 queue: {
                     queued: [{ id: 'q1' }],
                     running: [{ id: 'r1' }],
-                    stats: { queued: 1, running: 1, completed: 0, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
+                    stats: { queued: 1, running: 1, total: 2, isPaused: false, isDraining: false },
                 },
             });
             expect(result.queued).toHaveLength(1);
@@ -67,7 +67,7 @@ describe('queueReducer', () => {
             const state = makeState({ queueInitialized: false });
             const result = queueReducer(state, {
                 type: 'QUEUE_UPDATED',
-                queue: { queued: [], running: [], stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false } },
+                queue: { queued: [], running: [], stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false } },
             });
             expect(result.queueInitialized).toBe(true);
         });
@@ -87,7 +87,7 @@ describe('queueReducer', () => {
 
         it('does not affect other repos when updating one', () => {
             const state = makeState({
-                repoQueueMap: { 'repo-B': { queued: [{ id: 'b1' }], running: [], history: [], stats: makeState().stats } },
+                repoQueueMap: { 'repo-B': { queued: [{ id: 'b1' }], running: [], stats: makeState().stats } },
             });
             const result = queueReducer(state, {
                 type: 'REPO_QUEUE_UPDATED',

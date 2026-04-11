@@ -213,7 +213,7 @@ export { detectRemoteUrl, normalizeRemoteUrl } from './api-handler';
 
 // WebSocket
 export { ProcessWebSocketServer, toProcessSummary, toCommentSummary, attachWebSocketUpgradeHandler } from './websocket';
-export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, ServerMessage, ClientMessage, QueueSnapshot } from './websocket';
+export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, ServerMessage, ClientMessage, QueueSnapshot } from './websocket';
 
 // Terminal
 export { TerminalWebSocketServer } from './terminal/index';

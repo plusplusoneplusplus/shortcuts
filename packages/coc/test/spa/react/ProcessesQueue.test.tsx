@@ -73,7 +73,6 @@ function SeededQueuePanel({ historyItem }: { historyItem: any }) {
     const { dispatch } = useQueue();
     useEffect(() => {
         dispatch({ type: 'SET_HISTORY', history: [historyItem] });
-        dispatch({ type: 'TOGGLE_HISTORY' });
     }, [dispatch, historyItem]);
     return <ProcessesSidebar />;
 }

@@ -922,7 +922,7 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         // Simulate WS push
         const newTask = makeRunningTask('ws-r1');
         await act(async () => {
-            dispatchRef.current?.({ running: [newTask], queued: [], history: [], stats: { isPaused: false } });
+            dispatchRef.current?.({ running: [newTask], queued: [], stats: { isPaused: false } });
         });
 
         await waitFor(() => {
@@ -949,7 +949,7 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
 
         // Simulate WS push with isPaused=true
         await act(async () => {
-            dispatchRef.current?.({ running: [], queued: [], history: [], stats: { isPaused: true } });
+            dispatchRef.current?.({ running: [], queued: [], stats: { isPaused: true } });
         });
 
         await waitFor(() => {

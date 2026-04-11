@@ -54,7 +54,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         queued: [],
         running: [],
         history: [],
-        stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+        stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
         repoQueueMap: {},
         streamingChatWorkspaces: {},
         showDialog: false,

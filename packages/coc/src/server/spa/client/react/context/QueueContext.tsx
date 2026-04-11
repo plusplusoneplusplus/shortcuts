@@ -10,9 +10,6 @@ import { createContext, useContext, useReducer, type ReactNode, type Dispatch } 
 export interface QueueStats {
     queued: number;
     running: number;
-    completed: number;
-    failed: number;
-    cancelled: number;
     total: number;
     isPaused: boolean;
     isDraining: boolean;
@@ -28,7 +25,7 @@ export interface QueueContextState {
     running: any[];
     history: any[];
     stats: QueueStats;
-    repoQueueMap: Record<string, { queued: any[]; running: any[]; history: any[]; stats: QueueStats }>;
+    repoQueueMap: Record<string, { queued: any[]; running: any[]; stats: QueueStats }>;
     /** Per-workspace count of chats currently streaming (follow-up SSE). */
     streamingChatWorkspaces: Record<string, number>;
     showDialog: boolean;
@@ -80,9 +77,6 @@ function createEmptyQueueStats(): QueueStats {
     return {
         queued: 0,
         running: 0,
-        completed: 0,
-        failed: 0,
-        cancelled: 0,
         total: 0,
         isPaused: false,
         isDraining: false,
@@ -132,8 +126,8 @@ const initialState: QueueContextState = {
 // ── Actions ────────────────────────────────────────────────────────────
 
 export type QueueAction =
-    | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; history?: any[]; stats: any } }
-    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; history?: any[]; stats?: any } }
+    | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; stats: any } }
+    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; stats?: any } }
     | { type: 'REPO_QUEUE_STATS_UPDATED'; repoId: string; stats: Partial<QueueStats> }
     | { type: 'SET_HISTORY'; history: any[] }
     | { type: 'DRAIN_START'; queued: number; running: number }
@@ -159,20 +153,11 @@ export type QueueAction =
 export function queueReducer(state: QueueContextState, action: QueueAction): QueueContextState {
     switch (action.type) {
         case 'QUEUE_UPDATED': {
-            const prevCompleted = state.stats.completed || 0;
-            const prevFailed = state.stats.failed || 0;
-            const newStats = action.queue.stats || state.stats;
-            const newCompleted = newStats.completed || 0;
-            const newFailed = newStats.failed || 0;
-            const autoShowHistory = (newCompleted > prevCompleted || newFailed > prevFailed)
-                ? true : state.showHistory;
             return {
                 ...state,
                 queued: action.queue.queued || [],
                 running: action.queue.running || [],
-                history: action.queue.history ?? state.history,
-                stats: newStats,
-                showHistory: autoShowHistory,
+                stats: action.queue.stats || state.stats,
                 queueInitialized: true,
             };
         }
@@ -181,7 +166,6 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             const repoData = {
                 queued: action.queue.queued ?? existingRepo?.queued ?? [],
                 running: action.queue.running ?? existingRepo?.running ?? [],
-                history: action.queue.history ?? existingRepo?.history ?? [],
                 stats: mergeQueueStats(action.queue.stats, existingRepo?.stats),
             };
             return {
@@ -194,7 +178,6 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             const repoData = {
                 queued: existingRepo?.queued ?? [],
                 running: existingRepo?.running ?? [],
-                history: existingRepo?.history ?? [],
                 stats: mergeQueueStats(action.stats, existingRepo?.stats),
             };
             return {
@@ -203,7 +186,7 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             };
         }
         case 'SET_HISTORY':
-            return { ...state, history: action.history };
+            return { ...state, history: action.history, showHistory: action.history.length > 0 ? true : state.showHistory };
         case 'DRAIN_START':
             return { ...state, draining: true, drainQueued: action.queued, drainRunning: action.running };
         case 'DRAIN_PROGRESS':

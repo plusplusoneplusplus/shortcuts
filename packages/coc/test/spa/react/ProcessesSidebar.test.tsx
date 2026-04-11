@@ -47,12 +47,12 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function makeStats(overrides: Partial<{
-    queued: number; running: number; completed: number; failed: number;
-    cancelled: number; total: number; isPaused: boolean; isDraining: boolean;
+    queued: number; running: number;
+    total: number; isPaused: boolean; isDraining: boolean;
 }> = {}) {
     return {
-        queued: 0, running: 0, completed: 0, failed: 0,
-        cancelled: 0, total: 0, isPaused: false, isDraining: false,
+        queued: 0, running: 0,
+        total: 0, isPaused: false, isDraining: false,
         ...overrides,
     };
 }
@@ -65,7 +65,10 @@ function QueueSeeder({ stats, queued = [], running = [], history = [] }: {
 }) {
     const { dispatch } = useQueue();
     useEffect(() => {
-        dispatch({ type: 'QUEUE_UPDATED', queue: { queued, running, history, stats } });
+        dispatch({ type: 'QUEUE_UPDATED', queue: { queued, running, stats } });
+        if (history.length > 0) {
+            dispatch({ type: 'SET_HISTORY', history });
+        }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return null;
 }

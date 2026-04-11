@@ -164,16 +164,12 @@ function AppInner() {
             case 'queue-updated':
                 if (msg.queue) {
                     if (msg.queue.repoId) {
-                        // Server always sends workspace UUID as repoId (see multi-repo-executor-bridge.ts).
                         queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: String(msg.queue.repoId), queue: msg.queue });
                     } else {
                         queueDispatch({ type: 'QUEUE_UPDATED', queue: msg.queue });
-                        // Fetch history if not included
-                        if (!msg.queue.history) {
-                            fetchApi('/queue/history').then(data => {
-                                if (data?.history) queueDispatch({ type: 'SET_HISTORY', history: data.history });
-                            }).catch(() => { /* ignore */ });
-                        }
+                        fetchApi('/queue/history').then(data => {
+                            if (data?.history) queueDispatch({ type: 'SET_HISTORY', history: data.history });
+                        }).catch(() => { /* ignore */ });
                     }
                 }
                 break;

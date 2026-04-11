@@ -153,6 +153,9 @@ export function ProcessesSidebar() {
 
     const hasQueueActive = running.length > 0 || queued.length > 0;
 
+    const historyCompleted = useMemo(() => history.filter((t: any) => t.status === 'completed').length, [history]);
+    const historyFailed = useMemo(() => history.filter((t: any) => t.status === 'failed').length, [history]);
+
     async function handlePauseResume() {
         setIsPauseResumeLoading(true);
         try {
@@ -192,8 +195,8 @@ export function ProcessesSidebar() {
             <div className="flex items-center gap-3 text-xs text-[#848484]">
                 <span>⏳ {stats.queued} queued</span>
                 <span>🔄 {stats.running} running</span>
-                <span>✅ {stats.completed} done</span>
-                <span>❌ {stats.failed} failed</span>
+                <span>✅ {historyCompleted} done</span>
+                <span>❌ {historyFailed} failed</span>
                 {stats.isPaused && <Badge status="warning" title={stats.pauseReason ? `${stats.pauseReason.displayName} failed` : undefined}>Paused</Badge>}
                 <div className="ml-auto flex items-center gap-1">
                     {(stats.isPaused || hasQueueActive) && (

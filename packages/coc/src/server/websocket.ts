@@ -75,31 +75,14 @@ export interface QueueTaskSummary {
     startedAt?: number;
 }
 
-/** History task summary for WebSocket messages. */
-export interface QueueHistoryTaskSummary {
-    id: string;
-    type: string;
-    priority: string;
-    status: string;
-    displayName?: string;
-    createdAt: number;
-    startedAt?: number;
-    completedAt?: number;
-    error?: string;
-}
-
 /** Queue state snapshot sent via WebSocket. */
 export interface QueueSnapshot {
     repoId?: string;
     queued: QueueTaskSummary[];
     running: QueueTaskSummary[];
-    history?: QueueHistoryTaskSummary[];
     stats: {
         queued: number;
         running: number;
-        completed: number;
-        failed: number;
-        cancelled: number;
         total: number;
         isPaused: boolean;
         isDraining: boolean;

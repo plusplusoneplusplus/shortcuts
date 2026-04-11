@@ -289,7 +289,7 @@ describe('RepoCard', () => {
                     queue: {
                         queued: [],
                         running: [{ id: 'r1' }],
-                        stats: { queued: 0, running: 1, completed: 0, failed: 0, cancelled: 0, total: 1, isPaused: false, isDraining: false },
+                        stats: { queued: 0, running: 1, total: 1, isPaused: false, isDraining: false },
                     },
                 });
             }, [dispatch]);
@@ -316,7 +316,7 @@ describe('RepoCard', () => {
                     queue: {
                         queued: [{ id: 'q1' }, { id: 'q2' }],
                         running: [],
-                        stats: { queued: 2, running: 0, completed: 0, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
+                        stats: { queued: 2, running: 0, total: 2, isPaused: false, isDraining: false },
                     },
                 });
             }, [dispatch]);
@@ -343,7 +343,7 @@ describe('RepoCard', () => {
                     queue: {
                         queued: [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }],
                         running: [{ id: 'r1' }, { id: 'r2' }],
-                        stats: { queued: 3, running: 2, completed: 0, failed: 0, cancelled: 0, total: 5, isPaused: false, isDraining: false },
+                        stats: { queued: 3, running: 2, total: 5, isPaused: false, isDraining: false },
                     },
                 });
             }, [dispatch]);

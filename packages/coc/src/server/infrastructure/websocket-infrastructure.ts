@@ -124,9 +124,6 @@ export function createWebSocketInfrastructure(
     const mapRunning = (t: any) => ({
         ...mapQueued(t), startedAt: t.startedAt,
     });
-    const mapHistory = (t: any) => ({
-        ...mapRunning(t), completedAt: t.completedAt, error: t.error,
-    });
 
     // Bridge queue change events from all repos to WebSocket
     bridge.on('queueChange', (event: { repoPath: string; repoId: string; type: string; taskId?: string }) => {
@@ -139,16 +136,14 @@ export function createWebSocketInfrastructure(
                 repoId: event.repoId,
                 queued: repoManager.getQueued().map(mapQueued),
                 running: repoManager.getRunning().map(mapRunning),
-                history: repoManager.getHistory().map(mapHistory),
-                stats: repoStats,
+                stats: { queued: repoStats.queued, running: repoStats.running, total: repoStats.total, isPaused: repoStats.isPaused, isDraining: repoStats.isDraining },
             },
         } as any);
 
         // 2) Global aggregate broadcast (no repoId) for top-level stats badge
         const allQueued: any[] = [];
         const allRunning: any[] = [];
-        const allHistory: any[] = [];
-        const combinedStats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false };
+        const combinedStats = { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false };
         let allPaused = true;
         let anyManager = false;
         let anyDraining = false;
@@ -156,13 +151,9 @@ export function createWebSocketInfrastructure(
         for (const [, manager] of registry.getAllQueues()) {
             allQueued.push(...manager.getQueued());
             allRunning.push(...manager.getRunning());
-            allHistory.push(...manager.getHistory());
             const s = manager.getStats();
             combinedStats.queued += s.queued;
             combinedStats.running += s.running;
-            combinedStats.completed += s.completed;
-            combinedStats.failed += s.failed;
-            combinedStats.cancelled += s.cancelled;
             combinedStats.total += s.total;
             if (!s.isPaused) { allPaused = false; }
             if (s.isDraining) { anyDraining = true; }
@@ -171,16 +162,14 @@ export function createWebSocketInfrastructure(
         combinedStats.isPaused = anyManager && allPaused;
         combinedStats.isDraining = anyDraining;
 
-        // Debug: log queue state changes
         const taskInfo = event.taskId ? ` task=${event.taskId}` : '';
-        process.stderr.write(`[Queue] ${event.type}${taskInfo} — queued=${combinedStats.queued} running=${combinedStats.running} completed=${combinedStats.completed} failed=${combinedStats.failed} ws_clients=${wsServer.clientCount}\n`);
+        process.stderr.write(`[Queue] ${event.type}${taskInfo} — queued=${combinedStats.queued} running=${combinedStats.running} ws_clients=${wsServer.clientCount}\n`);
 
         wsServer.broadcastProcessEvent({
             type: 'queue-updated',
             queue: {
                 queued: allQueued.map(mapQueued),
                 running: allRunning.map(mapRunning),
-                history: allHistory.map(mapHistory),
                 stats: combinedStats,
             },
         } as any);

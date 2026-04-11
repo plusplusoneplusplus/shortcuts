@@ -37,7 +37,7 @@ describe('useRepoQueueStats', () => {
                     queue: {
                         queued: [{ id: 'q1', type: 'run-workflow' }],
                         running: [{ id: 'r1', type: 'chat' }, { id: 'r2', type: 'chat' }],
-                        stats: { queued: 1, running: 2, completed: 0, failed: 0, cancelled: 0, total: 3, isPaused: false, isDraining: false },
+                        stats: { queued: 1, running: 2, total: 3, isPaused: false, isDraining: false },
                     },
                 });
             }, [dispatch]);
@@ -114,7 +114,7 @@ describe('useRepoQueueStats', () => {
                     queue: {
                         queued: [{ id: 'q1', type: 'run-workflow' }],
                         running: [{ id: 'r1', type: 'chat' }],
-                        stats: { queued: 1, running: 1, completed: 0, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
+                        stats: { queued: 1, running: 1, total: 2, isPaused: false, isDraining: false },
                     },
                 });
             }, [dispatch]);
@@ -216,9 +216,6 @@ describe('useRepoQueueStats', () => {
                         running: [
                             { id: 'parent-chat', type: 'chat' },
                             { id: 'followup-1', type: 'chat', payload: { processId: 'parent-chat' } },
-                        ],
-                        history: [
-                            { id: 'h1', type: 'chat' },
                         ],
                     },
                 });

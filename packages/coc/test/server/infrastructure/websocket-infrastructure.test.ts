@@ -43,10 +43,9 @@ function makeBridge(): any {
 
 function makeRegistry(): any {
     const mockManager = {
-        getStats: vi.fn().mockReturnValue({ queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false }),
+        getStats: vi.fn().mockReturnValue({ queued: 0, running: 0, total: 0, isPaused: false, isDraining: false }),
         getQueued: vi.fn().mockReturnValue([]),
         getRunning: vi.fn().mockReturnValue([]),
-        getHistory: vi.fn().mockReturnValue([]),
     };
     return {
         getQueueForRepo: vi.fn().mockReturnValue(mockManager),

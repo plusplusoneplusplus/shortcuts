@@ -10,7 +10,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         queued: [],
         running: [],
         history: [],
-        stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+        stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
         repoQueueMap: {},
         streamingChatWorkspaces: {},
         showDialog: false,
@@ -50,7 +50,7 @@ describe('QueueContext reducer', () => {
                 queue: {
                     queued: [{ id: 'q1' }],
                     running: [{ id: 'r1' }],
-                    stats: { queued: 1, running: 1, completed: 0, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
+                    stats: { queued: 1, running: 1, total: 2, isPaused: false, isDraining: false },
                 },
             });
             expect(result.queued).toHaveLength(1);
@@ -65,85 +65,23 @@ describe('QueueContext reducer', () => {
                 queue: {
                     queued: [],
                     running: [],
-                    stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+                    stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
                 },
             });
             expect(result.queueInitialized).toBe(true);
         });
 
-        it('sets history when present in queue data', () => {
-            const state = makeState();
-            const result = queueReducer(state, {
-                type: 'QUEUE_UPDATED',
-                queue: {
-                    queued: [],
-                    running: [],
-                    history: [{ id: 'h1' }],
-                    stats: { queued: 0, running: 0, completed: 1, failed: 0, cancelled: 0, total: 1, isPaused: false, isDraining: false },
-                },
-            });
-            expect(result.history).toHaveLength(1);
-        });
-
-        it('keeps existing history when not present in queue data', () => {
+        it('does not modify history (managed by SET_HISTORY)', () => {
             const state = makeState({ history: [{ id: 'h1' }] });
             const result = queueReducer(state, {
                 type: 'QUEUE_UPDATED',
                 queue: {
                     queued: [],
                     running: [],
-                    stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+                    stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
                 },
             });
-            expect(result.history).toHaveLength(1);
-        });
-
-        it('auto-shows history when completed count increases', () => {
-            const state = makeState({
-                stats: { queued: 0, running: 0, completed: 2, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
-                showHistory: false,
-            });
-            const result = queueReducer(state, {
-                type: 'QUEUE_UPDATED',
-                queue: {
-                    queued: [],
-                    running: [],
-                    stats: { queued: 0, running: 0, completed: 3, failed: 0, cancelled: 0, total: 3, isPaused: false, isDraining: false },
-                },
-            });
-            expect(result.showHistory).toBe(true);
-        });
-
-        it('auto-shows history when failed count increases', () => {
-            const state = makeState({
-                stats: { queued: 0, running: 0, completed: 0, failed: 1, cancelled: 0, total: 1, isPaused: false, isDraining: false },
-                showHistory: false,
-            });
-            const result = queueReducer(state, {
-                type: 'QUEUE_UPDATED',
-                queue: {
-                    queued: [],
-                    running: [],
-                    stats: { queued: 0, running: 0, completed: 0, failed: 2, cancelled: 0, total: 2, isPaused: false, isDraining: false },
-                },
-            });
-            expect(result.showHistory).toBe(true);
-        });
-
-        it('does not change showHistory when counts stay the same', () => {
-            const state = makeState({
-                stats: { queued: 0, running: 0, completed: 1, failed: 0, cancelled: 0, total: 1, isPaused: false, isDraining: false },
-                showHistory: false,
-            });
-            const result = queueReducer(state, {
-                type: 'QUEUE_UPDATED',
-                queue: {
-                    queued: [],
-                    running: [],
-                    stats: { queued: 0, running: 0, completed: 1, failed: 0, cancelled: 0, total: 1, isPaused: false, isDraining: false },
-                },
-            });
-            expect(result.showHistory).toBe(false);
+            expect(result.history).toEqual([{ id: 'h1' }]);
         });
     });
 
@@ -155,13 +93,9 @@ describe('QueueContext reducer', () => {
                     'ws-1': {
                         queued: [{ id: 'q1' }],
                         running: [{ id: 'r1' }],
-                        history: [{ id: 'h1' }],
                         stats: {
                             queued: 1,
                             running: 1,
-                            completed: 2,
-                            failed: 0,
-                            cancelled: 0,
                             total: 4,
                             isPaused: false,
                             isDraining: false,
@@ -182,11 +116,9 @@ describe('QueueContext reducer', () => {
 
             expect(result.repoQueueMap['ws-1'].queued).toEqual([{ id: 'q1' }]);
             expect(result.repoQueueMap['ws-1'].running).toEqual([{ id: 'r1' }]);
-            expect(result.repoQueueMap['ws-1'].history).toEqual([{ id: 'h1' }]);
             expect(result.repoQueueMap['ws-1'].stats.queued).toBe(3);
             expect(result.repoQueueMap['ws-1'].stats.running).toBe(2);
             expect(result.repoQueueMap['ws-1'].stats.isPaused).toBe(true);
-            expect(result.repoQueueMap['ws-1'].stats.completed).toBe(2);
         });
 
         it('creates a repo entry when only stats are known', () => {
@@ -205,7 +137,6 @@ describe('QueueContext reducer', () => {
             expect(result.repoQueueMap['ws-2']).toBeDefined();
             expect(result.repoQueueMap['ws-2'].queued).toEqual([]);
             expect(result.repoQueueMap['ws-2'].running).toEqual([]);
-            expect(result.repoQueueMap['ws-2'].history).toEqual([]);
             expect(result.repoQueueMap['ws-2'].stats.queued).toBe(4);
             expect(result.repoQueueMap['ws-2'].stats.running).toBe(1);
         });
@@ -218,8 +149,7 @@ describe('QueueContext reducer', () => {
                     'ws-keep': {
                         queued: [{ id: 'q-keep' }],
                         running: [{ id: 'r-keep' }],
-                        history: [{ id: 'h-keep' }],
-                        stats: { queued: 1, running: 1, completed: 0, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
+                        stats: { queued: 1, running: 1, total: 2, isPaused: false, isDraining: false },
                     },
                 },
             });
@@ -228,13 +158,12 @@ describe('QueueContext reducer', () => {
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: 'ws-keep',
                 queue: {
-                    stats: { queued: 5, running: 0, completed: 0, failed: 0, cancelled: 0, total: 5, isPaused: true, isDraining: false },
+                    stats: { queued: 5, running: 0, total: 5, isPaused: true, isDraining: false },
                 },
             });
 
             expect(result.repoQueueMap['ws-keep'].queued).toEqual([{ id: 'q-keep' }]);
             expect(result.repoQueueMap['ws-keep'].running).toEqual([{ id: 'r-keep' }]);
-            expect(result.repoQueueMap['ws-keep'].history).toEqual([{ id: 'h-keep' }]);
             expect(result.repoQueueMap['ws-keep'].stats.queued).toBe(5);
             expect(result.repoQueueMap['ws-keep'].stats.isPaused).toBe(true);
         });
@@ -400,6 +329,20 @@ describe('QueueContext reducer', () => {
         it('TOGGLE_HISTORY toggles showHistory', () => {
             const result = queueReducer(makeState(), { type: 'TOGGLE_HISTORY' });
             expect(result.showHistory).toBe(true);
+        });
+
+        it('SET_HISTORY auto-shows history when entries exist', () => {
+            const state = makeState({ showHistory: false });
+            const result = queueReducer(state, { type: 'SET_HISTORY', history: [{ id: 'h1' }] });
+            expect(result.history).toHaveLength(1);
+            expect(result.showHistory).toBe(true);
+        });
+
+        it('SET_HISTORY keeps showHistory unchanged when history is empty', () => {
+            const state = makeState({ showHistory: false });
+            const result = queueReducer(state, { type: 'SET_HISTORY', history: [] });
+            expect(result.history).toHaveLength(0);
+            expect(result.showHistory).toBe(false);
         });
     });
 
@@ -577,7 +520,7 @@ describe('QueueContext reducer', () => {
                 queue: {
                     queued: [],
                     running: [],
-                    stats: { queued: 0, running: 0, completed: 0, failed: 1, cancelled: 0, total: 1, isPaused: true, isDraining: false, pauseReason: reason },
+                    stats: { queued: 0, running: 0, total: 1, isPaused: true, isDraining: false, pauseReason: reason },
                 },
             });
             expect(result.stats.pauseReason).toEqual(reason);

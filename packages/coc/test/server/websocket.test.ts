@@ -531,17 +531,16 @@ describe('WebSocket Server', () => {
             ws.close();
         });
 
-        it('should include history in queue-updated event', async () => {
+        it('queue-updated event should not include history field', async () => {
             const srv = await startServer();
             const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
-            // Enqueue a chat task
             const reqBody = JSON.stringify({
                 type: 'chat',
                 priority: 'normal',
                 payload: { kind: 'chat', mode: 'plan', prompt: 'Review staged changes' },
-                displayName: 'History test task',
+                displayName: 'No-history test task',
             });
             await new Promise<void>((resolve, reject) => {
                 const req = http.request({
@@ -560,73 +559,16 @@ describe('WebSocket Server', () => {
                 req.end();
             });
 
-            // Wait for multiple queue-updated messages (enqueue, start, complete)
             await delay(1000);
 
-            // Find the last queue-updated message which should have history
             const queueMsgs = messages
                 .map(m => { try { return JSON.parse(m); } catch { return null; } })
                 .filter(m => m && m.type === 'queue-updated');
 
-            // There should be at least one queue-updated message
             expect(queueMsgs.length).toBeGreaterThan(0);
 
-            // The last queue-updated message should include history array
-            const lastQueueMsg = queueMsgs[queueMsgs.length - 1];
-            expect(lastQueueMsg.queue.history).toBeDefined();
-            expect(Array.isArray(lastQueueMsg.queue.history)).toBe(true);
-
-            ws.close();
-        });
-
-        it('should include task details in history entries of queue-updated event', async () => {
-            const srv = await startServer();
-            const { ws, messages } = await connectWebSocket(srv.port);
-            await waitForMessages(messages, 1); // welcome
-
-            // Enqueue a chat task
-            const reqBody = JSON.stringify({
-                type: 'chat',
-                priority: 'high',
-                payload: { kind: 'chat', mode: 'plan', prompt: 'Review staged changes' },
-                displayName: 'Detail test task',
-            });
-            await new Promise<void>((resolve, reject) => {
-                const req = http.request({
-                    hostname: 'localhost',
-                    port: srv.port,
-                    path: '/api/queue',
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                }, (res) => {
-                    let body = '';
-                    res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-                    res.on('end', () => resolve());
-                });
-                req.on('error', reject);
-                req.write(reqBody);
-                req.end();
-            });
-
-            // Wait for task to complete
-            await delay(1000);
-
-            // Find the last queue-updated message with history
-            const queueMsgs = messages
-                .map(m => { try { return JSON.parse(m); } catch { return null; } })
-                .filter(m => m && m.type === 'queue-updated' && m.queue.history && m.queue.history.length > 0);
-
-            if (queueMsgs.length > 0) {
-                const lastMsg = queueMsgs[queueMsgs.length - 1];
-                const historyEntry = lastMsg.queue.history[0];
-
-                // Verify history entry has expected fields
-                expect(historyEntry.id).toBeDefined();
-                expect(historyEntry.type).toBe('chat');
-                expect(['completed', 'failed']).toContain(historyEntry.status);
-                expect(historyEntry.displayName).toBe('Detail test task');
-                expect(typeof historyEntry.createdAt).toBe('number');
-                expect(typeof historyEntry.completedAt).toBe('number');
+            for (const msg of queueMsgs) {
+                expect(msg.queue).not.toHaveProperty('history');
             }
 
             ws.close();
