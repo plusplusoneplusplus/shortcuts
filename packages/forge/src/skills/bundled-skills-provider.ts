@@ -30,7 +30,7 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
     },
     {
         name: 'coc-chat',
-        description: 'Access, search, analyze, and submit CoC conversation process records via disk or REST API',
+        description: 'Access, search, analyze, and submit CoC conversation process records via REST API to a running CoC server',
         relativePath: 'coc-chat'
     },
     {

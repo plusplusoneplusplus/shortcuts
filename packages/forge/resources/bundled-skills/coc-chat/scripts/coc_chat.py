@@ -1,79 +1,192 @@
 #!/usr/bin/env python3
 """
-coc_chat.py — CLI helper for accessing CoC conversation process records on disk.
+coc_chat.py — CLI helper for CoC conversation process records via REST API.
+
+Requires a running CoC server (``coc serve``). All commands communicate with
+the server's REST API.
 
 Usage:
-    python coc_chat.py workspaces                          List all workspaces
-    python coc_chat.py resolve-workspace <name-or-path>    Find workspace by name or rootPath substring
-    python coc_chat.py list <workspaceId> [options]        List processes from index
-    python coc_chat.py list-all [options]                  List processes across all workspaces
-    python coc_chat.py show <workspaceId> <processId>      Show full process metadata + conversation
-    python coc_chat.py conversation <workspaceId> <processId>  Print conversation turns only
-    python coc_chat.py search <keyword> [--workspace <id>] Search titles/previews across indices
-    python coc_chat.py search-content <keyword> [--workspace <id>]  Search inside conversation content
-    python coc_chat.py tools <workspaceId> <processId>     Summarize tool usage in a process
-    python coc_chat.py tokens <workspaceId> <processId>    Show token usage breakdown
-    python coc_chat.py stats [workspaceId]                 Aggregate stats (counts by status/type)
-    python coc_chat.py find-process <processId>            Cross-workspace lookup by process ID
+    python coc_chat.py <command> [args...] [options]
 
-Common options for list/list-all:
-    --status <s>       Filter by status (completed, failed, running, ...)
-    --type <t>         Filter by type (clarification, pipeline-execution, ...)
-    --since <iso>      Only processes started after this ISO timestamp
-    --limit <n>        Max results (default 20)
-    --title <keyword>  Filter by title substring (case-insensitive)
+Query Commands:
+    workspaces                                List all workspaces
+    resolve-workspace <name-or-path>          Find workspace by name or rootPath substring
+    list <workspaceId> [options]              List processes
+    list-all [options]                        List processes across all workspaces
+    show <workspaceId> <processId>            Show full process metadata + conversation
+    conversation <workspaceId> <processId>    Print conversation turns only
+    search <keyword> [--workspace <id>]       Search titles/previews
+    search-content <keyword> [--workspace <id>]  Search inside conversation content
+    tools <workspaceId> <processId>           Summarize tool usage in a process
+    tokens <workspaceId> <processId>          Show token usage breakdown
+    stats [workspaceId]                       Aggregate stats (counts by status/type)
+    find-process <processId>                  Cross-workspace lookup by process ID
+    history [--workspace <id>] [--type <t>]   Show completed/failed task history
+    token-usage [--days N]                    Show aggregated token usage stats
+    output <processId>                        Show raw markdown output file
+
+Submit Commands:
+    chat <prompt> [options]                   Submit a chat task
+    follow-up <processId> <message> [options] Send follow-up message
+    run-workflow <workflowPath> [options]      Run a YAML workflow
+    run-script <script> [options]             Run a shell script
+    status <processId> [options]              Check process status
+    stream <processId> [options]              Stream SSE output (Ctrl+C to stop)
+    models [options]                          List available AI models
+    queue [options]                           Show current queue
+
+Common options:
+    --base-url <url>       Server base URL (default: http://localhost:4000)
+    --workspace <id>       Workspace ID (e.g. ws-1a2b3c)
+    --workdir <path>       Working directory for the AI session
+    --model <model>        AI model override
+    --mode <mode>          Chat mode: ask, plan, autopilot (default: autopilot)
+    --timeout <seconds>    Execution timeout
+    --priority <p>         Task priority: high, normal, low (default: normal)
+    --json                 Output raw JSON response
+
+Filter options (for list/list-all):
+    --status <s>           Filter by status (completed, failed, running, ...)
+    --type <t>             Filter by type (clarification, pipeline-execution, ...)
+    --since <iso>          Only processes started after this ISO timestamp
+    --limit <n>            Max results (default 20)
+    --title <keyword>      Filter by title substring (case-insensitive)
+
+Environment:
+    COC_SERVER_URL         Override default server URL (http://localhost:4000)
 """
 
 import json
 import sys
 import os
-import re
-from pathlib import Path
+import urllib.request
+import urllib.error
+import urllib.parse
 from datetime import datetime
 from collections import Counter
 
-DATA_DIR = Path(os.environ.get("COC_DATA_DIR", Path.home() / ".coc"))
-REPOS_DIR = DATA_DIR / "repos"
+DEFAULT_BASE_URL = os.environ.get("COC_SERVER_URL", "http://localhost:4000")
 
 
-def load_json(path: Path):
-    if not path.exists():
-        return None
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+# -- HTTP Helpers --------------------------------------------------------------
+
+def api_url(base: str, path: str) -> str:
+    return f"{base.rstrip('/')}/api{path}"
 
 
-def sanitize_id(process_id: str) -> str:
-    return re.sub(r"[^a-zA-Z0-9\-_]", "_", process_id)
-
-
-def iter_workspace_dirs():
-    if not REPOS_DIR.is_dir():
-        return
-    for d in sorted(REPOS_DIR.iterdir()):
-        if d.is_dir() and (d / "processes" / "index.json").exists():
-            yield d.name, d / "processes"
-
-
-def load_workspaces():
-    ws_file = DATA_DIR / "workspaces.json"
-    return load_json(ws_file) or []
-
-
-def fmt_time(iso: str | None) -> str:
-    if not iso:
-        return "—"
+def post_json(url: str, body: dict) -> dict:
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
     try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        with urllib.request.urlopen(req) as resp:
+            return {"status": resp.status, "body": json.loads(resp.read().decode("utf-8"))}
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8") if e.fp else ""
+        try:
+            error_body = json.loads(error_body)
+        except Exception:
+            pass
+        return {"status": e.code, "body": error_body, "error": str(e)}
+    except urllib.error.URLError as e:
+        return {
+            "status": 0, "body": {},
+            "error": f"Cannot connect to CoC server at {url}. Is `coc serve` running? ({e.reason})",
+        }
+
+
+def get_json(url: str) -> dict:
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return {"status": resp.status, "body": json.loads(resp.read().decode("utf-8"))}
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8") if e.fp else ""
+        try:
+            error_body = json.loads(error_body)
+        except Exception:
+            pass
+        return {"status": e.code, "body": error_body, "error": str(e)}
+    except urllib.error.URLError as e:
+        return {
+            "status": 0, "body": {},
+            "error": f"Cannot connect to CoC server at {url}. Is `coc serve` running? ({e.reason})",
+        }
+
+
+def require_ok(result: dict, raw_json: bool = False):
+    """Check result for errors and exit if connection failed."""
+    if result.get("error"):
+        if raw_json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"Error ({result.get('status', '?')}): {result['error']}")
+            body = result.get("body")
+            if body and isinstance(body, (dict, list)):
+                print(f"  {json.dumps(body, indent=2)}")
+        sys.exit(1)
+
+
+# -- Option Parsing ------------------------------------------------------------
+
+def parse_common_opts(args: list) -> dict:
+    opts = {"base_url": DEFAULT_BASE_URL, "raw_json": False}
+    i = 0
+    remaining = []
+    while i < len(args):
+        if args[i] == "--base-url" and i + 1 < len(args):
+            opts["base_url"] = args[i + 1]; i += 2
+        elif args[i] == "--workspace" and i + 1 < len(args):
+            opts["workspace"] = args[i + 1]; i += 2
+        elif args[i] == "--workdir" and i + 1 < len(args):
+            opts["workdir"] = args[i + 1]; i += 2
+        elif args[i] == "--model" and i + 1 < len(args):
+            opts["model"] = args[i + 1]; i += 2
+        elif args[i] == "--mode" and i + 1 < len(args):
+            opts["mode"] = args[i + 1]; i += 2
+        elif args[i] == "--timeout" and i + 1 < len(args):
+            opts["timeout"] = int(args[i + 1]); i += 2
+        elif args[i] == "--priority" and i + 1 < len(args):
+            opts["priority"] = args[i + 1]; i += 2
+        elif args[i] == "--status" and i + 1 < len(args):
+            opts["status"] = args[i + 1]; i += 2
+        elif args[i] == "--type" and i + 1 < len(args):
+            opts["type_filter"] = args[i + 1]; i += 2
+        elif args[i] == "--since" and i + 1 < len(args):
+            opts["since"] = args[i + 1]; i += 2
+        elif args[i] == "--limit" and i + 1 < len(args):
+            opts["limit"] = int(args[i + 1]); i += 2
+        elif args[i] == "--title" and i + 1 < len(args):
+            opts["title"] = args[i + 1]; i += 2
+        elif args[i] == "--days" and i + 1 < len(args):
+            opts["days"] = int(args[i + 1]); i += 2
+        elif args[i] == "--json":
+            opts["raw_json"] = True; i += 1
+        else:
+            remaining.append(args[i]); i += 1
+    opts["remaining"] = remaining
+    return opts
+
+
+# -- Formatting Helpers --------------------------------------------------------
+
+def fmt_time(iso) -> str:
+    if not iso:
+        return "\u2014"
+    try:
+        s = str(iso)
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
         return dt.strftime("%Y-%m-%d %H:%M")
     except Exception:
-        return iso[:16] if iso else "—"
+        return str(iso)[:16] if iso else "\u2014"
 
 
-def fmt_duration(ms: int | None) -> str:
+def fmt_duration(ms) -> str:
     if not ms:
-        return "—"
-    secs = ms / 1000
+        return "\u2014"
+    secs = float(ms) / 1000
     if secs < 60:
         return f"{secs:.0f}s"
     mins = secs / 60
@@ -82,31 +195,89 @@ def fmt_duration(ms: int | None) -> str:
     return f"{mins / 60:.1f}h"
 
 
-def load_index(proc_dir: Path) -> list:
-    return load_json(proc_dir / "index.json") or []
+def compute_duration(entry: dict):
+    """Compute duration in ms from startTime/endTime if duration field is absent."""
+    if entry.get("duration"):
+        return entry["duration"]
+    start = entry.get("startTime")
+    end = entry.get("endTime")
+    if start and end:
+        try:
+            s = datetime.fromisoformat(str(start).replace("Z", "+00:00"))
+            e = datetime.fromisoformat(str(end).replace("Z", "+00:00"))
+            return int((e - s).total_seconds() * 1000)
+        except Exception:
+            pass
+    return None
 
 
-def load_process(proc_dir: Path, process_id: str):
-    path = proc_dir / f"{sanitize_id(process_id)}.json"
-    return load_json(path)
+def print_index_entries(entries: list, show_workspace=False):
+    if not entries:
+        print("  (no matching processes)")
+        return
+    for e in entries:
+        ws_col = f"[{(e.get('workspaceId') or '?')[:12]}] " if show_workspace else ""
+        title = e.get("title") or e.get("promptPreview") or "(untitled)"
+        if len(title) > 60:
+            title = title[:57] + "..."
+        dur = fmt_duration(compute_duration(e))
+        pid = e.get("id", "?")
+        print(
+            f"  {ws_col}{pid[:40]:40s}  {e.get('status', '?'):10s}"
+            f"  {e.get('type', '?'):20s}  {fmt_time(e.get('startTime'))}"
+            f"  {dur:>6s}  {title}"
+        )
 
 
-# ── Commands ──────────────────────────────────────────────────────────────────
+def print_result(result: dict, raw_json: bool):
+    if raw_json:
+        print(json.dumps(result, indent=2))
+        return
+    status = result.get("status", "?")
+    body = result.get("body", {})
+    if result.get("error"):
+        print(f"Error ({status}): {result['error']}")
+        if body:
+            print(f"  {json.dumps(body, indent=2) if isinstance(body, dict) else body}")
+        sys.exit(1)
+    if isinstance(body, dict):
+        task = body.get("task", body)
+        task_id = task.get("id", "?")
+        process_id = task.get("processId", f"queue_{task_id}")
+        print(f"Submitted ({status})")
+        print(f"  Task ID:    {task_id}")
+        print(f"  Process ID: {process_id}")
+        print(f"  Status:     {task.get('status', '?')}")
+        if task.get("displayName"):
+            print(f"  Name:       {task['displayName']}")
+    else:
+        print(f"Response ({status}): {body}")
 
-def cmd_workspaces():
-    ws_list = load_workspaces()
+
+# -- Query Commands ------------------------------------------------------------
+
+def cmd_workspaces(opts: dict):
+    url = api_url(opts["base_url"], "/workspaces")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    ws_list = result["body"].get("workspaces", [])
     if not ws_list:
         print("No workspaces registered.")
         return
     for w in ws_list:
-        proc_dir = REPOS_DIR / w["id"] / "processes"
-        count = len(load_index(proc_dir)) if proc_dir.exists() else 0
-        print(f"  {w['id']}  {w.get('name', '?'):30s}  {count:>4d} chats  {w.get('rootPath', '')}")
+        print(f"  {w['id']}  {w.get('name', '?'):30s}  {w.get('rootPath', '')}")
 
 
-def cmd_resolve_workspace(query: str):
+def cmd_resolve_workspace(query: str, opts: dict):
+    url = api_url(opts["base_url"], "/workspaces")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
     query_lower = query.lower()
-    ws_list = load_workspaces()
+    ws_list = result["body"].get("workspaces", [])
     matches = [
         w for w in ws_list
         if query_lower in w.get("name", "").lower()
@@ -120,82 +291,83 @@ def cmd_resolve_workspace(query: str):
         print(f"  {w['id']}  {w.get('name', '?')}  {w.get('rootPath', '')}")
 
 
-def apply_filters(entries: list, args: list) -> list:
-    status = type_filter = since = title_kw = None
-    limit = 20
-    i = 0
-    while i < len(args):
-        if args[i] == "--status" and i + 1 < len(args):
-            status = args[i + 1]; i += 2
-        elif args[i] == "--type" and i + 1 < len(args):
-            type_filter = args[i + 1]; i += 2
-        elif args[i] == "--since" and i + 1 < len(args):
-            since = args[i + 1]; i += 2
-        elif args[i] == "--limit" and i + 1 < len(args):
-            limit = int(args[i + 1]); i += 2
-        elif args[i] == "--title" and i + 1 < len(args):
-            title_kw = args[i + 1].lower(); i += 2
-        else:
-            i += 1
+def _build_summaries_params(opts: dict, workspace_id=None) -> dict:
+    """Build query params for /api/processes/summaries from parsed opts."""
+    params = {}
+    ws = workspace_id or opts.get("workspace")
+    if ws:
+        params["workspace"] = ws
+    if opts.get("status"):
+        params["status"] = opts["status"]
+    if opts.get("type_filter"):
+        params["type"] = opts["type_filter"]
+    if opts.get("since"):
+        params["since"] = opts["since"]
+    limit = opts.get("limit", 20)
+    params["limit"] = str(limit)
+    return params
 
-    if status:
-        entries = [e for e in entries if e.get("status") == status]
-    if type_filter:
-        entries = [e for e in entries if e.get("type") == type_filter]
-    if since:
-        entries = [e for e in entries if (e.get("startTime") or "") >= since]
+
+def _title_filter(entries: list, opts: dict) -> list:
+    """Client-side title substring filter (server doesn't support it)."""
+    title_kw = opts.get("title", "").lower() if opts.get("title") else None
     if title_kw:
-        entries = [e for e in entries if title_kw in (e.get("title") or e.get("promptPreview") or "").lower()]
-
-    entries.sort(key=lambda e: e.get("startTime") or "", reverse=True)
-    return entries[:limit]
-
-
-def print_index_entries(entries: list, show_workspace=False):
-    if not entries:
-        print("  (no matching processes)")
-        return
-    for e in entries:
-        ws_col = f"[{e.get('workspaceId', '?')[:12]}] " if show_workspace else ""
-        title = e.get("title") or e.get("promptPreview") or "(untitled)"
-        if len(title) > 60:
-            title = title[:57] + "..."
-        dur = fmt_duration(e.get("duration"))
-        print(f"  {ws_col}{e['id'][:40]:40s}  {e.get('status', '?'):10s}  {e.get('type', '?'):20s}  {fmt_time(e.get('startTime'))}  {dur:>6s}  {title}")
+        entries = [
+            e for e in entries
+            if title_kw in (e.get("title") or e.get("promptPreview") or "").lower()
+        ]
+    return entries
 
 
-def cmd_list(workspace_id: str, extra_args: list):
-    proc_dir = REPOS_DIR / workspace_id / "processes"
-    entries = load_index(proc_dir)
-    entries = apply_filters(entries, extra_args)
+def cmd_list(workspace_id: str, opts: dict):
+    params = _build_summaries_params(opts, workspace_id)
+    qs = f"?{urllib.parse.urlencode(params)}" if params else ""
+    url = api_url(opts["base_url"], f"/processes/summaries{qs}")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    entries = _title_filter(result["body"].get("summaries", []), opts)
     print_index_entries(entries)
 
 
-def cmd_list_all(extra_args: list):
-    all_entries = []
-    for ws_id, proc_dir in iter_workspace_dirs():
-        for e in load_index(proc_dir):
-            e["workspaceId"] = ws_id
-            all_entries.append(e)
-    all_entries = apply_filters(all_entries, extra_args)
-    print_index_entries(all_entries, show_workspace=True)
+def cmd_list_all(opts: dict):
+    params = _build_summaries_params(opts)
+    qs = f"?{urllib.parse.urlencode(params)}" if params else ""
+    url = api_url(opts["base_url"], f"/processes/summaries{qs}")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    entries = _title_filter(result["body"].get("summaries", []), opts)
+    print_index_entries(entries, show_workspace=True)
 
 
-def cmd_show(workspace_id: str, process_id: str):
-    proc_dir = REPOS_DIR / workspace_id / "processes"
-    data = load_process(proc_dir, process_id)
-    if not data:
-        print(f"Process {process_id} not found in workspace {workspace_id}.")
-        sys.exit(1)
-    p = data.get("process", {})
+def _fetch_process(opts: dict, process_id: str, workspace_id=None) -> dict:
+    """Fetch a single process by ID, optionally scoped to a workspace."""
+    params = {}
+    if workspace_id:
+        params["workspace"] = workspace_id
+    qs = f"?{urllib.parse.urlencode(params)}" if params else ""
+    encoded_id = urllib.parse.quote(process_id, safe="")
+    url = api_url(opts["base_url"], f"/processes/{encoded_id}{qs}")
+    return get_json(url)
+
+
+def cmd_show(workspace_id: str, process_id: str, opts: dict):
+    result = _fetch_process(opts, process_id, workspace_id)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    p = result["body"].get("process", {})
     print(f"Title:     {p.get('title') or '(untitled)'}")
     print(f"ID:        {p.get('id')}")
     print(f"Status:    {p.get('status')}")
     print(f"Type:      {p.get('type')}")
-    print(f"Backend:   {p.get('backend', '—')}")
+    print(f"Backend:   {p.get('backend', '\u2014')}")
     print(f"Started:   {fmt_time(p.get('startTime'))}")
     print(f"Ended:     {fmt_time(p.get('endTime'))}")
-    print(f"WorkDir:   {p.get('workingDirectory', '—')}")
+    print(f"WorkDir:   {p.get('workingDirectory', '\u2014')}")
     turns = p.get("conversationTurns") or []
     print(f"Turns:     {len(turns)}")
     tl = p.get("tokenLimit")
@@ -224,13 +396,12 @@ def cmd_show(workspace_id: str, process_id: str):
         print(content)
 
 
-def cmd_conversation(workspace_id: str, process_id: str):
-    proc_dir = REPOS_DIR / workspace_id / "processes"
-    data = load_process(proc_dir, process_id)
-    if not data:
-        print(f"Process {process_id} not found.")
-        sys.exit(1)
-    p = data.get("process", {})
+def cmd_conversation(workspace_id: str, process_id: str, opts: dict):
+    result = _fetch_process(opts, process_id, workspace_id)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    p = result["body"].get("process", {})
     turns = p.get("conversationTurns") or []
     if not turns:
         print("(no conversation turns)")
@@ -242,65 +413,77 @@ def cmd_conversation(workspace_id: str, process_id: str):
         print(t.get("content", ""))
 
 
-def cmd_search(keyword: str, workspace_id: str | None):
+def cmd_search(keyword: str, opts: dict):
     keyword_lower = keyword.lower()
-    results = []
-    dirs = (
-        [(workspace_id, REPOS_DIR / workspace_id / "processes")]
-        if workspace_id
-        else list(iter_workspace_dirs())
-    )
-    for ws_id, proc_dir in dirs:
-        for e in load_index(proc_dir):
-            text = (e.get("title") or "") + " " + (e.get("promptPreview") or "")
-            if keyword_lower in text.lower():
-                e["workspaceId"] = ws_id
-                results.append(e)
-    results.sort(key=lambda e: e.get("startTime") or "", reverse=True)
-    print(f"Found {len(results)} index match(es) for '{keyword}':")
-    print_index_entries(results[:30], show_workspace=(workspace_id is None))
+    ws = opts.get("workspace")
+    params = {"limit": "200"}
+    if ws:
+        params["workspace"] = ws
+    qs = f"?{urllib.parse.urlencode(params)}"
+    url = api_url(opts["base_url"], f"/processes/summaries{qs}")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    entries = result["body"].get("summaries", [])
+    matches = []
+    for e in entries:
+        text = (e.get("title") or "") + " " + (e.get("promptPreview") or "")
+        if keyword_lower in text.lower():
+            matches.append(e)
+    matches.sort(key=lambda e: e.get("startTime") or "", reverse=True)
+    print(f"Found {len(matches)} index match(es) for '{keyword}':")
+    print_index_entries(matches[:30], show_workspace=(ws is None))
 
 
-def cmd_search_content(keyword: str, workspace_id: str | None):
+def cmd_search_content(keyword: str, opts: dict):
     keyword_lower = keyword.lower()
+    ws = opts.get("workspace")
+    params: dict = {"limit": "200"}
+    if ws:
+        params["workspace"] = ws
+    qs = f"?{urllib.parse.urlencode(params)}"
+    url = api_url(opts["base_url"], f"/processes/summaries{qs}")
+    result = get_json(url)
+    require_ok(result, opts["raw_json"])
+    entries = result["body"].get("summaries", [])
+    total = result["body"].get("total", len(entries))
+    if total > len(entries):
+        print(
+            f"  (scanning {len(entries)} of {total} processes;"
+            " use --workspace to narrow scope)",
+            file=sys.stderr,
+        )
     hits = []
-    dirs = (
-        [(workspace_id, REPOS_DIR / workspace_id / "processes")]
-        if workspace_id
-        else list(iter_workspace_dirs())
-    )
-    for ws_id, proc_dir in dirs:
-        if not proc_dir.is_dir():
+    for e in entries:
+        pid = e.get("id")
+        if not pid:
             continue
-        for f in proc_dir.glob("*.json"):
-            if f.name == "index.json":
-                continue
-            try:
-                data = load_json(f)
-                if not data:
-                    continue
-                p = data.get("process", {})
-                for t in p.get("conversationTurns") or []:
-                    if keyword_lower in (t.get("content") or "").lower():
-                        title = p.get("title") or p.get("promptPreview") or "(untitled)"
-                        hits.append((ws_id, p.get("id"), title, t.get("turnIndex"), t.get("role")))
-                        break
-            except Exception:
-                continue
+        ws_id = e.get("workspaceId", "") or ws or ""
+        p_result = _fetch_process(opts, pid, ws_id or None)
+        if p_result.get("error"):
+            continue
+        p = p_result.get("body", {}).get("process", {})
+        for t in p.get("conversationTurns") or []:
+            if keyword_lower in (t.get("content") or "").lower():
+                title = p.get("title") or p.get("promptPreview") or "(untitled)"
+                hits.append((ws_id or "?", pid, title, t.get("turnIndex"), t.get("role")))
+                break
+    if opts["raw_json"]:
+        print(json.dumps(hits, indent=2)); return
     print(f"Found {len(hits)} process(es) with content matching '{keyword}':")
     for ws_id, pid, title, turn_idx, role in hits[:30]:
         if len(title) > 50:
             title = title[:47] + "..."
-        print(f"  [{ws_id[:12]}] {pid[:36]:36s}  turn {turn_idx} ({role})  {title}")
+        print(f"  [{str(ws_id)[:12]}] {str(pid)[:36]:36s}  turn {turn_idx} ({role})  {title}")
 
 
-def cmd_tools(workspace_id: str, process_id: str):
-    proc_dir = REPOS_DIR / workspace_id / "processes"
-    data = load_process(proc_dir, process_id)
-    if not data:
-        print(f"Process {process_id} not found.")
-        sys.exit(1)
-    p = data.get("process", {})
+def cmd_tools(workspace_id: str, process_id: str, opts: dict):
+    result = _fetch_process(opts, process_id, workspace_id)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    p = result["body"].get("process", {})
     tool_counts: Counter = Counter()
     tool_statuses: Counter = Counter()
     total = 0
@@ -318,13 +501,12 @@ def cmd_tools(workspace_id: str, process_id: str):
         print(f"  {name:30s}  {count:>4d} calls  ({ok} ok, {fail} failed)")
 
 
-def cmd_tokens(workspace_id: str, process_id: str):
-    proc_dir = REPOS_DIR / workspace_id / "processes"
-    data = load_process(proc_dir, process_id)
-    if not data:
-        print(f"Process {process_id} not found.")
-        sys.exit(1)
-    p = data.get("process", {})
+def cmd_tokens(workspace_id: str, process_id: str, opts: dict):
+    result = _fetch_process(opts, process_id, workspace_id)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    p = result["body"].get("process", {})
     print(f"Token usage for '{p.get('title') or p.get('id')}':\n")
     tl = p.get("tokenLimit")
     tc = p.get("currentTokens")
@@ -333,53 +515,394 @@ def cmd_tokens(workspace_id: str, process_id: str):
         print(f"  Context window: {tc or 0:,} / {tl:,} ({pct:.1f}%)")
     cum = p.get("cumulativeTokenUsage")
     if cum:
-        print(f"  Cumulative:     input={cum.get('inputTokens', 0):,}  output={cum.get('outputTokens', 0):,}")
-    print(f"\n  Per-turn breakdown:")
+        print(
+            f"  Cumulative:     input={cum.get('inputTokens', 0):,}"
+            f"  output={cum.get('outputTokens', 0):,}"
+        )
+    print("\n  Per-turn breakdown:")
     for t in p.get("conversationTurns") or []:
         tu = t.get("tokenUsage")
         if tu:
-            print(f"    Turn {t.get('turnIndex', '?'):>3}  ({t.get('role'):9s})  in={tu.get('inputTokens', 0):>8,}  out={tu.get('outputTokens', 0):>8,}")
+            print(
+                f"    Turn {t.get('turnIndex', '?'):>3}"
+                f"  ({t.get('role'):9s})"
+                f"  in={tu.get('inputTokens', 0):>8,}"
+                f"  out={tu.get('outputTokens', 0):>8,}"
+            )
 
 
-def cmd_stats(workspace_id: str | None):
-    dirs = (
-        [(workspace_id, REPOS_DIR / workspace_id / "processes")]
-        if workspace_id
-        else list(iter_workspace_dirs())
-    )
-    status_counts: Counter = Counter()
-    type_counts: Counter = Counter()
-    total = 0
-    for _, proc_dir in dirs:
-        for e in load_index(proc_dir):
-            status_counts[e.get("status", "unknown")] += 1
-            type_counts[e.get("type", "unknown")] += 1
-            total += 1
-    scope = f"workspace {workspace_id}" if workspace_id else "all workspaces"
-    print(f"Stats for {scope} ({total} total processes):\n")
+def cmd_stats(opts: dict):
+    ws = opts.get("workspace")
+    url = api_url(opts["base_url"], "/stats")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    body = result["body"]
+    total = body.get("totalProcesses", 0)
+    by_status = body.get("byStatus", {})
+    by_workspace = body.get("byWorkspace", [])
+    if ws:
+        ws_entry = next((w for w in by_workspace if w.get("workspaceId") == ws), None)
+        scope = f"workspace {ws}"
+        if ws_entry:
+            print(f"Stats for {scope} ({ws_entry.get('count', 0)} processes):")
+        else:
+            print(f"Stats for {scope} (not found in stats)")
+    else:
+        print(f"Stats for all workspaces ({total} total processes):\n")
     print("  By status:")
-    for s, c in status_counts.most_common():
+    for s, c in sorted(by_status.items(), key=lambda x: -x[1]):
         print(f"    {s:15s}  {c:>5d}")
-    print("\n  By type:")
-    for t, c in type_counts.most_common():
-        print(f"    {t:25s}  {c:>5d}")
+    if not ws:
+        print("\n  By workspace:")
+        for w in by_workspace:
+            print(f"    {w.get('name', w.get('workspaceId', '?')):30s}  {w.get('count', 0):>5d}")
 
 
-def cmd_find_process(process_id: str):
-    for ws_id, proc_dir in iter_workspace_dirs():
-        for e in load_index(proc_dir):
-            if e.get("id") == process_id:
-                print(f"Found in workspace: {ws_id}")
-                print(f"  Title:  {e.get('title') or e.get('promptPreview') or '(untitled)'}")
-                print(f"  Status: {e.get('status')}")
-                print(f"  Date:   {fmt_time(e.get('startTime'))}")
-                print(f"  File:   {proc_dir / (sanitize_id(process_id) + '.json')}")
-                return
-    print(f"Process {process_id} not found in any workspace.")
-    sys.exit(1)
+def cmd_find_process(process_id: str, opts: dict):
+    result = _fetch_process(opts, process_id)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    p = result["body"].get("process", {})
+    ws = (p.get("metadata") or {}).get("workspaceId", "?")
+    print(f"Found in workspace: {ws}")
+    print(f"  Title:  {p.get('title') or p.get('promptPreview') or '(untitled)'}")
+    print(f"  Status: {p.get('status')}")
+    print(f"  Date:   {fmt_time(p.get('startTime'))}")
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+def cmd_history(opts: dict):
+    params = {}
+    if opts.get("workspace"):
+        params["repoId"] = opts["workspace"]
+    if opts.get("type_filter"):
+        params["type"] = opts["type_filter"]
+    qs = f"?{urllib.parse.urlencode(params)}" if params else ""
+    url = api_url(opts["base_url"], f"/queue/history{qs}")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    history = result["body"].get("history", [])
+    if not history:
+        print("No history entries.")
+        return
+    limit = opts.get("limit", 20)
+    for h in history[:limit]:
+        hid = str(h.get("id", "?"))[:30]
+        status = h.get("status", "?")
+        htype = h.get("type", "?")
+        name = (h.get("displayName") or "")[:40]
+        print(f"  {hid:30s}  {status:10s}  {htype:15s}  {name}")
+
+
+def cmd_token_usage(opts: dict):
+    params = {}
+    if opts.get("days"):
+        params["days"] = str(opts["days"])
+    qs = f"?{urllib.parse.urlencode(params)}" if params else ""
+    url = api_url(opts["base_url"], f"/stats/token-usage{qs}")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    body = result["body"]
+    summary = body.get("summary", {})
+    daily = body.get("dailyStats", [])
+    print("Token Usage Summary:")
+    print(f"  Total input:   {summary.get('totalInputTokens', 0):>12,}")
+    print(f"  Total output:  {summary.get('totalOutputTokens', 0):>12,}")
+    print(f"  Total:         {summary.get('totalTokens', 0):>12,}")
+    breakdown = summary.get("modelBreakdown", {})
+    if breakdown:
+        print("\n  By model:")
+        for model, stats in sorted(breakdown.items()):
+            print(
+                f"    {model:30s}"
+                f"  in={stats.get('inputTokens', 0):>10,}"
+                f"  out={stats.get('outputTokens', 0):>10,}"
+                f"  calls={stats.get('callCount', 0)}"
+            )
+    if daily:
+        print(f"\n  Daily breakdown ({len(daily)} days):")
+        for day in daily[-10:]:
+            print(
+                f"    {day.get('date', '?'):12s}"
+                f"  in={day.get('totalInputTokens', 0):>10,}"
+                f"  out={day.get('totalOutputTokens', 0):>10,}"
+            )
+
+
+def cmd_output(process_id: str, opts: dict):
+    params = {}
+    if opts.get("workspace"):
+        params["workspace"] = opts["workspace"]
+    qs = f"?{urllib.parse.urlencode(params)}" if params else ""
+    encoded_id = urllib.parse.quote(process_id, safe="")
+    url = api_url(opts["base_url"], f"/processes/{encoded_id}/output{qs}")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2)); return
+    require_ok(result)
+    content = result["body"].get("content", "")
+    if not content:
+        print("(no output file)")
+        return
+    print(content)
+
+
+# -- Submit Commands -----------------------------------------------------------
+
+def cmd_chat(prompt: str, opts: dict):
+    payload: dict = {
+        "kind": "chat",
+        "mode": opts.get("mode", "autopilot"),
+        "prompt": prompt,
+    }
+    if opts.get("workspace"):
+        payload["workspaceId"] = opts["workspace"]
+    if opts.get("workdir"):
+        payload["workingDirectory"] = opts["workdir"]
+
+    body: dict = {
+        "type": "chat",
+        "payload": payload,
+        "config": {},
+    }
+    if opts.get("model"):
+        body["config"]["model"] = opts["model"]
+    if opts.get("timeout"):
+        body["config"]["timeoutMs"] = opts["timeout"] * 1000
+    if opts.get("priority"):
+        body["priority"] = opts["priority"]
+
+    result = post_json(api_url(opts["base_url"], "/queue"), body)
+    print_result(result, opts["raw_json"])
+
+
+def cmd_follow_up(process_id: str, message: str, opts: dict):
+    params = {}
+    if opts.get("workspace"):
+        params["workspace"] = opts["workspace"]
+    qs = f"?{urllib.parse.urlencode(params)}" if params else ""
+
+    body: dict = {"content": message}
+    if opts.get("mode"):
+        body["mode"] = opts["mode"]
+
+    encoded_id = urllib.parse.quote(process_id, safe="")
+    url = api_url(opts["base_url"], f"/processes/{encoded_id}/message{qs}")
+    result = post_json(url, body)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2))
+        return
+    status = result.get("status", "?")
+    resp = result.get("body", {})
+    if result.get("error"):
+        print(f"Error ({status}): {result['error']}")
+        sys.exit(1)
+    print(f"Follow-up sent ({status})")
+    if isinstance(resp, dict):
+        print(f"  Process ID: {resp.get('processId', process_id)}")
+        print(f"  Turn Index: {resp.get('turnIndex', '?')}")
+
+
+def cmd_run_workflow(workflow_path: str, opts: dict):
+    payload: dict = {
+        "kind": "run-workflow",
+        "workflowPath": workflow_path,
+        "workingDirectory": opts.get("workdir", os.getcwd()),
+    }
+    if opts.get("workspace"):
+        payload["workspaceId"] = opts["workspace"]
+    if opts.get("model"):
+        payload["model"] = opts["model"]
+
+    remaining = opts.get("remaining", [])
+    if remaining:
+        kv = {}
+        for p in remaining:
+            if "=" in p:
+                k, v = p.split("=", 1)
+                kv[k] = v
+        if kv:
+            payload["params"] = kv
+
+    body: dict = {
+        "type": "run-workflow",
+        "payload": payload,
+        "config": {},
+    }
+    if opts.get("timeout"):
+        body["config"]["timeoutMs"] = opts["timeout"] * 1000
+    if opts.get("priority"):
+        body["priority"] = opts["priority"]
+
+    result = post_json(api_url(opts["base_url"], "/queue"), body)
+    print_result(result, opts["raw_json"])
+
+
+def cmd_run_script(script: str, opts: dict):
+    payload: dict = {
+        "kind": "run-script",
+        "script": script,
+    }
+    if opts.get("workdir"):
+        payload["workingDirectory"] = opts["workdir"]
+
+    body: dict = {
+        "type": "run-script",
+        "payload": payload,
+        "config": {},
+    }
+    if opts.get("priority"):
+        body["priority"] = opts["priority"]
+
+    result = post_json(api_url(opts["base_url"], "/queue"), body)
+    print_result(result, opts["raw_json"])
+
+
+def cmd_status(process_id: str, opts: dict):
+    result = _fetch_process(opts, process_id, opts.get("workspace"))
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2))
+        return
+    require_ok(result)
+    p = result["body"].get("process", {})
+    print(f"Title:     {p.get('title') or '(untitled)'}")
+    print(f"ID:        {p.get('id')}")
+    print(f"Status:    {p.get('status')}")
+    print(f"Type:      {p.get('type')}")
+    turns = p.get("conversationTurns") or []
+    print(f"Turns:     {len(turns)}")
+    if p.get("error"):
+        print(f"Error:     {p['error']}")
+    if p.get("result"):
+        preview = p["result"][:300]
+        if len(p["result"]) > 300:
+            preview += "..."
+        print(f"\nResult:\n{preview}")
+
+
+def cmd_stream(process_id: str, opts: dict):
+    params = {}
+    if opts.get("workspace"):
+        params["workspace"] = opts["workspace"]
+    qs = f"?{urllib.parse.urlencode(params)}" if params else ""
+
+    encoded_id = urllib.parse.quote(process_id, safe="")
+    url = api_url(opts["base_url"], f"/processes/{encoded_id}/stream{qs}")
+    req = urllib.request.Request(url, headers={"Accept": "text/event-stream"})
+    try:
+        with urllib.request.urlopen(req) as resp:
+            print(f"Streaming process {process_id} (Ctrl+C to stop)...\n")
+            event_type = ""
+            for raw_line in resp:
+                line = raw_line.decode("utf-8").rstrip("\n\r")
+                if line.startswith("event: "):
+                    event_type = line[7:]
+                elif line.startswith("data: "):
+                    data_str = line[6:]
+                    if event_type == "chunk":
+                        try:
+                            d = json.loads(data_str)
+                            print(d.get("content", ""), end="", flush=True)
+                        except Exception:
+                            print(data_str, end="", flush=True)
+                    elif event_type == "done":
+                        try:
+                            d = json.loads(data_str)
+                            print(f"\n\n--- Done ({d.get('status', '?')}) ---")
+                        except Exception:
+                            print("\n\n--- Done ---")
+                        break
+                    elif event_type == "status":
+                        try:
+                            d = json.loads(data_str)
+                            print(f"\n[status: {d.get('status', '?')}]", flush=True)
+                        except Exception:
+                            pass
+                    elif event_type in ("tool-start", "tool-complete", "tool-failed"):
+                        try:
+                            d = json.loads(data_str)
+                            name = d.get("toolName") or d.get("name", "?")
+                            if event_type == "tool-start":
+                                print(f"\n  [tool: {name}]", end="", flush=True)
+                            elif event_type == "tool-failed":
+                                print(f" FAILED: {d.get('error', '?')}", flush=True)
+                        except Exception:
+                            pass
+                    elif event_type == "token-usage":
+                        try:
+                            d = json.loads(data_str)
+                            tu = d.get("tokenUsage", {})
+                            if tu:
+                                print(
+                                    f"\n  [tokens:"
+                                    f" in={tu.get('inputTokens', 0):,}"
+                                    f" out={tu.get('outputTokens', 0):,}]",
+                                    flush=True,
+                                )
+                        except Exception:
+                            pass
+    except KeyboardInterrupt:
+        print("\n\n--- Streaming stopped ---")
+    except urllib.error.HTTPError as e:
+        print(f"Error ({e.code}): {e.read().decode('utf-8')}")
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        print(f"Cannot connect to CoC server. Is `coc serve` running? ({e.reason})")
+        sys.exit(1)
+
+
+def cmd_models(opts: dict):
+    url = api_url(opts["base_url"], "/queue/models")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2))
+        return
+    require_ok(result)
+    models = result.get("body", {}).get("models", result.get("body", []))
+    if isinstance(models, list):
+        for m in models:
+            if isinstance(m, dict):
+                print(f"  {m.get('id', m.get('name', '?'))}")
+            else:
+                print(f"  {m}")
+    else:
+        print(json.dumps(models, indent=2))
+
+
+def cmd_queue(opts: dict):
+    params = {}
+    if opts.get("workspace"):
+        params["repoId"] = opts["workspace"]
+    qs = f"?{urllib.parse.urlencode(params)}" if params else ""
+
+    url = api_url(opts["base_url"], f"/queue{qs}")
+    result = get_json(url)
+    if opts["raw_json"]:
+        print(json.dumps(result, indent=2))
+        return
+    require_ok(result)
+    body = result.get("body", {})
+    queued = body.get("queued", [])
+    running = body.get("running", [])
+    tasks = queued + running
+    if not tasks:
+        print("Queue is empty.")
+        return
+    for t in tasks:
+        tid = str(t.get("id", "?"))[:30]
+        status = t.get("status", "?")
+        ttype = t.get("type", "?")
+        name = (t.get("displayName") or "")[:40]
+        print(f"  {tid:30s}  {status:10s}  {ttype:15s}  {name}")
+
+
+# -- Main ---------------------------------------------------------------------
 
 def main():
     if len(sys.argv) < 2:
@@ -387,39 +910,60 @@ def main():
         sys.exit(0)
 
     cmd = sys.argv[1]
+    rest = sys.argv[2:]
+    opts = parse_common_opts(rest)
+    positional = opts.pop("remaining", [])
 
+    # Query commands
     if cmd == "workspaces":
-        cmd_workspaces()
-    elif cmd == "resolve-workspace" and len(sys.argv) >= 3:
-        cmd_resolve_workspace(sys.argv[2])
-    elif cmd == "list" and len(sys.argv) >= 3:
-        cmd_list(sys.argv[2], sys.argv[3:])
+        cmd_workspaces(opts)
+    elif cmd == "resolve-workspace" and positional:
+        cmd_resolve_workspace(positional[0], opts)
+    elif cmd == "list" and positional:
+        cmd_list(positional[0], opts)
     elif cmd == "list-all":
-        cmd_list_all(sys.argv[2:])
-    elif cmd == "show" and len(sys.argv) >= 4:
-        cmd_show(sys.argv[2], sys.argv[3])
-    elif cmd == "conversation" and len(sys.argv) >= 4:
-        cmd_conversation(sys.argv[2], sys.argv[3])
-    elif cmd == "search" and len(sys.argv) >= 3:
-        ws = None
-        if "--workspace" in sys.argv:
-            idx = sys.argv.index("--workspace")
-            ws = sys.argv[idx + 1]
-        cmd_search(sys.argv[2], ws)
-    elif cmd == "search-content" and len(sys.argv) >= 3:
-        ws = None
-        if "--workspace" in sys.argv:
-            idx = sys.argv.index("--workspace")
-            ws = sys.argv[idx + 1]
-        cmd_search_content(sys.argv[2], ws)
-    elif cmd == "tools" and len(sys.argv) >= 4:
-        cmd_tools(sys.argv[2], sys.argv[3])
-    elif cmd == "tokens" and len(sys.argv) >= 4:
-        cmd_tokens(sys.argv[2], sys.argv[3])
+        cmd_list_all(opts)
+    elif cmd == "show" and len(positional) >= 2:
+        cmd_show(positional[0], positional[1], opts)
+    elif cmd == "conversation" and len(positional) >= 2:
+        cmd_conversation(positional[0], positional[1], opts)
+    elif cmd == "search" and positional:
+        cmd_search(positional[0], opts)
+    elif cmd == "search-content" and positional:
+        cmd_search_content(positional[0], opts)
+    elif cmd == "tools" and len(positional) >= 2:
+        cmd_tools(positional[0], positional[1], opts)
+    elif cmd == "tokens" and len(positional) >= 2:
+        cmd_tokens(positional[0], positional[1], opts)
     elif cmd == "stats":
-        cmd_stats(sys.argv[2] if len(sys.argv) >= 3 else None)
-    elif cmd == "find-process" and len(sys.argv) >= 3:
-        cmd_find_process(sys.argv[2])
+        if positional:
+            opts["workspace"] = positional[0]
+        cmd_stats(opts)
+    elif cmd == "find-process" and positional:
+        cmd_find_process(positional[0], opts)
+    elif cmd == "history":
+        cmd_history(opts)
+    elif cmd == "token-usage":
+        cmd_token_usage(opts)
+    elif cmd == "output" and positional:
+        cmd_output(positional[0], opts)
+    # Submit commands
+    elif cmd == "chat" and positional:
+        cmd_chat(" ".join(positional), opts)
+    elif cmd == "follow-up" and len(positional) >= 2:
+        cmd_follow_up(positional[0], " ".join(positional[1:]), opts)
+    elif cmd == "run-workflow" and positional:
+        cmd_run_workflow(positional[0], {**opts, "remaining": positional[1:]})
+    elif cmd == "run-script" and positional:
+        cmd_run_script(" ".join(positional), opts)
+    elif cmd == "status" and positional:
+        cmd_status(positional[0], opts)
+    elif cmd == "stream" and positional:
+        cmd_stream(positional[0], opts)
+    elif cmd == "models":
+        cmd_models(opts)
+    elif cmd == "queue":
+        cmd_queue(opts)
     else:
         print(__doc__)
         sys.exit(1)
