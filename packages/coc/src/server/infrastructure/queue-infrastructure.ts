@@ -2,17 +2,22 @@
  * Queue Infrastructure Builder
  *
  * Creates the three queue-related objects (RepoQueueRegistry,
- * MultiRepoQueueExecutorBridge, MultiRepoQueuePersistence) used by the
+ * MultiRepoQueueExecutorBridge, QueuePersistence) used by the
  * execution server and returns them as a plain object.
+ *
+ * Uses SqliteQueuePersistence when the process store is SqliteProcessStore
+ * (incremental, synchronous writes), falling back to MultiRepoQueuePersistence
+ * (debounced JSON file rewrites) for file-backend configs.
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
+import { RepoQueueRegistry, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from '../multi-repo-queue-persistence';
+import { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
 import { defaultIsExclusive } from '../queue-executor-bridge';
 import type { ProcessWebSocketServer } from '../websocket';
 import type { ExecutionServerOptions } from '../types';
@@ -24,7 +29,7 @@ import type { ExecutionServerOptions } from '../types';
 export interface QueueInfrastructure {
     registry: RepoQueueRegistry;
     bridge: MultiRepoQueueExecutorBridge;
-    queuePersistence: MultiRepoQueuePersistence;
+    queuePersistence: MultiRepoQueuePersistence | SqliteQueuePersistence;
     queueFacade: ReturnType<MultiRepoQueueExecutorBridge['createAggregateFacade']>;
 }
 
@@ -69,11 +74,21 @@ export function createQueueInfrastructure(
         initialDelayMs: options.queue?.restartPickupDelayMs,
     });
 
-    // Restore persisted queue state before executor starts processing
-    const queuePersistence = new MultiRepoQueuePersistence(bridge, dataDir, {
-        restartPolicy: options.queue?.restartPolicy,
-        maxPersistedHistory: options.queue?.historyLimit,
-    });
+    // Restore persisted queue state before executor starts processing.
+    // Use SQLite persistence when the store is SQLite-backed (incremental writes),
+    // otherwise fall back to JSON file persistence (debounced full-file rewrites).
+    let queuePersistence: MultiRepoQueuePersistence | SqliteQueuePersistence;
+
+    if (store instanceof SqliteProcessStore) {
+        queuePersistence = new SqliteQueuePersistence(bridge, store.getDatabase(), {
+            restartPolicy: options.queue?.restartPolicy,
+        });
+    } else {
+        queuePersistence = new MultiRepoQueuePersistence(bridge, dataDir, {
+            restartPolicy: options.queue?.restartPolicy,
+            maxPersistedHistory: options.queue?.historyLimit,
+        });
+    }
     queuePersistence.restore();
 
     // Clear the startup delay so lazily-created bridges after this point get no delay

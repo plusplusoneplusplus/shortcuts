@@ -587,6 +587,15 @@ export class SqliteProcessStore implements ProcessStore {
         );
     }
 
+    /**
+     * Returns the underlying `better-sqlite3` Database instance.
+     * Used by trusted callers (e.g. SqliteQueuePersistence) that need direct
+     * access to the shared database connection.
+     */
+    getDatabase(): Database.Database {
+        return this.db;
+    }
+
     // ========================================================================
     // Process CRUD
     // ========================================================================

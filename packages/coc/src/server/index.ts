@@ -241,6 +241,7 @@ export type { ExecutorRegistryOptions } from './executors/executor-registry';
 export type { ITaskExecutor } from './executors/executor-types';
 export { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 export { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
+export { SqliteQueuePersistence } from './queue/sqlite-queue-persistence';
 export { QueuePersistence, getRepoQueueFilePath, sanitizeTaskForPersistence } from './queue/queue-persistence';
 export { ImageBlobStore } from './queue/image-blob-store';
 

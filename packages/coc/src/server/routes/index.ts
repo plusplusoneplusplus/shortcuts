@@ -11,6 +11,7 @@ import { modelMetadataStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../websocket';
 import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
 import type { MultiRepoQueuePersistence } from '../multi-repo-queue-persistence';
+import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
 import type { ScheduleManager } from '../schedule-manager';
 import type { WikiServerOptions } from '../types';
 import type { WikiManager } from '../wiki';
@@ -57,7 +58,7 @@ export interface RegisterRoutesOptions {
     globalWorkspaceRootPath: string;
     resolvedAiService: CopilotSDKService;
     getWsServer: () => ProcessWebSocketServer;
-    queuePersistence: MultiRepoQueuePersistence;
+    queuePersistence: MultiRepoQueuePersistence | SqliteQueuePersistence;
     wikiOptions?: WikiServerOptions;
     aiInvoker: AIInvoker;
     getTerminalSessionManager?: () => TerminalSessionManager | undefined;
