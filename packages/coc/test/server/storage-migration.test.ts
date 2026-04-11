@@ -26,6 +26,9 @@ import * as path from 'path';
 import Database from 'better-sqlite3';
 import { StorageMigrationEngine } from '../../src/server/storage-migration';
 import type { MigrationProgress, MigrationSummary } from '../../src/server/storage-migration';
+import {
+    SqliteProcessStore,
+} from '@plusplusoneplusplus/forge';
 import type {
     ProcessIndexEntry,
     WorkspaceInfo,
@@ -968,5 +971,203 @@ describe('StorageMigrationEngine', () => {
         // With skipValidation, this should NOT throw despite tampered data
         const summary = await engine.run();
         expect(summary.processes).toBe(5);
+    });
+
+    // ========================================================================
+    // Round-trip: migrated data readable via SqliteProcessStore.getProcess()
+    // ========================================================================
+
+    it('migrated processes with tool calls and timeline are readable via SqliteProcessStore', async () => {
+        writeFile(path.join(dataDir, 'config.yaml'), 'model: gpt-4\n');
+
+        // Build a realistic process with timeline items containing embedded tool calls
+        const turns: SerializedConversationTurn[] = [
+            {
+                role: 'user',
+                content: 'Fix the bug in auth.ts',
+                timestamp: '2024-06-01T12:00:00.000Z',
+                turnIndex: 0,
+                timeline: [
+                    { type: 'content', timestamp: '2024-06-01T12:00:00.000Z', content: 'Fix the bug in auth.ts' },
+                ],
+            },
+            {
+                role: 'assistant',
+                content: 'I found and fixed the issue.',
+                timestamp: '2024-06-01T12:01:00.000Z',
+                turnIndex: 1,
+                toolCalls: [
+                    {
+                        id: 'tc-read',
+                        name: 'readFile',
+                        status: 'completed',
+                        startTime: '2024-06-01T12:00:05.000Z',
+                        endTime: '2024-06-01T12:00:06.000Z',
+                        args: { path: '/src/auth.ts' },
+                        result: 'export function login() {}',
+                    },
+                    {
+                        id: 'tc-edit',
+                        name: 'editFile',
+                        status: 'completed',
+                        startTime: '2024-06-01T12:00:10.000Z',
+                        endTime: '2024-06-01T12:00:11.000Z',
+                        args: { path: '/src/auth.ts', content: 'fixed' },
+                        result: 'File edited',
+                    },
+                ],
+                timeline: [
+                    {
+                        type: 'tool-start',
+                        timestamp: '2024-06-01T12:00:05.000Z',
+                        toolCall: {
+                            id: 'tc-read',
+                            name: 'readFile',
+                            status: 'running',
+                            startTime: '2024-06-01T12:00:05.000Z',
+                            args: { path: '/src/auth.ts' },
+                        },
+                    },
+                    {
+                        type: 'tool-complete',
+                        timestamp: '2024-06-01T12:00:06.000Z',
+                        toolCall: {
+                            id: 'tc-read',
+                            name: 'readFile',
+                            status: 'completed',
+                            startTime: '2024-06-01T12:00:05.000Z',
+                            endTime: '2024-06-01T12:00:06.000Z',
+                            args: { path: '/src/auth.ts' },
+                            result: 'export function login() {}',
+                        },
+                    },
+                    { type: 'content', timestamp: '2024-06-01T12:01:00.000Z', content: 'I found and fixed the issue.' },
+                ],
+                suggestions: ['Run the tests', 'Show the diff'],
+                tokenUsage: { promptTokens: 100, completionTokens: 50 },
+            },
+        ];
+
+        const proc = makeProcess('proc-timeline', 'ws-rt', { turns });
+        const wsDir = path.join(dataDir, 'repos', 'ws-rt', 'processes');
+        writeJSON(path.join(wsDir, 'index.json'), [proc.index]);
+        writeJSON(path.join(wsDir, 'proc-timeline.json'), proc.stored);
+
+        // Migrate
+        const engine = createEngine();
+        await engine.run();
+
+        // Read back via SqliteProcessStore — this is the path the API uses
+        const store = new SqliteProcessStore({ dbPath });
+        try {
+            const result = await store.getProcess('proc-timeline');
+            expect(result).toBeDefined();
+            expect(result!.id).toBe('proc-timeline');
+            expect(result!.conversationTurns).toHaveLength(2);
+
+            // Verify user turn
+            const userTurn = result!.conversationTurns![0];
+            expect(userTurn.role).toBe('user');
+            expect(userTurn.content).toBe('Fix the bug in auth.ts');
+            expect(userTurn.timestamp).toBeInstanceOf(Date);
+            expect(userTurn.timeline).toHaveLength(1);
+
+            // Verify assistant turn with tool calls
+            const assistantTurn = result!.conversationTurns![1];
+            expect(assistantTurn.role).toBe('assistant');
+            expect(assistantTurn.content).toBe('I found and fixed the issue.');
+            expect(assistantTurn.toolCalls).toHaveLength(2);
+            expect(assistantTurn.suggestions).toEqual(['Run the tests', 'Show the diff']);
+
+            // Verify tool call deserialization (dates become Date objects)
+            const readTc = assistantTurn.toolCalls![0];
+            expect(readTc.id).toBe('tc-read');
+            expect(readTc.name).toBe('readFile');
+            expect(readTc.status).toBe('completed');
+            expect(readTc.startTime).toBeInstanceOf(Date);
+            expect(readTc.endTime).toBeInstanceOf(Date);
+            expect(readTc.args).toEqual({ path: '/src/auth.ts' });
+            expect(readTc.result).toBe('export function login() {}');
+
+            // Verify timeline with embedded tool calls
+            expect(assistantTurn.timeline).toHaveLength(3);
+            const toolStartItem = assistantTurn.timeline[0];
+            expect(toolStartItem.type).toBe('tool-start');
+            expect(toolStartItem.timestamp).toBeInstanceOf(Date);
+            expect(toolStartItem.toolCall).toBeDefined();
+            expect(toolStartItem.toolCall!.name).toBe('readFile');
+            expect(toolStartItem.toolCall!.startTime).toBeInstanceOf(Date);
+
+            const toolCompleteItem = assistantTurn.timeline[1];
+            expect(toolCompleteItem.type).toBe('tool-complete');
+            expect(toolCompleteItem.toolCall!.endTime).toBeInstanceOf(Date);
+        } finally {
+            store.close();
+        }
+    });
+
+    it('migrated process with malformed tool call in turn does not crash getProcess', async () => {
+        writeFile(path.join(dataDir, 'config.yaml'), 'model: gpt-4\n');
+
+        // Simulate a real-world edge case: tool call with missing startTime
+        const turns: SerializedConversationTurn[] = [
+            {
+                role: 'assistant',
+                content: 'Done',
+                timestamp: '2024-06-01T12:00:00.000Z',
+                turnIndex: 0,
+                toolCalls: [
+                    {
+                        id: 'tc-bad',
+                        name: 'bash',
+                        status: 'completed',
+                        // startTime is missing — real data may have this
+                        args: { command: 'echo hello' },
+                        result: 'hello',
+                    } as any,
+                ],
+                timeline: [
+                    {
+                        type: 'tool-start' as const,
+                        timestamp: '2024-06-01T12:00:01.000Z',
+                        toolCall: {
+                            id: 'tc-bad',
+                            name: 'bash',
+                            status: 'running',
+                            // missing startTime
+                            args: { command: 'echo hello' },
+                        } as any,
+                    },
+                ],
+            },
+        ];
+
+        const proc = makeProcess('proc-malformed', 'ws-mal', { turns });
+        const wsDir = path.join(dataDir, 'repos', 'ws-mal', 'processes');
+        writeJSON(path.join(wsDir, 'index.json'), [proc.index]);
+        writeJSON(path.join(wsDir, 'proc-malformed.json'), proc.stored);
+
+        // Migrate (skip validation since data is intentionally dodgy)
+        const engine = new StorageMigrationEngine({
+            dataDir,
+            dbPath,
+            onProgress: (event) => events.push({ ...event }),
+            skipValidation: true,
+        });
+        await engine.run();
+
+        // getProcess should NOT throw — it should return the process with graceful handling
+        const store = new SqliteProcessStore({ dbPath });
+        try {
+            const result = await store.getProcess('proc-malformed');
+            expect(result).toBeDefined();
+            expect(result!.id).toBe('proc-malformed');
+            expect(result!.conversationTurns).toHaveLength(1);
+            // Tool calls should either be present (with fallback dates) or gracefully omitted
+            const turn = result!.conversationTurns![0];
+            expect(turn.content).toBe('Done');
+        } finally {
+            store.close();
+        }
     });
 });

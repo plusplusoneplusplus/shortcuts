@@ -38,6 +38,8 @@ import type { TokenUsage } from './copilot-sdk-wrapper/types';
 import { initializeDatabase } from './sqlite-schema';
 import { getLogger } from './logger';
 
+const logger = getLogger();
+
 // ============================================================================
 // Options
 // ============================================================================
@@ -181,6 +183,20 @@ function isoToDate(iso: string | null): Date | undefined {
     return new Date(iso);
 }
 
+/** Parse an ISO date string, returning a fallback for invalid/missing values. */
+function safeDate(value: unknown, fallback?: Date): Date {
+    if (!value) return fallback ?? new Date(0);
+    const d = new Date(value as string);
+    return isNaN(d.getTime()) ? (fallback ?? new Date(0)) : d;
+}
+
+/** Parse an optional ISO date string, returning undefined for missing values. */
+function safeDateOptional(value: unknown): Date | undefined {
+    if (!value) return undefined;
+    const d = new Date(value as string);
+    return isNaN(d.getTime()) ? undefined : d;
+}
+
 /** Serialize a ToolCall's Date fields to ISO strings for JSON storage. */
 function serializeToolCall(tc: ToolCall): Record<string, unknown> {
     return {
@@ -210,24 +226,24 @@ function serializeToolCall(tc: ToolCall): Record<string, unknown> {
 /** Deserialize a ToolCall from JSON with ISO string dates. */
 function deserializeToolCall(raw: Record<string, unknown>): ToolCall {
     return {
-        id: raw.id as string,
-        name: raw.name as string,
-        status: raw.status as ToolCall['status'],
-        startTime: new Date(raw.startTime as string),
-        endTime: raw.endTime ? new Date(raw.endTime as string) : undefined,
+        id: (raw.id ?? '') as string,
+        name: (raw.name ?? '') as string,
+        status: (raw.status ?? 'completed') as ToolCall['status'],
+        startTime: safeDate(raw.startTime),
+        endTime: safeDateOptional(raw.endTime),
         args: (raw.args ?? {}) as Record<string, unknown>,
         result: raw.result as string | undefined,
         error: raw.error as string | undefined,
         parentToolCallId: raw.parentToolCallId as string | undefined,
         permissionRequest: raw.permissionRequest ? {
             kind: (raw.permissionRequest as Record<string, unknown>).kind as string,
-            timestamp: new Date((raw.permissionRequest as Record<string, unknown>).timestamp as string),
+            timestamp: safeDate((raw.permissionRequest as Record<string, unknown>).timestamp),
             resource: (raw.permissionRequest as Record<string, unknown>).resource as string | undefined,
             operation: (raw.permissionRequest as Record<string, unknown>).operation as string | undefined,
         } as ToolCallPermissionRequest : undefined,
         permissionResult: raw.permissionResult ? {
             approved: (raw.permissionResult as Record<string, unknown>).approved as boolean,
-            timestamp: new Date((raw.permissionResult as Record<string, unknown>).timestamp as string),
+            timestamp: safeDate((raw.permissionResult as Record<string, unknown>).timestamp),
             reason: (raw.permissionResult as Record<string, unknown>).reason as string | undefined,
         } as ToolCallPermissionResult : undefined,
     };
@@ -247,7 +263,7 @@ function serializeTimelineItem(item: TimelineItem): Record<string, unknown> {
 function deserializeTimelineItem(raw: Record<string, unknown>): TimelineItem {
     return {
         type: raw.type as TimelineItem['type'],
-        timestamp: new Date(raw.timestamp as string),
+        timestamp: safeDate(raw.timestamp),
         content: raw.content as string | undefined,
         toolCall: raw.toolCall ? deserializeToolCall(raw.toolCall as Record<string, unknown>) : undefined,
     };
@@ -381,14 +397,40 @@ function rowToTurn(row: TurnRow): ConversationTurn {
     const rawToolCalls = jsonParse<Record<string, unknown>[]>(row.tool_calls);
     const rawTimeline = jsonParse<Record<string, unknown>[]>(row.timeline);
 
+    let toolCalls: ToolCall[] | undefined;
+    if (rawToolCalls && Array.isArray(rawToolCalls)) {
+        toolCalls = [];
+        for (const raw of rawToolCalls) {
+            if (!raw || typeof raw !== 'object') continue;
+            try {
+                toolCalls.push(deserializeToolCall(raw));
+            } catch (err) {
+                logger.warn('sqlite-process-store', `Skipping malformed tool call in turn ${row.turn_index}: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
+        if (toolCalls.length === 0) toolCalls = undefined;
+    }
+
+    let timeline: TimelineItem[] = [];
+    if (rawTimeline && Array.isArray(rawTimeline)) {
+        for (const raw of rawTimeline) {
+            if (!raw || typeof raw !== 'object') continue;
+            try {
+                timeline.push(deserializeTimelineItem(raw));
+            } catch (err) {
+                logger.warn('sqlite-process-store', `Skipping malformed timeline item in turn ${row.turn_index}: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
+    }
+
     return {
         role: row.role as ConversationTurn['role'],
         content: row.content ?? '',
         timestamp: new Date(row.timestamp),
         turnIndex: row.turn_index,
         streaming: intToBool(row.streaming),
-        toolCalls: rawToolCalls?.map(deserializeToolCall),
-        timeline: rawTimeline?.map(deserializeTimelineItem) ?? [],
+        toolCalls,
+        timeline,
         images: jsonParse<string[]>(row.images),
         historical: intToBool(row.historical),
         suggestions: jsonParse<string[]>(row.suggestions),

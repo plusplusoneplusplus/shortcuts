@@ -699,6 +699,28 @@ export class StorageMigrationEngine {
                         `Process ${id}: conversationTurns count mismatch — expected ${expectedTurns}, got ${actualTurns}`
                     );
                 }
+
+                // Verify turn content round-trips for the first turn with tool calls
+                if (actualTurns > 0) {
+                    const sourceTurns = sourceProcess.conversationTurns!;
+                    for (let t = 0; t < sourceTurns.length; t++) {
+                        const src = sourceTurns[t];
+                        const dst = process.conversationTurns![t];
+                        if (dst.role !== src.role) {
+                            throw this.validationError(`Process ${id} turn ${t}: role mismatch`);
+                        }
+                        if (dst.content !== (src.content ?? '')) {
+                            throw this.validationError(`Process ${id} turn ${t}: content mismatch`);
+                        }
+                        const expectedToolCalls = src.toolCalls?.length ?? 0;
+                        const actualToolCalls = dst.toolCalls?.length ?? 0;
+                        if (actualToolCalls !== expectedToolCalls) {
+                            throw this.validationError(
+                                `Process ${id} turn ${t}: toolCalls count mismatch — expected ${expectedToolCalls}, got ${actualToolCalls}`
+                            );
+                        }
+                    }
+                }
             }
         } finally {
             store.close();
