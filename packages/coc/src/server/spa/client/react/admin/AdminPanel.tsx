@@ -10,6 +10,7 @@ import { invalidateDisplaySettings } from '../hooks/useDisplaySettings';
 import { PreferencesSection } from './PreferencesSection';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { PromptsPanel } from './PromptsPanel';
+import { DbBrowserSection } from './DbBrowserSection';
 import { useApp } from '../context/AppContext';
 import { FeatureTip } from '../welcome/FeatureTip';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
@@ -32,7 +33,7 @@ interface Stats {
 }
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
-const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts' };
+const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database' };
 
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
@@ -552,7 +553,7 @@ export function AdminPanel() {
     const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
     const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
     const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
-    const tabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts'];
+    const tabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
 
     return (
         <div id="view-admin">
@@ -1085,6 +1086,12 @@ export function AdminPanel() {
                 {activeTab === 'prompts' && (
                     <Card className="p-2 md:p-3">
                         <PromptsPanel onError={msg => addToast(msg, 'error')} />
+                    </Card>
+                )}
+
+                {activeTab === 'database' && (
+                    <Card className="p-2 md:p-3">
+                        <DbBrowserSection />
                     </Card>
                 )}
 

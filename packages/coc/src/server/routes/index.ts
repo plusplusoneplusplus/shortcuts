@@ -41,6 +41,7 @@ import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRou
 import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
+import { registerDbBrowserRoutes } from '../db-browser-handler';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
@@ -153,6 +154,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerLogsRoutes(routes);
     registerInstructionRoutes(routes, store);
     registerStatsRoutes(routes, store);
+    registerDbBrowserRoutes(routes, store);
 
     const wikiManager = registerWikiRoutes(routes, {
         wikis: wikiOptions?.wikis,
