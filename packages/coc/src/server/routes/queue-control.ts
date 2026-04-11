@@ -327,6 +327,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
 
     // ------------------------------------------------------------------
     // DELETE /api/queue/history/:taskId — Delete a single history entry
+    // @deprecated — prefer DELETE /api/workspaces/:id/history/:processId
     // ------------------------------------------------------------------
     routes.push({
         method: 'DELETE',

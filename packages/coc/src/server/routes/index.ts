@@ -44,6 +44,7 @@ import { registerStatsRoutes } from '../stats-handler';
 import { registerDbBrowserRoutes } from '../db-browser-handler';
 import { registerSeenStateRoutes } from '../seen-state-handler';
 import { registerProcessHistoryRoutes } from '../process-history-handler';
+import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
@@ -121,6 +122,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerPreferencesRoutes(routes, dataDir);
     registerSeenStateRoutes(routes, store as any);
     registerProcessHistoryRoutes(routes, store as any);
+    registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerAdminRoutes(routes, {

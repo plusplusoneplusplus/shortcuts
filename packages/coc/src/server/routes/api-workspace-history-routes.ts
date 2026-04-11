@@ -1,0 +1,118 @@
+/**
+ * Workspace History REST API Routes
+ *
+ * DELETE /api/workspaces/:id/history/:processId — Delete a single history entry
+ * DELETE /api/workspaces/:id/history            — Bulk-delete history entries
+ *
+ * These routes are the canonical server-side handlers for history deletion,
+ * keyed by processId. They clean up both the in-memory queue and the persistent
+ * process store (including child processes).
+ */
+
+import type http from 'http';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import type { Route } from '../types';
+import { sendJSON, sendError, parseBody } from '../api-handler';
+import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
+
+type DeleteOutcome = 'deleted' | 'notFound' | 'conflict';
+
+/**
+ * Attempt to delete a single history entry identified by processId.
+ * Returns a status string instead of writing to `res`, so the bulk handler
+ * can aggregate results without short-circuiting.
+ */
+async function tryDeleteHistoryEntry(
+    processId: string,
+    store: ProcessStore,
+    bridge: MultiRepoQueueExecutorBridge,
+): Promise<DeleteOutcome> {
+    let removedAnything = false;
+
+    // 1. Remove from in-memory queue if this is a queue process.
+    if (isQueueProcessId(processId)) {
+        const taskId = toTaskId(processId);
+        const mgr = bridge.findManagerForTask(taskId);
+        if (mgr) {
+            const task = mgr.getTask(taskId);
+            if (task) {
+                const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+                if (!TERMINAL.has(task.status)) {
+                    return 'conflict';
+                }
+                mgr.removeHistoryEntry(taskId);
+                removedAnything = true;
+            }
+        }
+    }
+
+    // 2. Remove from process store (children first, then parent).
+    try {
+        const proc = await store.getProcess(processId);
+        if (proc) {
+            const children = await store.getAllProcesses({ parentProcessId: processId });
+            for (const child of children) {
+                await store.removeProcess(child.id);
+            }
+            await store.removeProcess(processId);
+            removedAnything = true;
+        }
+    } catch {
+        // Non-fatal; log but continue.
+        process.stderr.write(`[History] error removing processId=${processId} from store\n`);
+    }
+
+    return removedAnything ? 'deleted' : 'notFound';
+}
+
+export function registerWorkspaceHistoryRoutes(
+    routes: Route[],
+    store: ProcessStore,
+    bridge: MultiRepoQueueExecutorBridge,
+): void {
+    // ------------------------------------------------------------------
+    // DELETE /api/workspaces/:id/history/:processId — Single delete
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/workspaces\/([^/]+)\/history\/([^/]+)$/,
+        handler: async (_req, res, match) => {
+            const processId = decodeURIComponent(match![2]);
+            const outcome = await tryDeleteHistoryEntry(processId, store, bridge);
+
+            switch (outcome) {
+                case 'conflict':
+                    return sendError(res, 409, 'Task is still running or queued; cannot delete');
+                case 'notFound':
+                    return sendError(res, 404, 'History entry not found');
+                case 'deleted':
+                    res.writeHead(204);
+                    res.end();
+                    return;
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // DELETE /api/workspaces/:id/history — Bulk delete
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/workspaces\/([^/]+)\/history$/,
+        handler: async (req, res, _match) => {
+            const body = await parseBody(req);
+            const ids = body?.processIds;
+            if (!Array.isArray(ids) || ids.length === 0) {
+                return sendError(res, 400, 'processIds array required');
+            }
+
+            const results: Array<{ processId: string; status: DeleteOutcome }> = [];
+            for (const pid of ids) {
+                const outcome = await tryDeleteHistoryEntry(pid, store, bridge);
+                results.push({ processId: pid, status: outcome });
+            }
+            sendJSON(res, 200, { results });
+        },
+    });
+}

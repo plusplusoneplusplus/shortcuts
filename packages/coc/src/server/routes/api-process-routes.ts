@@ -271,6 +271,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     });
 
     // DELETE /api/processes/:id — Remove a single process
+    // @deprecated — does not clean up in-memory queue state or child processes.
+    // Prefer DELETE /api/workspaces/:id/history/:processId instead.
     routes.push({
         method: 'DELETE',
         pattern: /^\/api\/processes\/([^/]+)$/,
