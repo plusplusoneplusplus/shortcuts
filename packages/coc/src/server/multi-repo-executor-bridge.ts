@@ -320,6 +320,17 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
+     * Look up a queue task by its task ID across all per-repo queues.
+     */
+    getTask(taskId: string): QueuedTask | undefined {
+        for (const manager of this.registry.getAllQueues().values()) {
+            const task = manager.getTask(taskId);
+            if (task) return task;
+        }
+        return undefined;
+    }
+
+    /**
      * Requeue an existing task for a follow-up message.
      * Updates the task's payload with the follow-up prompt, then moves it from history → queued.
      * Falls back to reconstructing the task from the process store when in-memory history is empty.

@@ -44,6 +44,8 @@ export interface QueueExecutorBridge {
     enqueue?(input: CreateTaskInput): Promise<string>;
     /** Find a task by its processId. Used to locate the parent chat task for follow-up re-activation. */
     findTaskByProcessId?(processId: string): { id: string; type: string; status: string } | undefined;
+    /** Look up a queue task by its task ID. Used to synthesize process records for pre-execution tasks. */
+    getTask?(taskId: string): import('@plusplusoneplusplus/forge').QueuedTask | undefined;
     /** Requeue an existing task for a follow-up message (reuses the parent task instead of creating a ghost child). */
     requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */

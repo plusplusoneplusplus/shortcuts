@@ -10,9 +10,9 @@ import * as url from 'url';
 import * as fs from 'fs';
 import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
-    CreateTaskInput, Attachment,
+    CreateTaskInput, Attachment, QueuedTask,
 } from '@plusplusoneplusplus/forge';
-import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, stripExcludedFields,
@@ -32,6 +32,26 @@ const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 
 
 /** Terminal statuses that cannot be cancelled. */
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
+
+/**
+ * Synthesize a minimal AIProcess from a QueuedTask.
+ * Used when a process record hasn't been created yet (task is still queued).
+ */
+function queuedTaskToProcess(task: QueuedTask): AIProcess {
+    const prompt = task.displayName
+        ?? (task.payload as any)?.prompt as string | undefined
+        ?? '';
+    return {
+        id: toQueueProcessId(task.id),
+        type: task.type || 'chat',
+        status: 'queued',
+        promptPreview: prompt.slice(0, 57) + (prompt.length > 57 ? '...' : ''),
+        fullPrompt: prompt,
+        startTime: new Date(task.createdAt),
+        title: task.displayName,
+        workingDirectory: task.folderPath ?? (task.payload as any)?.workingDirectory,
+    };
+}
 
 export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     const { routes, store, bridge, dataDir } = ctx;
@@ -183,6 +203,16 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const proc = await store.getProcess(id, wsId);
             if (!proc) {
+                // If the process ID is a queue-derived ID and the task is still queued,
+                // return empty output instead of 404.
+                if (isQueueProcessId(id) && bridge) {
+                    try {
+                        const task = bridge.getTask?.(toTaskId(id));
+                        if (task) {
+                            return sendJSON(res, 200, { content: '', format: 'markdown' });
+                        }
+                    } catch { /* toTaskId may throw if prefix is wrong — fall through */ }
+                }
                 return handleAPIError(res, notFound('Process'));
             }
             const filePath = proc.rawStdoutFilePath;
@@ -211,6 +241,17 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const filter = parseQueryParams(req.url || '/');
             const proc = await store.getProcess(id, filter.workspaceId);
             if (!proc) {
+                // Synthesize a response for queued tasks that don't yet have a process record
+                if (isQueueProcessId(id) && bridge) {
+                    try {
+                        const task = bridge.getTask?.(toTaskId(id));
+                        if (task) {
+                            const synthetic = queuedTaskToProcess(task);
+                            const result = filter.exclude ? stripExcludedFields(synthetic, filter.exclude) : synthetic;
+                            return sendJSON(res, 200, { process: result, children: [], total: 0 });
+                        }
+                    } catch { /* toTaskId may throw if prefix is wrong — fall through */ }
+                }
                 return handleAPIError(res, notFound('Process'));
             }
             const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : proc;

@@ -120,6 +120,7 @@ export function createMockBridge(overrides?: Partial<QueueExecutorBridge>): Queu
         requeueForFollowUp: overrides?.requeueForFollowUp ?? vi.fn().mockResolvedValue(undefined),
         cancelProcess: overrides?.cancelProcess ?? vi.fn().mockResolvedValue(undefined),
         steerProcess: overrides?.steerProcess ?? vi.fn().mockResolvedValue(true),
+        getTask: overrides?.getTask ?? vi.fn().mockReturnValue(undefined),
     };
 }
 
