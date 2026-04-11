@@ -81,6 +81,7 @@ describe('QueueContext reducer', () => {
                     stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
                 },
             });
+            // QUEUE_UPDATED never touches history
             expect(result.history).toEqual([{ id: 'h1' }]);
         });
     });

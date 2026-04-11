@@ -957,4 +957,79 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
             expect(lastProps?.isPaused).toBe(true);
         });
     });
+
+    it('refetches history from HTTP when a running task departs', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
+
+        await act(async () => {
+            renderWithProviders(
+                React.createElement(React.Fragment, null,
+                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(WsSimulator, { dispatchRef }),
+                ),
+            );
+        });
+        await waitFor(() => {
+            expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument();
+        });
+
+        // Reset fetch mock to track new calls. Mount already fetched history once.
+        mockFetchApi.mockClear();
+        const h1 = makeHistoryTask('h1');
+        setupFetchMock({ running: [], history: [h1] });
+
+        // Simulate task r1 departing (completed)
+        await act(async () => {
+            dispatchRef.current?.({ running: [], queued: [], stats: { isPaused: false } });
+        });
+
+        // Should have fetched /queue/history due to departure detection
+        await waitFor(() => {
+            expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/queue/history?repoId=ws-1'));
+        });
+
+        // The refetched history should be rendered
+        await waitFor(() => {
+            const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+            expect(lastProps?.history?.some((t: any) => t.id === 'h1')).toBe(true);
+        });
+    });
+
+    it('does not refetch history when no task departs', async () => {
+        setupFetchMock();
+        const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
+
+        await act(async () => {
+            renderWithProviders(
+                React.createElement(React.Fragment, null,
+                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(WsSimulator, { dispatchRef }),
+                ),
+            );
+        });
+        await waitFor(() => {
+            expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument();
+        });
+
+        // Reset to track new calls after mount
+        mockFetchApi.mockClear();
+        setupFetchMock();
+
+        // Push a new running task — no departure
+        const r1 = makeRunningTask('ws-r1');
+        await act(async () => {
+            dispatchRef.current?.({ running: [r1], queued: [], stats: { isPaused: false } });
+        });
+
+        // Give a tick for any async work
+        await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+
+        // Should NOT have called /queue/history (no departure happened)
+        const historyCalls = mockFetchApi.mock.calls.filter(
+            (c: any) => typeof c[0] === 'string' && c[0].includes('/queue/history'),
+        );
+        expect(historyCalls).toHaveLength(0);
+    });
 });

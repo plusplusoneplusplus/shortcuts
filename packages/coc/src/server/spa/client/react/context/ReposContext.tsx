@@ -19,7 +19,7 @@ import { useQueue } from './QueueContext';
 import { fetchApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { countTasks } from '../repos/repoGrouping';
-import { computeUnseenCount } from '../hooks/useUnseenActivity';
+
 import type { RepoData } from '../repos/repoGrouping';
 
 // ── Context shape ──────────────────────────────────────────────────────
@@ -61,12 +61,10 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     }, []);
 
     // Compute per-repo unseen counts for the tab strip badge.
+    // History is no longer stored in QueueContext (authoritative source = HTTP).
+    // Unseen counts are computed within each RepoActivityTab from local state.
     const unseenCounts = useMemo(() => {
         const counts: Record<string, number> = {};
-        for (const [repoId, repoQueue] of Object.entries(queueState.repoQueueMap)) {
-            const count = computeUnseenCount(repoId, repoQueue.history ?? []);
-            if (count > 0) counts[repoId] = count;
-        }
         return counts;
     }, [queueState.repoQueueMap, seenVersion]);
 

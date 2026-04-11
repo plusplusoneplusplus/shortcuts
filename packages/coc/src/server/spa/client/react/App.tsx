@@ -170,9 +170,6 @@ function AppInner() {
                         queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: String(msg.queue.repoId), queue: msg.queue });
                     } else {
                         queueDispatch({ type: 'QUEUE_UPDATED', queue: msg.queue });
-                        if (msg.queue.history) {
-                            queueDispatch({ type: 'SET_HISTORY', history: msg.queue.history });
-                        }
                     }
                 }
                 break;

@@ -202,7 +202,7 @@ describe('createWebSocketInfrastructure', () => {
             expect(aggregate.queue.repoId).toBeUndefined();
         });
 
-        it('per-repo broadcast includes history array', () => {
+        it('per-repo broadcast does not include history', () => {
             const historyTask = { id: 'h1', repoId: 'r1', status: 'completed', completedAt: '2026-01-01', payload: { prompt: 'do stuff' }, title: 'Task 1' };
             registry._mockManager.getHistory.mockReturnValue([historyTask]);
 
@@ -212,14 +212,10 @@ describe('createWebSocketInfrastructure', () => {
             bridge.emit('queueChange', { repoPath: '/repo', repoId: 'repo-1', type: 'completed' });
 
             const perRepo = broadcast.mock.calls[0][0] as any;
-            expect(perRepo.queue.history).toBeDefined();
-            expect(perRepo.queue.history).toHaveLength(1);
-            expect(perRepo.queue.history[0].id).toBe('h1');
-            expect(perRepo.queue.history[0].completedAt).toBe('2026-01-01');
-            expect(perRepo.queue.history[0].title).toBe('Task 1');
+            expect(perRepo.queue.history).toBeUndefined();
         });
 
-        it('aggregate broadcast includes history from all managers', () => {
+        it('aggregate broadcast does not include history', () => {
             const historyA = { id: 'ha', repoId: 'a', status: 'completed', completedAt: '2026-01-01', payload: {} };
             const historyB = { id: 'hb', repoId: 'b', status: 'failed', completedAt: '2026-01-02', payload: {} };
             const managerA = {
@@ -242,22 +238,16 @@ describe('createWebSocketInfrastructure', () => {
             bridge.emit('queueChange', { repoPath: '/repo', repoId: 'a', type: 'completed' });
 
             const aggregate = broadcast.mock.calls[1][0] as any;
-            expect(aggregate.queue.history).toHaveLength(2);
-            const ids = aggregate.queue.history.map((h: any) => h.id);
-            expect(ids).toContain('ha');
-            expect(ids).toContain('hb');
+            expect(aggregate.queue.history).toBeUndefined();
         });
 
-        it('history is empty array when no tasks in history', () => {
+        it('does not call getHistory on managers', () => {
             const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
-            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+            vi.spyOn(ws, 'broadcastProcessEvent');
 
             bridge.emit('queueChange', { repoPath: '/repo', repoId: 'r1', type: 'enqueued' });
 
-            const perRepo = broadcast.mock.calls[0][0] as any;
-            expect(perRepo.queue.history).toEqual([]);
-            const aggregate = broadcast.mock.calls[1][0] as any;
-            expect(aggregate.queue.history).toEqual([]);
+            expect(registry._mockManager.getHistory).not.toHaveBeenCalled();
         });
     });
 

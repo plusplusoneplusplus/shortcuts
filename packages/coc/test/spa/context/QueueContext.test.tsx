@@ -79,15 +79,14 @@ describe('queueReducer', () => {
                 queue: {
                     queued: [],
                     running: [],
-                    history: [{ id: 'h1', status: 'completed' }],
                     stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
                 },
             });
-            expect(result.history).toHaveLength(1);
-            expect(result.history[0].id).toBe('h1');
+            // QUEUE_UPDATED no longer carries history — it is managed solely via SET_HISTORY
+            expect(result.history).toHaveLength(0);
         });
 
-        it('preserves existing history when not provided in queue payload', () => {
+        it('preserves existing history when QUEUE_UPDATED fires', () => {
             const state = makeState({ history: [{ id: 'existing' }] });
             const result = queueReducer(state, {
                 type: 'QUEUE_UPDATED',
@@ -97,6 +96,7 @@ describe('queueReducer', () => {
                     stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
                 },
             });
+            // QUEUE_UPDATED does not touch history
             expect(result.history).toHaveLength(1);
             expect(result.history[0].id).toBe('existing');
         });
@@ -126,28 +126,14 @@ describe('queueReducer', () => {
             expect(result.repoQueueMap['repo-B'].queued[0].id).toBe('b1');
         });
 
-        it('includes history in per-repo queue when provided', () => {
+        it('does not include history in per-repo queue', () => {
             const state = makeState();
             const result = queueReducer(state, {
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: 'repo-A',
-                queue: { queued: [], running: [], history: [{ id: 'rh1', status: 'completed' }] },
+                queue: { queued: [], running: [] },
             });
-            expect(result.repoQueueMap['repo-A'].history).toHaveLength(1);
-            expect(result.repoQueueMap['repo-A'].history![0].id).toBe('rh1');
-        });
-
-        it('preserves existing per-repo history when not provided', () => {
-            const state = makeState({
-                repoQueueMap: { 'repo-A': { queued: [], running: [], history: [{ id: 'old' }], stats: makeState().stats } },
-            });
-            const result = queueReducer(state, {
-                type: 'REPO_QUEUE_UPDATED',
-                repoId: 'repo-A',
-                queue: { queued: [{ id: 'q1' }], running: [] },
-            });
-            expect(result.repoQueueMap['repo-A'].history).toHaveLength(1);
-            expect(result.repoQueueMap['repo-A'].history![0].id).toBe('old');
+            expect((result.repoQueueMap['repo-A'] as any).history).toBeUndefined();
         });
     });
 

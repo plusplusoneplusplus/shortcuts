@@ -72,7 +72,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             queueDispatch({
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: workspaceId,
-                queue: { queued: nextQueued, running: nextRunning, history: nextHistory, stats: nextStats },
+                queue: { queued: nextQueued, running: nextRunning, stats: nextStats },
             });
         } catch {
             setRunning([]);
@@ -87,14 +87,30 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         fetchQueue();
     }, [workspaceId, fetchQueue]);
 
+    // Track running task IDs to detect departures (task completion/failure/cancel)
+    const prevRunningIdsRef = useRef<string[]>([]);
+
     // Apply per-repo WS updates
     useEffect(() => {
         if (!repoQueue) return;
         setRunning(repoQueue.running);
         setQueued(repoQueue.queued);
-        if (repoQueue.history) {
-            setHistory(repoQueue.history);
+
+        // Detect task departures: if a previously-running ID disappeared, refetch
+        // history from the authoritative HTTP endpoint.
+        const currIds = repoQueue.running.map((t: any) => t.id);
+        const prevIds = prevRunningIdsRef.current;
+        const hasDeparture = prevIds.some(id => !currIds.includes(id));
+        prevRunningIdsRef.current = currIds;
+
+        if (hasDeparture) {
+            fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId))
+                .then((data: any) => {
+                    if (data?.history) setHistory(data.history);
+                })
+                .catch(() => {});
         }
+
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
             setPauseReason(repoQueue.stats.pauseReason);
@@ -103,7 +119,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             setIsAutopilotPaused(repoQueue.stats.isAutopilotPaused);
         }
         setLoading(false);
-    }, [repoQueue]);
+    }, [repoQueue, workspaceId]);
 
     // Clear selection if the selected task is no longer reachable.
     // Tasks from deep-links may not appear in the paginated history list,
