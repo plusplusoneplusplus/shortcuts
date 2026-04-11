@@ -134,6 +134,8 @@ export interface SideBySideLine {
     leftParts?: IntraLinePart[];
     /** Intra-line parts for the right (added) side — set only for 1:1 paired rows. */
     rightParts?: IntraLinePart[];
+    /** File path from a `diff --git` header — set on the first row of each file section. */
+    filePath?: string;
 }
 
 const LINE_CLASSES: Record<LineType, string> = {
@@ -156,6 +158,33 @@ function classifyLine(line: string): LineType {
 export function extractFilePathFromDiffHeader(line: string): string | null {
     const match = line.match(/^diff --git a\/.+ b\/(.+)$/);
     return match ? match[1] : null;
+}
+
+/**
+ * Parse a raw unified diff string into a list of changed files.
+ * Detects status from diff meta headers (new file, deleted file, rename).
+ * Counts per-file additions and deletions from `+`/`-` content lines.
+ */
+export function parseDiffFileList(diffText: string): import('./FileTree').FileChange[] {
+    const files: import('./FileTree').FileChange[] = [];
+    const lines = diffText.split('\n');
+    let current: import('./FileTree').FileChange | null = null;
+
+    for (const line of lines) {
+        if (line.startsWith('diff --git')) {
+            if (current) files.push(current);
+            const filePath = extractFilePathFromDiffHeader(line);
+            current = { status: 'M', path: filePath ?? '', additions: 0, deletions: 0 };
+        } else if (current) {
+            if (line.startsWith('new file'))       current.status = 'A';
+            else if (line.startsWith('deleted file')) current.status = 'D';
+            else if (line.startsWith('rename from'))  { current.status = 'R'; current.oldPath = line.slice('rename from '.length); }
+            else if (line.startsWith('+') && !line.startsWith('+++')) current.additions = (current.additions ?? 0) + 1;
+            else if (line.startsWith('-') && !line.startsWith('---')) current.deletions = (current.deletions ?? 0) + 1;
+        }
+    }
+    if (current) files.push(current);
+    return files;
 }
 
 /** Parse a `@@ -old,count +new,count @@` hunk header. */
@@ -213,21 +242,29 @@ export function computeDiffLines(lines: string[]): DiffLine[] {
 export function computeSideBySideLines(lines: DiffLine[]): SideBySideLine[] {
     const result: SideBySideLine[] = [];
     let i = 0;
+    let pendingFilePath: string | null = null;
 
     while (i < lines.length) {
         const line = lines[i];
 
         if (line.type === 'meta') {
+            const fp = extractFilePathFromDiffHeader(line.content);
+            if (fp) pendingFilePath = fp;
             i++;
             continue;
         }
 
         if (line.type === 'hunk-header') {
-            result.push({
+            const entry: SideBySideLine = {
                 left: { type: 'empty', content: '', lineNumber: null, originalIndex: null },
                 right: { type: 'empty', content: '', lineNumber: null, originalIndex: null },
                 hunkHeader: line.content,
-            });
+            };
+            if (pendingFilePath) {
+                entry.filePath = pendingFilePath;
+                pendingFilePath = null;
+            }
+            result.push(entry);
             i++;
             continue;
         }
@@ -332,6 +369,8 @@ export interface UnifiedDiffViewerHandle {
     getCurrentHunkIndex: () => number;
     /** Scrolls to the hunk at the given 0-based index and updates the internal cursor. */
     scrollToHunk: (index: number) => void;
+    /** Scrolls to the first row of the given file in a multi-file diff. */
+    scrollToFile: (filePath: string) => void;
 }
 
 /** Reusable up/down buttons for navigating between diff hunks. */
@@ -489,6 +528,22 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             const centerOffset = scrollParent.clientHeight / 3;
             scrollParent.scrollTo({
                 top: scrollParent.scrollTop + edits[index].getBoundingClientRect().top - parentTop - centerOffset,
+                behavior: 'smooth',
+            });
+        },
+        scrollToFile: (filePath: string) => {
+            const container = containerRef.current;
+            if (!container) return;
+            const els = container.querySelectorAll<HTMLElement>('[data-file-path]');
+            let target: HTMLElement | null = null;
+            for (const el of Array.from(els)) {
+                if (el.getAttribute('data-file-path') === filePath) { target = el; break; }
+            }
+            if (!target) return;
+            const scrollParent = getScrollableAncestor(container);
+            const parentTop = scrollParent.getBoundingClientRect().top;
+            scrollParent.scrollTo({
+                top: scrollParent.scrollTop + target.getBoundingClientRect().top - parentTop,
                 behavior: 'smooth',
             });
         },
@@ -659,6 +714,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                         data-new-line={enableComments ? (newLine ?? '') : undefined}
                         data-line-type={enableComments ? type : undefined}
                         data-hunk-header={type === 'hunk-header' ? '' : undefined}
+                        data-file-path={type === 'meta' && line.startsWith('diff --git') ? (extractFilePathFromDiffHeader(line) ?? undefined) : undefined}
                     >
                         {showLineNumbers && (
                             <>

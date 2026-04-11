@@ -17,8 +17,13 @@ import { ToastProvider } from '../context/ToastContext';
 import { ToastContainer, useToast } from '../shared';
 import { CommitDetail } from '../repos/CommitDetail';
 import { BranchRangeOverview } from '../repos/BranchRangeOverview';
+import { PopOutFilePanel } from '../repos/PopOutFilePanel';
 import { Spinner } from '../shared';
 import { fetchApi } from '../hooks/useApi';
+import { useCachedDiff } from '../repos/useCommitDiffCache';
+import { parseDiffFileList } from '../repos/UnifiedDiffViewer';
+import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
+import { computeDiffCommentKey } from '../../diff-comment-utils';
 import {
     useGitReviewPopOutChannel,
     type GitReviewPopOutMessage,
@@ -29,6 +34,7 @@ import { getHostname } from '../utils/config';
 import type { GitCommitItem } from '../repos/CommitList';
 import type { BranchRangeInfo } from '../repos/BranchChanges';
 import type { BranchRangeFile } from '../repos/BranchAllFilesDiff';
+import type { FileChange } from '../repos/FileTree';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -63,6 +69,8 @@ export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutG
 function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string; commitHash: string }) {
     const [commit, setCommit] = useState<GitCommitItem | null>(null);
     const [loading, setLoading] = useState(true);
+    const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+    const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
 
     useEffect(() => {
         setLoading(true);
@@ -74,6 +82,34 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
             .finally(() => setLoading(false));
     }, [workspaceId, commitHash]);
 
+    // Fetch the diff to extract file list (shares cache with CommitDetail)
+    const diffUrl = `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${commitHash}/diff`;
+    const { diff } = useCachedDiff(diffUrl, workspaceId, commitHash);
+    const fileList = diff ? parseDiffFileList(diff) : [];
+
+    // Comment counts for the commit diff
+    const oldRef = `${commitHash}^`;
+    const commentCounts = useFileCommentCounts(workspaceId, oldRef, commitHash);
+
+    // Map storage keys to file paths
+    useEffect(() => {
+        if (commentCounts.size === 0 || fileList.length === 0) {
+            setFileCommentMap(new Map());
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            const map = new Map<string, number>();
+            for (const file of fileList) {
+                const key = await computeDiffCommentKey(workspaceId, oldRef, commitHash, file.path);
+                const count = commentCounts.get(key) ?? 0;
+                if (count > 0) map.set(file.path, count);
+            }
+            if (!cancelled) setFileCommentMap(map);
+        })();
+        return () => { cancelled = true; };
+    }, [commentCounts, fileList.length, workspaceId, oldRef, commitHash]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
@@ -83,11 +119,24 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
     }
 
     return (
-        <CommitDetail
-            workspaceId={workspaceId}
-            hash={commitHash}
-            commit={commit ?? undefined}
-        />
+        <div className="flex flex-1 min-h-0">
+            <PopOutFilePanel
+                workspaceId={workspaceId}
+                files={fileList}
+                selectedFilePath={selectedFilePath}
+                onFileSelect={setSelectedFilePath}
+                fileCommentMap={fileCommentMap}
+            />
+            <div className="flex-1 min-w-0 overflow-hidden">
+                <CommitDetail
+                    workspaceId={workspaceId}
+                    hash={commitHash}
+                    commit={commit ?? undefined}
+                    isPopOut
+                    scrollToFilePath={selectedFilePath}
+                />
+            </div>
+        </div>
     );
 }
 
@@ -99,6 +148,8 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+    const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
 
     useEffect(() => {
         setLoading(true);
@@ -118,6 +169,37 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
             .finally(() => setLoading(false));
     }, [workspaceId]);
 
+    // Convert BranchRangeFile[] to FileChange[] for the file panel
+    const fileChanges: FileChange[] = files.map(f => ({
+        status: f.status,
+        path: f.path,
+        additions: f.additions,
+        deletions: f.deletions,
+        oldPath: f.oldPath,
+    }));
+
+    // Comment counts for the branch range (uses literal refs like BranchChanges)
+    const commentCounts = useFileCommentCounts(workspaceId, 'branch-base', 'branch-head');
+
+    // Map storage keys to file paths
+    useEffect(() => {
+        if (commentCounts.size === 0 || files.length === 0) {
+            setFileCommentMap(new Map());
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            const map = new Map<string, number>();
+            for (const file of files) {
+                const key = await computeDiffCommentKey(workspaceId, 'branch-base', 'branch-head', file.path);
+                const count = commentCounts.get(key) ?? 0;
+                if (count > 0) map.set(file.path, count);
+            }
+            if (!cancelled) setFileCommentMap(map);
+        })();
+        return () => { cancelled = true; };
+    }, [commentCounts, files, workspaceId]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
@@ -135,12 +217,25 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
     }
 
     return (
-        <BranchRangeOverview
-            workspaceId={workspaceId}
-            range={range}
-            commits={commits}
-            files={files}
-        />
+        <div className="flex flex-1 min-h-0">
+            <PopOutFilePanel
+                workspaceId={workspaceId}
+                files={fileChanges}
+                selectedFilePath={selectedFilePath}
+                onFileSelect={setSelectedFilePath}
+                fileCommentMap={fileCommentMap}
+            />
+            <div className="flex-1 min-w-0 overflow-hidden">
+                <BranchRangeOverview
+                    workspaceId={workspaceId}
+                    range={range}
+                    commits={commits}
+                    files={files}
+                    isPopOut
+                    scrollToFilePath={selectedFilePath}
+                />
+            </div>
+        </div>
     );
 }
 
@@ -197,8 +292,8 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
                         </span>
                     </div>
                 </div>
-                {/* Full-screen review content */}
-                <div className="flex-1 min-h-0 overflow-hidden">
+                {/* Review content with file panel */}
+                <div className="flex flex-1 min-h-0 overflow-hidden">
                     {params.reviewType === 'commit' ? (
                         <CommitReviewContent workspaceId={params.workspaceId} commitHash={params.commitHash!} />
                     ) : (

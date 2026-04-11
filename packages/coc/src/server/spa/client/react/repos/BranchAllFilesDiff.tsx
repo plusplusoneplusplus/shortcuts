@@ -7,7 +7,7 @@
  * Diff is truncated at 200 lines with a "Show full diff →" link.
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, TruncatedPath } from '../shared';
 import { UnifiedDiffViewer } from './UnifiedDiffViewer';
@@ -25,6 +25,8 @@ interface BranchAllFilesDiffProps {
     workspaceId: string;
     files: BranchRangeFile[];
     onFileSelect: (filePath: string) => void;
+    /** When set, scrolls the given file row into view. */
+    scrollToFilePath?: string | null;
 }
 
 type FileState = {
@@ -36,8 +38,24 @@ type FileState = {
 
 const DIFF_LINE_LIMIT = 200;
 
-export function BranchAllFilesDiff({ workspaceId, files, onFileSelect }: BranchAllFilesDiffProps) {
+export function BranchAllFilesDiff({ workspaceId, files, onFileSelect, scrollToFilePath }: BranchAllFilesDiffProps) {
     const [fileStates, setFileStates] = useState<Record<string, FileState>>({});
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Scroll to file when requested
+    useEffect(() => {
+        if (!scrollToFilePath || !containerRef.current) return;
+        const timer = setTimeout(() => {
+            const els = containerRef.current?.querySelectorAll<HTMLElement>('[data-file-path]') ?? [];
+            for (const el of Array.from(els)) {
+                if (el.getAttribute('data-file-path') === scrollToFilePath) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    break;
+                }
+            }
+        }, 50);
+        return () => clearTimeout(timer);
+    }, [scrollToFilePath]);
 
     const toggleFile = (filePath: string) => {
         const current = fileStates[filePath] ?? { expanded: false, diff: null, loading: false, error: null };
@@ -91,7 +109,7 @@ export function BranchAllFilesDiff({ workspaceId, files, onFileSelect }: BranchA
     }
 
     return (
-        <div className="flex flex-col" data-testid="branch-all-files-diff">
+        <div ref={containerRef} className="flex flex-col" data-testid="branch-all-files-diff">
             {files.map((file) => {
                 const state = fileStates[file.path] ?? { expanded: false, diff: null, loading: false, error: null };
                 const lines = state.diff ? state.diff.split('\n') : [];
@@ -99,7 +117,7 @@ export function BranchAllFilesDiff({ workspaceId, files, onFileSelect }: BranchA
                 const displayLines = isTruncated ? lines.slice(0, DIFF_LINE_LIMIT) : lines;
 
                 return (
-                    <div key={file.path} className="border-b border-[#e0e0e0] dark:border-[#3c3c3c] last:border-b-0">
+                    <div key={file.path} className="border-b border-[#e0e0e0] dark:border-[#3c3c3c] last:border-b-0" data-file-path={file.path}>
                         {/* File header row */}
                         <div
                             className="flex items-center gap-2 px-4 py-1.5 hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors"

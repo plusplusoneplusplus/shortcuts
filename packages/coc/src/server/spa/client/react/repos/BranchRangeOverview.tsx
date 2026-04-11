@@ -43,9 +43,11 @@ export interface BranchRangeOverviewProps {
     onAskAI?: () => void;
     onQueueTask?: () => void;
     isPopOut?: boolean;
+    /** When set, scrolls the file list to the given file. */
+    scrollToFilePath?: string | null;
 }
 
-export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask, isPopOut }: BranchRangeOverviewProps) {
+export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask, isPopOut, scrollToFilePath }: BranchRangeOverviewProps) {
     const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
     const [isDragging, setIsDragging] = useState(false);
     const [branchCommentCount, setBranchCommentCount] = useState(0);
@@ -189,6 +191,7 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
                     workspaceId={workspaceId}
                     files={rangeFiles ?? []}
                     onFileSelect={onFileSelect ?? (() => {})}
+                    scrollToFilePath={scrollToFilePath}
                 />
             </div>
         </div>

@@ -31,9 +31,11 @@ export interface CommitDetailProps {
     hash?: string;
     commit?: GitCommitItem;
     isPopOut?: boolean;
+    /** When set, the viewer scrolls to the given file's diff section. */
+    scrollToFilePath?: string | null;
 }
 
-export function CommitDetail({ workspaceId, hash, commit, isPopOut }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFilePath }: CommitDetailProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [chatOpen, setChatOpen] = useState(() => {
         try {
@@ -168,6 +170,16 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut }: CommitDeta
         el.addEventListener('scroll', handleScroll);
         return () => el.removeEventListener('scroll', handleScroll);
     }, [manualOverride]);
+
+    // Scroll to file when requested via prop
+    useEffect(() => {
+        if (!scrollToFilePath) return;
+        // Delay slightly to let the diff render
+        const timer = setTimeout(() => {
+            viewerRef.current?.scrollToFile(scrollToFilePath);
+        }, 50);
+        return () => clearTimeout(timer);
+    }, [scrollToFilePath]);
 
     const handleToggleHeader = useCallback(() => {
         setManualOverride(true);

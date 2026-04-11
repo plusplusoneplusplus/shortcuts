@@ -160,6 +160,22 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     behavior: 'smooth',
                 });
             },
+            scrollToFile: (filePath: string) => {
+                const container = containerRef.current;
+                if (!container) return;
+                const els = container.querySelectorAll<HTMLElement>('[data-file-path]');
+                let target: HTMLElement | null = null;
+                for (const el of Array.from(els)) {
+                    if (el.getAttribute('data-file-path') === filePath) { target = el; break; }
+                }
+                if (!target) return;
+                const scrollParent = getScrollableAncestor(container);
+                const parentTop = scrollParent.getBoundingClientRect().top;
+                scrollParent.scrollTo({
+                    top: scrollParent.scrollTop + target.getBoundingClientRect().top - parentTop,
+                    behavior: 'smooth',
+                });
+            },
         }));
 
         const handleMouseUp = useCallback((e: React.MouseEvent) => {
@@ -252,6 +268,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                         key={rowIdx}
                         className="flex w-full bg-[#dbedff] dark:bg-[#1d3251] text-[#0550ae] dark:text-[#79c0ff] whitespace-pre-wrap break-words"
                         data-hunk-header=""
+                        data-file-path={row.filePath ?? undefined}
                     >
                         {showLineNumbers && (
                             <span className="select-none text-right w-8 shrink-0 text-[#6e7681] pr-1 whitespace-nowrap" />
