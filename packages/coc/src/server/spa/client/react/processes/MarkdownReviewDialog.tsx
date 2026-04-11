@@ -132,7 +132,7 @@ export function MarkdownReviewDialog({
                 title={title}
                 height={90}
             >
-                <div {...(wsId ? { 'data-ws-id': wsId } : {})}>
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col" {...(wsId ? { 'data-ws-id': wsId } : {})}>
                 {/* Action buttons row */}
                 <div className="flex items-center gap-0.5 px-3 pb-2">
                     <button
@@ -271,7 +271,7 @@ export function MarkdownReviewDialog({
                 </div>
             )}
         >
-            <div {...(wsId ? { 'data-ws-id': wsId } : {})}>
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col" {...(wsId ? { 'data-ws-id': wsId } : {})}>
             <MarkdownReviewEditor
                 wsId={wsId}
                 filePath={filePath}

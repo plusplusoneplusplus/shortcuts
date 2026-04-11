@@ -777,6 +777,26 @@ describe('MarkdownReviewDialog — mobile (BottomSheet)', () => {
         const wsEl = document.querySelector('[data-ws-id="ws-mobile"]');
         expect(wsEl).not.toBeNull();
     });
+
+    it('data-ws-id wrapper in BottomSheet has flex layout classes for scrollability', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws-mobile"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const wsEl = document.querySelector('[data-ws-id="ws-mobile"]');
+        expect(wsEl).not.toBeNull();
+        const classes = wsEl!.className;
+        expect(classes).toContain('flex-1');
+        expect(classes).toContain('min-h-0');
+        expect(classes).toContain('overflow-hidden');
+        expect(classes).toContain('flex-col');
+    });
 });
 
 describe('MarkdownReviewDialog — data-ws-id on desktop FloatingDialog', () => {
@@ -799,5 +819,25 @@ describe('MarkdownReviewDialog — data-ws-id on desktop FloatingDialog', () => 
         );
         const wsEl = document.querySelector('[data-ws-id="ws-desktop"]');
         expect(wsEl).not.toBeNull();
+    });
+
+    it('data-ws-id wrapper in FloatingDialog has flex layout classes for scrollability', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws-desktop"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const wsEl = document.querySelector('[data-ws-id="ws-desktop"]');
+        expect(wsEl).not.toBeNull();
+        const classes = wsEl!.className;
+        expect(classes).toContain('flex-1');
+        expect(classes).toContain('min-h-0');
+        expect(classes).toContain('overflow-hidden');
+        expect(classes).toContain('flex-col');
     });
 });
