@@ -1,6 +1,9 @@
 /**
  * Maps AIProcess records from the process store into the HistorySummary shape
  * consumed by the SPA dashboard's history views.
+ *
+ * NOTE: chatMeta enrichment was removed — the activity tab now uses
+ * GET /api/workspaces/:id/history instead.
  */
 
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
@@ -18,12 +21,6 @@ export interface HistorySummary {
     prompt?: string;
     promptPreview?: string;
     payload?: Record<string, unknown>;
-    chatMeta?: {
-        turnCount: number;
-        firstMessage?: string;
-        lastActivityAt?: number;
-        title?: string;
-    };
 }
 
 export function processToHistorySummary(proc: AIProcess): HistorySummary {
@@ -34,29 +31,6 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
     const displayName = proc.title
         || proc.promptPreview
         || proc.id;
-
-    const turns = proc.conversationTurns ?? [];
-    const firstUserTurn = turns.find(t => t.role === 'user');
-    const lastTurn = turns.length > 0 ? turns[turns.length - 1] : undefined;
-    const lastTurnTs = lastTurn?.timestamp ? new Date(lastTurn.timestamp).getTime() : NaN;
-    const lastActivityAt = Number.isFinite(lastTurnTs)
-        ? lastTurnTs
-        : (completedAt ?? 0);
-
-    const firstContent = firstUserTurn?.content ?? '';
-
-    const chatMeta = turns.length > 0
-        ? {
-            turnCount: turns.length,
-            firstMessage: firstUserTurn
-                ? (firstContent.length > 120
-                    ? firstContent.substring(0, 117) + '...'
-                    : firstContent)
-                : undefined,
-            lastActivityAt,
-            title: proc.title,
-        }
-        : undefined;
 
     return {
         id: isQueueProcessId(proc.id) ? toTaskId(proc.id) : proc.id,
@@ -73,7 +47,6 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
             mode: proc.metadata?.mode as string | undefined,
             pipelineName: proc.metadata?.pipelineName as string | undefined,
         },
-        chatMeta,
     };
 }
 

@@ -422,50 +422,6 @@ export async function getManagerByRepoIdentifier(
     return undefined;
 }
 
-// ============================================================================
-// Chat Helpers
-// ============================================================================
-
-/**
- * Enrich chat-type tasks with conversation metadata from the process store.
- */
-export async function enrichChatTasks(
-    tasks: Record<string, unknown>[],
-    store: ProcessStore | undefined
-): Promise<void> {
-    if (!store) return;
-    for (const task of tasks) {
-        if (task.type !== 'chat' || !task.processId) continue;
-        try {
-            const proc = await store.getProcess(task.processId as string, (task as any).payload?.workspaceId as string | undefined);
-            if (!proc) continue;
-            const turns = proc.conversationTurns ?? [];
-            const firstUserTurn = turns.find(t => t.role === 'user');
-            const lastTurn = turns.length > 0 ? turns[turns.length - 1] : undefined;
-            const lastTurnTs = lastTurn?.timestamp ? new Date(lastTurn.timestamp).getTime() : NaN;
-            const lastActivityAt = Number.isFinite(lastTurnTs)
-                ? lastTurnTs
-                : (task.completedAt as number) ?? (task.createdAt as number) ?? 0;
-            const firstContent = firstUserTurn?.content ?? '';
-            task.chatMeta = {
-                turnCount: turns.length,
-                firstMessage: firstUserTurn
-                    ? (firstContent.length > 120
-                        ? firstContent.substring(0, 117) + '...'
-                        : firstContent)
-                    : undefined,
-                lastActivityAt,
-                title: proc.title,
-            };
-            if (proc.status === 'running') {
-                task.status = 'running';
-            }
-        } catch {
-            // Non-fatal: process may not exist
-        }
-    }
-}
-
 /**
  * Build a context prompt from prior conversation turns for cold session resume.
  */

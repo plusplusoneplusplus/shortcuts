@@ -108,42 +108,6 @@ describe('processToHistorySummary', () => {
         expect(summary.error).toBe('Something went wrong');
     });
 
-    it('should populate chatMeta from conversation turns', () => {
-        const proc: AIProcess = {
-            ...baseProcess,
-            title: 'Chat about auth',
-            conversationTurns: [
-                { role: 'user', content: 'How does auth work?', timestamp: new Date('2026-01-01T00:00:10Z'), turnIndex: 0, timeline: [] },
-                { role: 'assistant', content: 'Auth uses JWT tokens...', timestamp: new Date('2026-01-01T00:00:30Z'), turnIndex: 1, timeline: [] },
-                { role: 'user', content: 'Thanks!', timestamp: new Date('2026-01-01T00:00:50Z'), turnIndex: 2, timeline: [] },
-            ],
-        };
-        const summary = processToHistorySummary(proc);
-        expect(summary.chatMeta).toBeDefined();
-        expect(summary.chatMeta!.turnCount).toBe(3);
-        expect(summary.chatMeta!.firstMessage).toBe('How does auth work?');
-        expect(summary.chatMeta!.title).toBe('Chat about auth');
-        expect(summary.chatMeta!.lastActivityAt).toBe(new Date('2026-01-01T00:00:50Z').getTime());
-    });
-
-    it('should truncate long firstMessage in chatMeta', () => {
-        const longMessage = 'A'.repeat(200);
-        const proc: AIProcess = {
-            ...baseProcess,
-            conversationTurns: [
-                { role: 'user', content: longMessage, timestamp: new Date(), turnIndex: 0, timeline: [] },
-            ],
-        };
-        const summary = processToHistorySummary(proc);
-        expect(summary.chatMeta!.firstMessage!.length).toBeLessThanOrEqual(120);
-        expect(summary.chatMeta!.firstMessage!.endsWith('...')).toBe(true);
-    });
-
-    it('should not include chatMeta when no conversation turns', () => {
-        const summary = processToHistorySummary(baseProcess);
-        expect(summary.chatMeta).toBeUndefined();
-    });
-
     it('should extract mode from metadata into payload', () => {
         const proc = { ...baseProcess, metadata: { type: 'clarification', mode: 'autopilot' } };
         const summary = processToHistorySummary(proc);

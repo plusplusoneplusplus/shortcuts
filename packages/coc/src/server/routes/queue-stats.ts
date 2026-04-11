@@ -19,13 +19,12 @@ import {
     serializeTask,
     serializeTaskSummary,
     serializeQueueItemSummary,
-    enrichChatTasks,
     getAggregateStats,
     getManagerByRepoIdentifier,
     VALID_TASK_TYPES,
     type QueueRouteContext,
 } from './queue-shared';
-import { processToHistorySummary, processToTaskDetail, type HistorySummary } from '../shared/process-history-mapper';
+import { processToHistorySummary, processToTaskDetail } from '../shared/process-history-mapper';
 
 export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
@@ -152,7 +151,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                     const ws = workspaces.find(w => w.id === repoId);
                     filter.workspaceId = ws ? ws.id : repoId;
                 }
-                if (typeFilter && typeFilter !== 'chat') {
+                if (typeFilter) {
                     filter.type = typeFilter;
                 }
                 filter.limit = 200;
@@ -178,35 +177,8 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                 return tb - ta;
             });
 
-            // 3. For chat type, merge live (running/queued) tasks from in-memory queue
-            if (typeFilter === 'chat') {
-                const collectActive = (mgr: import('@plusplusoneplusplus/forge').TaskQueueManager) => {
-                    for (const task of [...mgr.getRunning(), ...mgr.getQueued()]) {
-                        if (
-                            (task.type as string) === 'chat' &&
-                            !seenIds.has(task.id)
-                        ) {
-                            seenIds.add(task.id);
-                            history.push(serializeTaskSummary(task));
-                        }
-                    }
-                };
-                if (repoId) {
-                    const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
-                    if (mgr) collectActive(mgr);
-                } else {
-                    for (const m of bridge.registry.getAllQueues().values()) {
-                        collectActive(m);
-                    }
-                }
-
-                await enrichChatTasks(history, store);
-                history.sort((a, b) => {
-                    const ta = ((a as any).chatMeta?.lastActivityAt as number) ?? (a.createdAt as number) ?? (a.completedAt as number) ?? 0;
-                    const tb = ((b as any).chatMeta?.lastActivityAt as number) ?? (b.createdAt as number) ?? (b.completedAt as number) ?? 0;
-                    return tb - ta;
-                });
-            }
+            // NOTE: chat type no longer has special handling here;
+            // the activity tab uses GET /api/workspaces/:id/history instead.
 
             const pipelineName = typeof parsed.query.pipelineName === 'string' && parsed.query.pipelineName
                 ? parsed.query.pipelineName
