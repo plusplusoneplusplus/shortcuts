@@ -139,14 +139,18 @@ describe('useChatSSE', () => {
         renderHook(() => useChatSSE(makeOptions({ refreshConversation, setIsStreaming })));
         const es = MockEventSource.latest();
         act(() => { es.triggerError(); });
+        // onerror is deferred via setTimeout(0) — wait for it
+        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
         expect(es.closed).toBe(true);
         expect(refreshConversation).toHaveBeenCalledWith('proc-1');
     });
 
-    it('calls onSendComplete on error so sending state and Stop button reset', () => {
+    it('calls onSendComplete on error so sending state and Stop button reset', async () => {
         const onSendComplete = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ onSendComplete })));
         act(() => { MockEventSource.latest().triggerError(); });
+        // onerror is deferred via setTimeout(0) — wait for it
+        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
         expect(onSendComplete).toHaveBeenCalled();
     });
 
@@ -159,7 +163,8 @@ describe('useChatSSE', () => {
         }));
         renderHook(() => useChatSSE(makeOptions({ setTask })));
         act(() => { MockEventSource.latest().triggerError(); });
-        // Wait for the fetch to resolve
+        // Wait for the deferred onerror handler and the fetch to resolve
+        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
         await act(async () => { await new Promise(r => setTimeout(r, 0)); });
         const taskUpdater = setTask.mock.calls.find(call => typeof call[0] === 'function')?.[0];
         const prev = { id: 'task-1', status: 'running' };

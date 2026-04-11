@@ -108,10 +108,12 @@ describe('useChatSSE', () => {
         expect(MockEventSource.instances).toHaveLength(0);
     });
 
-    it('calls setIsStreaming(false) on SSE onerror', () => {
+    it('calls setIsStreaming(false) on SSE onerror', async () => {
         const setIsStreaming = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setIsStreaming })));
         act(() => { MockEventSource.last._emitError(); });
+        // onerror is now deferred via setTimeout(0) — advance timers
+        await act(async () => { vi.advanceTimersByTime(0); });
         expect(setIsStreaming).toHaveBeenCalledWith(false);
     });
 
@@ -379,5 +381,143 @@ describe('useChatSSE', () => {
         // Then fire 'done' (should be suppressed)
         await act(async () => { es._emit('done', {}); });
         expect(refreshConversation).toHaveBeenCalledTimes(1);
+    });
+
+    it('onerror before done: defers via setTimeout so buffered done event fires first', async () => {
+        const setTask = vi.fn();
+        const onSendComplete = vi.fn();
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        renderHook(() => useChatSSE(makeOptions({ setTask, onSendComplete, refreshConversation })));
+        const es = MockEventSource.last;
+
+        // Simulate the race: onerror fires, then 'done' fires before setTimeout(0) runs
+        act(() => { es._emitError(); });
+        // At this point onerror has called setTimeout(..., 0) but the callback hasn't run yet.
+        // The 'done' event fires synchronously before the deferred handler:
+        await act(async () => { es._emit('done', {}); });
+        // finish() from 'done' should have set task to completed
+        const doneUpdater = setTask.mock.calls.find(([arg]: any) => typeof arg === 'function')?.[0];
+        expect(doneUpdater).toBeDefined();
+        expect(doneUpdater({ status: 'running' })).toEqual({ status: 'completed' });
+
+        // Now let the deferred onerror handler run — it should be suppressed by the finished guard
+        await act(async () => { vi.advanceTimersByTime(0); });
+        // onSendComplete was called once by finish() (via refreshConversation.finally), not by onerror
+        expect(onSendComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('onerror sets task.status to completed synchronously when no done event arrives', async () => {
+        const setTask = vi.fn();
+        const onSendComplete = vi.fn();
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        // Mock fetch for the retry fetch
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ task: { id: 'task-1', status: 'completed' } }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        renderHook(() => useChatSSE(makeOptions({ setTask, onSendComplete, refreshConversation })));
+        const es = MockEventSource.last;
+
+        // Fire onerror with no prior done event
+        act(() => { es._emitError(); });
+        // Advance past the setTimeout(0) deferral
+        await act(async () => { vi.advanceTimersByTime(0); });
+
+        // task.status should be optimistically set to 'completed'
+        const updater = setTask.mock.calls.find(([arg]: any) => typeof arg === 'function')?.[0];
+        expect(updater).toBeDefined();
+        expect(updater({ status: 'running' })).toEqual({ status: 'completed' });
+        // onSendComplete should have been called
+        expect(onSendComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('onerror dispatches REPO_TASK_COMPLETED_OPTIMISTIC', async () => {
+        const queueDispatch = vi.fn();
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ task: { id: 'task-1', status: 'completed' } }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        renderHook(() => useChatSSE(makeOptions({ queueDispatch, workspaceId: 'ws-1', refreshConversation })));
+        const es = MockEventSource.last;
+        act(() => { es._emitError(); });
+        await act(async () => { vi.advanceTimersByTime(0); });
+
+        expect(queueDispatch).toHaveBeenCalledWith({
+            type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+            repoId: 'ws-1',
+            taskId: 'task-1',
+            status: 'completed',
+        });
+    });
+
+    it('onerror retries fetch when server returns stale running status', async () => {
+        const setTask = vi.fn();
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        // First fetch returns stale 'running', second returns 'completed'
+        const mockFetch = vi.fn()
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ task: { id: 'task-1', status: 'running' } }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ task: { id: 'task-1', status: 'completed' } }),
+            });
+        vi.stubGlobal('fetch', mockFetch);
+
+        renderHook(() => useChatSSE(makeOptions({ setTask, refreshConversation })));
+        const es = MockEventSource.last;
+        act(() => { es._emitError(); });
+
+        // Run the deferred onerror handler
+        await act(async () => { vi.advanceTimersByTime(0); });
+        // Let the first fetch resolve
+        await act(async () => { await Promise.resolve(); });
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        // First response was 'running' — should retry after 500ms
+        await act(async () => { vi.advanceTimersByTime(500); });
+        await act(async () => { await Promise.resolve(); });
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+
+        // Second response was 'completed' — setTask should be called with server data
+        const serverUpdater = setTask.mock.calls.filter(([arg]: any) => typeof arg === 'function')
+            .map(([fn]: any) => fn)
+            .find((fn: any) => {
+                const result = fn({ id: 'task-1', status: 'running' });
+                return result?.status === 'completed' && result?.id === 'task-1';
+            });
+        expect(serverUpdater).toBeDefined();
+    });
+
+    it('onerror retries fetch on network error', async () => {
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        const mockFetch = vi.fn()
+            .mockRejectedValueOnce(new Error('network error'))
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ task: { id: 'task-1', status: 'completed' } }),
+            });
+        vi.stubGlobal('fetch', mockFetch);
+
+        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
+        const es = MockEventSource.last;
+        act(() => { es._emitError(); });
+
+        // Run the deferred onerror handler
+        await act(async () => { vi.advanceTimersByTime(0); });
+        // Let the first fetch reject
+        await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        // Should retry after 500ms
+        await act(async () => { vi.advanceTimersByTime(500); });
+        await act(async () => { await Promise.resolve(); });
+        expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 });
