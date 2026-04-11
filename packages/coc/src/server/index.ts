@@ -243,6 +243,7 @@ export type { ExecutorRegistryOptions } from './executors/executor-registry';
 export type { ITaskExecutor } from './executors/executor-types';
 export { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 export { SqliteQueuePersistence } from './queue/sqlite-queue-persistence';
+export type { RestartPolicy } from './queue/sqlite-queue-persistence';
 export { ImageBlobStore } from './queue/image-blob-store';
 
 // Data management

@@ -4,8 +4,7 @@
  * Externalizes base64 image data-URLs from queue persistence payloads
  * into standalone JSON files under `<dataDir>/blobs/`.
  *
- * Uses atomic writes (temp file + rename) matching the safety pattern
- * established in QueuePersistence.atomicWrite.
+ * Uses atomic writes (temp file + rename) for safe concurrent access.
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).

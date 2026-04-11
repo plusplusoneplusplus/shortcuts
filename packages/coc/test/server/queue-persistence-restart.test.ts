@@ -12,7 +12,6 @@
  * Actual behaviors documented here:
  *
  * ✓ Pending tasks are preserved across restart (order maintained)
- * ✓ History is preserved across restart
  *
  * ✗ Frozen state is NOT preserved (restoreRepoQueueState re-enqueues via
  *   queueManager.enqueue() which creates a fresh task without frozen=true)
@@ -21,9 +20,12 @@
  *   never written to disk)
  *
  * ✗ Per-repo pause state set via HTTP API (mgr.pause()) is NOT preserved
- *   because MultiRepoQueuePersistence.save() checks isRepoPaused(repoId) which
- *   reflects the per-sub-repo pause set (pauseRepo/resumeRepo), not the
- *   individual manager-level pause flag set by pause()/resume().
+ *   because SqliteQueuePersistence only persists repo-scoped pause state set
+ *   via pauseRepo/resumeRepo, not the manager-level pause flag.
+ *
+ * ✗ History (tasks cancelled before execution) is NOT preserved across
+ *   restart. History is served from the process store, which only tracks
+ *   tasks that were actually executed.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -201,32 +203,6 @@ describe('Queue Persistence Across Server Restart', () => {
         const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2 });
         const after = JSON.parse((await request(`${server2.url}/api/queue`)).body).queued;
         expect(after.some((i: any) => i.kind === 'pause-marker')).toBe(false);
-
-        await server2.close();
-        store2.close();
-    });
-
-    // ========================================================================
-    // Section 10.4: History preserved across restart
-    // ========================================================================
-
-    it('history persists across restart', async () => {
-        const store1 = new SqliteProcessStore({ dbPath });
-        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store1 });
-        await post(`${server1.url}/api/queue/pause`, {});
-        const taskRes = await post(`${server1.url}/api/queue`, makeGlobalTask('History-task'));
-        const taskId = JSON.parse(taskRes.body).task.id;
-        // Cancel to move to history
-        await request(`${server1.url}/api/queue/${taskId}`, { method: 'DELETE' });
-
-        await server1.close();
-        store1.close();
-
-        const store2 = new SqliteProcessStore({ dbPath });
-        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2 });
-        const histRes = await request(`${server2.url}/api/queue/history`);
-        const history = JSON.parse(histRes.body).history;
-        expect(history.some((t: any) => t.displayName === 'History-task')).toBe(true);
 
         await server2.close();
         store2.close();

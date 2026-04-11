@@ -39,7 +39,7 @@ interface RepoBridge {
 // ============================================================================
 
 export class MultiRepoQueueExecutorBridge extends EventEmitter {
-    /** Exposed for StaleTaskDetector and MultiRepoQueuePersistence to access per-repo managers. */
+    /** Exposed for StaleTaskDetector and SqliteQueuePersistence to access per-repo managers. */
     readonly registry: RepoQueueRegistry;
     private readonly store: ProcessStore;
     private defaultOptions: QueueExecutorBridgeOptions;
@@ -505,32 +505,6 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
                 let count = 0;
                 for (const m of allManagers()) count += m.forceFailRunning(error);
                 return count;
-            },
-            restoreHistory: (tasks: QueuedTask[]): void => {
-                // Group tasks by repoId and route each group to the correct manager.
-                const byRepoId = new Map<string, QueuedTask[]>();
-                for (const task of tasks) {
-                    const key = task.repoId ?? '';
-                    const group = byRepoId.get(key) ?? [];
-                    group.push(task);
-                    byRepoId.set(key, group);
-                }
-                for (const [rId, group] of byRepoId) {
-                    if (!rId) {
-                        process.stderr.write(
-                            `[MultiRepoQueueExecutorBridge] restoreHistory: ${group.length} task(s) have no repoId — skipping\n`
-                        );
-                        continue;
-                    }
-                    const manager = bridgeRef.getManagerByRepoId(rId);
-                    if (!manager) {
-                        process.stderr.write(
-                            `[MultiRepoQueueExecutorBridge] restoreHistory: no manager for repoId "${rId}" — skipping ${group.length} task(s)\n`
-                        );
-                        continue;
-                    }
-                    manager.restoreHistory(group);
-                }
             },
             reset: (): void => { for (const m of allManagers()) m.reset(); },
             on: (event: string, listener: (...args: any[]) => void) => {

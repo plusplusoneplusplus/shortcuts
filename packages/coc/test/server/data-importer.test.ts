@@ -23,7 +23,12 @@ import {
     type ImportOptions,
 } from '@plusplusoneplusplus/coc-server';
 import { readPreferences, writePreferences } from '../../src/server/preferences-handler';
-import { getRepoQueueFilePath } from '../../src/server/queue/queue-persistence';
+import { getRepoDataPath } from '../../src/server/paths';
+
+/** Get the per-repo queue file path (legacy JSON format). */
+function getRepoQueueFilePath(dataDir: string, workspaceId: string): string {
+    return getRepoDataPath(dataDir, workspaceId, 'queues.json');
+}
 
 // ============================================================================
 // Helpers

@@ -1707,17 +1707,24 @@ describe('Queue Handler', () => {
             // If the task doesn't have a processId set at the queue level, chatMeta won't be added
         });
 
-        it('should sync process running status back to task status during follow-ups', async () => {
+        it('should show completed chat process in history with correct status', async () => {
             const store = createSqliteStore();
 
-            // Add a process that is currently running (simulates a follow-up message in progress)
+            const repoRoot = path.resolve('/test/chat-status-sync');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
+
+            // Add a completed chat process — it appears in history via the process store
             await store.addProcess({
                 id: 'proc-running-1',
-                type: 'clarification',
+                type: 'chat',
                 promptPreview: 'test',
                 fullPrompt: 'test prompt',
-                status: 'running',
+                status: 'completed',
                 startTime: new Date(),
+                endTime: new Date(),
+                metadata: { workspaceId: repoId },
                 conversationTurns: [
                     { role: 'user', content: 'First question', timestamp: new Date(), turnIndex: 0 },
                     { role: 'assistant', content: 'First answer', timestamp: new Date(), turnIndex: 1 },
@@ -1725,35 +1732,15 @@ describe('Queue Handler', () => {
                 ],
             } as any);
 
-            // Pre-populate queue tasks in SQLite with a history entry that has processId set
-            const repoRoot = path.resolve('/test/chat-status-sync');
-            const crypto = require('crypto');
-            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
-            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            seedQueueHistory(store, repoId, repoRoot, [{
-                id: 'task-chat-running',
-                type: 'chat',
-                priority: 'normal',
-                status: 'completed',
-                createdAt: Date.now() - 10000,
-                completedAt: Date.now() - 5000,
-                payload: { prompt: 'Hello' },
-                displayName: 'Running chat',
-                processId: 'proc-running-1',
-                repoId,
-            }]);
-
-            // Start server after pre-populating — it restores the history with processId
             const srv = await startServerWith(store);
 
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            const chatTask = body.history.find((t: any) => t.id === 'task-chat-running');
+            const chatTask = body.history.find((t: any) => t.id === 'proc-running-1');
             expect(chatTask).toBeDefined();
             expect(chatTask.processId).toBe('proc-running-1');
-            // The task status should be synced to 'running' from the process store
-            expect(chatTask.status).toBe('running');
+            expect(chatTask.status).toBe('completed');
         });
 
         it('should be resilient when processId has no matching process', async () => {
@@ -1935,13 +1922,20 @@ describe('Queue Handler', () => {
             const store = createSqliteStore();
             const lastTurnTime = new Date('2025-06-15T10:30:00Z');
 
+            const repoRoot = path.resolve('/test/last-activity-turns');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
+
             await store.addProcess({
                 id: 'proc-activity-1',
-                type: 'clarification',
+                type: 'chat',
                 promptPreview: 'test',
                 fullPrompt: 'test prompt',
                 status: 'completed',
                 startTime: new Date(),
+                endTime: new Date(),
+                metadata: { workspaceId: repoId },
                 conversationTurns: [
                     { role: 'user', content: 'Hello', timestamp: new Date('2025-06-15T10:00:00Z'), turnIndex: 0 },
                     { role: 'assistant', content: 'Hi!', timestamp: new Date('2025-06-15T10:05:00Z'), turnIndex: 1 },
@@ -1949,28 +1943,11 @@ describe('Queue Handler', () => {
                 ],
             } as any);
 
-            const repoRoot = path.resolve('/test/last-activity-turns');
-            const crypto = require('crypto');
-            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
-            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            seedQueueHistory(store, repoId, repoRoot, [{
-                id: 'task-activity-1',
-                type: 'chat',
-                priority: 'normal',
-                status: 'completed',
-                createdAt: Date.now() - 60000,
-                completedAt: Date.now() - 30000,
-                payload: { prompt: 'Hello' },
-                displayName: 'Activity test chat',
-                processId: 'proc-activity-1',
-                repoId,
-            }]);
-
             const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            const task = body.history.find((t: any) => t.id === 'task-activity-1');
+            const task = body.history.find((t: any) => t.id === 'proc-activity-1');
             expect(task).toBeDefined();
             expect(task.chatMeta).toBeDefined();
             expect(task.chatMeta.lastActivityAt).toBe(lastTurnTime.getTime());
@@ -1982,10 +1959,16 @@ describe('Queue Handler', () => {
             const store = createSqliteStore();
             const db = store.getDatabase();
 
-            // Insert the process row
-            db.prepare(`INSERT INTO processes (id, workspace_id, type, prompt_preview, full_prompt, status, start_time, archived)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 0)`)
-                .run('proc-no-ts', '', 'clarification', 'test', 'test prompt', 'completed', new Date().toISOString());
+            const completedAt = Date.now() - 5000;
+            const repoRoot = path.resolve('/test/last-activity-no-ts');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
+
+            // Insert the process row with workspace_id and end_time for completedAt fallback
+            db.prepare(`INSERT INTO processes (id, workspace_id, type, prompt_preview, full_prompt, status, start_time, end_time, archived)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`)
+                .run('proc-no-ts', repoId, 'chat', 'test', 'test prompt', 'completed', new Date().toISOString(), new Date(completedAt).toISOString());
             // Insert turns with empty-string timestamps (simulates missing timestamps)
             db.prepare(`INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, streaming, timeline, historical, paste_externalized)
                 VALUES (?, ?, ?, ?, '', 0, '[]', 0, 0)`)
@@ -1994,83 +1977,61 @@ describe('Queue Handler', () => {
                 VALUES (?, ?, ?, ?, '', 0, '[]', 0, 0)`)
                 .run('proc-no-ts', 1, 'assistant', 'Hi!');
 
-            const completedAt = Date.now() - 5000;
-            const repoRoot = path.resolve('/test/last-activity-no-ts');
-            const crypto = require('crypto');
-            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
-            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            seedQueueHistory(store, repoId, repoRoot, [{
-                id: 'task-no-ts',
-                type: 'chat',
-                priority: 'normal',
-                status: 'completed',
-                createdAt: Date.now() - 60000,
-                completedAt,
-                payload: { prompt: 'Hello' },
-                displayName: 'No timestamp chat',
-                processId: 'proc-no-ts',
-                repoId,
-            }]);
-
             const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            const task = body.history.find((t: any) => t.id === 'task-no-ts');
+            const task = body.history.find((t: any) => t.id === 'proc-no-ts');
             expect(task).toBeDefined();
             expect(task.chatMeta.lastActivityAt).toBe(completedAt);
         });
 
-        it('should fall back to createdAt when no turns and no completedAt', async () => {
+        it('should fall back to zero when no turns and no completedAt', async () => {
             const store = createSqliteStore();
 
-            await store.addProcess({
-                id: 'proc-empty',
-                type: 'clarification',
-                promptPreview: 'test',
-                fullPrompt: 'test prompt',
-                status: 'completed',
-                startTime: new Date(),
-                conversationTurns: [],
-            } as any);
-
-            const createdAt = Date.now() - 120000;
             const repoRoot = path.resolve('/test/last-activity-empty');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            seedQueueHistory(store, repoId, repoRoot, [{
-                id: 'task-empty-turns',
+
+            await store.addProcess({
+                id: 'proc-empty',
                 type: 'chat',
-                priority: 'normal',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
                 status: 'completed',
-                createdAt,
-                payload: { prompt: 'Hello' },
-                displayName: 'Empty turns chat',
-                processId: 'proc-empty',
-                repoId,
-            }]);
+                startTime: new Date(),
+                metadata: { workspaceId: repoId },
+                conversationTurns: [],
+            } as any);
 
             const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            const task = body.history.find((t: any) => t.id === 'task-empty-turns');
+            const task = body.history.find((t: any) => t.id === 'proc-empty');
             expect(task).toBeDefined();
-            expect(task.chatMeta.lastActivityAt).toBe(createdAt);
+            expect(task.chatMeta.lastActivityAt).toBe(0);
         });
 
         it('should sort by lastActivityAt so recently-active conversations come first', async () => {
             const store = createSqliteStore();
 
+            const repoRoot = path.resolve('/test/last-activity-sort');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
+
             // Older chat with recent follow-up activity
             await store.addProcess({
                 id: 'proc-old-active',
-                type: 'clarification',
+                type: 'chat',
                 promptPreview: 'test',
                 fullPrompt: 'test prompt',
                 status: 'completed',
                 startTime: new Date(),
+                endTime: new Date('2025-01-01T10:05:00Z'),
+                metadata: { workspaceId: repoId },
                 conversationTurns: [
                     { role: 'user', content: 'Original question', timestamp: new Date('2025-01-01T10:00:00Z'), turnIndex: 0 },
                     { role: 'assistant', content: 'Answer', timestamp: new Date('2025-01-01T10:05:00Z'), turnIndex: 1 },
@@ -2081,47 +2042,18 @@ describe('Queue Handler', () => {
             // Newer chat with no follow-up
             await store.addProcess({
                 id: 'proc-new-idle',
-                type: 'clarification',
+                type: 'chat',
                 promptPreview: 'test',
                 fullPrompt: 'test prompt',
                 status: 'completed',
                 startTime: new Date(),
+                endTime: new Date('2025-06-01T10:05:00Z'),
+                metadata: { workspaceId: repoId },
                 conversationTurns: [
                     { role: 'user', content: 'New question', timestamp: new Date('2025-06-01T10:00:00Z'), turnIndex: 0 },
                     { role: 'assistant', content: 'New answer', timestamp: new Date('2025-06-01T10:05:00Z'), turnIndex: 1 },
                 ],
             } as any);
-
-            const repoRoot = path.resolve('/test/last-activity-sort');
-            const crypto = require('crypto');
-            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
-            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            seedQueueHistory(store, repoId, repoRoot, [
-                {
-                    id: 'task-old-active',
-                    type: 'chat',
-                    priority: 'normal',
-                    status: 'completed',
-                    createdAt: new Date('2025-01-01T10:00:00Z').getTime(),
-                    completedAt: new Date('2025-01-01T10:05:00Z').getTime(),
-                    payload: { prompt: 'Original question' },
-                    displayName: 'Old but active chat',
-                    processId: 'proc-old-active',
-                    repoId,
-                },
-                {
-                    id: 'task-new-idle',
-                    type: 'chat',
-                    priority: 'normal',
-                    status: 'completed',
-                    createdAt: new Date('2025-06-01T10:00:00Z').getTime(),
-                    completedAt: new Date('2025-06-01T10:05:00Z').getTime(),
-                    payload: { prompt: 'New question' },
-                    displayName: 'Newer but idle chat',
-                    processId: 'proc-new-idle',
-                    repoId,
-                },
-            ]);
 
             const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
@@ -2131,49 +2063,40 @@ describe('Queue Handler', () => {
 
             // The old chat with recent follow-up (lastActivityAt: 2025-06-15) should come first
             // despite having an older createdAt than the newer chat (lastActivityAt: 2025-06-01)
-            expect(body.history[0].id).toBe('task-old-active');
-            expect(body.history[1].id).toBe('task-new-idle');
+            expect(body.history[0].id).toBe('proc-old-active');
+            expect(body.history[1].id).toBe('proc-new-idle');
             expect(body.history[0].chatMeta.lastActivityAt).toBeGreaterThan(body.history[1].chatMeta.lastActivityAt);
         });
 
         it('should include process title in chatMeta when set', async () => {
             const store = createSqliteStore();
 
+            const repoRoot = path.resolve('/test/title-present');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
+
             await store.addProcess({
                 id: 'proc-titled',
-                type: 'clarification',
+                type: 'chat',
                 promptPreview: 'test',
                 fullPrompt: 'test prompt',
                 status: 'completed',
                 startTime: new Date(),
+                endTime: new Date(),
                 title: 'Fix Authentication Bug',
+                metadata: { workspaceId: repoId },
                 conversationTurns: [
                     { role: 'user', content: 'Fix the auth bug', timestamp: new Date(), turnIndex: 0 },
                     { role: 'assistant', content: 'Done', timestamp: new Date(), turnIndex: 1 },
                 ],
             } as any);
 
-            const repoRoot = path.resolve('/test/title-present');
-            const crypto = require('crypto');
-            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
-            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            seedQueueHistory(store, repoId, repoRoot, [{
-                id: 'task-titled',
-                type: 'chat',
-                priority: 'normal',
-                status: 'completed',
-                createdAt: Date.now(),
-                payload: { prompt: 'Fix the auth bug' },
-                displayName: 'Titled chat',
-                processId: 'proc-titled',
-                repoId,
-            }]);
-
             const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            const task = body.history.find((t: any) => t.id === 'task-titled');
+            const task = body.history.find((t: any) => t.id === 'proc-titled');
             expect(task).toBeDefined();
             expect(task.chatMeta).toBeDefined();
             expect(task.chatMeta.title).toBe('Fix Authentication Bug');
@@ -2182,40 +2105,31 @@ describe('Queue Handler', () => {
         it('should have undefined chatMeta.title when process has no title', async () => {
             const store = createSqliteStore();
 
+            const repoRoot = path.resolve('/test/title-absent');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
+
             await store.addProcess({
                 id: 'proc-no-title',
-                type: 'clarification',
+                type: 'chat',
                 promptPreview: 'test',
                 fullPrompt: 'test prompt',
                 status: 'completed',
                 startTime: new Date(),
+                endTime: new Date(),
+                metadata: { workspaceId: repoId },
                 conversationTurns: [
                     { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0 },
                     { role: 'assistant', content: 'Hi', timestamp: new Date(), turnIndex: 1 },
                 ],
             } as any);
 
-            const repoRoot = path.resolve('/test/title-absent');
-            const crypto = require('crypto');
-            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
-            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            seedQueueHistory(store, repoId, repoRoot, [{
-                id: 'task-no-title',
-                type: 'chat',
-                priority: 'normal',
-                status: 'completed',
-                createdAt: Date.now(),
-                payload: { prompt: 'Hello' },
-                displayName: 'Untitled chat',
-                processId: 'proc-no-title',
-                repoId,
-            }]);
-
             const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            const task = body.history.find((t: any) => t.id === 'task-no-title');
+            const task = body.history.find((t: any) => t.id === 'proc-no-title');
             expect(task).toBeDefined();
             expect(task.chatMeta).toBeDefined();
             expect(task.chatMeta.title).toBeUndefined();

@@ -8,7 +8,7 @@
  * - POST /api/queue/pause-marker twice → two independent markers
  * - Queue with two markers → both appear in queued list
  * - Pause marker NOT persisted across server restart (actual behavior):
- *   MultiRepoQueuePersistence.save() uses getQueued() which excludes markers
+ *   SqliteQueuePersistence uses getQueued() which excludes markers
  *
  * Note on "queue drains up to but not past the marked position": requires
  * AI execution and is covered by executor-level tests; not re-tested here.

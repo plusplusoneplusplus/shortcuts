@@ -45,16 +45,12 @@ describe('applyFollowUpToTask', () => {
     }
 
     function seedToHistory(qm: TaskQueueManager): string {
-        const taskId = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        qm.restoreHistory([{
-            id: taskId,
+        const taskId = qm.enqueue({
             type: 'chat',
-            status: 'completed',
             priority: 'normal',
             payload: { prompt: 'original' },
-            createdAt: Date.now() - 1000,
-            completedAt: Date.now(),
-        }]);
+        });
+        qm.cancelTask(taskId);
         return taskId;
     }
 

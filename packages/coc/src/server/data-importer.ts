@@ -24,9 +24,13 @@ import type {
 import { validateExportPayload } from './export-import-types';
 // TODO(coc-merge): redirect to ./preferences-handler once fully migrated
 import { PREFERENCES_FILE_NAME } from './preferences-handler';
-import { getRepoQueueFilePath } from './queue/queue-persistence';
 import { getRepoDataPath } from './paths';
 import { atomicWriteJson } from './shared/fs-utils';
+
+/** Get the per-repo queue file path (legacy JSON format). */
+function getRepoQueueFilePath(dataDir: string, workspaceId: string): string {
+    return getRepoDataPath(dataDir, workspaceId, 'queues.json');
+}
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 

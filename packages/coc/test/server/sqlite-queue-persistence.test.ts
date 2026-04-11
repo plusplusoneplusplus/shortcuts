@@ -305,7 +305,7 @@ describe('SqliteQueuePersistence', () => {
             expect(qm!.getPauseReason(rId)).toEqual({ taskId: 'x', displayName: 'failed', failedAt: '2024-01-01' });
         });
 
-        it('with running tasks + fail policy — marks as failed and removes from DB', () => {
+        it('with running tasks + fail policy — removes from DB', () => {
             const rootPath = '/repo/fail-policy';
             const rId = repoId(rootPath);
             bridge.registerRepoId(rId, rootPath);
@@ -319,9 +319,8 @@ describe('SqliteQueuePersistence', () => {
 
             const qm = registry.getQueueForRepo(rootPath)!;
             expect(qm.getQueued()).toHaveLength(0);
-            expect(qm.getHistory()).toHaveLength(1);
-            expect(qm.getHistory()[0].status).toBe('failed');
-            expect(qm.getHistory()[0].error).toContain('Server restarted');
+            // History is no longer restored into in-memory — served from process store
+            expect(qm.getHistory()).toHaveLength(0);
 
             // Task should be removed from SQLite
             expect(store.getQueueTasks(rId, ['running'])).toHaveLength(0);
@@ -369,7 +368,7 @@ describe('SqliteQueuePersistence', () => {
             expect(qm.getQueued()[0].priority).toBe('high');
         });
 
-        it('with running tasks + requeue-if-retriable — fails when no retries remain', () => {
+        it('with running tasks + requeue-if-retriable — removes when no retries remain', () => {
             const rootPath = '/repo/no-retries';
             const rId = repoId(rootPath);
             bridge.registerRepoId(rId, rootPath);
@@ -386,8 +385,9 @@ describe('SqliteQueuePersistence', () => {
 
             const qm = registry.getQueueForRepo(rootPath)!;
             expect(qm.getQueued()).toHaveLength(0);
-            expect(qm.getHistory()).toHaveLength(1);
-            expect(qm.getHistory()[0].status).toBe('failed');
+            // Task is removed from DB, not restored to in-memory history
+            expect(qm.getHistory()).toHaveLength(0);
+            expect(store.getQueueTasks(rId, ['running'])).toHaveLength(0);
         });
 
         it('default restart policy is requeue-if-retriable', () => {
@@ -423,23 +423,22 @@ describe('SqliteQueuePersistence', () => {
             expect(store.getQueueTasks(rId, ['queued'])).toHaveLength(1); // still in DB
         });
 
-        it('restores history entries from SQLite', () => {
+        it('cleans up terminal tasks from SQLite on restore', () => {
             const rootPath = '/repo/with-history';
             const rId = repoId(rootPath);
             bridge.registerRepoId(rId, rootPath);
 
             persistence = new SqliteQueuePersistence(bridge, db);
 
-            // Seed completed tasks — should be restored as history
+            // Seed completed tasks — should be cleaned up from SQLite
             store.upsertQueueTask(makeTask('done1', { repoId: rId, status: 'completed', completedAt: Date.now() }));
             store.upsertQueueTask(makeTask('fail1', { repoId: rId, status: 'failed', error: 'oops' }));
             db.prepare('INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run(rId, rootPath);
 
             persistence.restore();
 
-            const qm = registry.getQueueForRepo(rootPath);
-            expect(qm?.getQueued() ?? []).toHaveLength(0);
-            expect(qm?.getHistory() ?? []).toHaveLength(2);
+            // Terminal tasks are cleaned up from SQLite, not restored to in-memory history
+            expect(store.getQueueTasks(rId, ['completed', 'failed'])).toHaveLength(0);
         });
 
         it('registers repo IDs with the bridge during restore', () => {

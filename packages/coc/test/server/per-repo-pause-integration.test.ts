@@ -7,7 +7,7 @@
  * - API endpoints support repoId parameter
  * - Multiple repos with independent pause states
  *
- * Uses patterns from integration.test.ts and queue-persistence.test.ts.
+ * Uses patterns from integration.test.ts.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';

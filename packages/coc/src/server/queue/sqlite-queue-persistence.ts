@@ -1,15 +1,16 @@
 /**
  * SqliteQueuePersistence
  *
- * Replaces the debounce+full-file-rewrite approach of MultiRepoQueuePersistence
- * with incremental, synchronous SQLite row upserts via SqliteQueueStore.
+ * Replaces the debounce+full-file-rewrite approach of the former JSON-based
+ * queue persistence with incremental, synchronous SQLite row upserts via
+ * SqliteQueueStore.
  *
- * Key differences from MultiRepoQueuePersistence:
+ * Key differences from the former JSON persistence:
  * - No debounce — every change event produces an immediate SQLite write.
  * - No full-file rewrite — only the affected row(s) are upserted/deleted.
  * - No image blob externalisation — images stay inline in the payload JSON.
  * - History IS persisted — completed/failed/cancelled tasks are kept in SQLite
- *   and restored as history entries on restart.
+ *   and cleaned up on restart (served from the process store instead).
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -18,7 +19,14 @@
 import type Database from 'better-sqlite3';
 import { SqliteQueueStore, type TaskQueueManager, type QueueChangeEvent, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
-import type { RestartPolicy } from './queue-persistence';
+
+/**
+ * What to do with tasks that were running when the server last stopped.
+ * - `'fail'`: mark as failed
+ * - `'requeue'`: re-enqueue at high priority
+ * - `'requeue-if-retriable'`: requeue only when retryCount < retryAttempts; otherwise fail
+ */
+export type RestartPolicy = 'fail' | 'requeue' | 'requeue-if-retriable';
 
 // ============================================================================
 // Types
@@ -165,34 +173,16 @@ export class SqliteQueuePersistence {
             );
         }
 
-        // 4. Restore completed/failed/cancelled tasks as history entries
-        const historyTasks = this.store.getQueueTasks(undefined, ['completed', 'failed', 'cancelled']);
-        const historyByRepo = new Map<string, QueuedTask[]>();
-        for (const task of historyTasks) {
-            const repoId = task.repoId ?? '';
-            if (!historyByRepo.has(repoId)) {
-                historyByRepo.set(repoId, []);
-            }
-            historyByRepo.get(repoId)!.push(task);
+        // 4. Clean up terminal tasks (completed/failed/cancelled) from queue_tasks.
+        // History is now served from the process store; these rows are no longer
+        // restored into in-memory history and would otherwise be orphaned.
+        const terminalTasks = this.store.getQueueTasks(undefined, ['completed', 'failed', 'cancelled']);
+        for (const task of terminalTasks) {
+            this.store.removeQueueTask(task.id);
         }
-
-        let totalHistory = 0;
-        for (const [repoId, repoTasks] of historyByRepo) {
-            const rootPath = this.repoIdToPath.get(repoId);
-            if (!rootPath) continue;
-
-            this.bridge.getOrCreateBridge(rootPath);
-            const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
-            if (!queueManager) continue;
-
-            this.subscribeToRepo(rootPath);
-            queueManager.restoreHistory(repoTasks);
-            totalHistory += repoTasks.length;
-        }
-
-        if (totalHistory > 0) {
+        if (terminalTasks.length > 0) {
             process.stderr.write(
-                `[SqliteQueuePersistence] Restored ${totalHistory} history entry/entries\n`
+                `[SqliteQueuePersistence] Cleaned up ${terminalTasks.length} terminal task(s) from queue_tasks\n`
             );
         }
     }
@@ -349,14 +339,7 @@ export class SqliteQueuePersistence {
             });
             return 1;
         } else {
-            // policy === 'fail' or not retriable — mark as failed, remove from queue
-            const failedTask: QueuedTask = {
-                ...task,
-                status: 'failed',
-                error: 'Server restarted — task was running when server stopped',
-                completedAt: Date.now(),
-            };
-            queueManager.restoreHistory([failedTask]);
+            // policy === 'fail' or not retriable — remove from queue
             this.store.removeQueueTask(task.id);
             return 0;
         }
