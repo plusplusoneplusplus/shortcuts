@@ -148,11 +148,11 @@ describe('Admin Storage Routes', () => {
 
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.backend).toBe('file');
+            expect(body.backend).toBe('sqlite');
             expect(typeof body.stats.processes).toBe('number');
             expect(typeof body.stats.workspaces).toBe('number');
-            // No dbPath for file backend when db doesn't exist
-            expect(body.dbPath).toBeUndefined();
+            // dbPath is present because schedule infra creates processes.db even with FileProcessStore
+            expect(body.dbPath).toBeDefined();
         });
 
         it('should return dbPath when sqlite backend and db exists', async () => {

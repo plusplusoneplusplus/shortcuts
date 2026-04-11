@@ -97,10 +97,14 @@ describe('AdminPanel', () => {
     });
 
     it('renders danger zone with wipe button', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({}),
-            headers: new Headers(),
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/storage/status')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ backend: 'file', stats: { processes: 0, workspaces: 0 } }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}), headers: new Headers() });
         });
         await act(async () => {
             renderWithProviders();

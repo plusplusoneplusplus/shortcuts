@@ -25,11 +25,27 @@ vi.mock('../../../../src/server/spa/client/react/repos/notes/NoteEditor', () => 
     NoteEditor: (props: any) => {
         capturedOnEditorReady = props.onEditorReady;
         return (
-            <div
-                data-testid="note-editor"
-                data-comments-enabled={String(props.commentsEnabled)}
-                data-note-path={props.notePath || ''}
-            />
+            <>
+                <div
+                    data-testid="note-editor"
+                    data-comments-enabled={String(props.commentsEnabled)}
+                    data-note-path={props.notePath || ''}
+                />
+                {props.notePath && props.onToggleCommentsPanel && (
+                    <button
+                        data-testid="comments-panel-toggle"
+                        aria-label={props.commentsPanelOpen ? 'Hide comments' : 'Show comments'}
+                        onClick={props.onToggleCommentsPanel}
+                    >
+                        💬
+                        {(props.commentCount ?? 0) > 0 && (
+                            <span data-testid="comments-toggle-count">
+                                {props.commentCount}
+                            </span>
+                        )}
+                    </button>
+                )}
+            </>
         );
     },
 }));

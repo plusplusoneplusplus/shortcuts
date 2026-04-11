@@ -346,6 +346,7 @@ async function persistProcess(
             },
         };
         const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
+        fs.mkdirSync(dataDir, { recursive: true });
         const store = createProcessStore(dataDir, fileConfig?.store?.backend);
         try {
             await store.addProcess(process);
