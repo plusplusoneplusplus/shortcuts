@@ -17,7 +17,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 
@@ -393,6 +393,21 @@ describe('Per-Repo Queue Integration', () => {
             const repoA = '/repo-persist-a';
             const repoB = '/repo-persist-b';
 
+            // Close the shared FileProcessStore-based server; restart tests need SqliteProcessStore
+            await server.close();
+
+            const dbPath = path.join(tmpDir, 'processes.db');
+            const store1 = new SqliteProcessStore({ dbPath });
+            sharedMock = createMockSDKService();
+            server = await createExecutionServer({
+                port: 0,
+                host: '127.0.0.1',
+                dataDir: tmpDir,
+                store: store1,
+                aiService: sharedMock.service as any,
+            });
+            baseUrl = server.url;
+
             // Register workspaces so the bridge can persist with valid repoId filenames
             await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-persist-a', name: 'ws-persist-a', rootPath: repoA });
             await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-persist-b', name: 'ws-persist-b', rootPath: repoB });
@@ -404,11 +419,13 @@ describe('Per-Repo Queue Integration', () => {
             await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, {
                 displayName: 'Persistent task A',
                 prompt: 'Persistent prompt A',
+                repoId: 'ws-persist-a',
             }));
 
             await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, {
                 displayName: 'Persistent task B',
                 prompt: 'Persistent prompt B',
+                repoId: 'ws-persist-b',
             }));
 
             // Verify tasks are queued
@@ -421,13 +438,11 @@ describe('Per-Repo Queue Integration', () => {
             expect(beforeTasksA.filter((t: any) => t.payload?.workingDirectory === repoA).length).toBe(1);
             expect(beforeTasksB.filter((t: any) => t.payload?.workingDirectory === repoB).length).toBe(1);
 
-            // Wait for persistence debounce to flush (300ms + buffer)
-            await waitFor(600);
-
             // Simulate restart by closing and recreating server with same data directory
             await server.close();
+            store1.close();
 
-            const restartedStore = new FileProcessStore({ dataDir: tmpDir });
+            const store2 = new SqliteProcessStore({ dbPath });
             // Use a slow mock so restored tasks stay queued/running long enough to verify
             sharedMock = createMockSDKService();
             sharedMock.mockSendMessage.mockImplementation(() => new Promise(resolve =>
@@ -437,7 +452,7 @@ describe('Per-Repo Queue Integration', () => {
                 port: 0,
                 host: '127.0.0.1',
                 dataDir: tmpDir,
-                store: restartedStore,
+                store: store2,
                 aiService: sharedMock.service as any,
             });
             baseUrl = server.url;
@@ -472,8 +487,22 @@ describe('Per-Repo Queue Integration', () => {
             expect(repoATasks[0].displayName).toBe('Persistent task A');
             expect(repoBTasks[0].displayName).toBe('Persistent task B');
 
-            // Restore fast mock for subsequent tests
-            sharedMock.resetAll();
+            // Close the SQLite-backed server and restore a FileProcessStore server for subsequent tests
+            await server.close();
+            store2.close();
+
+            const restoreStore = new FileProcessStore({ dataDir: tmpDir });
+            sharedMock = createMockSDKService();
+            server = await createExecutionServer({
+                port: 0,
+                host: '127.0.0.1',
+                dataDir: tmpDir,
+                store: restoreStore,
+                aiService: sharedMock.service as any,
+            });
+            baseUrl = server.url;
+            const parsedRestore = new URL(baseUrl);
+            wsUrl = `ws://${parsedRestore.hostname}:${parsedRestore.port}/ws`;
         });
     });
 

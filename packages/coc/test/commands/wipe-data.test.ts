@@ -57,7 +57,12 @@ describe('executeWipeData', () => {
         store.close();
 
         writeJSON(path.join(dataDir, 'preferences.json'), { lastModel: 'gpt-4' });
-        writeJSON(path.join(dataDir, 'repos', 'abc', 'queues.json'), { version: 2, pending: [] });
+
+        // Seed queue rows in SQLite
+        const store1b = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
+        const db = store1b.getDatabase();
+        db.prepare('INSERT INTO queue_tasks (id, repo_id, type, status, priority, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('t1', 'abc', 'chat', 'queued', 'normal', '{}', Date.now());
+        store1b.close();
 
         const exitCode = await executeWipeData({
             confirm: true,
@@ -73,10 +78,14 @@ describe('executeWipeData', () => {
 
         const workspaces = await store2.getWorkspaces();
         expect(workspaces).toHaveLength(0);
+
+        // Verify queue rows were deleted
+        const db2 = store2.getDatabase();
+        const taskCount = (db2.prepare('SELECT COUNT(*) as cnt FROM queue_tasks').get() as { cnt: number }).cnt;
+        expect(taskCount).toBe(0);
         store2.close();
 
         expect(fs.existsSync(path.join(dataDir, 'preferences.json'))).toBe(false);
-        expect(fs.existsSync(path.join(dataDir, 'repos', 'abc', 'queues.json'))).toBe(false);
     });
 
     it('should show dry-run without deleting', async () => {

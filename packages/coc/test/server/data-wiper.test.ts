@@ -2,14 +2,14 @@
  * Data Wiper Tests
  *
  * Tests for the DataWiper class: wipe logic, dry-run, error handling,
- * and queue/preferences file deletion.
+ * and SQLite queue row deletion.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { DataWiper } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -31,14 +31,15 @@ function writeJSON(filePath: string, data: unknown): void {
 
 describe('DataWiper', () => {
     let dataDir: string;
-    let store: FileProcessStore;
+    let store: SqliteProcessStore;
 
     beforeEach(async () => {
         dataDir = createTempDir();
-        store = new FileProcessStore({ dataDir });
+        store = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
     });
 
     afterEach(() => {
+        store.close();
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
@@ -81,18 +82,16 @@ describe('DataWiper', () => {
             expect(summary.deletedWikis).toBe(1);
         });
 
-        it('should count queue files', async () => {
-            const repoAbcDir = path.join(dataDir, 'repos', 'abc123');
-            const repoDefDir = path.join(dataDir, 'repos', 'def456');
-            fs.mkdirSync(repoAbcDir, { recursive: true });
-            fs.mkdirSync(repoDefDir, { recursive: true });
-            writeJSON(path.join(repoAbcDir, 'queues.json'), { version: 2, pending: [] });
-            writeJSON(path.join(repoDefDir, 'queues.json'), { version: 2, pending: [] });
+        it('should count queue rows from SQLite', async () => {
+            const db = store.getDatabase();
+            db.prepare('INSERT INTO queue_tasks (id, repo_id, type, status, priority, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('t1', 'repo1', 'chat', 'queued', 'normal', '{}', Date.now());
+            db.prepare('INSERT INTO queue_tasks (id, repo_id, type, status, priority, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('t2', 'repo1', 'chat', 'running', 'normal', '{}', Date.now());
+            db.prepare('INSERT INTO queue_repo_state (repo_id, is_paused) VALUES (?, ?)').run('repo1', 0);
 
             const wiper = new DataWiper(dataDir, store);
             const summary = await wiper.getDryRunSummary();
 
-            expect(summary.deletedQueues).toBe(2);
+            expect(summary.deletedQueues).toBe(3);
         });
 
         it('should detect preferences file', async () => {
@@ -251,17 +250,24 @@ describe('DataWiper', () => {
             expect(remaining).toHaveLength(0);
         });
 
-        it('should delete queue files', async () => {
-            const repoDir = path.join(dataDir, 'repos', 'abc123');
-            fs.mkdirSync(repoDir, { recursive: true });
-            const queueFile = path.join(repoDir, 'queues.json');
-            writeJSON(queueFile, { version: 2, pending: [] });
+        it('should delete queue rows from SQLite', async () => {
+            const db = store.getDatabase();
+            db.prepare('INSERT INTO queue_tasks (id, repo_id, type, status, priority, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('t1', 'repo1', 'chat', 'queued', 'normal', '{}', Date.now());
+            db.prepare('INSERT INTO queue_repo_state (repo_id, is_paused) VALUES (?, ?)').run('repo1', 0);
+            // queue_repo_paths is created lazily by SqliteQueuePersistence — create it for the test
+            db.exec('CREATE TABLE IF NOT EXISTS queue_repo_paths (repo_id TEXT PRIMARY KEY, root_path TEXT NOT NULL)');
+            db.prepare('INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run('repo1', '/tmp/repo1');
 
             const wiper = new DataWiper(dataDir, store);
             const result = await wiper.wipeData({ includeWikis: false });
 
-            expect(result.deletedQueues).toBe(1);
-            expect(fs.existsSync(queueFile)).toBe(false);
+            expect(result.deletedQueues).toBe(2); // 1 task + 1 repo state
+            const taskRows = db.prepare('SELECT COUNT(*) as cnt FROM queue_tasks').get() as { cnt: number };
+            expect(taskRows.cnt).toBe(0);
+            const stateRows = db.prepare('SELECT COUNT(*) as cnt FROM queue_repo_state').get() as { cnt: number };
+            expect(stateRows.cnt).toBe(0);
+            const pathRows = db.prepare('SELECT COUNT(*) as cnt FROM queue_repo_paths').get() as { cnt: number };
+            expect(pathRows.cnt).toBe(0);
         });
 
         it('should delete preferences file', async () => {
@@ -317,7 +323,7 @@ describe('DataWiper', () => {
             expect(fs.existsSync(wikiDir)).toBe(true);
         });
 
-        it('should handle missing queue directory gracefully', async () => {
+        it('should handle empty queue tables gracefully', async () => {
             const wiper = new DataWiper(dataDir, store);
             const result = await wiper.wipeData({ includeWikis: false });
 
@@ -385,17 +391,11 @@ describe('DataWiper', () => {
                 id: 'p1', type: 'clarification', promptPreview: 'test', fullPrompt: 'test', status: 'completed', startTime: new Date(),
             });
 
-            // Create a queue file
-            const repoDir = path.join(dataDir, 'repos', 'abc123');
-            fs.mkdirSync(repoDir, { recursive: true });
-            writeJSON(path.join(repoDir, 'queues.json'), { version: 2 });
-
             const wiper = new DataWiper(dataDir, store);
             const result = await wiper.wipeData({ includeWikis: false });
 
             // Should succeed overall
             expect(result.deletedProcesses).toBe(1);
-            expect(result.deletedQueues).toBe(1);
         });
     });
 });

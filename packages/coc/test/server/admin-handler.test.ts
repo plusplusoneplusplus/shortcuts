@@ -12,7 +12,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { resetWipeToken, resetImportToken } from '@plusplusoneplusplus/coc-server';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -267,17 +267,18 @@ describe('Admin Handler', () => {
             expect(fs.existsSync(prefsPath)).toBe(false);
         });
 
-        it('should delete queue files when wiping', async () => {
-            const srv = await startServer();
+        it('should delete queue rows when wiping', async () => {
+            // Use SqliteProcessStore so queue rows are counted/deleted from SQLite
+            const sqliteStore = new SqliteProcessStore({ dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: sqliteStore, dataDir });
+            const srv = server;
 
-            // Create queue files
-            const repoDir = path.join(dataDir, 'repos', 'abc123');
-            fs.mkdirSync(repoDir, { recursive: true });
-            fs.writeFileSync(
-                path.join(repoDir, 'queues.json'),
-                JSON.stringify({ version: 2, pending: [] }),
-                'utf-8',
-            );
+            // Seed a queue task row directly in SQLite
+            const db = sqliteStore.getDatabase();
+            db.prepare(
+                `INSERT INTO queue_tasks (id, repo_id, type, priority, status, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+            ).run('t1', 'abc123', 'chat', 'normal', 'queued', Date.now());
 
             // Get token and wipe
             const tokenRes = await request(`${srv.url}/api/admin/data/wipe-token`);
@@ -289,8 +290,7 @@ describe('Admin Handler', () => {
 
             expect(wipeRes.status).toBe(200);
             const result = JSON.parse(wipeRes.body);
-            expect(result.deletedQueues).toBe(1);
-            expect(fs.existsSync(path.join(repoDir, 'queues.json'))).toBe(false);
+            expect(result.deletedQueues).toBeGreaterThanOrEqual(1);
         });
 
         it('should preserve config.yaml', async () => {

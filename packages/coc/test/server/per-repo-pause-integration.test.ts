@@ -10,11 +10,12 @@
  * Uses patterns from integration.test.ts and queue-persistence.test.ts.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { createExecutionServer } from '../../src/server/index';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
@@ -58,13 +59,14 @@ function request(
     });
 }
 
-function makeTaskBody(workingDirectory: string, displayName?: string): string {
+function makeTaskBody(workingDirectory: string, displayName?: string, repoId?: string): string {
     return JSON.stringify({
         type: 'chat',
         priority: 'normal',
         payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', workingDirectory },
         config: {},
         displayName: displayName || `Task: ${workingDirectory}`,
+        ...(repoId ? { repoId } : {}),
     });
 }
 
@@ -83,14 +85,6 @@ async function registerWorkspace(baseUrl: string, id: string, rootPath: string):
 describe('Per-Repo Pause Integration', () => {
     let tmpDir: string;
 
-    beforeAll(() => {
-        vi.useFakeTimers();
-    });
-
-    afterAll(() => {
-        vi.useRealTimers();
-    });
-
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'per-repo-pause-'));
     });
@@ -100,8 +94,10 @@ describe('Per-Repo Pause Integration', () => {
     // ------------------------------------------------------------------
     describe('server restart persistence', () => {
         it('preserves tasks across restart (pause state uses manager.pause(), not persisted via isRepoPaused)', async () => {
+            const dbPath = path.join(tmpDir, 'processes.db');
             // Start first server
-            const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
+            const store1 = new SqliteProcessStore({ dbPath });
+            const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, store: store1 });
             const baseUrl = server1.url;
 
             // Enqueue tasks for three repos
@@ -118,15 +114,15 @@ describe('Per-Repo Pause Integration', () => {
 
             await request(`${baseUrl}/api/queue`, {
                 method: 'POST',
-                body: makeTaskBody(repoAPaths),
+                body: makeTaskBody(repoAPaths, undefined, repoAId),
             });
             await request(`${baseUrl}/api/queue`, {
                 method: 'POST',
-                body: makeTaskBody(repoBPaths),
+                body: makeTaskBody(repoBPaths, undefined, repoBId),
             });
             await request(`${baseUrl}/api/queue`, {
                 method: 'POST',
-                body: makeTaskBody(repoCPaths),
+                body: makeTaskBody(repoCPaths, undefined, repoCId),
             });
 
             // Pause repo-A and repo-C
@@ -140,12 +136,12 @@ describe('Per-Repo Pause Integration', () => {
             expect(repos1.find((r: any) => r.repoId === repoAId)?.isPaused).toBe(true);
             expect(repos1.find((r: any) => r.repoId === repoCId)?.isPaused).toBe(true);
 
-            // Flush save and close server
-            vi.advanceTimersByTime(400);
             await server1.close();
+            store1.close();
 
             // Restart server with same dataDir
-            const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
+            const store2 = new SqliteProcessStore({ dbPath });
+            const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, store: store2 });
             const baseUrl2 = server2.url;
 
             // Verify repos are restored (tasks present)
@@ -154,11 +150,14 @@ describe('Per-Repo Pause Integration', () => {
             expect(repos2.length).toBeGreaterThanOrEqual(1);
 
             await server2.close();
+            store2.close();
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
 
         it('restores tasks across restart with multiple tasks per repo', async () => {
-            const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
+            const dbPath = path.join(tmpDir, 'processes.db');
+            const store1 = new SqliteProcessStore({ dbPath });
+            const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, store: store1 });
             const baseUrl = server1.url;
 
             const repoXPath = '/multi/repo-X';
@@ -172,22 +171,23 @@ describe('Per-Repo Pause Integration', () => {
             for (let i = 0; i < 3; i++) {
                 await request(`${baseUrl}/api/queue`, {
                     method: 'POST',
-                    body: makeTaskBody(repoXPath, `X-task-${i}`),
+                    body: makeTaskBody(repoXPath, `X-task-${i}`, repoXId),
                 });
                 await request(`${baseUrl}/api/queue`, {
                     method: 'POST',
-                    body: makeTaskBody(repoYPath, `Y-task-${i}`),
+                    body: makeTaskBody(repoYPath, `Y-task-${i}`, 'ws-multi-y'),
                 });
             }
 
             // Pause repo-X
             await request(`${baseUrl}/api/queue/pause?repoId=${repoXId}`, { method: 'POST' });
 
-            vi.advanceTimersByTime(400);
             await server1.close();
+            store1.close();
 
             // Restart
-            const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
+            const store2 = new SqliteProcessStore({ dbPath });
+            const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, store: store2 });
             const baseUrl2 = server2.url;
 
             // Verify repos restored — tasks should exist
@@ -196,6 +196,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(repos.length).toBeGreaterThanOrEqual(1);
 
             await server2.close();
+            store2.close();
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
     });

@@ -20,7 +20,7 @@ import type { QueuedTask } from '@plusplusoneplusplus/forge';
 // SDK mock — needed because createQueueExecutorBridge → CLITaskExecutor → getCopilotSDKService
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
-import { getRepoQueueFilePath } from '@plusplusoneplusplus/coc-server';
+import { getRepoQueueFilePath } from '../../src/server/queue/queue-persistence';
 
 const sdkMocks = createMockSDKService();
 

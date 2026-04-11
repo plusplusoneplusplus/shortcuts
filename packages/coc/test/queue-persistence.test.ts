@@ -10,7 +10,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { QueuedTask, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { QueuePersistence } from '@plusplusoneplusplus/coc-server';
+import { QueuePersistence } from '../src/server/queue/queue-persistence';
 
 // ============================================================================
 // Helpers

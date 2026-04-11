@@ -12,8 +12,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
 import { buildSummarizePrompt } from '../../src/server/queue-handler';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, SqliteProcessStore, SqliteQueueStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -85,6 +86,7 @@ function makeTask(overrides: Record<string, any> = {}) {
 describe('Queue Handler', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
+    let sqliteStoreRef: SqliteProcessStore | undefined;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-handler-test-'));
@@ -92,8 +94,18 @@ describe('Queue Handler', () => {
 
     afterEach(async () => {
         if (server) {
+            // Close the SQLite DB before removing temp files (prevents EPERM on Windows)
+            const store = server.store;
             await server.close();
+            if ('close' in store && typeof (store as any).close === 'function') {
+                (store as any).close();
+            }
             server = undefined;
+        }
+        // Also close any standalone SqliteProcessStore that wasn't passed to the server
+        if (sqliteStoreRef) {
+            try { sqliteStoreRef.close(); } catch { /* already closed */ }
+            sqliteStoreRef = undefined;
         }
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
@@ -102,6 +114,30 @@ describe('Queue Handler', () => {
         const store = new FileProcessStore({ dataDir });
         server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
         return server;
+    }
+
+    async function startServerWith(store: SqliteProcessStore | FileProcessStore): Promise<ExecutionServer> {
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        return server;
+    }
+
+    /** Create a SqliteProcessStore and track it for cleanup. */
+    function createSqliteStore(): SqliteProcessStore {
+        const store = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
+        sqliteStoreRef = store;
+        return store;
+    }
+
+    /** Seed queue history entries into the SQLite DB so restore() picks them up. */
+    function seedQueueHistory(store: SqliteProcessStore, repoId: string, repoRoot: string, entries: Partial<QueuedTask>[]): void {
+        const db = store.getDatabase();
+        const queueStore = new SqliteQueueStore(db);
+        // Ensure the repo paths table exists so restore() can map repoId → rootPath
+        db.exec(`CREATE TABLE IF NOT EXISTS queue_repo_paths (repo_id TEXT PRIMARY KEY, root_path TEXT NOT NULL)`);
+        db.prepare(`INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)`).run(repoId, repoRoot);
+        for (const entry of entries) {
+            queueStore.upsertQueueTask(entry as QueuedTask);
+        }
     }
 
     // ========================================================================
@@ -1672,7 +1708,7 @@ describe('Queue Handler', () => {
         });
 
         it('should sync process running status back to task status during follow-ups', async () => {
-            const store = new FileProcessStore({ dataDir });
+            const store = createSqliteStore();
 
             // Add a process that is currently running (simulates a follow-up message in progress)
             await store.addProcess({
@@ -1689,36 +1725,26 @@ describe('Queue Handler', () => {
                 ],
             } as any);
 
-            // Pre-populate queue state file with a history task that has processId set
+            // Pre-populate queue tasks in SQLite with a history entry that has processId set
             const repoRoot = path.resolve('/test/chat-status-sync');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const repoDir = path.join(dataDir, 'repos', repoId);
-            fs.mkdirSync(repoDir, { recursive: true });
-            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
-                version: 3,
-                savedAt: new Date().toISOString(),
-                repoRootPath: repoRoot,
+            seedQueueHistory(store, repoId, repoRoot, [{
+                id: 'task-chat-running',
+                type: 'chat',
+                priority: 'normal',
+                status: 'completed',
+                createdAt: Date.now() - 10000,
+                completedAt: Date.now() - 5000,
+                payload: { prompt: 'Hello' },
+                displayName: 'Running chat',
+                processId: 'proc-running-1',
                 repoId,
-                isPaused: false,
-                pending: [],
-                history: [{
-                    id: 'task-chat-running',
-                    type: 'chat',
-                    priority: 'normal',
-                    status: 'completed',
-                    createdAt: Date.now() - 10000,
-                    completedAt: Date.now() - 5000,
-                    payload: { prompt: 'Hello' },
-                    displayName: 'Running chat',
-                    processId: 'proc-running-1',
-                    repoId,
-                }],
-            }));
+            }]);
 
             // Start server after pre-populating — it restores the history with processId
-            const srv = await startServer();
+            const srv = await startServerWith(store);
 
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
@@ -1906,7 +1932,7 @@ describe('Queue Handler', () => {
 
     describe('Chat lastActivityAt enrichment', () => {
         it('should set lastActivityAt from last conversation turn timestamp', async () => {
-            const store = new FileProcessStore({ dataDir });
+            const store = createSqliteStore();
             const lastTurnTime = new Date('2025-06-15T10:30:00Z');
 
             await store.addProcess({
@@ -1927,30 +1953,20 @@ describe('Queue Handler', () => {
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const repoDir = path.join(dataDir, 'repos', repoId);
-            fs.mkdirSync(repoDir, { recursive: true });
-            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
-                version: 3,
-                savedAt: new Date().toISOString(),
-                repoRootPath: repoRoot,
+            seedQueueHistory(store, repoId, repoRoot, [{
+                id: 'task-activity-1',
+                type: 'chat',
+                priority: 'normal',
+                status: 'completed',
+                createdAt: Date.now() - 60000,
+                completedAt: Date.now() - 30000,
+                payload: { prompt: 'Hello' },
+                displayName: 'Activity test chat',
+                processId: 'proc-activity-1',
                 repoId,
-                isPaused: false,
-                pending: [],
-                history: [{
-                    id: 'task-activity-1',
-                    type: 'chat',
-                    priority: 'normal',
-                    status: 'completed',
-                    createdAt: Date.now() - 60000,
-                    completedAt: Date.now() - 30000,
-                    payload: { prompt: 'Hello' },
-                    displayName: 'Activity test chat',
-                    processId: 'proc-activity-1',
-                    repoId,
-                }],
-            }));
+            }]);
 
-            const srv = await startServer();
+            const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
@@ -1961,67 +1977,42 @@ describe('Queue Handler', () => {
         });
 
         it('should fall back to completedAt when turns have no timestamps', async () => {
-            // Write process JSON directly to simulate turns without valid timestamps
-            // (bypasses addProcess serialization which requires Date objects)
-            const processesDir = path.join(dataDir, 'repos');
-            const defaultDir = path.join(processesDir, '_default', 'processes');
-            fs.mkdirSync(defaultDir, { recursive: true });
-            const startTimeStr = new Date().toISOString();
-            fs.writeFileSync(path.join(defaultDir, 'proc-no-ts.json'), JSON.stringify({
-                workspaceId: '',
-                process: {
-                    id: 'proc-no-ts',
-                    type: 'clarification',
-                    promptPreview: 'test',
-                    fullPrompt: 'test prompt',
-                    status: 'completed',
-                    startTime: startTimeStr,
-                    conversationTurns: [
-                        { role: 'user', content: 'Hello', turnIndex: 0 },
-                        { role: 'assistant', content: 'Hi!', turnIndex: 1 },
-                    ],
-                },
-            }));
-            // Write per-workspace index so the store can find the process
-            fs.writeFileSync(path.join(defaultDir, 'index.json'), JSON.stringify([{
-                id: 'proc-no-ts',
-                workspaceId: '',
-                type: 'clarification',
-                status: 'completed',
-                promptPreview: 'test',
-                startTime: startTimeStr,
-            }]));
+            // Add process with turns that lack timestamps — insert directly via SQL
+            // since SqliteProcessStore.addProcess() requires valid Date timestamps
+            const store = createSqliteStore();
+            const db = store.getDatabase();
+
+            // Insert the process row
+            db.prepare(`INSERT INTO processes (id, workspace_id, type, prompt_preview, full_prompt, status, start_time, archived)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0)`)
+                .run('proc-no-ts', '', 'clarification', 'test', 'test prompt', 'completed', new Date().toISOString());
+            // Insert turns with empty-string timestamps (simulates missing timestamps)
+            db.prepare(`INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, streaming, timeline, historical, paste_externalized)
+                VALUES (?, ?, ?, ?, '', 0, '[]', 0, 0)`)
+                .run('proc-no-ts', 0, 'user', 'Hello');
+            db.prepare(`INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, streaming, timeline, historical, paste_externalized)
+                VALUES (?, ?, ?, ?, '', 0, '[]', 0, 0)`)
+                .run('proc-no-ts', 1, 'assistant', 'Hi!');
 
             const completedAt = Date.now() - 5000;
             const repoRoot = path.resolve('/test/last-activity-no-ts');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
-            const regStore = new FileProcessStore({ dataDir });
-            await regStore.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const repoDir = path.join(dataDir, 'repos', repoId);
-            fs.mkdirSync(repoDir, { recursive: true });
-            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
-                version: 3,
-                savedAt: new Date().toISOString(),
-                repoRootPath: repoRoot,
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
+            seedQueueHistory(store, repoId, repoRoot, [{
+                id: 'task-no-ts',
+                type: 'chat',
+                priority: 'normal',
+                status: 'completed',
+                createdAt: Date.now() - 60000,
+                completedAt,
+                payload: { prompt: 'Hello' },
+                displayName: 'No timestamp chat',
+                processId: 'proc-no-ts',
                 repoId,
-                isPaused: false,
-                pending: [],
-                history: [{
-                    id: 'task-no-ts',
-                    type: 'chat',
-                    priority: 'normal',
-                    status: 'completed',
-                    createdAt: Date.now() - 60000,
-                    completedAt,
-                    payload: { prompt: 'Hello' },
-                    displayName: 'No timestamp chat',
-                    processId: 'proc-no-ts',
-                    repoId,
-                }],
-            }));
+            }]);
 
-            const srv = await startServer();
+            const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
@@ -2031,7 +2022,7 @@ describe('Queue Handler', () => {
         });
 
         it('should fall back to createdAt when no turns and no completedAt', async () => {
-            const store = new FileProcessStore({ dataDir });
+            const store = createSqliteStore();
 
             await store.addProcess({
                 id: 'proc-empty',
@@ -2048,29 +2039,19 @@ describe('Queue Handler', () => {
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const repoDir = path.join(dataDir, 'repos', repoId);
-            fs.mkdirSync(repoDir, { recursive: true });
-            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
-                version: 3,
-                savedAt: new Date().toISOString(),
-                repoRootPath: repoRoot,
+            seedQueueHistory(store, repoId, repoRoot, [{
+                id: 'task-empty-turns',
+                type: 'chat',
+                priority: 'normal',
+                status: 'completed',
+                createdAt,
+                payload: { prompt: 'Hello' },
+                displayName: 'Empty turns chat',
+                processId: 'proc-empty',
                 repoId,
-                isPaused: false,
-                pending: [],
-                history: [{
-                    id: 'task-empty-turns',
-                    type: 'chat',
-                    priority: 'normal',
-                    status: 'completed',
-                    createdAt,
-                    payload: { prompt: 'Hello' },
-                    displayName: 'Empty turns chat',
-                    processId: 'proc-empty',
-                    repoId,
-                }],
-            }));
+            }]);
 
-            const srv = await startServer();
+            const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
@@ -2080,7 +2061,7 @@ describe('Queue Handler', () => {
         });
 
         it('should sort by lastActivityAt so recently-active conversations come first', async () => {
-            const store = new FileProcessStore({ dataDir });
+            const store = createSqliteStore();
 
             // Older chat with recent follow-up activity
             await store.addProcess({
@@ -2115,44 +2096,34 @@ describe('Queue Handler', () => {
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const repoDir = path.join(dataDir, 'repos', repoId);
-            fs.mkdirSync(repoDir, { recursive: true });
-            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
-                version: 3,
-                savedAt: new Date().toISOString(),
-                repoRootPath: repoRoot,
-                repoId,
-                isPaused: false,
-                pending: [],
-                history: [
-                    {
-                        id: 'task-old-active',
-                        type: 'chat',
-                        priority: 'normal',
-                        status: 'completed',
-                        createdAt: new Date('2025-01-01T10:00:00Z').getTime(),
-                        completedAt: new Date('2025-01-01T10:05:00Z').getTime(),
-                        payload: { prompt: 'Original question' },
-                        displayName: 'Old but active chat',
-                        processId: 'proc-old-active',
-                        repoId,
-                    },
-                    {
-                        id: 'task-new-idle',
-                        type: 'chat',
-                        priority: 'normal',
-                        status: 'completed',
-                        createdAt: new Date('2025-06-01T10:00:00Z').getTime(),
-                        completedAt: new Date('2025-06-01T10:05:00Z').getTime(),
-                        payload: { prompt: 'New question' },
-                        displayName: 'Newer but idle chat',
-                        processId: 'proc-new-idle',
-                        repoId,
-                    },
-                ],
-            }));
+            seedQueueHistory(store, repoId, repoRoot, [
+                {
+                    id: 'task-old-active',
+                    type: 'chat',
+                    priority: 'normal',
+                    status: 'completed',
+                    createdAt: new Date('2025-01-01T10:00:00Z').getTime(),
+                    completedAt: new Date('2025-01-01T10:05:00Z').getTime(),
+                    payload: { prompt: 'Original question' },
+                    displayName: 'Old but active chat',
+                    processId: 'proc-old-active',
+                    repoId,
+                },
+                {
+                    id: 'task-new-idle',
+                    type: 'chat',
+                    priority: 'normal',
+                    status: 'completed',
+                    createdAt: new Date('2025-06-01T10:00:00Z').getTime(),
+                    completedAt: new Date('2025-06-01T10:05:00Z').getTime(),
+                    payload: { prompt: 'New question' },
+                    displayName: 'Newer but idle chat',
+                    processId: 'proc-new-idle',
+                    repoId,
+                },
+            ]);
 
-            const srv = await startServer();
+            const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
@@ -2166,65 +2137,39 @@ describe('Queue Handler', () => {
         });
 
         it('should include process title in chatMeta when set', async () => {
-            const processesDir = path.join(dataDir, 'repos');
-            const defaultDir = path.join(processesDir, '_default', 'processes');
-            fs.mkdirSync(defaultDir, { recursive: true });
-            const startTimeStr = new Date().toISOString();
-            fs.writeFileSync(path.join(defaultDir, 'proc-titled.json'), JSON.stringify({
-                workspaceId: '',
-                process: {
-                    id: 'proc-titled',
-                    type: 'clarification',
-                    promptPreview: 'test',
-                    fullPrompt: 'test prompt',
-                    status: 'completed',
-                    startTime: startTimeStr,
-                    title: 'Fix Authentication Bug',
-                    conversationTurns: [
-                        { role: 'user', content: 'Fix the auth bug', timestamp: new Date().toISOString(), turnIndex: 0 },
-                        { role: 'assistant', content: 'Done', timestamp: new Date().toISOString(), turnIndex: 1 },
-                    ],
-                },
-            }));
-            fs.writeFileSync(path.join(defaultDir, 'index.json'), JSON.stringify([{
+            const store = createSqliteStore();
+
+            await store.addProcess({
                 id: 'proc-titled',
-                workspaceId: '',
                 type: 'clarification',
-                status: 'completed',
                 promptPreview: 'test',
-                startTime: startTimeStr,
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
                 title: 'Fix Authentication Bug',
-            }]));
-            fs.writeFileSync(path.join(processesDir, '_id-map.json'), JSON.stringify({ 'proc-titled': '' }));
+                conversationTurns: [
+                    { role: 'user', content: 'Fix the auth bug', timestamp: new Date(), turnIndex: 0 },
+                    { role: 'assistant', content: 'Done', timestamp: new Date(), turnIndex: 1 },
+                ],
+            } as any);
 
             const repoRoot = path.resolve('/test/title-present');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
-            const regStore = new FileProcessStore({ dataDir });
-            await regStore.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const repoDir = path.join(dataDir, 'repos', repoId);
-            fs.mkdirSync(repoDir, { recursive: true });
-            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
-                version: 3,
-                savedAt: new Date().toISOString(),
-                repoRootPath: repoRoot,
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
+            seedQueueHistory(store, repoId, repoRoot, [{
+                id: 'task-titled',
+                type: 'chat',
+                priority: 'normal',
+                status: 'completed',
+                createdAt: Date.now(),
+                payload: { prompt: 'Fix the auth bug' },
+                displayName: 'Titled chat',
+                processId: 'proc-titled',
                 repoId,
-                isPaused: false,
-                pending: [],
-                history: [{
-                    id: 'task-titled',
-                    type: 'chat',
-                    priority: 'normal',
-                    status: 'completed',
-                    createdAt: Date.now(),
-                    payload: { prompt: 'Fix the auth bug' },
-                    displayName: 'Titled chat',
-                    processId: 'proc-titled',
-                    repoId,
-                }],
-            }));
+            }]);
 
-            const srv = await startServer();
+            const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
@@ -2235,63 +2180,38 @@ describe('Queue Handler', () => {
         });
 
         it('should have undefined chatMeta.title when process has no title', async () => {
-            const processesDir = path.join(dataDir, 'repos');
-            const defaultDir = path.join(processesDir, '_default', 'processes');
-            fs.mkdirSync(defaultDir, { recursive: true });
-            const startTimeStr = new Date().toISOString();
-            fs.writeFileSync(path.join(defaultDir, 'proc-no-title.json'), JSON.stringify({
-                workspaceId: '',
-                process: {
-                    id: 'proc-no-title',
-                    type: 'clarification',
-                    promptPreview: 'test',
-                    fullPrompt: 'test prompt',
-                    status: 'completed',
-                    startTime: startTimeStr,
-                    conversationTurns: [
-                        { role: 'user', content: 'Hello', timestamp: new Date().toISOString(), turnIndex: 0 },
-                        { role: 'assistant', content: 'Hi', timestamp: new Date().toISOString(), turnIndex: 1 },
-                    ],
-                },
-            }));
-            fs.writeFileSync(path.join(defaultDir, 'index.json'), JSON.stringify([{
+            const store = createSqliteStore();
+
+            await store.addProcess({
                 id: 'proc-no-title',
-                workspaceId: '',
                 type: 'clarification',
-                status: 'completed',
                 promptPreview: 'test',
-                startTime: startTimeStr,
-            }]));
-            fs.writeFileSync(path.join(processesDir, '_id-map.json'), JSON.stringify({ 'proc-no-title': '' }));
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                conversationTurns: [
+                    { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0 },
+                    { role: 'assistant', content: 'Hi', timestamp: new Date(), turnIndex: 1 },
+                ],
+            } as any);
 
             const repoRoot = path.resolve('/test/title-absent');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
-            const regStore = new FileProcessStore({ dataDir });
-            await regStore.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const repoDir = path.join(dataDir, 'repos', repoId);
-            fs.mkdirSync(repoDir, { recursive: true });
-            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
-                version: 3,
-                savedAt: new Date().toISOString(),
-                repoRootPath: repoRoot,
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
+            seedQueueHistory(store, repoId, repoRoot, [{
+                id: 'task-no-title',
+                type: 'chat',
+                priority: 'normal',
+                status: 'completed',
+                createdAt: Date.now(),
+                payload: { prompt: 'Hello' },
+                displayName: 'Untitled chat',
+                processId: 'proc-no-title',
                 repoId,
-                isPaused: false,
-                pending: [],
-                history: [{
-                    id: 'task-no-title',
-                    type: 'chat',
-                    priority: 'normal',
-                    status: 'completed',
-                    createdAt: Date.now(),
-                    payload: { prompt: 'Hello' },
-                    displayName: 'Untitled chat',
-                    processId: 'proc-no-title',
-                    repoId,
-                }],
-            }));
+            }]);
 
-            const srv = await startServer();
+            const srv = await startServerWith(store);
             const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);

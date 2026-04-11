@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Types
@@ -97,7 +98,6 @@ export class DataWiper {
         const reposDir = path.join(this.dataDir, 'repos');
         const repoDirs = this.listRepoDirs(reposDir);
 
-        const queueFiles: string[] = [];
         const scheduleFiles: string[] = [];
         const scheduleRunFiles: string[] = [];
         const scheduleDirs: string[] = [];
@@ -105,8 +105,6 @@ export class DataWiper {
         const repoPrefsFiles: string[] = [];
 
         for (const repoDir of repoDirs) {
-            const qf = path.join(repoDir, 'queues.json');
-            if (fs.existsSync(qf)) { queueFiles.push(qf); }
             // Collect individual schedule YAML files
             const schedulesDir = path.join(repoDir, 'schedules');
             if (fs.existsSync(schedulesDir) && fs.statSync(schedulesDir).isDirectory()) {
@@ -126,7 +124,8 @@ export class DataWiper {
             if (fs.existsSync(pf)) { repoPrefsFiles.push(pf); }
         }
 
-        result.deletedQueues = queueFiles.length;
+        // Count queue rows from SQLite
+        result.deletedQueues = this.countQueueRows();
         result.deletedSchedules = scheduleFiles.length + scheduleRunFiles.length;
         result.deletedGitOps = gitOpsFiles.length;
         result.deletedRepoPreferences = repoPrefsFiles.length;
@@ -176,8 +175,15 @@ export class DataWiper {
             result.errors.push(`Failed to clear wikis: ${err.message}`);
         }
 
+        // Clear queue rows from SQLite
+        try {
+            this.deleteQueueRows();
+        } catch (err: any) {
+            result.errors.push(`Failed to clear queue tables: ${err.message}`);
+        }
+
         // Delete per-repo files
-        const allRepoFiles = [...queueFiles, ...scheduleFiles, ...scheduleRunFiles, ...gitOpsFiles, ...repoPrefsFiles];
+        const allRepoFiles = [...scheduleFiles, ...scheduleRunFiles, ...gitOpsFiles, ...repoPrefsFiles];
         for (const filePath of allRepoFiles) {
             try {
                 fs.unlinkSync(filePath);
@@ -250,6 +256,39 @@ export class DataWiper {
                 .map(f => path.join(blobsDir, f));
         } catch {
             return [];
+        }
+    }
+
+    /**
+     * Count queue-related rows in SQLite. Returns 0 if the store is not SQLite
+     * or the tables don't exist.
+     */
+    private countQueueRows(): number {
+        if (!(this.store instanceof SqliteProcessStore)) return 0;
+        const db = this.store.getDatabase();
+        try {
+            const taskCount = (db.prepare('SELECT COUNT(*) as cnt FROM queue_tasks').get() as { cnt: number }).cnt;
+            const stateCount = (db.prepare('SELECT COUNT(*) as cnt FROM queue_repo_state').get() as { cnt: number }).cnt;
+            return taskCount + stateCount;
+        } catch {
+            return 0;
+        }
+    }
+
+    /**
+     * Delete all queue-related rows from SQLite tables.
+     */
+    private deleteQueueRows(): void {
+        if (!(this.store instanceof SqliteProcessStore)) return;
+        const db = this.store.getDatabase();
+        // queue_tasks and queue_repo_state are created by SqliteProcessStore.initializeDatabase().
+        db.prepare('DELETE FROM queue_tasks').run();
+        db.prepare('DELETE FROM queue_repo_state').run();
+        // queue_repo_paths is created lazily by SqliteQueuePersistence — may not exist yet.
+        try {
+            db.prepare('DELETE FROM queue_repo_paths').run();
+        } catch {
+            // Table doesn't exist yet — nothing to clean.
         }
     }
 

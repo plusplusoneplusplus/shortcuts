@@ -23,7 +23,7 @@ import {
     type ImportOptions,
 } from '@plusplusoneplusplus/coc-server';
 import { readPreferences, writePreferences } from '../../src/server/preferences-handler';
-import { getRepoQueueFilePath } from '@plusplusoneplusplus/coc-server';
+import { getRepoQueueFilePath } from '../../src/server/queue/queue-persistence';
 
 // ============================================================================
 // Helpers

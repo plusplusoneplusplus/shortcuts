@@ -26,12 +26,14 @@
  *   individual manager-level pause flag set by pause()/resume().
  */
 
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { createExecutionServer } from '../../src/server/index';
+import { GLOBAL_WORKSPACE_ID } from '../../src/server/global-workspace';
 
 // ============================================================================
 // Helpers
@@ -77,6 +79,7 @@ function makeGlobalTask(displayName: string) {
         payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' },
         config: {},
         displayName,
+        repoId: GLOBAL_WORKSPACE_ID,
     };
 }
 
@@ -85,19 +88,12 @@ function makeGlobalTask(displayName: string) {
 // ============================================================================
 
 describe('Queue Persistence Across Server Restart', () => {
-    // Use beforeAll/afterAll to match the pattern in per-repo-pause-integration.test.ts
-    beforeAll(() => {
-        vi.useFakeTimers();
-    });
-
-    afterAll(() => {
-        vi.useRealTimers();
-    });
-
     let dataDir: string;
+    let dbPath: string;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-persist-restart-'));
+        dbPath = path.join(dataDir, 'processes.db');
     });
 
     afterEach(() => {
@@ -109,34 +105,39 @@ describe('Queue Persistence Across Server Restart', () => {
     // ========================================================================
 
     it('enqueue 3 tasks → restart → all 3 tasks present in queue after restart', async () => {
-        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store1 = new SqliteProcessStore({ dbPath });
+        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store1 });
         await post(`${server1.url}/api/queue/pause`, {});
         await post(`${server1.url}/api/queue`, makeGlobalTask('Task-1'));
         await post(`${server1.url}/api/queue`, makeGlobalTask('Task-2'));
         await post(`${server1.url}/api/queue`, makeGlobalTask('Task-3'));
 
-        vi.advanceTimersByTime(400);
         await server1.close();
+        store1.close();
 
-        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store2 = new SqliteProcessStore({ dbPath });
+        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2 });
         const listRes = await request(`${server2.url}/api/queue`);
         const queued = JSON.parse(listRes.body).queued;
         expect(queued).toHaveLength(3);
 
         await server2.close();
+        store2.close();
     });
 
     it('task at position 2 after restart → maintains its position', async () => {
-        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store1 = new SqliteProcessStore({ dbPath });
+        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store1 });
         await post(`${server1.url}/api/queue/pause`, {});
         await post(`${server1.url}/api/queue`, makeGlobalTask('First'));
         await post(`${server1.url}/api/queue`, makeGlobalTask('Second'));
         await post(`${server1.url}/api/queue`, makeGlobalTask('Third'));
 
-        vi.advanceTimersByTime(400);
         await server1.close();
+        store1.close();
 
-        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store2 = new SqliteProcessStore({ dbPath });
+        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2 });
         const listRes = await request(`${server2.url}/api/queue`);
         const queued = JSON.parse(listRes.body).queued;
 
@@ -144,6 +145,7 @@ describe('Queue Persistence Across Server Restart', () => {
         expect(secondIdx).toBe(1); // 0-based = position 2
 
         await server2.close();
+        store2.close();
     });
 
     // ========================================================================
@@ -151,7 +153,8 @@ describe('Queue Persistence Across Server Restart', () => {
     // ========================================================================
 
     it('frozen task after restart → loses frozen state (not persisted)', async () => {
-        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store1 = new SqliteProcessStore({ dbPath });
+        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store1 });
         await post(`${server1.url}/api/queue/pause`, {});
         const taskRes = await post(`${server1.url}/api/queue`, makeGlobalTask('Freeze-me'));
         const taskId = JSON.parse(taskRes.body).task.id;
@@ -162,16 +165,18 @@ describe('Queue Persistence Across Server Restart', () => {
         const before = JSON.parse((await request(`${server1.url}/api/queue`)).body).queued;
         expect(before.find((t: any) => t.id === taskId)?.frozen).toBe(true);
 
-        vi.advanceTimersByTime(400);
         await server1.close();
+        store1.close();
 
-        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store2 = new SqliteProcessStore({ dbPath });
+        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2 });
         const listRes = await request(`${server2.url}/api/queue`);
         const queued = JSON.parse(listRes.body).queued;
         // Task is re-enqueued without frozen flag
         expect(queued.some((t: any) => t.frozen === true)).toBe(false);
 
         await server2.close();
+        store2.close();
     });
 
     // ========================================================================
@@ -179,7 +184,8 @@ describe('Queue Persistence Across Server Restart', () => {
     // ========================================================================
 
     it('pause marker after restart → NOT present (pause markers are not persisted)', async () => {
-        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store1 = new SqliteProcessStore({ dbPath });
+        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store1 });
         await post(`${server1.url}/api/queue/pause`, {});
         await post(`${server1.url}/api/queue`, makeGlobalTask('T1'));
         await post(`${server1.url}/api/queue/pause-marker`, { afterIndex: 0 });
@@ -188,14 +194,16 @@ describe('Queue Persistence Across Server Restart', () => {
         const before = JSON.parse((await request(`${server1.url}/api/queue`)).body).queued;
         expect(before.some((i: any) => i.kind === 'pause-marker')).toBe(true);
 
-        vi.advanceTimersByTime(400);
         await server1.close();
+        store1.close();
 
-        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store2 = new SqliteProcessStore({ dbPath });
+        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2 });
         const after = JSON.parse((await request(`${server2.url}/api/queue`)).body).queued;
         expect(after.some((i: any) => i.kind === 'pause-marker')).toBe(false);
 
         await server2.close();
+        store2.close();
     });
 
     // ========================================================================
@@ -203,22 +211,25 @@ describe('Queue Persistence Across Server Restart', () => {
     // ========================================================================
 
     it('history persists across restart', async () => {
-        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store1 = new SqliteProcessStore({ dbPath });
+        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store1 });
         await post(`${server1.url}/api/queue/pause`, {});
         const taskRes = await post(`${server1.url}/api/queue`, makeGlobalTask('History-task'));
         const taskId = JSON.parse(taskRes.body).task.id;
         // Cancel to move to history
         await request(`${server1.url}/api/queue/${taskId}`, { method: 'DELETE' });
 
-        vi.advanceTimersByTime(400);
         await server1.close();
+        store1.close();
 
-        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store2 = new SqliteProcessStore({ dbPath });
+        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2 });
         const histRes = await request(`${server2.url}/api/queue/history`);
         const history = JSON.parse(histRes.body).history;
         expect(history.some((t: any) => t.displayName === 'History-task')).toBe(true);
 
         await server2.close();
+        store2.close();
     });
 
     // ========================================================================
@@ -228,7 +239,8 @@ describe('Queue Persistence Across Server Restart', () => {
     it('per-repo pause via HTTP API is NOT preserved across restart', async () => {
         // Use the built-in global workspace ID (always registered by createExecutionServer)
         const WS_ID = 'global-workspace-00';
-        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store1 = new SqliteProcessStore({ dbPath });
+        const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store1 });
         await post(`${server1.url}/api/queue/pause`, {});
         await post(`${server1.url}/api/queue`, makeGlobalTask('T'));
         await post(`${server1.url}/api/queue/resume`, {});
@@ -239,10 +251,11 @@ describe('Queue Persistence Across Server Restart', () => {
         const beforeRepos = JSON.parse((await request(`${server1.url}/api/queue/repos`)).body).repos;
         expect(beforeRepos.find((r: any) => r.repoId === WS_ID)?.isPaused).toBe(true);
 
-        vi.advanceTimersByTime(400);
         await server1.close();
+        store1.close();
 
-        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir });
+        const store2 = new SqliteProcessStore({ dbPath });
+        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2 });
         const afterRepos = JSON.parse((await request(`${server2.url}/api/queue/repos`)).body).repos;
         // Per-repo pause via HTTP API is NOT persisted; repo should not be paused after restart
         const repo = afterRepos.find((r: any) => r.repoId === WS_ID);
@@ -252,6 +265,7 @@ describe('Queue Persistence Across Server Restart', () => {
         // If the repo doesn't appear, that also confirms the pause was not persisted.
 
         await server2.close();
+        store2.close();
     });
 });
 

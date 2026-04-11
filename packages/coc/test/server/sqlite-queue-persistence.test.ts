@@ -423,23 +423,23 @@ describe('SqliteQueuePersistence', () => {
             expect(store.getQueueTasks(rId, ['queued'])).toHaveLength(1); // still in DB
         });
 
-        it('does not restore history from SQLite', () => {
-            const rootPath = '/repo/no-history';
+        it('restores history entries from SQLite', () => {
+            const rootPath = '/repo/with-history';
             const rId = repoId(rootPath);
             bridge.registerRepoId(rId, rootPath);
 
             persistence = new SqliteQueuePersistence(bridge, db);
 
-            // Seed completed tasks — should NOT be restored
+            // Seed completed tasks — should be restored as history
             store.upsertQueueTask(makeTask('done1', { repoId: rId, status: 'completed', completedAt: Date.now() }));
             store.upsertQueueTask(makeTask('fail1', { repoId: rId, status: 'failed', error: 'oops' }));
             db.prepare('INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run(rId, rootPath);
 
             persistence.restore();
 
-            // No queue manager should be created for completed-only repos
             const qm = registry.getQueueForRepo(rootPath);
             expect(qm?.getQueued() ?? []).toHaveLength(0);
+            expect(qm?.getHistory() ?? []).toHaveLength(2);
         });
 
         it('registers repo IDs with the bridge during restore', () => {
@@ -648,9 +648,9 @@ describe('createQueueInfrastructure integration', () => {
         }
     });
 
-    it('uses MultiRepoQueuePersistence when store is not SqliteProcessStore', async () => {
+    it('creates in-memory DB when store is not SqliteProcessStore', async () => {
         const { createQueueInfrastructure } = await import('../../src/server/infrastructure/queue-infrastructure');
-        const { MultiRepoQueuePersistence } = await import('../../src/server/multi-repo-queue-persistence');
+        const { SqliteQueuePersistence } = await import('../../src/server/queue/sqlite-queue-persistence');
         const os = await import('os');
         const path = await import('path');
         const fs = await import('fs');
@@ -668,7 +668,7 @@ describe('createQueueInfrastructure integration', () => {
                 () => ({ broadcast: () => {} }) as any,
             );
 
-            expect(infra.queuePersistence).toBeInstanceOf(MultiRepoQueuePersistence);
+            expect(infra.queuePersistence).toBeInstanceOf(SqliteQueuePersistence);
             infra.queuePersistence.dispose();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });

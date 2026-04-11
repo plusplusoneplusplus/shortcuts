@@ -8,7 +8,8 @@
  * - No debounce — every change event produces an immediate SQLite write.
  * - No full-file rewrite — only the affected row(s) are upserted/deleted.
  * - No image blob externalisation — images stay inline in the payload JSON.
- * - History is NOT persisted — it lives in the process store.
+ * - History IS persisted — completed/failed/cancelled tasks are kept in SQLite
+ *   and restored as history entries on restart.
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -22,6 +23,11 @@ import type { RestartPolicy } from './queue-persistence';
 // ============================================================================
 // Types
 // ============================================================================
+
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+function isTerminalStatus(status: string): boolean {
+    return TERMINAL_STATUSES.has(status);
+}
 
 export interface SqliteQueuePersistenceOptions {
     /** Policy for tasks that were running when the server last stopped (default: 'requeue-if-retriable'). */
@@ -158,6 +164,37 @@ export class SqliteQueuePersistence {
                 `[SqliteQueuePersistence] Restored ${totalRestored} task(s) across ${repoTaskGroups.size} repo(s)\n`
             );
         }
+
+        // 4. Restore completed/failed/cancelled tasks as history entries
+        const historyTasks = this.store.getQueueTasks(undefined, ['completed', 'failed', 'cancelled']);
+        const historyByRepo = new Map<string, QueuedTask[]>();
+        for (const task of historyTasks) {
+            const repoId = task.repoId ?? '';
+            if (!historyByRepo.has(repoId)) {
+                historyByRepo.set(repoId, []);
+            }
+            historyByRepo.get(repoId)!.push(task);
+        }
+
+        let totalHistory = 0;
+        for (const [repoId, repoTasks] of historyByRepo) {
+            const rootPath = this.repoIdToPath.get(repoId);
+            if (!rootPath) continue;
+
+            this.bridge.getOrCreateBridge(rootPath);
+            const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
+            if (!queueManager) continue;
+
+            this.subscribeToRepo(rootPath);
+            queueManager.restoreHistory(repoTasks);
+            totalHistory += repoTasks.length;
+        }
+
+        if (totalHistory > 0) {
+            process.stderr.write(
+                `[SqliteQueuePersistence] Restored ${totalHistory} history entry/entries\n`
+            );
+        }
     }
 
     /**
@@ -232,7 +269,11 @@ export class SqliteQueuePersistence {
                 break;
 
             case 'removed':
-                if (event.taskId) {
+                // Persist the task's final state (completed/failed/cancelled) for history restoration.
+                // Only persist terminal statuses — delete non-terminal removals (dequeue, removeTask).
+                if (event.task && isTerminalStatus(event.task.status)) {
+                    this.store.upsertQueueTask(event.task);
+                } else if (event.taskId) {
                     this.store.removeQueueTask(event.taskId);
                 }
                 break;

@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import * as crypto from 'crypto';
 import { createExecutionServer } from '../../src/server/index';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, SqliteProcessStore, SqliteQueueStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -86,31 +86,38 @@ function removeDirSafe(dir: string): void {
     }
 }
 
-/** Write a persistence file so the server loads a pre-existing task on startup. Returns the repoId.
- *  Use `rootPath` to set the workspace root — defaults to process.cwd() but callers should
- *  pass a clean directory (without .vscode/tasks/) to avoid triggering task migration delays. */
+/** Seed a task into the SQLite DB so the server loads a pre-existing task on startup.
+ *  Returns the repoId. Uses `rootPath` as the workspace root. */
 function seedPersistence(dataDir: string, task: Record<string, unknown>, rootPath?: string): string {
     const cwd = rootPath ?? process.cwd();
     const repoId = crypto.createHash('sha256')
         .update(path.resolve(cwd))
         .digest('hex')
         .substring(0, 16);
-    const repoDir = path.join(dataDir, 'repos', repoId);
-    fs.mkdirSync(repoDir, { recursive: true });
-    const state = {
-        version: 3,
-        savedAt: new Date().toISOString(),
-        repoRootPath: cwd,
+
+    const dbPath = path.join(dataDir, 'processes.db');
+    const store = new SqliteProcessStore({ dbPath });
+    const db = store.getDatabase();
+    const queueStore = new SqliteQueueStore(db);
+
+    // Ensure repo path mapping table exists and insert mapping
+    db.exec('CREATE TABLE IF NOT EXISTS queue_repo_paths (repo_id TEXT PRIMARY KEY, root_path TEXT NOT NULL)');
+    db.prepare('INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run(repoId, cwd);
+
+    // Insert the task
+    queueStore.upsertQueueTask({
+        id: task.id as string,
+        type: (task.type as string) ?? 'chat',
+        priority: (task.priority as string) ?? 'normal',
+        status: (task.status as string) ?? 'queued',
+        createdAt: (task.createdAt as number) ?? Date.now(),
+        payload: task.payload as any,
+        config: task.config as any ?? {},
+        displayName: task.displayName as string,
         repoId,
-        pending: [task],
-        history: [],
-        isPaused: false,
-    };
-    fs.writeFileSync(
-        path.join(repoDir, 'queues.json'),
-        JSON.stringify(state),
-        'utf-8',
-    );
+    } as any);
+
+    store.close();
     return repoId;
 }
 
@@ -217,6 +224,7 @@ describe('Queue Handler — image promotion', () => {
 describe('GET /api/queue/:id/images', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
+    let activeStore: SqliteProcessStore | undefined;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-handler-images-api-'));
@@ -227,11 +235,16 @@ describe('GET /api/queue/:id/images', () => {
             await server.close();
             server = undefined;
         }
+        if (activeStore) {
+            activeStore.close();
+            activeStore = undefined;
+        }
         removeDirSafe(dataDir);
     });
 
     async function startServer(opts?: { autoStart?: boolean }): Promise<ExecutionServer> {
-        const store = new FileProcessStore({ dataDir });
+        const store = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
+        activeStore = store;
         server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, queue: { autoStart: opts?.autoStart } });
         return server;
     }
@@ -398,6 +411,7 @@ describe('Queue Handler — legacy enqueue image forwarding', () => {
 describe('serializeTask — image stripping', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
+    let activeStore: SqliteProcessStore | undefined;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-handler-serialize-'));
@@ -408,11 +422,16 @@ describe('serializeTask — image stripping', () => {
             await server.close();
             server = undefined;
         }
+        if (activeStore) {
+            activeStore.close();
+            activeStore = undefined;
+        }
         removeDirSafe(dataDir);
     });
 
     async function startServer(opts?: { autoStart?: boolean }): Promise<ExecutionServer> {
-        const store = new FileProcessStore({ dataDir });
+        const store = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
+        activeStore = store;
         server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, queue: { autoStart: opts?.autoStart } });
         return server;
     }

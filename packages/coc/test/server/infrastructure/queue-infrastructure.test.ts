@@ -6,10 +6,9 @@
  * instances equivalent to the inline setup it replaced in index.ts.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { DEFAULT_AI_TIMEOUT_MS, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
-import { createMockProcessStore } from '../../helpers/mock-process-store';
 
 const sdkMocks = createMockSDKService();
 
@@ -23,7 +22,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 
 import { createQueueInfrastructure } from '../../../src/server/infrastructure/queue-infrastructure';
 import { MultiRepoQueueExecutorBridge } from '../../../src/server/multi-repo-executor-bridge';
-import { MultiRepoQueuePersistence } from '../../../src/server/multi-repo-queue-persistence';
+import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
 import * as os from 'os';
 import * as path from 'path';
@@ -33,16 +32,26 @@ function makeTempDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'queue-infra-test-'));
 }
 
+function createTempSqliteStore(dataDir: string): SqliteProcessStore {
+    return new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
+}
+
 describe('createQueueInfrastructure', () => {
     let dataDir: string;
+    let store: SqliteProcessStore;
     const getWsServer = () => ({ broadcastProcessEvent: vi.fn() }) as any;
 
     beforeEach(() => {
         dataDir = makeTempDir();
+        store = createTempSqliteStore(dataDir);
+    });
+
+    afterEach(() => {
+        store.close();
+        fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
     it('returns registry, bridge, queuePersistence and queueFacade', () => {
-        const store = createMockProcessStore();
         const result = createQueueInfrastructure(
             store,
             dataDir,
@@ -54,13 +63,12 @@ describe('createQueueInfrastructure', () => {
 
         expect(result.registry).toBeInstanceOf(RepoQueueRegistry);
         expect(result.bridge).toBeInstanceOf(MultiRepoQueueExecutorBridge);
-        expect(result.queuePersistence).toBeInstanceOf(MultiRepoQueuePersistence);
+        expect(result.queuePersistence).toBeInstanceOf(SqliteQueuePersistence);
         expect(result.queueFacade).toBeDefined();
         expect(typeof result.queueFacade.enqueue).toBe('function');
     });
 
     it('applies historyLimit option to registry maxHistorySize', () => {
-        const store = createMockProcessStore();
         const { registry } = createQueueInfrastructure(
             store,
             dataDir,
@@ -74,7 +82,6 @@ describe('createQueueInfrastructure', () => {
     });
 
     it('passes followUpSuggestions to bridge without throwing', () => {
-        const store = createMockProcessStore();
         const followUpSuggestions = { enabled: true, count: 5 };
 
         expect(() =>
@@ -89,22 +96,7 @@ describe('createQueueInfrastructure', () => {
         ).not.toThrow();
     });
 
-    it('restores persisted queue state during construction', () => {
-        const repoId = 'test-repo';
-        const reposDir = path.join(dataDir, 'repos', repoId);
-        fs.mkdirSync(reposDir, { recursive: true });
-        const queueFile = path.join(reposDir, 'queues.json');
-        fs.writeFileSync(
-            queueFile,
-            JSON.stringify({
-                version: 1,
-                repoPath: '/tmp/test-repo',
-                queue: [],
-                history: [],
-            }),
-        );
-
-        const store = createMockProcessStore();
+    it('restores persisted queue state from SQLite during construction', () => {
         expect(() =>
             createQueueInfrastructure(
                 store,
@@ -118,7 +110,6 @@ describe('createQueueInfrastructure', () => {
     });
 
     it('works with no queue options provided', () => {
-        const store = createMockProcessStore();
         const result = createQueueInfrastructure(
             store,
             dataDir,
@@ -132,7 +123,6 @@ describe('createQueueInfrastructure', () => {
     });
 
     it('passes restartPickupDelayMs through to bridge as initialDelayMs', () => {
-        const store = createMockProcessStore();
         const result = createQueueInfrastructure(
             store,
             dataDir,
@@ -143,14 +133,9 @@ describe('createQueueInfrastructure', () => {
         );
 
         expect(result.bridge).toBeInstanceOf(MultiRepoQueueExecutorBridge);
-        // After createQueueInfrastructure, clearInitialDelay() has been called,
-        // so lazily created bridges should get 0 delay. We verify by creating a
-        // new bridge and checking the executor starts without delay.
-        // (The actual initial delay was already applied to bridges created during restore.)
     });
 
     it('clears initialDelay after restore so lazy bridges get 0 delay', () => {
-        const store = createMockProcessStore();
         const result = createQueueInfrastructure(
             store,
             dataDir,
@@ -164,7 +149,46 @@ describe('createQueueInfrastructure', () => {
         const bridge = result.bridge;
         const newBridge = bridge.getOrCreateBridge('/tmp/lazy-repo');
         expect(newBridge).toBeDefined();
-        // If the delay were still 30s, the executor would not process tasks quickly;
-        // the fact that getOrCreateBridge returns without hanging is sufficient.
+    });
+
+    it('creates in-memory DB when store is not SqliteProcessStore', () => {
+        const mockStore = {
+            getAllProcesses: vi.fn(),
+            getStorageStats: vi.fn(),
+        } as any;
+
+        const result = createQueueInfrastructure(
+            mockStore,
+            dataDir,
+            { queue: { autoStart: false } },
+            DEFAULT_AI_TIMEOUT_MS,
+            undefined,
+            getWsServer,
+        );
+
+        expect(result.queuePersistence).toBeInstanceOf(SqliteQueuePersistence);
+        expect(result.registry).toBeInstanceOf(RepoQueueRegistry);
+    });
+
+    it('persists enqueued tasks in queue_tasks table', () => {
+        const { queueFacade } = createQueueInfrastructure(
+            store,
+            dataDir,
+            { queue: { autoStart: false } },
+            DEFAULT_AI_TIMEOUT_MS,
+            undefined,
+            getWsServer,
+        );
+
+        queueFacade.enqueue({
+            type: 'test-task',
+            payload: { prompt: 'hello' },
+            repoId: 'test-repo',
+        });
+
+        const db = store.getDatabase();
+        const rows = db.prepare('SELECT * FROM queue_tasks').all() as any[];
+        expect(rows.length).toBeGreaterThanOrEqual(1);
+        expect(rows.some((r: any) => r.type === 'test-task')).toBe(true);
     });
 });
