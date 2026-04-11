@@ -106,6 +106,40 @@ export function initializeDatabase(db: Database.Database): void {
             )
         `);
 
+        // ── queue_tasks ──────────────────────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS queue_tasks (
+                id                TEXT PRIMARY KEY,
+                repo_id           TEXT NOT NULL,
+                folder_path       TEXT,
+                type              TEXT NOT NULL,
+                priority          TEXT NOT NULL DEFAULT 'normal',
+                status            TEXT NOT NULL DEFAULT 'queued',
+                created_at        INTEGER NOT NULL,
+                started_at        INTEGER,
+                completed_at      INTEGER,
+                display_name      TEXT,
+                process_id        TEXT,
+                error             TEXT,
+                retry_count       INTEGER DEFAULT 0,
+                concurrency_mode  TEXT,
+                frozen            INTEGER DEFAULT 0,
+                admitted          INTEGER DEFAULT 0,
+                payload           TEXT NOT NULL DEFAULT '{}',
+                config            TEXT NOT NULL DEFAULT '{}',
+                result            TEXT
+            )
+        `);
+
+        // ── queue_repo_state ────────────────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS queue_repo_state (
+                repo_id       TEXT PRIMARY KEY,
+                is_paused     INTEGER DEFAULT 0,
+                pause_reason  TEXT
+            )
+        `);
+
         // ── indexes ──────────────────────────────────────────────────
         db.exec(`
             CREATE INDEX IF NOT EXISTS idx_processes_workspace_id
@@ -136,6 +170,12 @@ export function initializeDatabase(db: Database.Database): void {
             CREATE INDEX IF NOT EXISTS idx_turns_streaming
                 ON conversation_turns(process_id)
                 WHERE streaming = 1;
+
+            CREATE INDEX IF NOT EXISTS idx_queue_tasks_repo_id
+                ON queue_tasks(repo_id);
+
+            CREATE INDEX IF NOT EXISTS idx_queue_tasks_status
+                ON queue_tasks(status);
         `);
 
         // Stamp the schema version

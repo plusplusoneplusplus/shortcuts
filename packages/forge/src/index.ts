@@ -450,6 +450,11 @@ export {
 } from './sqlite-process-store';
 
 export {
+    SqliteQueueStore,
+    SqliteQueueStoreOptions,
+} from './sqlite-queue-store';
+
+export {
     Database,
     initializeDatabase,
     SCHEMA_VERSION,

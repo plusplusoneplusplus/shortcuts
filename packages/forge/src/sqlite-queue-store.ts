@@ -1,0 +1,231 @@
+/**
+ * SQLite-backed Queue Store
+ *
+ * Persists queue tasks and per-repo queue state in the existing SQLite
+ * database.  All methods are synchronous (better-sqlite3).
+ */
+
+import type Database from 'better-sqlite3';
+import type { QueuedTask, QueueStatus, PauseReason } from './queue/types';
+
+// ============================================================================
+// Row types (snake_case, matching SQLite columns)
+// ============================================================================
+
+interface QueueTaskRow {
+    id: string;
+    repo_id: string;
+    folder_path: string | null;
+    type: string;
+    priority: string;
+    status: string;
+    created_at: number;
+    started_at: number | null;
+    completed_at: number | null;
+    display_name: string | null;
+    process_id: string | null;
+    error: string | null;
+    retry_count: number;
+    concurrency_mode: string | null;
+    frozen: number;
+    admitted: number;
+    payload: string;
+    config: string;
+    result: string | null;
+}
+
+interface RepoStateRow {
+    repo_id: string;
+    is_paused: number;
+    pause_reason: string | null;
+}
+
+// ============================================================================
+// Serialization helpers
+// ============================================================================
+
+function taskToRow(task: QueuedTask): QueueTaskRow {
+    return {
+        id: task.id,
+        repo_id: task.repoId ?? '',
+        folder_path: task.folderPath ?? null,
+        type: task.type,
+        priority: task.priority,
+        status: task.status,
+        created_at: task.createdAt,
+        started_at: task.startedAt ?? null,
+        completed_at: task.completedAt ?? null,
+        display_name: task.displayName ?? null,
+        process_id: task.processId ?? null,
+        error: task.error ?? null,
+        retry_count: task.retryCount ?? 0,
+        concurrency_mode: task.concurrencyMode ?? null,
+        frozen: task.frozen ? 1 : 0,
+        admitted: task.admitted ? 1 : 0,
+        payload: JSON.stringify(task.payload),
+        config: JSON.stringify(task.config),
+        result: task.result !== undefined ? JSON.stringify(task.result) : null,
+    };
+}
+
+function rowToTask(row: QueueTaskRow): QueuedTask {
+    const task: QueuedTask = {
+        id: row.id,
+        type: row.type,
+        priority: row.priority as QueuedTask['priority'],
+        status: row.status as QueuedTask['status'],
+        createdAt: row.created_at,
+        payload: JSON.parse(row.payload),
+        config: JSON.parse(row.config),
+    };
+
+    if (row.repo_id) task.repoId = row.repo_id;
+    if (row.folder_path !== null) task.folderPath = row.folder_path;
+    if (row.started_at !== null) task.startedAt = row.started_at;
+    if (row.completed_at !== null) task.completedAt = row.completed_at;
+    if (row.display_name !== null) task.displayName = row.display_name;
+    if (row.process_id !== null) task.processId = row.process_id;
+    if (row.result !== null) task.result = JSON.parse(row.result);
+    if (row.error !== null) task.error = row.error;
+    if (row.retry_count !== 0) task.retryCount = row.retry_count;
+    if (row.concurrency_mode !== null) task.concurrencyMode = row.concurrency_mode as QueuedTask['concurrencyMode'];
+    if (row.frozen === 1) task.frozen = true;
+    if (row.admitted === 1) task.admitted = true;
+
+    return task;
+}
+
+function pauseReasonToJson(r?: PauseReason): string | null {
+    return r !== undefined ? JSON.stringify(r) : null;
+}
+
+function jsonToPauseReason(s: string | null): PauseReason | undefined {
+    return s !== null ? (JSON.parse(s) as PauseReason) : undefined;
+}
+
+// ============================================================================
+// SqliteQueueStore
+// ============================================================================
+
+export interface SqliteQueueStoreOptions {
+    db: Database.Database;
+}
+
+export class SqliteQueueStore {
+    private readonly db: Database.Database;
+
+    constructor(db: Database.Database) {
+        this.db = db;
+    }
+
+    // ── queue_tasks ──────────────────────────────────────────────────
+
+    /** INSERT OR REPLACE a task row. Serializes payload/config/result to JSON. */
+    upsertQueueTask(task: QueuedTask): void {
+        const row = taskToRow(task);
+        const stmt = this.db.prepare(`
+            INSERT OR REPLACE INTO queue_tasks
+                (id, repo_id, folder_path, type, priority, status,
+                 created_at, started_at, completed_at, display_name,
+                 process_id, error, retry_count, concurrency_mode,
+                 frozen, admitted, payload, config, result)
+            VALUES
+                (@id, @repo_id, @folder_path, @type, @priority, @status,
+                 @created_at, @started_at, @completed_at, @display_name,
+                 @process_id, @error, @retry_count, @concurrency_mode,
+                 @frozen, @admitted, @payload, @config, @result)
+        `);
+        stmt.run(row);
+    }
+
+    /** DELETE a single task by id. No-op if not found. */
+    removeQueueTask(id: string): void {
+        this.db.prepare('DELETE FROM queue_tasks WHERE id = ?').run(id);
+    }
+
+    /**
+     * SELECT tasks with optional filters.
+     * If repoId is provided, filters by repo_id.
+     * If statuses is provided (non-empty), filters by status IN (...).
+     * Returns deserialized QueuedTask[].
+     */
+    getQueueTasks(repoId?: string, statuses?: QueueStatus[]): QueuedTask[] {
+        const clauses: string[] = [];
+        const params: Record<string, unknown> = {};
+
+        if (repoId !== undefined) {
+            clauses.push('repo_id = @repoId');
+            params.repoId = repoId;
+        }
+
+        if (statuses !== undefined && statuses.length > 0) {
+            const placeholders = statuses.map((_, i) => `@s${i}`);
+            clauses.push(`status IN (${placeholders.join(', ')})`);
+            statuses.forEach((s, i) => { params[`s${i}`] = s; });
+        }
+
+        let sql = 'SELECT * FROM queue_tasks';
+        if (clauses.length > 0) {
+            sql += ' WHERE ' + clauses.join(' AND ');
+        }
+
+        const rows = this.db.prepare(sql).all(params) as QueueTaskRow[];
+        return rows.map(rowToTask);
+    }
+
+    /**
+     * DELETE tasks. If repoId is provided, scoped to that repo.
+     * Otherwise deletes all tasks.
+     */
+    clearQueueTasks(repoId?: string): void {
+        if (repoId !== undefined) {
+            this.db.prepare('DELETE FROM queue_tasks WHERE repo_id = ?').run(repoId);
+        } else {
+            this.db.prepare('DELETE FROM queue_tasks').run();
+        }
+    }
+
+    // ── queue_repo_state ────────────────────────────────────────────
+
+    /** SELECT queue_repo_state for a repo. Returns undefined if not found. */
+    getQueueRepoState(repoId: string): { isPaused: boolean; pauseReason?: PauseReason } | undefined {
+        const row = this.db.prepare(
+            'SELECT * FROM queue_repo_state WHERE repo_id = ?',
+        ).get(repoId) as RepoStateRow | undefined;
+
+        if (!row) return undefined;
+
+        return {
+            isPaused: row.is_paused === 1,
+            pauseReason: jsonToPauseReason(row.pause_reason),
+        };
+    }
+
+    /** INSERT OR REPLACE queue_repo_state. Serializes pauseReason to JSON. */
+    setQueueRepoState(repoId: string, isPaused: boolean, pauseReason?: PauseReason): void {
+        this.db.prepare(`
+            INSERT OR REPLACE INTO queue_repo_state (repo_id, is_paused, pause_reason)
+            VALUES (?, ?, ?)
+        `).run(repoId, isPaused ? 1 : 0, pauseReasonToJson(pauseReason));
+    }
+
+    /** DELETE queue_repo_state row for a repo. No-op if not found. */
+    removeQueueRepoState(repoId: string): void {
+        this.db.prepare('DELETE FROM queue_repo_state WHERE repo_id = ?').run(repoId);
+    }
+
+    /** SELECT all queue_repo_state rows. Returns a Map keyed by repoId. */
+    getAllQueueRepoStates(): Map<string, { isPaused: boolean; pauseReason?: PauseReason }> {
+        const rows = this.db.prepare('SELECT * FROM queue_repo_state').all() as RepoStateRow[];
+        const map = new Map<string, { isPaused: boolean; pauseReason?: PauseReason }>();
+
+        for (const row of rows) {
+            map.set(row.repo_id, {
+                isPaused: row.is_paused === 1,
+                pauseReason: jsonToPauseReason(row.pause_reason),
+            });
+        }
+
+        return map;
+    }
+}

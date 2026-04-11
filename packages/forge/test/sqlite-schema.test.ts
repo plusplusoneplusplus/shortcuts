@@ -16,7 +16,7 @@ describe('sqlite-schema', () => {
         db.close();
     });
 
-    it('creates all 4 tables', () => {
+    it('creates all 6 tables', () => {
         initializeDatabase(db);
 
         const tables = db
@@ -28,6 +28,8 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('conversation_turns');
         expect(tables).toContain('workspaces');
         expect(tables).toContain('wikis');
+        expect(tables).toContain('queue_tasks');
+        expect(tables).toContain('queue_repo_state');
     });
 
     it('creates all expected indexes', () => {
@@ -48,6 +50,8 @@ describe('sqlite-schema', () => {
             'idx_processes_active',
             'idx_turns_process_id',
             'idx_turns_streaming',
+            'idx_queue_tasks_repo_id',
+            'idx_queue_tasks_status',
         ];
 
         for (const name of expected) {
@@ -98,6 +102,8 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('conversation_turns');
         expect(tables).toContain('workspaces');
         expect(tables).toContain('wikis');
+        expect(tables).toContain('queue_tasks');
+        expect(tables).toContain('queue_repo_state');
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
     });
 
