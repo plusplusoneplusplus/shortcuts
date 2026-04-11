@@ -58,7 +58,7 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
         : undefined;
 
     return {
-        id: proc.id,
+        id: proc.id.replace(/^queue_/, ''),
         processId: proc.id,
         status: proc.status,
         type: proc.type,

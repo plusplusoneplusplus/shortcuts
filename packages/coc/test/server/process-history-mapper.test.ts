@@ -65,7 +65,7 @@ describe('processToHistorySummary', () => {
 
     it('should map basic fields correctly', () => {
         const summary = processToHistorySummary(baseProcess);
-        expect(summary.id).toBe('queue_test-123');
+        expect(summary.id).toBe('test-123');
         expect(summary.processId).toBe('queue_test-123');
         expect(summary.status).toBe('completed');
         expect(summary.type).toBe('clarification');
@@ -154,6 +154,20 @@ describe('processToHistorySummary', () => {
         const proc = { ...baseProcess, metadata: undefined };
         const summary = processToHistorySummary(proc);
         expect(summary.repoId).toBe('');
+    });
+
+    it('should strip queue_ prefix from id but preserve it in processId', () => {
+        const proc = { ...baseProcess, id: 'queue_1775917275950-9vyf2fm' };
+        const summary = processToHistorySummary(proc);
+        expect(summary.id).toBe('1775917275950-9vyf2fm');
+        expect(summary.processId).toBe('queue_1775917275950-9vyf2fm');
+    });
+
+    it('should not alter id when no queue_ prefix exists', () => {
+        const proc = { ...baseProcess, id: 'proc-no-prefix' };
+        const summary = processToHistorySummary(proc);
+        expect(summary.id).toBe('proc-no-prefix');
+        expect(summary.processId).toBe('proc-no-prefix');
     });
 });
 
