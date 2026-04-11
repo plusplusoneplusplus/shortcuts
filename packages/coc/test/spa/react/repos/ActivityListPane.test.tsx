@@ -1221,7 +1221,7 @@ describe('ActivityListPane', () => {
             fireEvent.click(screen.getByText(/Delete 1 chats/));
             await waitFor(() => {
                 expect(globalThis.fetch).toHaveBeenCalledWith(
-                    expect.stringContaining('/api/workspaces/ws-1/history/'),
+                    expect.stringContaining('/workspaces/ws-1/history/'),
                     expect.objectContaining({ method: 'DELETE' }),
                 );
             });

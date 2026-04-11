@@ -186,7 +186,7 @@ function setupFetchMock(opts: {
         if (init?.method === 'POST') {
             return {};
         }
-        if (url.includes('/api/workspaces/') && url.includes('/history')) {
+        if (url.includes('/workspaces/') && url.includes('/history')) {
             return { history };
         }
         if (url.match(/\/queue\?repoId=/)) {
@@ -322,9 +322,9 @@ describe('RepoActivityTab: data fetching', () => {
         expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/queue?repoId=ws-1'));
     });
 
-    it('fetches /api/workspaces/:id/history on mount', async () => {
+    it('fetches /workspaces/:id/history on mount', async () => {
         await renderTab();
-        expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/api/workspaces/ws-1/history'));
+        expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/workspaces/ws-1/history'));
     });
 
     it('encodes workspaceId in fetch URL', async () => {
@@ -998,9 +998,9 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
             dispatchRef.current?.({ running: [], queued: [], stats: { isPaused: false } });
         });
 
-        // Should have fetched /api/workspaces/:id/history due to departure detection
+        // Should have fetched /workspaces/:id/history due to departure detection
         await waitFor(() => {
-            expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/api/workspaces/ws-1/history'));
+            expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/workspaces/ws-1/history'));
         });
 
         // The refetched history should be rendered
@@ -1039,9 +1039,9 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         // Give a tick for any async work
         await act(async () => { await new Promise(r => setTimeout(r, 50)); });
 
-        // Should NOT have called /api/workspaces/:id/history (no departure happened)
+        // Should NOT have called /workspaces/:id/history (no departure happened)
         const historyCalls = mockFetchApi.mock.calls.filter(
-            (c: any) => typeof c[0] === 'string' && c[0].includes('/api/workspaces/') && c[0].includes('/history'),
+            (c: any) => typeof c[0] === 'string' && c[0].includes('/workspaces/') && c[0].includes('/history'),
         );
         expect(historyCalls).toHaveLength(0);
     });

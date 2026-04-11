@@ -80,8 +80,8 @@ describe('ExactOpen component', () => {
             expect(source).toContain('limit=50');
         });
 
-        it('calls /api/fs/blob endpoint for absolute paths', () => {
-            expect(source).toContain('/api/fs/blob?path=');
+        it('calls /fs/blob endpoint for absolute paths', () => {
+            expect(source).toContain('/fs/blob?path=');
         });
     });
 

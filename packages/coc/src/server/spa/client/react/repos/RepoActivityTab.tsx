@@ -67,7 +67,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
 
     const fetchHistory = useCallback(async () => {
         const data = await fetchApi(
-            `/api/workspaces/${encodeURIComponent(workspaceId)}/history`
+            `/workspaces/${encodeURIComponent(workspaceId)}/history`
         ).catch(() => null);
         setHistory((data?.history as ProcessHistoryItem[]) || []);
     }, [workspaceId]);

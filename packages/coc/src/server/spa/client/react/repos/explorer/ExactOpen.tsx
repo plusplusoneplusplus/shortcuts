@@ -97,7 +97,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
                 const abort = new AbortController();
                 abortRef.current = abort;
                 setLoading(true);
-                fetchApi(`/api/fs/blob?path=${encodeURIComponent(query.trim())}`, { signal: abort.signal, method: 'GET' })
+                fetchApi(`/fs/blob?path=${encodeURIComponent(query.trim())}`, { signal: abort.signal, method: 'GET' })
                     .then(() => {
                         if (abort.signal.aborted) return;
                         setResults([query.trim()]);

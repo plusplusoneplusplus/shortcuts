@@ -294,7 +294,7 @@ export function ActivityListPane({
 
     const deleteChatDirect = async (taskId: string) => {
         const url = workspaceId
-            ? getApiBase() + '/api/workspaces/' + encodeURIComponent(workspaceId) + '/history/' + encodeURIComponent(taskId)
+            ? getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/history/' + encodeURIComponent(taskId)
             : getApiBase() + '/queue/history/' + encodeURIComponent(taskId);
         const res = await fetch(url, { method: 'DELETE' });
         if (res.ok) {
