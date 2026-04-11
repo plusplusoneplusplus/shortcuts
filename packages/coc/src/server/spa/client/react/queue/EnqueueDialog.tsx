@@ -297,6 +297,7 @@ export function EnqueueDialog() {
                             kind: 'chat',
                             mode: 'autopilot',
                             prompt: effectivePrompt || `Use the ${skillLabel} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
+                            workspaceId: workspaceId || undefined,
                             workingDirectory,
                             context: {
                                 skills: effectiveSkills,
@@ -313,6 +314,7 @@ export function EnqueueDialog() {
                             kind: 'chat',
                             mode: 'autopilot',
                             prompt: effectivePrompt,
+                            workspaceId: workspaceId || undefined,
                             workingDirectory: workingDirectory || folderPath || undefined,
                             ...(files ? { context: { files } } : {}),
                         },
