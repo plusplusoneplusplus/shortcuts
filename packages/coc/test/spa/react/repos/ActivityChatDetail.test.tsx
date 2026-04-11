@@ -1202,6 +1202,58 @@ describe('ActivityChatDetail', () => {
             expect(processCalls).toHaveLength(1);
         });
 
+        it('fires only one process fetch for a running task on mount', async () => {
+            const task = makeTask({ status: 'running' });
+            const proc = makeProcess({ status: 'running' });
+            setupStandardFetch(task, proc);
+
+            await act(async () => {
+                render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+            });
+
+            const processCalls = fetchMock.mock.calls.filter(
+                ([url]: [string]) => typeof url === 'string' && url.includes('/processes/'),
+            );
+            expect(processCalls).toHaveLength(1);
+        });
+
+        it('reconciles task status with process status when they differ', async () => {
+            // Queue says 'running' but process already completed — only a user turn
+            const task = makeTask({ status: 'running' });
+            const proc = makeProcess({
+                status: 'completed',
+                conversationTurns: [
+                    { role: 'user', content: 'Hello', turnIndex: 0, timeline: [] },
+                ],
+            });
+            setupStandardFetch(task, proc);
+
+            await act(async () => {
+                render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
+            });
+
+            // If status reconciliation works, effectiveTask.status === 'completed',
+            // so no streaming assistant placeholder turn is appended.
+            // Without reconciliation, the code would see status === 'running' and
+            // add a streaming assistant turn.
+            const assistantTurns = screen.queryAllByTestId('turn-assistant');
+            expect(assistantTurns).toHaveLength(0);
+
+            // Only 1 process fetch (no duplicate from SSE done→refresh)
+            const processCalls = fetchMock.mock.calls.filter(
+                ([url]: [string]) => typeof url === 'string' && url.includes('/processes/'),
+            );
+            expect(processCalls).toHaveLength(1);
+        });
+
         it('still re-fetches on genuine re-click after mount', async () => {
             const task = makeTask();
             const proc = makeProcess();

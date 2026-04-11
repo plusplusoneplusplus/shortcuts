@@ -319,12 +319,12 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
                 if (loadCounterRef.current !== loadId) return;
                 const loadedTask = queueData?.task ?? null;
-                setTask(loadedTask);
                 if (loadedTask?.payload?.mode && ['ask', 'plan', 'autopilot'].includes(loadedTask.payload.mode)) {
                     setSelectedMode(loadedTask.payload.mode);
                 }
 
                 if (!loadedTask?.processId && loadedTask?.status === 'queued') {
+                    setTask(loadedTask);
                     const prompt = loadedTask?.payload?.prompt ?? '';
                     if (prompt) {
                         setTurnsAndRef([{ role: 'user', content: prompt, turnIndex: 0, timeline: [] }]);
@@ -337,6 +337,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 // Check shared conversation cache
                 const cached = appState.conversationCache[taskId];
                 if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
+                    setTask(loadedTask);
                     setTurnsAndRef(cached.turns);
                     // Background-refresh metadata + restore pending messages
                     fetchApi(`/processes/${encodeURIComponent(pid)}`)
@@ -362,13 +363,21 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 } else {
                     const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
                     if (loadCounterRef.current !== loadId) return;
+
+                    // Reconcile: process status is authoritative over queue status
+                    const procStatus = procData?.process?.status;
+                    const effectiveTask = procStatus && procStatus !== loadedTask?.status
+                        ? { ...loadedTask, status: procStatus }
+                        : loadedTask;
+
+                    setTask(effectiveTask);
                     setProcessDetails(procData?.process || null);
                     const processMode = procData?.process?.metadata?.mode;
                     if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
                         setSelectedMode(processMode);
                     }
-                    const loadedTurns = getConversationTurns(procData, loadedTask);
-                    if (loadedTask?.status === 'running') {
+                    const loadedTurns = getConversationTurns(procData, effectiveTask);
+                    if (effectiveTask?.status === 'running') {
                         const lastTurn = loadedTurns[loadedTurns.length - 1];
                         if (lastTurn?.role === 'assistant') {
                             setTurnsAndRef(loadedTurns.map((t: ClientConversationTurn, i: number) =>
@@ -425,14 +434,24 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             try {
                 const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
                 const refreshedTask = queueData?.task ?? null;
-                setTask(refreshedTask);
 
                 const pid = refreshedTask?.processId ?? `queue_${taskId}`;
-                if (!refreshedTask?.processId && refreshedTask?.status === 'queued') return;
+                if (!refreshedTask?.processId && refreshedTask?.status === 'queued') {
+                    setTask(refreshedTask);
+                    return;
+                }
 
                 const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+
+                // Reconcile: process status is authoritative over queue status
+                const procStatus = procData?.process?.status;
+                const effectiveTask = procStatus && procStatus !== refreshedTask?.status
+                    ? { ...refreshedTask, status: procStatus }
+                    : refreshedTask;
+
+                setTask(effectiveTask);
                 setProcessDetails(procData?.process || null);
-                const refreshedTurns = getConversationTurns(procData, refreshedTask);
+                const refreshedTurns = getConversationTurns(procData, effectiveTask);
                 setTurnsAndRef(refreshedTurns);
             } catch { /* keep current state */ }
         })();
