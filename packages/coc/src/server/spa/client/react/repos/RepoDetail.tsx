@@ -230,7 +230,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     // Seed repo queue map on first render if not yet populated with task-level data
     useEffect(() => {
         const existing = queueState.repoQueueMap[ws.id];
-        if (existing && (existing.running.length > 0 || existing.queued.length > 0 || existing.history.length > 0)) return;
+        if (existing && (existing.running.length > 0 || existing.queued.length > 0)) return;
         fetchApi('/queue?repoId=' + encodeURIComponent(ws.id))
             .then(data => {
                 if (data) queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: ws.id, queue: data });

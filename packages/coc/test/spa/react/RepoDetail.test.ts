@@ -235,7 +235,11 @@ describe('RepoDetail Activity badge wiring', () => {
     });
 
     it('skips fetch if repoQueueMap already has task-level data for the repo', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('existing.running.length > 0 || existing.queued.length > 0 || existing.history.length > 0');
+        expect(REPO_DETAIL_SOURCE).toContain('existing.running.length > 0 || existing.queued.length > 0');
+    });
+
+    it('does not access history on repoQueueMap entries (history is not part of queue state)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('existing.history');
     });
 
     it('does not use combined queueCount variable', () => {
