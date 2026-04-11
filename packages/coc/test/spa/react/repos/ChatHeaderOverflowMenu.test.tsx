@@ -112,4 +112,18 @@ describe('ChatHeaderOverflowMenu', () => {
         fireEvent.click(trigger);
         expect(trigger.getAttribute('aria-label')).toBe('Close overflow menu');
     });
+
+    it('stamps data-ws-id on the portal div when wsId is provided', () => {
+        render(<ChatHeaderOverflowMenu items={makeItems()} wsId="ws-abc" />);
+        fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+        const menu = screen.getByTestId('chat-header-overflow-menu');
+        expect(menu.getAttribute('data-ws-id')).toBe('ws-abc');
+    });
+
+    it('does not stamp data-ws-id on the portal div when wsId is omitted', () => {
+        render(<ChatHeaderOverflowMenu items={makeItems()} />);
+        fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+        const menu = screen.getByTestId('chat-header-overflow-menu');
+        expect(menu.hasAttribute('data-ws-id')).toBe(false);
+    });
 });

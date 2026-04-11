@@ -762,4 +762,42 @@ describe('MarkdownReviewDialog — mobile (BottomSheet)', () => {
         );
         expect(document.querySelector('[data-testid="markdown-review-maximize-btn"]')).toBeNull();
     });
+
+    it('stamps data-ws-id on BottomSheet content wrapper', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws-mobile"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const wsEl = document.querySelector('[data-ws-id="ws-mobile"]');
+        expect(wsEl).not.toBeNull();
+    });
+});
+
+describe('MarkdownReviewDialog — data-ws-id on desktop FloatingDialog', () => {
+    beforeEach(() => {
+        setupFetch();
+        mockBreakpoint.isMobile = false;
+        mockBreakpoint.isDesktop = true;
+    });
+
+    it('stamps data-ws-id on FloatingDialog content wrapper', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws-desktop"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const wsEl = document.querySelector('[data-ws-id="ws-desktop"]');
+        expect(wsEl).not.toBeNull();
+    });
 });

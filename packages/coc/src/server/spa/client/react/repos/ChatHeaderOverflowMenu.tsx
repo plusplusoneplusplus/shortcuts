@@ -13,9 +13,11 @@ export interface OverflowMenuItem {
 
 interface ChatHeaderOverflowMenuProps {
     items: OverflowMenuItem[];
+    /** Workspace ID stamped on the portal div so DOM traversal in file-path-preview.ts can resolve it. */
+    wsId?: string;
 }
 
-export function ChatHeaderOverflowMenu({ items }: ChatHeaderOverflowMenuProps) {
+export function ChatHeaderOverflowMenu({ items, wsId }: ChatHeaderOverflowMenuProps) {
     const [open, setOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -108,6 +110,7 @@ export function ChatHeaderOverflowMenu({ items }: ChatHeaderOverflowMenuProps) {
                 <div
                     ref={popoverRef}
                     data-testid="chat-header-overflow-menu"
+                    {...(wsId ? { 'data-ws-id': wsId } : {})}
                     className={cn(
                         'fixed z-[10003] min-w-[200px] max-w-[300px] rounded-md',
                         'border border-[#e0e0e0] dark:border-[#3c3c3c]',

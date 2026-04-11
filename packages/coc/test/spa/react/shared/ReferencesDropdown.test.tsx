@@ -213,4 +213,19 @@ describe('ReferencesDropdown — mobile', () => {
         // No inline dropdown div — content is in BottomSheet
         expect(document.querySelector('.w-\\[calc\\(100vw-32px\\)\\]')).toBeNull();
     });
+
+    it('stamps data-ws-id on BottomSheet content div when wsId is provided', () => {
+        render(<ReferencesDropdown planPath="/plan.md" wsId="ws-xyz" />);
+        fireEvent.click(screen.getByTestId('references-dropdown-btn'));
+        const wsEl = document.querySelector('[data-ws-id="ws-xyz"]');
+        expect(wsEl).not.toBeNull();
+        // FilePathLink should be inside the stamped container
+        expect(wsEl!.querySelector('[data-full-path="/plan.md"]')).toBeTruthy();
+    });
+
+    it('does not stamp data-ws-id on BottomSheet content when wsId is omitted', () => {
+        render(<ReferencesDropdown planPath="/plan.md" />);
+        fireEvent.click(screen.getByTestId('references-dropdown-btn'));
+        expect(document.querySelector('[data-ws-id]')).toBeNull();
+    });
 });

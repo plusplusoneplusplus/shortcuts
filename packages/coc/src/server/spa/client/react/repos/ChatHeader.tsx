@@ -56,6 +56,7 @@ function buildOverflowItems(
         metadataProcess: any;
         planPath: string;
         createdFiles: { filePath: string }[];
+        wsId?: string;
         sessionTokenLimit: number | undefined;
         sessionCurrentTokens: number | undefined;
         sessionModel: string | undefined;
@@ -103,7 +104,7 @@ function buildOverflowItems(
             label: `References (${refTotal})`,
             onClick: () => { /* handled via render */ },
             render: () => (
-                <ReferencesDropdown planPath={props.planPath} files={props.createdFiles} />
+                <ReferencesDropdown planPath={props.planPath} files={props.createdFiles} wsId={props.wsId} />
             ),
         });
     }
@@ -224,6 +225,7 @@ export function ChatHeader({
         metadataProcess,
         planPath,
         createdFiles,
+        wsId,
         sessionTokenLimit,
         sessionCurrentTokens,
         sessionModel,
@@ -274,7 +276,7 @@ export function ChatHeader({
                 {/* References, duration, Resume CLI, context window — only in wide tier */}
                 {isWide && (
                     <>
-                        <ReferencesDropdown planPath={planPath} files={createdFiles} />
+                        <ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />
                         {task?.duration != null && (
                             <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
                         )}
@@ -371,7 +373,7 @@ export function ChatHeader({
                     </>
                 )}
                 {/* Overflow menu — shown at < 700px */}
-                {!isWide && <ChatHeaderOverflowMenu items={overflowItems} />}
+                {!isWide && <ChatHeaderOverflowMenu items={overflowItems} wsId={wsId} />}
             </div>
         </div>
     );

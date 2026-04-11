@@ -6,6 +6,8 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 export interface ReferencesDropdownProps {
     planPath?: string;
     files?: { filePath: string }[];
+    /** Workspace ID stamped on the mobile BottomSheet content so DOM traversal in file-path-preview.ts can resolve it. */
+    wsId?: string;
 }
 
 function PlanFileIcon() {
@@ -35,7 +37,7 @@ function ReferenceList({ planPath, files }: { planPath?: string; files?: { fileP
     );
 }
 
-export function ReferencesDropdown({ planPath, files }: ReferencesDropdownProps) {
+export function ReferencesDropdown({ planPath, files, wsId }: ReferencesDropdownProps) {
     const total = (planPath ? 1 : 0) + (files?.length ?? 0);
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -73,7 +75,7 @@ export function ReferencesDropdown({ planPath, files }: ReferencesDropdownProps)
                     onClose={() => setOpen(false)}
                     title={`References (${total})`}
                 >
-                    <div className="flex flex-col gap-1 p-2">
+                    <div className="flex flex-col gap-1 p-2" {...(wsId ? { 'data-ws-id': wsId } : {})}>
                         <ReferenceList planPath={planPath} files={files} />
                     </div>
                 </BottomSheet>

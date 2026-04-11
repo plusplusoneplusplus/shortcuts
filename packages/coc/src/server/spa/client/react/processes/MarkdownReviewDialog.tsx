@@ -132,6 +132,7 @@ export function MarkdownReviewDialog({
                 title={title}
                 height={90}
             >
+                <div {...(wsId ? { 'data-ws-id': wsId } : {})}>
                 {/* Action buttons row */}
                 <div className="flex items-center gap-0.5 px-3 pb-2">
                     <button
@@ -180,6 +181,7 @@ export function MarkdownReviewDialog({
                         initialScrollTop={initialScrollTop}
                         onScrollTopChange={(st) => { scrollTopRef.current = st; }}
                     />
+                </div>
                 </div>
             </BottomSheet>
         );
@@ -269,6 +271,7 @@ export function MarkdownReviewDialog({
                 </div>
             )}
         >
+            <div {...(wsId ? { 'data-ws-id': wsId } : {})}>
             <MarkdownReviewEditor
                 wsId={wsId}
                 filePath={filePath}
@@ -278,6 +281,7 @@ export function MarkdownReviewDialog({
                 initialScrollTop={initialScrollTop}
                 onScrollTopChange={(st) => { scrollTopRef.current = st; }}
             />
+            </div>
         </FloatingDialog>
     );
 }
