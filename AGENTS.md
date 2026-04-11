@@ -80,7 +80,7 @@ Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HT
 
 **Key `serve` flags:** `-p` port (default 4000), `-H` host, `-d` data-dir (`~/.coc`), `--theme`, `--no-open`.
 
-**Configuration:** `~/.coc/config.yaml` (legacy: `~/.coc.yaml`). CLI flags > config file > defaults. Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
+**Configuration:** `~/.coc/config.yaml` (legacy: `~/.coc.yaml`). CLI flags > config file > defaults. Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT. Default process store backend is SQLite (`store.backend: sqlite`); use `createProcessStore(dataDir, backend?)` from `src/config.ts` to instantiate the correct store.
 
 **Architecture:** `src/cli.ts` (Commander setup) → `src/commands/` (run, validate, list, serve, wipe-data) → `src/server/` (HTTP router, API handler, WebSocket, SSE, queue, scheduling, tasks, wiki integration, SPA dashboard).
 
@@ -114,7 +114,7 @@ CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `fo
 
 Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/forge`.
 
-**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Process store (`FileProcessStore` — per-repo directory of JSON files under `~/.coc/repos/<workspaceId>/processes/`, atomic writes, 500-process cap, cross-workspace lookup via scanning `repos/*/processes/index.json`), Git CLI (`@plusplusoneplusplus/forge/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider, skill resolver), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine, CSV reader, prompt resolver, filter executor, input generator).
+**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Process store (`SqliteProcessStore` default — single `processes.db` file; legacy `FileProcessStore` — per-repo JSON files under `~/.coc/repos/<workspaceId>/processes/`), Git CLI (`@plusplusoneplusplus/forge/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider, skill resolver), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine, CSV reader, prompt resolver, filter executor, input generator).
 
 **Module layout (post pipeline/ deletion):**
 - Pipeline YAML config types → `workflow/pipeline-compat.ts` (used by compiler)
@@ -155,6 +155,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 
 **Storage layout — `~/.coc/` (top-level, global):**
 - `config.yaml` — server configuration
+- `processes.db` — SQLite process store (default backend)
 - `preferences.json` — global UI preferences (theme, etc.)
 - `memory/` — cross-repo and system memory (see Memory System section)
 - `skills/` — global skill definitions
@@ -166,7 +167,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `git-ops.json` — background git operations
 - `preferences.json` — per-repo UI preferences
 - `tasks/` — task and plan files
-- `processes/` — per-repo process store (`index.json` + one JSON file per process, 500-process cap)
+- `processes/` — legacy file-based process store (used only when `store.backend: file` in config)
 - `outputs/` — AI conversation output markdown files (`<processId>.md`), managed by `OutputFileManager`
 - `paste-context/` — temp files for large pasted content externalized from chat prompts (auto-cleaned after task completion and on server startup)
 
