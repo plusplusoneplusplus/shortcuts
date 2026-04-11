@@ -13,7 +13,7 @@ import { sendJSON, sendError } from '../api-handler';
 import type { Route } from '../types';
 import * as url from 'url';
 import * as fs from 'fs';
-import type { QueueStats } from '@plusplusoneplusplus/forge';
+import type { QueueStats, ProcessFilter } from '@plusplusoneplusplus/forge';
 import {
     serializeTask,
     serializeTaskSummary,
@@ -24,6 +24,7 @@ import {
     VALID_TASK_TYPES,
     type QueueRouteContext,
 } from './queue-shared';
+import { processToHistorySummary, type HistorySummary } from '../shared/process-history-mapper';
 
 export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
@@ -104,7 +105,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
     });
 
     // ------------------------------------------------------------------
-    // GET /api/queue/history — Queue task history
+    // GET /api/queue/history — Queue task history (store + in-memory merge)
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
@@ -122,24 +123,62 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                 return sendError(res, 400, `Invalid type filter: ${typeFilter}. Valid types: ${Array.from(VALID_TASK_TYPES).join(', ')}`);
             }
 
-            let history: Record<string, unknown>[];
+            // 1. Collect in-memory queue history (catches tasks cancelled before execution)
+            let inMemoryHistory: Record<string, unknown>[];
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
-                history = mgr
+                inMemoryHistory = mgr
                     ? mgr.getHistory().map(serializeTaskSummary)
                     : [];
             } else {
-                const globalPath = globalWorkspaceRootPath ?? process.cwd();
-                const globalMgr = bridge.registry.getQueueForRepo(globalPath);
-                history = globalMgr.getHistory().map(serializeTaskSummary);
+                inMemoryHistory = [];
+                for (const m of bridge.registry.getAllQueues().values()) {
+                    inMemoryHistory.push(...m.getHistory().map(serializeTaskSummary));
+                }
+            }
+
+            // 2. Merge with durable process store entries (survives server restart)
+            const seenIds = new Set(inMemoryHistory.map(t => t.id as string));
+            let history = [...inMemoryHistory];
+
+            if (store) {
+                const filter: ProcessFilter = {
+                    status: ['completed', 'failed', 'cancelled'],
+                    exclude: ['conversation', 'toolCalls'],
+                };
+                if (repoId) {
+                    const workspaces = await store.getWorkspaces();
+                    const ws = workspaces.find(w => w.id === repoId);
+                    filter.workspaceId = ws ? ws.id : repoId;
+                }
+                if (typeFilter && typeFilter !== 'chat') {
+                    filter.type = typeFilter;
+                }
+                filter.limit = 200;
+
+                const processes = await store.getAllProcesses(filter);
+                for (const proc of processes) {
+                    const summary = processToHistorySummary(proc);
+                    if (!seenIds.has(summary.id)) {
+                        seenIds.add(summary.id);
+                        history.push(summary as unknown as Record<string, unknown>);
+                    }
+                }
             }
 
             if (typeFilter) {
                 history = history.filter(t => t.type === typeFilter);
             }
 
+            // Sort by completedAt/createdAt descending (newest first)
+            history.sort((a, b) => {
+                const ta = (a.completedAt as number) ?? (a.createdAt as number) ?? 0;
+                const tb = (b.completedAt as number) ?? (b.createdAt as number) ?? 0;
+                return tb - ta;
+            });
+
+            // 3. For chat type, merge live (running/queued) tasks from in-memory queue
             if (typeFilter === 'chat') {
-                const seenIds = new Set(history.map(t => t.id as string));
                 const collectActive = (mgr: import('@plusplusoneplusplus/forge').TaskQueueManager) => {
                     for (const task of [...mgr.getRunning(), ...mgr.getQueued()]) {
                         if (
@@ -155,13 +194,15 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                     const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
                     if (mgr) collectActive(mgr);
                 } else {
-                    const globalPath = globalWorkspaceRootPath ?? process.cwd();
-                    const globalMgr = bridge.registry.getQueueForRepo(globalPath);
-                    collectActive(globalMgr);
+                    for (const m of bridge.registry.getAllQueues().values()) {
+                        collectActive(m);
+                    }
                 }
+
+                await enrichChatTasks(history, store);
                 history.sort((a, b) => {
-                    const ta = (a.createdAt as number) ?? 0;
-                    const tb = (b.createdAt as number) ?? 0;
+                    const ta = ((a as any).chatMeta?.lastActivityAt as number) ?? (a.createdAt as number) ?? (a.completedAt as number) ?? 0;
+                    const tb = ((b as any).chatMeta?.lastActivityAt as number) ?? (b.createdAt as number) ?? (b.completedAt as number) ?? 0;
                     return tb - ta;
                 });
             }
@@ -171,18 +212,10 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                 : undefined;
             if (pipelineName) {
                 history = history.filter(t =>
+                    (t as any).payload?.pipelineName === pipelineName ||
                     (t as any).metadata?.pipelineName === pipelineName ||
                     (t as any).displayName?.includes(pipelineName)
                 );
-            }
-
-            if (typeFilter === 'chat') {
-                await enrichChatTasks(history, store);
-                history.sort((a, b) => {
-                    const ta = ((a as any).chatMeta?.lastActivityAt as number) ?? (a.createdAt as number) ?? 0;
-                    const tb = ((b as any).chatMeta?.lastActivityAt as number) ?? (b.createdAt as number) ?? 0;
-                    return tb - ta;
-                });
             }
 
             sendJSON(res, 200, { history });

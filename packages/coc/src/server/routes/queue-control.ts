@@ -293,16 +293,34 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
     });
 
     // ------------------------------------------------------------------
-    // DELETE /api/queue/history — Clear queue history
+    // DELETE /api/queue/history — Clear queue history (store-backed)
     // ------------------------------------------------------------------
     routes.push({
         method: 'DELETE',
         pattern: '/api/queue/history',
-        handler: async (_req, res) => {
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
+                ? parsed.query.repoId
+                : undefined;
+
+            // Also clear in-memory history for backward compat
             for (const m of bridge.registry.getAllQueues().values()) {
                 m.clearHistory();
             }
-            sendJSON(res, 200, { cleared: true });
+
+            if (store) {
+                const filter: import('@plusplusoneplusplus/forge').ProcessFilter = {
+                    status: ['completed', 'failed', 'cancelled'],
+                };
+                if (repoId) {
+                    filter.workspaceId = repoId;
+                }
+                const cleared = await store.clearProcesses(filter);
+                sendJSON(res, 200, { cleared });
+            } else {
+                sendJSON(res, 200, { cleared: true });
+            }
         },
     });
 
@@ -315,37 +333,45 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
         handler: async (_req, res, match) => {
             const taskId = decodeURIComponent(match![1]);
 
+            // Check in-memory queue first (task may still be tracked there)
             const mgr = bridge.findManagerForTask(taskId);
-            if (!mgr) {
-                return sendError(res, 404, 'History entry not found');
-            }
-
-            const task = mgr.getTask(taskId);
-            if (!task) {
-                return sendError(res, 404, 'History entry not found');
-            }
-
-            const historyStatuses = new Set(['completed', 'failed', 'cancelled']);
-            if (!historyStatuses.has(task.status)) {
-                return sendError(res, 409, 'Task is still running or queued; cannot delete');
-            }
-
-            const processId = task.processId as string | undefined;
-
-            if (store && processId) {
-                try {
-                    const children = await store.getAllProcesses({ parentProcessId: processId });
-                    for (const child of children) {
-                        await store.removeProcess(child.id);
+            if (mgr) {
+                const task = mgr.getTask(taskId);
+                if (task) {
+                    const historyStatuses = new Set(['completed', 'failed', 'cancelled']);
+                    if (!historyStatuses.has(task.status)) {
+                        return sendError(res, 409, 'Task is still running or queued; cannot delete');
                     }
-                    await store.removeProcess(processId);
-                } catch (err) {
-                    process.stderr.write(`[Queue] Failed to remove process for task ${taskId}: ${err}\n`);
+                    mgr.removeHistoryEntry(taskId);
                 }
             }
 
-            const removed = mgr.removeHistoryEntry(taskId);
-            if (!removed) {
+            // The taskId is now treated as a processId (they are the same after 001-003 migration).
+            // Try both queue_<taskId> (the processId format) and taskId directly.
+            const processId = `queue_${taskId}`;
+
+            if (store) {
+                let found = false;
+                for (const pid of [processId, taskId]) {
+                    try {
+                        const proc = await store.getProcess(pid);
+                        if (proc) {
+                            const children = await store.getAllProcesses({ parentProcessId: pid });
+                            for (const child of children) {
+                                await store.removeProcess(child.id);
+                            }
+                            await store.removeProcess(pid);
+                            found = true;
+                            break;
+                        }
+                    } catch {
+                        // Non-fatal
+                    }
+                }
+                if (!found && !mgr) {
+                    return sendError(res, 404, 'History entry not found');
+                }
+            } else if (!mgr) {
                 return sendError(res, 404, 'History entry not found');
             }
 

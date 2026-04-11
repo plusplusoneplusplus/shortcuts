@@ -319,6 +319,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     /**
      * Requeue an existing task for a follow-up message.
      * Updates the task's payload with the follow-up prompt, then moves it from history → queued.
+     * Falls back to reconstructing the task from the process store when in-memory history is empty.
      */
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         for (const manager of this.registry.getAllQueues().values()) {
@@ -326,7 +327,31 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
             applyFollowUpToTask(manager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images, selectedSkillNames);
             return;
         }
-        throw new Error(`Task ${taskId} not found in any queue`);
+        // Fallback: task not in any in-memory queue (e.g. after server restart).
+        // Reconstruct from the process store and enqueue via the bridge.
+        const processId = `queue_${taskId}`;
+        const proc = await this.store.getProcess(processId) ?? await this.store.getProcess(taskId);
+        if (!proc) throw new Error(`Task ${taskId} not found in any queue`);
+        const rootPath = proc.workingDirectory || process.cwd();
+        this.getOrCreateBridge(rootPath);
+        const manager = this.registry.getQueueForRepo(rootPath);
+        manager.enqueue({
+            type: proc.type === 'clarification' ? 'chat' : proc.type,
+            priority: 'normal',
+            payload: {
+                prompt,
+                processId: proc.id,
+                workingDirectory: proc.workingDirectory,
+                workspaceId: proc.metadata?.workspaceId,
+                mode: mode || proc.metadata?.mode,
+                attachments,
+                imageTempDir,
+                ...(images ? { images } : {}),
+                ...(deliveryMode ? { deliveryMode } : {}),
+            },
+            config: {},
+            displayName: prompt.trim().substring(0, 57) + (prompt.trim().length > 57 ? '...' : ''),
+        });
     }
 
     /**

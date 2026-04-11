@@ -1,6 +1,7 @@
 import type { ChatPayload, ChatMode } from './task-types';
 import { isChatPayload, isMemoryAggregatePayload } from './task-types';
 import { applyFollowUpToTask } from './shared/queue-utils';
+import { processToQueuedTask } from './shared/process-history-mapper';
 import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, normalizeExecutionPath, resolveToolCallCacheOptions, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
@@ -90,8 +91,23 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         if (!this.queueManager) throw new Error('Queue manager is not available');
-        if (!this.queueManager.getTask(taskId)) throw new Error(`Task ${taskId} not found`);
-        applyFollowUpToTask(this.queueManager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images, selectedSkillNames);
+        if (this.queueManager.getTask(taskId)) {
+            applyFollowUpToTask(this.queueManager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images, selectedSkillNames);
+            return;
+        }
+        // Fallback: task not in in-memory queue (e.g. after server restart).
+        // Reconstruct from the process store and enqueue as a new task.
+        const processId = `queue_${taskId}`;
+        const proc = await this.store.getProcess(processId) ?? await this.store.getProcess(taskId);
+        if (!proc) throw new Error(`Task ${taskId} not found`);
+        const reconstructed = processToQueuedTask(proc);
+        this.queueManager.enqueue({
+            type: reconstructed.type ?? 'chat',
+            priority: 'normal',
+            payload: { ...(reconstructed.payload as any), prompt, attachments, imageTempDir, ...(images ? { images } : {}), ...(mode ? { mode } : {}), ...(deliveryMode ? { deliveryMode } : {}) },
+            config: {},
+            displayName: prompt.trim().substring(0, 57) + (prompt.trim().length > 57 ? '...' : ''),
+        });
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
