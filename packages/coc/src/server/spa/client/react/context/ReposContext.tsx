@@ -30,6 +30,7 @@ export interface ReposContextValue {
     loading: boolean;
     fetchRepos: () => Promise<void>;
     unseenCounts: Record<string, number>;
+    refreshUnseenCounts: (wsIds: string[]) => Promise<void>;
 }
 
 const ReposContext = createContext<ReposContextValue | null>(null);
@@ -90,7 +91,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                     counts[id] = await fetchUnseenCount(id);
                 } catch { counts[id] = 0; }
             }));
-            setUnseenCounts(counts);
+            setUnseenCounts(prev => ({ ...prev, ...counts }));
         } catch { /* fire-and-forget */ }
     }, []);
 
@@ -245,8 +246,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const value = useMemo<ReposContextValue>(
-        () => ({ repos, loading, fetchRepos, unseenCounts }),
-        [repos, loading, fetchRepos, unseenCounts]
+        () => ({ repos, loading, fetchRepos, unseenCounts, refreshUnseenCounts }),
+        [repos, loading, fetchRepos, unseenCounts, refreshUnseenCounts]
     );
 
     return <ReposContext.Provider value={value}>{children}</ReposContext.Provider>;

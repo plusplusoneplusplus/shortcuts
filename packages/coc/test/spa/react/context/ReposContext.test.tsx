@@ -54,7 +54,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 function ReposConsumer() {
-    const { repos, loading } = useRepos();
+    const { repos, loading, refreshUnseenCounts } = useRepos();
     if (loading) return <div data-testid="loading">Loading</div>;
     return (
         <ul>
@@ -64,6 +64,7 @@ function ReposConsumer() {
                 </li>
             ))}
             {repos.length === 0 && <li data-testid="empty">empty</li>}
+            <li data-testid="has-refresh">{typeof refreshUnseenCounts}</li>
         </ul>
     );
 }
@@ -160,5 +161,17 @@ describe('ReposContext', () => {
             expect(screen.getByTestId('repo-real-ws')).toBeTruthy();
         });
         expect(screen.queryByTestId('repo-virtual-ws')).toBeNull();
+    });
+
+    it('exposes refreshUnseenCounts as a function', async () => {
+        (fetchApi as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('ws-1')]))
+            .mockResolvedValue(null);
+
+        render(<ProviderWithConsumer />);
+        await waitFor(() => {
+            expect(screen.getByTestId('repo-ws-1')).toBeTruthy();
+        });
+        expect(screen.getByTestId('has-refresh').textContent).toBe('function');
     });
 });

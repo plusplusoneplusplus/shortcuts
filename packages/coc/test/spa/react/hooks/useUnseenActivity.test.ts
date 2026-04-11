@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useUnseenActivity } from '../../../../src/server/spa/client/react/hooks/useUnseenActivity';
+import { useUnseenActivity, getTaskCompletedAtIso } from '../../../../src/server/spa/client/react/hooks/useUnseenActivity';
 import * as seenStateApi from '../../../../src/server/spa/client/react/hooks/seenStateApi';
 
 // Mock the API module
@@ -27,6 +27,16 @@ function makeTasks(...ids: string[]) {
         id,
         status: 'completed',
         completedAt: `2026-03-09T00:00:00Z-${id}`,
+        displayName: `Task ${id}`,
+    }));
+}
+
+/** Creates ProcessHistoryItem-style tasks with endTime (ms epoch) instead of completedAt. */
+function makeHistoryTasks(...ids: string[]) {
+    return ids.map(id => ({
+        id,
+        status: 'completed',
+        endTime: 1741478400000 + ids.indexOf(id) * 1000, // distinct ms epochs
         displayName: `Task ${id}`,
     }));
 }
@@ -450,5 +460,130 @@ describe('useUnseenActivity', () => {
             // After error, seeding should make all seen
             expect(result.current.unseenCount).toBe(0);
         });
+    });
+
+    describe('endTime (ProcessHistoryItem) support', () => {
+        it('treats tasks with endTime as completed', async () => {
+            const history = makeHistoryTasks('a', 'b');
+            const isoA = new Date(history[0].endTime).toISOString();
+            mockFetchSeenMap.mockResolvedValue({ a: isoA });
+
+            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenProcessIds.has('a')).toBe(false);
+                expect(result.current.unseenProcessIds.has('b')).toBe(true);
+            });
+        });
+
+        it('seeds endTime tasks on first visit', async () => {
+            mockFetchSeenMap.mockResolvedValue({});
+            const history = makeHistoryTasks('a', 'b');
+            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenCount).toBe(0);
+            });
+            expect(mockPatchSeenState).toHaveBeenCalled();
+        });
+
+        it('auto-marks selected endTime task as seen', async () => {
+            const history = makeHistoryTasks('a', 'b');
+            const isoA = new Date(history[0].endTime).toISOString();
+            mockFetchSeenMap.mockResolvedValue({ a: isoA });
+
+            const { result, rerender } = renderHook(
+                ({ sel }) => useUnseenActivity('ws1', history, sel),
+                { initialProps: { sel: null as string | null } },
+            );
+
+            await waitFor(() => {
+                expect(result.current.unseenProcessIds.has('b')).toBe(true);
+            });
+
+            rerender({ sel: 'b' });
+
+            await waitFor(() => {
+                expect(result.current.unseenProcessIds.has('b')).toBe(false);
+            });
+        });
+
+        it('markSeen works with endTime tasks', async () => {
+            const history = makeHistoryTasks('a');
+            const isoA = new Date(history[0].endTime).toISOString();
+            // Make 'a' unseen by returning a different seenAt
+            mockFetchSeenMap.mockResolvedValue({ a: 'old-value' });
+            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenProcessIds.has('a')).toBe(true);
+            });
+
+            act(() => {
+                result.current.markSeen('a');
+            });
+
+            expect(result.current.unseenProcessIds.has('a')).toBe(false);
+        });
+
+        it('markAllSeen works with endTime tasks', async () => {
+            const history = makeHistoryTasks('a', 'b');
+            mockFetchSeenMap.mockResolvedValue({ a: 'old' });
+            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenCount).toBeGreaterThan(0);
+            });
+
+            act(() => {
+                result.current.markAllSeen();
+            });
+
+            expect(result.current.unseenCount).toBe(0);
+        });
+
+        it('markTasksSeen works with endTime tasks', async () => {
+            const history = makeHistoryTasks('a', 'b');
+            mockFetchSeenMap.mockResolvedValue({ a: 'old' });
+            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenProcessIds.has('a')).toBe(true);
+            });
+
+            act(() => {
+                result.current.markTasksSeen([history[0]]);
+            });
+
+            expect(result.current.unseenProcessIds.has('a')).toBe(false);
+            expect(result.current.unseenProcessIds.has('b')).toBe(true);
+        });
+    });
+});
+
+describe('getTaskCompletedAtIso', () => {
+    it('returns completedAt when present', () => {
+        expect(getTaskCompletedAtIso({ completedAt: '2026-01-01T00:00:00Z' }))
+            .toBe('2026-01-01T00:00:00Z');
+    });
+
+    it('converts endTime (ms epoch) to ISO string', () => {
+        const ms = 1741478400000;
+        expect(getTaskCompletedAtIso({ endTime: ms }))
+            .toBe(new Date(ms).toISOString());
+    });
+
+    it('prefers completedAt over endTime', () => {
+        expect(getTaskCompletedAtIso({ completedAt: 'preferred', endTime: 1741478400000 }))
+            .toBe('preferred');
+    });
+
+    it('returns undefined when neither field is present', () => {
+        expect(getTaskCompletedAtIso({})).toBeUndefined();
+        expect(getTaskCompletedAtIso({ status: 'running' })).toBeUndefined();
+    });
+
+    it('returns undefined for falsy completedAt and endTime', () => {
+        expect(getTaskCompletedAtIso({ completedAt: '', endTime: 0 })).toBeUndefined();
     });
 });

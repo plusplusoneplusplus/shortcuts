@@ -13,6 +13,16 @@ import { fetchSeenMap, patchSeenState, deleteSeenEntry } from './seenStateApi';
 
 const STORAGE_PREFIX = 'coc-unseen-';
 
+/**
+ * Resolve a completion timestamp from either legacy `completedAt` (string)
+ * or `endTime` (ms epoch, used by ProcessHistoryItem).
+ */
+export function getTaskCompletedAtIso(task: any): string | undefined {
+    if (task.completedAt) return String(task.completedAt);
+    if (task.endTime) return new Date(task.endTime).toISOString();
+    return undefined;
+}
+
 export interface UseUnseenActivityResult {
     /** Set of process IDs that have unseen activity. */
     unseenProcessIds: Set<string>;
@@ -122,9 +132,10 @@ export function useUnseenActivity(
         const entries: Array<{ processId: string; seenAt: string }> = [];
         const updated: Record<string, string> = {};
         for (const task of history) {
-            if (task.completedAt) {
-                updated[task.id] = task.completedAt;
-                entries.push({ processId: task.id, seenAt: task.completedAt });
+            const completedAt = getTaskCompletedAtIso(task);
+            if (completedAt) {
+                updated[task.id] = completedAt;
+                entries.push({ processId: task.id, seenAt: completedAt });
             }
         }
         if (entries.length > 0) {
@@ -137,11 +148,12 @@ export function useUnseenActivity(
     useEffect(() => {
         if (!selectedTaskId || !initializedRef.current) return;
         const task = history.find(t => t.id === selectedTaskId);
-        if (task?.completedAt) {
+        const completedAt = task ? getTaskCompletedAtIso(task) : undefined;
+        if (completedAt) {
             setSeenMap(prev => {
-                if (prev[selectedTaskId] === task.completedAt) return prev;
-                const updated = { ...prev, [selectedTaskId]: task.completedAt };
-                schedulePatch([{ processId: selectedTaskId, seenAt: task.completedAt }]);
+                if (prev[selectedTaskId] === completedAt) return prev;
+                const updated = { ...prev, [selectedTaskId]: completedAt };
+                schedulePatch([{ processId: selectedTaskId, seenAt: completedAt }]);
                 return updated;
             });
         }
@@ -151,9 +163,10 @@ export function useUnseenActivity(
     const unseenProcessIds = useMemo(() => {
         const unseen = new Set<string>();
         for (const task of history) {
-            if (!task.completedAt) continue;
+            const completedAt = getTaskCompletedAtIso(task);
+            if (!completedAt) continue;
             const seen = seenMap[task.id];
-            if (!seen || seen !== task.completedAt) {
+            if (!seen || seen !== completedAt) {
                 unseen.add(task.id);
             }
         }
@@ -163,11 +176,12 @@ export function useUnseenActivity(
     // Mark a specific task as seen.
     const markSeen = useCallback((processId: string) => {
         const task = history.find(t => t.id === processId);
-        if (task?.completedAt) {
+        const completedAt = task ? getTaskCompletedAtIso(task) : undefined;
+        if (completedAt) {
             setSeenMap(prev => {
-                if (prev[processId] === task.completedAt) return prev;
-                schedulePatch([{ processId, seenAt: task.completedAt }]);
-                return { ...prev, [processId]: task.completedAt };
+                if (prev[processId] === completedAt) return prev;
+                schedulePatch([{ processId, seenAt: completedAt }]);
+                return { ...prev, [processId]: completedAt };
             });
         }
     }, [history, schedulePatch]);
@@ -179,9 +193,10 @@ export function useUnseenActivity(
             const entries: Array<{ processId: string; seenAt: string }> = [];
             let changed = false;
             for (const task of history) {
-                if (task.completedAt && updated[task.id] !== task.completedAt) {
-                    updated[task.id] = task.completedAt;
-                    entries.push({ processId: task.id, seenAt: task.completedAt });
+                const completedAt = getTaskCompletedAtIso(task);
+                if (completedAt && updated[task.id] !== completedAt) {
+                    updated[task.id] = completedAt;
+                    entries.push({ processId: task.id, seenAt: completedAt });
                     changed = true;
                 }
             }
@@ -197,9 +212,10 @@ export function useUnseenActivity(
             const entries: Array<{ processId: string; seenAt: string }> = [];
             let changed = false;
             for (const task of tasks) {
-                if (task.completedAt && updated[task.id] !== task.completedAt) {
-                    updated[task.id] = task.completedAt;
-                    entries.push({ processId: task.id, seenAt: task.completedAt });
+                const completedAt = getTaskCompletedAtIso(task);
+                if (completedAt && updated[task.id] !== completedAt) {
+                    updated[task.id] = completedAt;
+                    entries.push({ processId: task.id, seenAt: completedAt });
                     changed = true;
                 }
             }

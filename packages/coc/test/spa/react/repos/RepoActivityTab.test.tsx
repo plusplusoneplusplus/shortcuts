@@ -150,6 +150,17 @@ vi.mock('../../../../src/server/spa/client/react/context/NotificationContext', (
     }),
 }));
 
+const mockRefreshUnseenCounts = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+    useRepos: () => ({
+        repos: [],
+        loading: false,
+        fetchRepos: vi.fn(),
+        unseenCounts: {},
+        refreshUnseenCounts: mockRefreshUnseenCounts,
+    }),
+}));
+
 // ── Mock fetchApi ──────────────────────────────────────────────────────
 
 const mockFetchApi = vi.fn();
@@ -727,19 +738,25 @@ describe('RepoActivityTab: unseen activity wiring', () => {
     it('passes markTasksSeen as onMarkAllRead to list pane', async () => {
         await renderTab();
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
-        expect(lastProps?.onMarkAllRead).toBe(mockMarkTasksSeen);
+        // Wrapper delegates to underlying markTasksSeen
+        const tasks = [{ id: 'x' }];
+        lastProps?.onMarkAllRead(tasks);
+        expect(mockMarkTasksSeen).toHaveBeenCalledWith(tasks);
     });
 
     it('passes markSeen as onMarkRead to list pane', async () => {
         await renderTab();
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
-        expect(lastProps?.onMarkRead).toBe(mockMarkSeen);
+        lastProps?.onMarkRead('proc-1');
+        expect(mockMarkSeen).toHaveBeenCalledWith('proc-1');
     });
 
     it('passes markUnseen as onMarkUnread to list pane', async () => {
         await renderTab();
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
-        expect(lastProps?.onMarkUnread).toBe(mockMarkUnseen);
+        expect(lastProps?.onMarkUnread).toBeDefined();
+        lastProps?.onMarkUnread('proc-1');
+        expect(mockMarkUnseen).toHaveBeenCalledWith('proc-1');
     });
 
     it('selectTask calls markSeen with the task id', async () => {
@@ -753,6 +770,20 @@ describe('RepoActivityTab: unseen activity wiring', () => {
 
         // history tasks have no processId, so derived via toQueueProcessId
         expect(mockMarkSeen).toHaveBeenCalledWith('queue_h1');
+    });
+
+    it('refreshUnseenCounts is called after markSeen via wrapper', async () => {
+        await renderTab();
+        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+
+        // Call the onMarkRead wrapper directly
+        lastProps?.onMarkRead('proc-1');
+        expect(mockMarkSeen).toHaveBeenCalledWith('proc-1');
+
+        // Wait for the 300ms debounced refresh
+        await waitFor(() => {
+            expect(mockRefreshUnseenCounts).toHaveBeenCalledWith(['ws-1']);
+        }, { timeout: 1000 });
     });
 
     it('auto-marks deep-linked task via markReadByProcessId', async () => {

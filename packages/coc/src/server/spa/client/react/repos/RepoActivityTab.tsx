@@ -11,6 +11,7 @@ import { cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
+import { useRepos } from '../context/ReposContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ActivityListPane } from './ActivityListPane';
@@ -42,6 +43,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { dispatch: appDispatch } = useApp();
+    const { refreshUnseenCounts } = useRepos();
     const selectedTaskId = queueState.selectedTaskIdByRepo[workspaceId] ?? null;
     const { isMobile, isTablet } = useBreakpoint();
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
@@ -204,8 +206,33 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     }, [selectedTaskId]);
 
     // Track unseen activity for completed tasks
-    const { unseenProcessIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
+    const { unseenProcessIds, markSeen: rawMarkSeen, markAllSeen: rawMarkAllSeen, markTasksSeen: rawMarkTasksSeen, markUnseen: rawMarkUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
     const { markReadByProcessId } = useNotifications();
+
+    // Wrap seen-state mutations to refresh badge counts after debounced API flush
+    const scheduleUnseenRefresh = useCallback(() => {
+        setTimeout(() => refreshUnseenCounts([workspaceId]), 300);
+    }, [refreshUnseenCounts, workspaceId]);
+
+    const markSeen = useCallback((processId: string) => {
+        rawMarkSeen(processId);
+        scheduleUnseenRefresh();
+    }, [rawMarkSeen, scheduleUnseenRefresh]);
+
+    const markAllSeen = useCallback(() => {
+        rawMarkAllSeen();
+        scheduleUnseenRefresh();
+    }, [rawMarkAllSeen, scheduleUnseenRefresh]);
+
+    const markTasksSeen = useCallback((tasks: any[]) => {
+        rawMarkTasksSeen(tasks);
+        scheduleUnseenRefresh();
+    }, [rawMarkTasksSeen, scheduleUnseenRefresh]);
+
+    const markUnseen = useCallback((processId: string) => {
+        rawMarkUnseen(processId);
+        scheduleUnseenRefresh();
+    }, [rawMarkUnseen, scheduleUnseenRefresh]);
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
         if (task?.type === 'run-workflow') {
