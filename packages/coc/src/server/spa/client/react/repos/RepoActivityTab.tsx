@@ -30,6 +30,8 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [queued, setQueued] = useState<any[]>([]);
     const [history, setHistory] = useState<ProcessHistoryItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [hasMore, setHasMore] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
@@ -65,11 +67,17 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [selectedTask, setSelectedTask] = useState<any>(null);
     const selectedTaskRef = useRef<any>(null);
 
-    const fetchHistory = useCallback(async () => {
+    const fetchHistory = useCallback(async (offset = 0) => {
         const data = await fetchApi(
-            `/workspaces/${encodeURIComponent(workspaceId)}/history`
+            `/workspaces/${encodeURIComponent(workspaceId)}/history?limit=100&offset=${offset}`
         ).catch(() => null);
-        setHistory((data?.history as ProcessHistoryItem[]) || []);
+        const items = (data?.history as ProcessHistoryItem[]) || [];
+        if (offset === 0) {
+            setHistory(items);
+        } else {
+            setHistory(prev => [...prev, ...items]);
+        }
+        setHasMore(data?.hasMore ?? false);
     }, [workspaceId]);
 
     const fetchQueue = useCallback(async () => {
@@ -97,6 +105,15 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         }
         setLoading(false);
     }, [workspaceId, queueDispatch, fetchHistory]);
+
+    const handleLoadMore = useCallback(async () => {
+        setLoadingMore(true);
+        try {
+            await fetchHistory(history.length);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [fetchHistory, history.length]);
 
     useEffect(() => {
         setLoading(true);
@@ -307,6 +324,9 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
             fetchQueue={fetchQueue}
             pauseReason={pauseReason}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={handleLoadMore}
         />
     );
 

@@ -1321,6 +1321,49 @@ describe('ActivityListPane', () => {
             expect(screen.getByText('chat')).toBeTruthy();
         });
     });
+
+    // ── Load more button ────────────────────────────────────────────────
+    describe('Load more button', () => {
+        it('does not render Load more button when hasMore is false', () => {
+            renderPane({ history: [makeHistoryTask()], hasMore: false, onLoadMore: vi.fn() });
+            expect(screen.queryByTestId('activity-load-more-btn')).toBeNull();
+        });
+
+        it('does not render Load more button when onLoadMore is not provided', () => {
+            renderPane({ history: [makeHistoryTask()], hasMore: true });
+            expect(screen.queryByTestId('activity-load-more-btn')).toBeNull();
+        });
+
+        it('renders Load more button when hasMore is true and onLoadMore is provided', () => {
+            renderPane({ history: [makeHistoryTask()], hasMore: true, onLoadMore: vi.fn() });
+            expect(screen.getByTestId('activity-load-more-btn')).toBeTruthy();
+            expect(screen.getByTestId('activity-load-more-btn').textContent).toContain('Load more');
+        });
+
+        it('calls onLoadMore when Load more button is clicked', () => {
+            const onLoadMore = vi.fn();
+            renderPane({ history: [makeHistoryTask()], hasMore: true, onLoadMore });
+            fireEvent.click(screen.getByTestId('activity-load-more-btn'));
+            expect(onLoadMore).toHaveBeenCalledTimes(1);
+        });
+
+        it('shows "Loading…" text when loadingMore is true', () => {
+            renderPane({ history: [makeHistoryTask()], hasMore: true, loadingMore: true, onLoadMore: vi.fn() });
+            expect(screen.getByTestId('activity-load-more-btn').textContent).toContain('Loading');
+        });
+
+        it('disables button when loadingMore is true', () => {
+            renderPane({ history: [makeHistoryTask()], hasMore: true, loadingMore: true, onLoadMore: vi.fn() });
+            expect(screen.getByTestId('activity-load-more-btn')).toHaveProperty('disabled', true);
+        });
+
+        it('hides Load more when Completed Tasks section is collapsed', () => {
+            renderPane({ history: [makeHistoryTask()], hasMore: true, onLoadMore: vi.fn() });
+            // showHistory starts as true; click to collapse
+            fireEvent.click(screen.getByText(/Completed Tasks/));
+            expect(screen.queryByTestId('activity-load-more-btn')).toBeNull();
+        });
+    });
 });
 
 describe('taskMatchesFilter: exclusion logic', () => {

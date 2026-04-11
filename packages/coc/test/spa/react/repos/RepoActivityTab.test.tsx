@@ -1107,3 +1107,107 @@ describe('RepoActivityTab: selection-clearing fallback', () => {
         });
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// PAGINATION
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoActivityTab: pagination', () => {
+    it('passes limit=100 and offset=0 in initial history fetch', async () => {
+        setupFetchMock();
+        await renderTab();
+        const historyCalls = mockFetchApi.mock.calls.filter(
+            (c: any) => typeof c[0] === 'string' && c[0].includes('/history'),
+        );
+        expect(historyCalls.length).toBeGreaterThanOrEqual(1);
+        expect(historyCalls[0][0]).toContain('limit=100');
+        expect(historyCalls[0][0]).toContain('offset=0');
+    });
+
+    it('passes hasMore=false to list pane when server returns hasMore:false', async () => {
+        setupFetchMock({ history: [makeHistoryTask('h1')] });
+        await renderTab();
+        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+        expect(lastProps?.hasMore).toBe(false);
+    });
+
+    it('passes hasMore=true to list pane when server returns hasMore:true', async () => {
+        mockFetchApi.mockImplementation(async (url: string, init?: any) => {
+            if (init?.method === 'POST') return {};
+            if (url.includes('/history')) return { history: [makeHistoryTask('h1')], hasMore: true };
+            if (url.match(/\/queue\?repoId=/)) return { running: [], queued: [], stats: { isPaused: false } };
+            return {};
+        });
+        await renderTab();
+        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+        expect(lastProps?.hasMore).toBe(true);
+    });
+
+    it('passes onLoadMore callback to list pane', async () => {
+        setupFetchMock();
+        await renderTab();
+        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+        expect(typeof lastProps?.onLoadMore).toBe('function');
+    });
+
+    it('onLoadMore fetches with offset equal to current history length', async () => {
+        const items = Array.from({ length: 5 }, (_, i) => makeHistoryTask(`h${i}`));
+        mockFetchApi.mockImplementation(async (url: string, init?: any) => {
+            if (init?.method === 'POST') return {};
+            if (url.includes('/history')) return { history: items, hasMore: true };
+            if (url.match(/\/queue\?repoId=/)) return { running: [], queued: [], stats: { isPaused: false } };
+            return {};
+        });
+        await renderTab();
+        mockFetchApi.mockClear();
+        mockFetchApi.mockImplementation(async (url: string) => {
+            if (url.includes('/history')) return { history: [makeHistoryTask('h-extra')], hasMore: false };
+            return {};
+        });
+
+        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+        await act(async () => {
+            await lastProps.onLoadMore();
+        });
+
+        const historyCalls = mockFetchApi.mock.calls.filter(
+            (c: any) => typeof c[0] === 'string' && c[0].includes('/history'),
+        );
+        expect(historyCalls.length).toBeGreaterThanOrEqual(1);
+        expect(historyCalls[0][0]).toContain('offset=5');
+    });
+
+    it('onLoadMore appends results to existing history', async () => {
+        const initialItems = [makeHistoryTask('h0'), makeHistoryTask('h1')];
+        mockFetchApi.mockImplementation(async (url: string, init?: any) => {
+            if (init?.method === 'POST') return {};
+            if (url.includes('/history')) return { history: initialItems, hasMore: true };
+            if (url.match(/\/queue\?repoId=/)) return { running: [], queued: [], stats: { isPaused: false } };
+            return {};
+        });
+        await renderTab();
+
+        const appendedItem = makeHistoryTask('h2');
+        mockFetchApi.mockImplementation(async (url: string) => {
+            if (url.includes('/history')) return { history: [appendedItem], hasMore: false };
+            return {};
+        });
+
+        await act(async () => {
+            await mockListPane.mock.calls.at(-1)?.[0]?.onLoadMore();
+        });
+
+        await waitFor(() => {
+            const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+            expect(lastProps?.history).toHaveLength(3);
+            expect(lastProps?.history[2].id).toBe('h2');
+        });
+    });
+
+    it('passes loadingMore=false initially', async () => {
+        setupFetchMock();
+        await renderTab();
+        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+        expect(lastProps?.loadingMore).toBe(false);
+    });
+});
