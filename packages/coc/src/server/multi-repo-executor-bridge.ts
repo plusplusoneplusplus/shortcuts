@@ -339,6 +339,8 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         this.getOrCreateBridge(rootPath);
         const manager = this.registry.getQueueForRepo(rootPath);
         manager.enqueue({
+            id: taskId,
+            processId: processId,
             type: proc.type === 'clarification' ? 'chat' : proc.type,
             priority: 'normal',
             payload: {

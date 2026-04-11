@@ -602,6 +602,41 @@ describe('CLITaskExecutor', () => {
             expect((parentTask?.payload as any).prompt).toBe('Follow-up question');
         });
 
+        it('should reuse original task ID in requeueForFollowUp fallback (post-restart)', async () => {
+            const queueManager = new TaskQueueManager();
+            const executor = new CLITaskExecutor(store);
+            executor.setQueueManager(queueManager);
+
+            // Process exists in store but task is NOT in the queue (server restart scenario)
+            const proc = createCompletedProcessWithSession('queue_original-task', 'sess-original');
+            await store.addProcess(proc);
+
+            await executor.requeueForFollowUp('original-task', 'Follow-up after restart');
+
+            const requeued = queueManager.getTask('original-task');
+            expect(requeued).toBeDefined();
+            expect(requeued!.id).toBe('original-task');
+            expect(requeued!.processId).toBe('queue_original-task');
+            expect(requeued!.status).toBe('queued');
+            expect((requeued!.payload as any).prompt).toBe('Follow-up after restart');
+        });
+
+        it('should set processId at top-level so findTaskByProcessId works while queued', async () => {
+            const queueManager = new TaskQueueManager();
+            const executor = new CLITaskExecutor(store);
+            executor.setQueueManager(queueManager);
+
+            const proc = createCompletedProcessWithSession('queue_find-me', 'sess-find');
+            await store.addProcess(proc);
+
+            await executor.requeueForFollowUp('find-me', 'Follow-up');
+
+            const all = queueManager.getAll();
+            const found = all.find(t => t.processId === 'queue_find-me');
+            expect(found).toBeDefined();
+            expect(found!.id).toBe('find-me');
+        });
+
         it('should leave follow-up payload metadata intact after successful execution', async () => {
             const queueManager = new TaskQueueManager();
             const executor = new CLITaskExecutor(store);

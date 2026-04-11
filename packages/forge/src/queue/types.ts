@@ -147,7 +147,7 @@ export interface QueuedTask {
 export type CreateTaskInput = Omit<
     QueuedTask,
     'id' | 'createdAt' | 'status' | 'startedAt' | 'completedAt' | 'result' | 'error' | 'retryCount'
->;
+> & { id?: string };
 
 /**
  * Partial update for a queued task

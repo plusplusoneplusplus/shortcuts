@@ -102,6 +102,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (!proc) throw new Error(`Task ${taskId} not found`);
         const reconstructed = processToQueuedTask(proc);
         this.queueManager.enqueue({
+            id: taskId,
+            processId: processId,
             type: reconstructed.type ?? 'chat',
             priority: 'normal',
             payload: { ...(reconstructed.payload as any), prompt, attachments, imageTempDir, ...(images ? { images } : {}), ...(mode ? { mode } : {}), ...(deliveryMode ? { deliveryMode } : {}) },

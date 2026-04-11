@@ -108,6 +108,38 @@ describe('TaskQueueManager', () => {
             }
             expect(m.size()).toBe(100);
         });
+
+        it('honors a pre-set id when provided', () => {
+            const taskId = manager.enqueue(createTestTask({ id: 'my-custom-id' }));
+            expect(taskId).toBe('my-custom-id');
+            const task = manager.getTask('my-custom-id');
+            expect(task).toBeDefined();
+            expect(task!.id).toBe('my-custom-id');
+        });
+
+        it('generates an id when none is provided', () => {
+            const taskId = manager.enqueue(createTestTask());
+            expect(taskId).toMatch(/^\d+-[a-z0-9]+$/);
+        });
+
+        it('generates an id when id is empty string', () => {
+            const taskId = manager.enqueue(createTestTask({ id: '' }));
+            expect(taskId).toMatch(/^\d+-[a-z0-9]+$/);
+        });
+
+        it('sets processId on the enqueued task when provided', () => {
+            const taskId = manager.enqueue(createTestTask({ id: 'tid', processId: 'queue_tid' }));
+            const task = manager.getTask(taskId);
+            expect(task!.processId).toBe('queue_tid');
+        });
+
+        it('allows findTaskByProcessId to work for a queued task with pre-set processId', () => {
+            manager.enqueue(createTestTask({ id: 'tid-2', processId: 'queue_tid-2' }));
+            const all = manager.getAll();
+            const found = all.find(t => t.processId === 'queue_tid-2');
+            expect(found).toBeDefined();
+            expect(found!.id).toBe('tid-2');
+        });
     });
 
     // ========================================================================

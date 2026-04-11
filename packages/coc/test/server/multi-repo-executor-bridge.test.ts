@@ -596,6 +596,38 @@ describe('MultiRepoQueueExecutorBridge', () => {
 
             bridge.dispose();
         });
+
+        it('reuses original task ID in fallback path (post-restart)', async () => {
+            const { bridge, store } = createBridge();
+
+            // Process exists in store but task is NOT in any queue (server restart scenario)
+            const proc = {
+                id: 'queue_restart-task',
+                type: 'chat',
+                status: 'completed' as const,
+                createdAt: new Date().toISOString(),
+                workingDirectory: '/repo/fallback-test',
+                fullPrompt: 'Original prompt',
+                title: 'Chat',
+                metadata: { workspaceId: 'ws-fallback' },
+            };
+            await store.addProcess(proc as any);
+
+            // Ensure the bridge/queue exists for this repo
+            bridge.getOrCreateBridge('/repo/fallback-test');
+
+            await bridge.requeueForFollowUp('restart-task', 'Follow-up after restart');
+
+            const manager = bridge.registry.getQueueForRepo('/repo/fallback-test');
+            const requeued = manager.getTask('restart-task');
+            expect(requeued).toBeDefined();
+            expect(requeued!.id).toBe('restart-task');
+            expect(requeued!.processId).toBe('queue_restart-task');
+            expect(requeued!.status).toBe('queued');
+            expect((requeued!.payload as any).prompt).toBe('Follow-up after restart');
+
+            bridge.dispose();
+        });
     });
 
     // --------------------------------------------------------------------

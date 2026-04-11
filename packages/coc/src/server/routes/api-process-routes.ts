@@ -12,7 +12,7 @@ import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment,
 } from '@plusplusoneplusplus/forge';
-import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId } from '@plusplusoneplusplus/forge';
+import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, stripExcludedFields,
@@ -453,6 +453,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         if (!steered) {
                             // Steering failed (no active SDK session); fall through to enqueue
                             await bridge.enqueue({
+                                ...(isQueueProcessId(id) ? { id: toTaskId(id), processId: id } : {}),
                                 type: 'chat',
                                 priority: 'normal',
                                 payload: {
@@ -474,6 +475,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         }
                     } else {
                         await bridge.enqueue({
+                            ...(isQueueProcessId(id) ? { id: toTaskId(id), processId: id } : {}),
                             type: 'chat',
                             priority: 'normal',
                             payload: {

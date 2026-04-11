@@ -97,7 +97,7 @@ export class TaskQueueManager extends EventEmitter {
 
         const task: QueuedTask = {
             ...input,
-            id: generateTaskId(),
+            id: input.id || generateTaskId(),
             status: 'queued',
             createdAt: Date.now(),
             retryCount: 0,
