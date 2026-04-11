@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core';
 import { ResponsiveSidebar } from '../shared/ResponsiveSidebar';
 import { NotesSidebar } from './notes/NotesSidebar';
 import { NoteEditor } from './notes/NoteEditor';
+import type { NoteViewMode } from './notes/NoteEditor';
 import { CommentsSidebar } from './notes/CommentsSidebar';
 import { useComments } from './notes/useComments';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './notes/commentAnchoring';
@@ -19,6 +20,7 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPath, setSelectedPath] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [noteViewMode, setNoteViewMode] = useState<NoteViewMode>('rich');
     const { isMobile } = useBreakpoint();
 
     // ── Comments state ──────────────────────────────────────────────────────
@@ -220,7 +222,7 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                             ☰ Notes
                         </button>
                         <div className="flex-1" />
-                        {selectedPath && (
+                        {selectedPath && noteViewMode === 'rich' && (
                             <button
                                 className="text-xs text-[#0078d4] hover:underline"
                                 onClick={() => setCommentsPanelOpen((v) => !v)}
@@ -232,7 +234,7 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                     </div>
                 )}
                 {/* Desktop/tablet comments toggle */}
-                {!isMobile && selectedPath && (
+                {!isMobile && selectedPath && noteViewMode === 'rich' && (
                     <div className="flex items-center justify-end px-2 py-0.5">
                         <button
                             className={
@@ -260,11 +262,12 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                     onEditorReady={(ed) => { editorRef.current = ed; }}
                     onCommentCreate={handleCommentCreate}
                     commentsEnabled={true}
+                    onViewModeChange={setNoteViewMode}
                 />
             </div>
 
-            {/* Right: comments panel (collapsible) */}
-            {commentsPanelOpen && selectedPath && (
+            {/* Right: comments panel (collapsible, hidden in source mode) */}
+            {commentsPanelOpen && selectedPath && noteViewMode === 'rich' && (
                 <div
                     className="w-72 border-l border-[#e0e0e0] dark:border-[#333] flex-shrink-0 overflow-y-auto bg-white dark:bg-[#1e1e1e]"
                     data-testid="comments-panel"

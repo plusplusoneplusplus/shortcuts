@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/react';
 export interface NoteEditorToolbarProps {
     editor: Editor | null;
     onCommentCreate?: () => void;
+    hidden?: boolean;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -267,8 +268,8 @@ function CommentButton({ editor, onCommentCreate }: CommentButtonProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, onCommentCreate }: NoteEditorToolbarProps) {
-    if (!editor) return null;
+export function NoteEditorToolbar({ editor, onCommentCreate, hidden }: NoteEditorToolbarProps) {
+    if (!editor || hidden) return null;
 
     const c = editor.chain().focus.bind(editor.chain());
 

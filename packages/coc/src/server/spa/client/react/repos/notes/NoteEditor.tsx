@@ -17,8 +17,11 @@ import { notesApi } from '../notesApi';
 import type { CommentThread } from '../notesApi';
 import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToApi, rewriteImageSrcToRelative } from './noteMarkdown';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
+import { SourceEditor } from '../../shared/SourceEditor';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import './noteEditor.css';
+
+export type NoteViewMode = 'rich' | 'source';
 
 export interface NoteEditorProps {
     workspaceId: string;
@@ -27,6 +30,7 @@ export interface NoteEditorProps {
     onEditorReady?: (editor: Editor) => void;
     onCommentCreate?: () => void;
     commentsEnabled?: boolean;
+    onViewModeChange?: (mode: NoteViewMode) => void;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -38,6 +42,7 @@ export function NoteEditor({
     onEditorReady,
     onCommentCreate,
     commentsEnabled = true,
+    onViewModeChange,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -45,14 +50,27 @@ export function NoteEditor({
     const [dirty, setDirty] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
 
+    // Source mode state
+    const [viewMode, setViewModeRaw] = useState<NoteViewMode>('rich');
+    const [rawMarkdown, setRawMarkdown] = useState('');
+    const [sourceDirty, setSourceDirty] = useState(false);
+
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const sourceSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingContentRef = useRef<string | null>(null);
+    const pendingSourceContentRef = useRef<string | null>(null);
     const notePathRef = useRef(notePath);
     const workspaceIdRef = useRef(workspaceId);
 
     // Keep refs in sync
     notePathRef.current = notePath;
     workspaceIdRef.current = workspaceId;
+
+    // View mode setter that also notifies parent
+    const setViewMode = useCallback((mode: NoteViewMode) => {
+        setViewModeRaw(mode);
+        onViewModeChange?.(mode);
+    }, [onViewModeChange]);
 
     // ── Tiptap editor ───────────────────────────────────────────────────────
 
@@ -194,11 +212,167 @@ export function NoteEditor({
         saveTimerRef.current = setTimeout(() => flushSave(), 1500);
     }
 
+    // ── Source mode: save raw markdown directly ─────────────────────────────
+
+    const flushSourceSave = useCallback(async () => {
+        if (sourceSaveTimerRef.current) {
+            clearTimeout(sourceSaveTimerRef.current);
+            sourceSaveTimerRef.current = null;
+        }
+        const content = pendingSourceContentRef.current;
+        const path = notePathRef.current;
+        if (content === null || !path) return;
+        pendingSourceContentRef.current = null;
+        setSaveState('saving');
+        try {
+            await notesApi.saveContent(workspaceIdRef.current, path, content);
+            setSaveState('saved');
+            setSourceDirty(false);
+            setDirty(false);
+            setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
+        } catch {
+            setSaveState('error');
+        }
+    }, []);
+
+    function scheduleSourceSave() {
+        if (sourceSaveTimerRef.current) clearTimeout(sourceSaveTimerRef.current);
+        sourceSaveTimerRef.current = setTimeout(() => flushSourceSave(), 1500);
+    }
+
+    // ── Source mode: handle textarea change ─────────────────────────────────
+
+    const handleSourceChange = useCallback((content: string) => {
+        setRawMarkdown(content);
+        pendingSourceContentRef.current = content;
+        setSourceDirty(true);
+        setDirty(true);
+        scheduleSourceSave();
+    }, []);
+
+    // ── Source mode: image paste ────────────────────────────────────────────
+
+    const sourceTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+    const rawMarkdownRef = useRef(rawMarkdown);
+    rawMarkdownRef.current = rawMarkdown;
+
+    const handleSourcePaste = useCallback(async (e: React.ClipboardEvent<HTMLDivElement>) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                if (!file || !notePathRef.current) return;
+
+                setUploadingImage(true);
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    const dataUrl = ev.target?.result as string;
+                    if (!dataUrl) { setUploadingImage(false); return; }
+                    try {
+                        const result = await notesApi.uploadImage(
+                            workspaceIdRef.current,
+                            file.name || 'pasted-image',
+                            dataUrl,
+                        );
+                        const mdImg = `![${file.name || ''}](${result.path})`;
+                        const ta = sourceTextareaRef.current;
+                        const currentMd = rawMarkdownRef.current;
+                        let newContent: string;
+                        if (ta) {
+                            const start = ta.selectionStart;
+                            const end = ta.selectionEnd;
+                            newContent = currentMd.slice(0, start) + mdImg + currentMd.slice(end);
+                        } else {
+                            newContent = currentMd + mdImg;
+                        }
+                        setRawMarkdown(newContent);
+                        pendingSourceContentRef.current = newContent;
+                        setSourceDirty(true);
+                        setDirty(true);
+                        scheduleSourceSave();
+                    } catch (err) {
+                        console.error('Failed to upload pasted image:', err);
+                    } finally {
+                        setUploadingImage(false);
+                    }
+                };
+                reader.readAsDataURL(file);
+                return;
+            }
+        }
+    }, [rawMarkdown]);
+
+    // ── Mode toggle logic ──────────────────────────────────────────────────
+
+    const switchToSource = useCallback(async () => {
+        // Flush pending WYSIWYG save before switching
+        await flushSave();
+        const path = notePathRef.current;
+        if (!path) return;
+        try {
+            const { content } = await notesApi.getContent(workspaceIdRef.current, path);
+            setRawMarkdown(content);
+            setSourceDirty(false);
+            setViewMode('source');
+        } catch (err) {
+            console.error('Failed to load markdown for source mode:', err);
+        }
+    }, [flushSave, setViewMode]);
+
+    const switchToRich = useCallback(async () => {
+        // Save dirty source content first
+        const pendingSource = pendingSourceContentRef.current;
+        if (pendingSource !== null) {
+            const path = notePathRef.current;
+            if (path) {
+                try {
+                    await notesApi.saveContent(workspaceIdRef.current, path, pendingSource);
+                    pendingSourceContentRef.current = null;
+                } catch { /* continue anyway */ }
+            }
+        }
+        if (sourceSaveTimerRef.current) {
+            clearTimeout(sourceSaveTimerRef.current);
+            sourceSaveTimerRef.current = null;
+        }
+        // Convert raw markdown to HTML and load into Tiptap
+        if (editor) {
+            let html = markdownToHtml(rawMarkdown);
+            html = rewriteImageSrcToApi(html, workspaceIdRef.current);
+            editor.commands.setContent(html);
+
+            // Re-anchor comments
+            if (commentsEnabled) {
+                const threads = loadedThreadsRef.current;
+                for (const thread of threads) {
+                    if (thread.status === 'resolved') continue;
+                    const result = findAnchorInDoc(editor.state.doc, thread.anchor);
+                    if (result) {
+                        applyCommentMark(editor, thread.id, result.from, result.to);
+                    }
+                }
+            }
+        }
+        setSourceDirty(false);
+        setDirty(false);
+        setViewMode('rich');
+    }, [rawMarkdown, editor, commentsEnabled, setViewMode]);
+
     // ── Load content on path change ─────────────────────────────────────────
 
     useEffect(() => {
         // Flush pending save for previous page
         flushSave();
+
+        // Reset to rich mode when switching notes
+        setViewModeRaw('rich');
+        setRawMarkdown('');
+        setSourceDirty(false);
 
         if (!notePath) {
             editor?.commands.clearContent();
@@ -255,6 +429,7 @@ export function NoteEditor({
     useEffect(() => {
         return () => {
             flushSave();
+            if (sourceSaveTimerRef.current) clearTimeout(sourceSaveTimerRef.current);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -265,16 +440,21 @@ export function NoteEditor({
         const handler = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
-                flushSave();
+                if (viewMode === 'source') {
+                    flushSourceSave();
+                } else {
+                    flushSave();
+                }
             }
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+                if (viewMode === 'source') return; // comments not available in source mode
                 e.preventDefault();
                 onCommentCreateRef.current?.();
             }
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [flushSave]);
+    }, [flushSave, flushSourceSave, viewMode]);
 
     // ── beforeunload guard ──────────────────────────────────────────────────
 
@@ -333,10 +513,43 @@ export function NoteEditor({
 
     return (
         <div className="note-editor flex-1 flex flex-col min-h-0 relative" data-testid="note-editor">
-            <NoteEditorToolbar editor={editor} onCommentCreate={onCommentCreate} />
-            <div className="flex-1 overflow-y-auto">
-                <EditorContent editor={editor} />
+            {/* Mode toggle bar */}
+            <div className="mode-toggle" data-testid="note-mode-toggle">
+                <button
+                    className={`mode-btn${viewMode === 'rich' ? ' active' : ''}`}
+                    onClick={() => { if (viewMode !== 'rich') switchToRich(); }}
+                    data-testid="note-mode-rich"
+                >Rich</button>
+                <button
+                    className={`mode-btn${viewMode === 'source' ? ' active' : ''}`}
+                    onClick={() => { if (viewMode !== 'source') switchToSource(); }}
+                    aria-label={sourceDirty ? 'Source (modified)' : undefined}
+                    data-testid="note-mode-source"
+                >{sourceDirty ? 'Source ●' : 'Source'}</button>
+                {viewMode === 'source' && sourceDirty && (
+                    <button
+                        className="save-btn"
+                        onClick={() => flushSourceSave()}
+                        data-testid="note-source-save-btn"
+                    >Save</button>
+                )}
             </div>
+
+            <NoteEditorToolbar editor={editor} onCommentCreate={onCommentCreate} hidden={viewMode === 'source'} />
+
+            {viewMode === 'source' ? (
+                <div className="flex-1 overflow-y-auto" onPaste={handleSourcePaste} data-testid="note-source-container">
+                    <SourceEditor
+                        content={rawMarkdown}
+                        onChange={handleSourceChange}
+                        ref={sourceTextareaRef}
+                    />
+                </div>
+            ) : (
+                <div className="flex-1 overflow-y-auto">
+                    <EditorContent editor={editor} />
+                </div>
+            )}
 
             {/* Save indicator */}
             <div className="absolute bottom-3 right-3 text-xs select-none" data-testid="save-indicator">
@@ -356,7 +569,7 @@ export function NoteEditor({
                 {saveState === 'error' && (
                     <span className="text-red-500">
                         Save failed{' '}
-                        <button className="underline" onClick={() => flushSave()}>
+                        <button className="underline" onClick={() => viewMode === 'source' ? flushSourceSave() : flushSave()}>
                             Retry
                         </button>
                     </span>
