@@ -242,12 +242,14 @@ describe('StorageSection — migration progress', () => {
             fireEvent.click(screen.getByText('Confirm Migration'));
         });
 
-        // Should eventually reach the done state
+        // Should eventually reach the done state with auto-polling
         await waitFor(() => {
             expect(screen.getByText(/Successfully migrated to SQLite/)).toBeTruthy();
         }, { timeout: 5000 });
 
         expect(screen.getByText(/5 processes migrated/)).toBeTruthy();
+        // Polling starts automatically — spinner shown without user interaction
+        expect(screen.getByText(/Waiting for server restart/)).toBeTruthy();
 
         globalThis.fetch = originalFetch;
     });

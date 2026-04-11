@@ -672,9 +672,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 skipValidation,
             });
 
+            let migrationSucceeded = false;
             try {
                 const summary = await engine.run();
                 sendSSE(res, { type: 'done', success: true, ...summary });
+                migrationSucceeded = true;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 sendSSE(res, { type: 'error', message });
@@ -682,6 +684,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             } finally {
                 activeMigration = null;
                 res.end();
+
+                // Restart server so it boots with the new SQLite backend
+                if (migrationSucceeded) {
+                    const exitCode = options.restartExitCode ?? 75;
+                    setTimeout(() => process.exit(exitCode), 500);
+                }
             }
         },
     });

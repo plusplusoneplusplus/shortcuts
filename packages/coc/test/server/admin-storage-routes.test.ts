@@ -8,7 +8,7 @@
  *   - POST /api/admin/storage/migrate/cancel
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -100,11 +100,14 @@ describe('Admin Storage Routes', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
 
+    let exitSpy: ReturnType<typeof vi.spyOn>;
+
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-storage-routes-test-'));
         resetWipeToken();
         resetImportToken();
         resetMigrateToken();
+        exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
     });
 
     afterEach(async () => {
@@ -112,6 +115,9 @@ describe('Admin Storage Routes', () => {
             await server.close();
             server = undefined;
         }
+        // Wait for any scheduled process.exit timeouts to fire (500ms delay in handler)
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        exitSpy.mockRestore();
         fs.rmSync(dataDir, { recursive: true, force: true });
         resetWipeToken();
         resetImportToken();
@@ -306,6 +312,30 @@ describe('Admin Storage Routes', () => {
             const doneEvent = events.find((e: any) => e.type === 'done') as any;
             expect(doneEvent).toBeDefined();
             expect(doneEvent.success).toBe(true);
+        });
+
+        it('should trigger process.exit after successful migration', async () => {
+            const srv = await startServer();
+            const tokenRes = await request(`${srv.url}/api/admin/storage/migrate-token`);
+            const token = JSON.parse(tokenRes.body).token;
+
+            await requestSSE(`${srv.url}/api/admin/storage/migrate?confirm=${token}`);
+
+            // Wait for the delayed process.exit call (500ms in handler)
+            await new Promise((resolve) => setTimeout(resolve, 600));
+
+            expect(exitSpy).toHaveBeenCalledWith(75);
+        });
+
+        it('should not trigger process.exit after failed migration', async () => {
+            const srv = await startServer();
+
+            // Use an invalid (expired) token to get a 403 (not SSE)
+            const res = await request(`${srv.url}/api/admin/storage/migrate?confirm=bad-token`, { method: 'POST' });
+            expect(res.status).toBe(403);
+
+            await new Promise((resolve) => setTimeout(resolve, 600));
+            expect(exitSpy).not.toHaveBeenCalled();
         });
     });
 

@@ -213,6 +213,8 @@ export default function StorageSection() {
                     backupSizeBytes: data.backupSizeBytes,
                 });
                 setPhase('done');
+                // Server restarts automatically — start polling immediately
+                startPolling();
             } else {
                 setResult({ success: false, error: data.error ?? data.message ?? 'Migration failed' });
                 setPhase('error');
@@ -285,7 +287,8 @@ export default function StorageSection() {
     // Restart polling (success state)
     // -----------------------------------------------------------------------
 
-    const handleDoneOk = () => {
+    const startPolling = () => {
+        if (pollRef.current) return; // already polling
         setPolling(true);
         const poll = setInterval(async () => {
             try {
@@ -450,13 +453,9 @@ export default function StorageSection() {
                 </div>
                 <Dialog
                     open={true}
-                    onClose={handleDoneOk}
+                    onClose={() => {}}
+                    disableClose={true}
                     title="Migration Complete"
-                    footer={
-                        <Button variant="primary" onClick={handleDoneOk} loading={polling}>
-                            OK
-                        </Button>
-                    }
                 >
                     <div className="space-y-1 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                         <p>✅ Successfully migrated to SQLite</p>
@@ -473,14 +472,10 @@ export default function StorageSection() {
                             )}
                             <li>JSON files cleaned up</li>
                         </ul>
-                        {polling ? (
-                            <p className="mt-2 flex items-center gap-2">
-                                <Spinner size="sm" />
-                                Waiting for server restart…
-                            </p>
-                        ) : (
-                            <p className="mt-2 text-[#848484]">The server will restart now.</p>
-                        )}
+                        <p className="mt-2 flex items-center gap-2">
+                            <Spinner size="sm" />
+                            Waiting for server restart…
+                        </p>
                     </div>
                 </Dialog>
             </>
