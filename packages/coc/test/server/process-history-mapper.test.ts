@@ -13,7 +13,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { processToHistorySummary, processToQueuedTask } from '../../src/server/shared/process-history-mapper';
+import { processToHistorySummary, processToQueuedTask, processToTaskDetail } from '../../src/server/shared/process-history-mapper';
 import { createExecutionServer } from '../../src/server/index';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
@@ -213,6 +213,122 @@ describe('processToQueuedTask', () => {
 });
 
 // ============================================================================
+// Unit tests for processToTaskDetail
+// ============================================================================
+
+describe('processToTaskDetail', () => {
+    const baseProcess: AIProcess = {
+        id: 'queue_detail-001',
+        type: 'clarification',
+        promptPreview: 'Summarize this',
+        fullPrompt: 'Summarize this document for me',
+        status: 'completed',
+        startTime: new Date('2026-03-01T10:00:00Z'),
+        endTime: new Date('2026-03-01T10:05:00Z'),
+        workingDirectory: '/repo/my-project',
+        metadata: {
+            type: 'clarification',
+            workspaceId: 'ws-detail',
+            mode: 'autopilot',
+            model: 'gpt-4',
+            pipelineName: 'my-pipeline',
+        },
+        title: 'Summarize Doc',
+    };
+
+    it('should preserve completed status instead of hardcoding queued', () => {
+        const task = processToTaskDetail(baseProcess);
+        expect(task.status).toBe('completed');
+    });
+
+    it('should preserve failed status', () => {
+        const proc = { ...baseProcess, status: 'failed' as const, error: 'timeout' };
+        const task = processToTaskDetail(proc);
+        expect(task.status).toBe('failed');
+        expect(task.error).toBe('timeout');
+    });
+
+    it('should map cancelling status to cancelled', () => {
+        const proc = { ...baseProcess, status: 'cancelling' as any };
+        const task = processToTaskDetail(proc);
+        expect(task.status).toBe('cancelled');
+    });
+
+    it('should preserve cancelled status', () => {
+        const proc = { ...baseProcess, status: 'cancelled' as const };
+        const task = processToTaskDetail(proc);
+        expect(task.status).toBe('cancelled');
+    });
+
+    it('should preserve timestamps from process startTime/endTime', () => {
+        const task = processToTaskDetail(baseProcess);
+        expect(task.createdAt).toBe(new Date('2026-03-01T10:00:00Z').getTime());
+        expect(task.startedAt).toBe(new Date('2026-03-01T10:00:00Z').getTime());
+        expect(task.completedAt).toBe(new Date('2026-03-01T10:05:00Z').getTime());
+    });
+
+    it('should leave completedAt undefined when endTime is absent', () => {
+        const proc = { ...baseProcess, endTime: undefined };
+        const task = processToTaskDetail(proc);
+        expect(task.completedAt).toBeUndefined();
+    });
+
+    it('should strip queue_ prefix from id', () => {
+        const task = processToTaskDetail(baseProcess);
+        expect(task.id).toBe('detail-001');
+    });
+
+    it('should set processId to full process id', () => {
+        const task = processToTaskDetail(baseProcess);
+        expect(task.processId).toBe('queue_detail-001');
+    });
+
+    it('should map clarification type to chat', () => {
+        const task = processToTaskDetail(baseProcess);
+        expect(task.type).toBe('chat');
+    });
+
+    it('should pass through non-clarification types', () => {
+        const proc = { ...baseProcess, type: 'code-review' };
+        const task = processToTaskDetail(proc);
+        expect(task.type).toBe('code-review');
+    });
+
+    it('should extract metadata fields into payload and config', () => {
+        const task = processToTaskDetail(baseProcess);
+        const payload = task.payload as any;
+        expect(payload.mode).toBe('autopilot');
+        expect(payload.pipelineName).toBe('my-pipeline');
+        expect(payload.workspaceId).toBe('ws-detail');
+        expect(payload.workingDirectory).toBe('/repo/my-project');
+        expect(payload.processId).toBe('queue_detail-001');
+        expect((task.config as any).model).toBe('gpt-4');
+    });
+
+    it('should use title as displayName', () => {
+        const task = processToTaskDetail(baseProcess);
+        expect(task.displayName).toBe('Summarize Doc');
+    });
+
+    it('should fall back to promptPreview for displayName', () => {
+        const proc = { ...baseProcess, title: undefined };
+        const task = processToTaskDetail(proc);
+        expect(task.displayName).toBe('Summarize this');
+    });
+
+    it('should fall back to id for displayName when no title or preview', () => {
+        const proc = { ...baseProcess, title: undefined, promptPreview: '' };
+        const task = processToTaskDetail(proc);
+        expect(task.displayName).toBe('queue_detail-001');
+    });
+
+    it('should set repoId from metadata workspaceId', () => {
+        const task = processToTaskDetail(baseProcess);
+        expect(task.repoId).toBe('ws-detail');
+    });
+});
+
+// ============================================================================
 // Integration: store-backed history survives server restart
 // ============================================================================
 
@@ -317,6 +433,131 @@ describe('Store-backed history across restart', () => {
             // Verify the process is gone from the store
             const proc = await store.getProcess('proc-del-1');
             expect(proc).toBeUndefined();
+        } finally {
+            if (server) await server.close();
+            store.close();
+        }
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/queue/:id — process-store fallback
+    // ------------------------------------------------------------------
+
+    it('GET /api/queue/:id returns store-backed task when not in memory', async () => {
+        const dbPath = path.join(dataDir, 'processes.db');
+
+        const preStore = new SqliteProcessStore({ dbPath });
+        await preStore.addProcess({
+            id: 'queue_fallback-task-1',
+            type: 'clarification',
+            promptPreview: 'Fallback task',
+            fullPrompt: 'Fallback task full prompt',
+            status: 'completed',
+            startTime: new Date('2026-02-01T00:00:00Z'),
+            endTime: new Date('2026-02-01T00:05:00Z'),
+            workingDirectory: '/repo/test',
+            title: 'My Completed Task',
+            metadata: { type: 'clarification', workspaceId: 'ws-fb', mode: 'autopilot', model: 'gpt-4' },
+        } as any);
+        preStore.close();
+
+        const store = new SqliteProcessStore({ dbPath });
+        let server: ExecutionServer | undefined;
+        try {
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+
+            const res = await request(`${server.url}/api/queue/fallback-task-1`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.task).toBeDefined();
+            expect(body.task.id).toBe('fallback-task-1');
+            expect(body.task.status).toBe('completed');
+            expect(body.task.displayName).toBe('My Completed Task');
+            expect(body.task.processId).toBe('queue_fallback-task-1');
+            expect(body.task.payload?.mode).toBe('autopilot');
+            expect(body.task.completedAt).toBe(new Date('2026-02-01T00:05:00Z').getTime());
+            expect(body.task.config?.model).toBe('gpt-4');
+        } finally {
+            if (server) await server.close();
+            store.close();
+        }
+    });
+
+    it('GET /api/queue/:id returns 404 when task not in memory or store', async () => {
+        const dbPath = path.join(dataDir, 'processes.db');
+        const store = new SqliteProcessStore({ dbPath });
+        let server: ExecutionServer | undefined;
+        try {
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+
+            const res = await request(`${server.url}/api/queue/nonexistent-task`);
+            expect(res.status).toBe(404);
+        } finally {
+            if (server) await server.close();
+            store.close();
+        }
+    });
+
+    it('GET /api/queue/:id reconstructed task has correct failed status', async () => {
+        const dbPath = path.join(dataDir, 'processes.db');
+
+        const preStore = new SqliteProcessStore({ dbPath });
+        await preStore.addProcess({
+            id: 'queue_failed-task-1',
+            type: 'code-review',
+            promptPreview: 'Failed task',
+            fullPrompt: 'Failed task prompt',
+            status: 'failed',
+            startTime: new Date('2026-02-02T00:00:00Z'),
+            endTime: new Date('2026-02-02T00:01:00Z'),
+            error: 'Model unavailable',
+            metadata: { type: 'code-review', workspaceId: 'ws-fb' },
+        } as any);
+        preStore.close();
+
+        const store = new SqliteProcessStore({ dbPath });
+        let server: ExecutionServer | undefined;
+        try {
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+
+            const res = await request(`${server.url}/api/queue/failed-task-1`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.task.status).toBe('failed');
+            expect(body.task.error).toBe('Model unavailable');
+            expect(body.task.type).toBe('code-review');
+        } finally {
+            if (server) await server.close();
+            store.close();
+        }
+    });
+
+    it('GET /api/queue/:id finds task by bare id without queue_ prefix', async () => {
+        const dbPath = path.join(dataDir, 'processes.db');
+
+        const preStore = new SqliteProcessStore({ dbPath });
+        await preStore.addProcess({
+            id: 'bare-id-task',
+            type: 'clarification',
+            promptPreview: 'Bare ID',
+            fullPrompt: 'Bare ID prompt',
+            status: 'completed',
+            startTime: new Date('2026-02-03T00:00:00Z'),
+            endTime: new Date('2026-02-03T00:01:00Z'),
+            metadata: { type: 'clarification' },
+        } as any);
+        preStore.close();
+
+        const store = new SqliteProcessStore({ dbPath });
+        let server: ExecutionServer | undefined;
+        try {
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+
+            const res = await request(`${server.url}/api/queue/bare-id-task`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.task).toBeDefined();
+            expect(body.task.id).toBe('bare-id-task');
         } finally {
             if (server) await server.close();
             store.close();

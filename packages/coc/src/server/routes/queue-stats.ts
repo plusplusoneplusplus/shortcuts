@@ -24,7 +24,7 @@ import {
     VALID_TASK_TYPES,
     type QueueRouteContext,
 } from './queue-shared';
-import { processToHistorySummary, type HistorySummary } from '../shared/process-history-mapper';
+import { processToHistorySummary, processToTaskDetail, type HistorySummary } from '../shared/process-history-mapper';
 
 export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
@@ -329,10 +329,21 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             }
 
             const task = bridge.findManagerForTask(id)?.getTask(id);
-            if (!task) {
-                return sendError(res, 404, 'Task not found');
+            if (task) {
+                return sendJSON(res, 200, { task: serializeTask(task) });
             }
-            sendJSON(res, 200, { task: serializeTask(task) });
+
+            // Fallback: check process store for completed/historical tasks
+            if (store) {
+                const processId = `queue_${id}`;
+                const proc = await store.getProcess(processId) ?? await store.getProcess(id);
+                if (proc) {
+                    const reconstructed = processToTaskDetail(proc);
+                    return sendJSON(res, 200, { task: serializeTask(reconstructed as import('@plusplusoneplusplus/forge').QueuedTask) });
+                }
+            }
+
+            return sendError(res, 404, 'Task not found');
         },
     });
 }

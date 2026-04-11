@@ -77,6 +77,43 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
 }
 
 /**
+ * Map AIProcessStatus to QueueStatus.
+ * 'cancelling' has no QueueStatus equivalent — treat it as 'cancelled'.
+ */
+function mapProcessStatus(status: string): string {
+    return status === 'cancelling' ? 'cancelled' : status;
+}
+
+/**
+ * Reconstruct a read-only task detail from a stored AIProcess for the
+ * GET /api/queue/:id endpoint.  Unlike processToQueuedTask, this preserves
+ * the original status and timestamps instead of hardcoding 'queued'.
+ */
+export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
+    return {
+        id: proc.id.replace(/^queue_/, ''),
+        type: proc.type === 'clarification' ? 'chat' : proc.type,
+        status: mapProcessStatus(proc.status) as any,
+        payload: {
+            prompt: proc.fullPrompt,
+            processId: proc.id,
+            workingDirectory: proc.workingDirectory,
+            workspaceId: proc.metadata?.workspaceId,
+            mode: proc.metadata?.mode,
+            pipelineName: proc.metadata?.pipelineName,
+        } as any,
+        displayName: proc.title || proc.promptPreview || proc.id,
+        processId: proc.id,
+        repoId: proc.metadata?.workspaceId,
+        createdAt: proc.startTime ? new Date(proc.startTime).getTime() : Date.now(),
+        startedAt: proc.startTime ? new Date(proc.startTime).getTime() : undefined,
+        completedAt: proc.endTime ? new Date(proc.endTime).getTime() : undefined,
+        error: proc.error,
+        config: { model: proc.metadata?.model as string | undefined } as any,
+    } as any;
+}
+
+/**
  * Reconstruct a minimal QueuedTask from a stored AIProcess so it can be
  * re-enqueued for follow-up messages after a server restart.
  */
