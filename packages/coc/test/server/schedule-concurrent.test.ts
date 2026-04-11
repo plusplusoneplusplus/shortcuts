@@ -16,9 +16,10 @@ import * as os from 'os';
 import * as http from 'http';
 import { ScheduleManager } from '../../src/server/schedule-manager';
 import { ScheduleYamlPersistence } from '../../src/server/schedule-yaml-persistence';
-import { ScheduleRunPersistence } from '../../src/server/schedule-run-persistence';
+import { SqliteScheduleRunPersistence } from '../../src/server/sqlite-schedule-run-persistence';
 import { createExecutionServer } from '../../src/server/index';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
+import Database from 'better-sqlite3';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -70,19 +71,23 @@ function postJSON(url: string, data: unknown) {
 describe('Two Schedules With Same Cron (Section 4)', () => {
     let dataDir: string;
     let persistence: ScheduleYamlPersistence;
-    let runPersistence: ScheduleRunPersistence;
+    let runPersistence: SqliteScheduleRunPersistence;
     let manager: ScheduleManager;
+    let db: Database.Database;
 
     const REPO_ID = 'test-repo';
 
     beforeEach(() => {
         dataDir = createTempDir();
         persistence = new ScheduleYamlPersistence(dataDir);
-        runPersistence = new ScheduleRunPersistence(dataDir);
+        db = new Database(':memory:');
+        initializeDatabase(db);
+        runPersistence = new SqliteScheduleRunPersistence(db);
     });
 
     afterEach(() => {
         manager?.dispose();
+        db?.close();
         cleanupDir(dataDir);
     });
 

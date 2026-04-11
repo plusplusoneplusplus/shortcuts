@@ -2,16 +2,20 @@
  * Schedule Infrastructure Builder
  *
  * Creates the schedule-related objects (ScheduleYamlPersistence,
- * ScheduleRunPersistence, RepoScheduleOverrideStore, ScheduleManager)
+ * SqliteScheduleRunPersistence, RepoScheduleOverrideStore, ScheduleManager)
  * used by the execution server and returns them as a plain object.
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import DatabaseConstructor from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { ScheduleYamlPersistence } from '../schedule-yaml-persistence';
-import { ScheduleRunPersistence } from '../schedule-run-persistence';
+import { SqliteScheduleRunPersistence } from '../sqlite-schedule-run-persistence';
 import { ScheduleManager } from '../schedule-manager';
 import { RepoScheduleOverrideStore } from '../repo-schedule-overrides';
 
@@ -21,7 +25,9 @@ import { RepoScheduleOverrideStore } from '../repo-schedule-overrides';
 
 export interface ScheduleInfrastructure {
     scheduleManager: ScheduleManager;
-    scheduleRunPersistence: ScheduleRunPersistence;
+    scheduleRunPersistence: SqliteScheduleRunPersistence;
+    /** Close owned resources. Call on server shutdown. */
+    dispose: () => void;
 }
 
 // ============================================================================
@@ -35,14 +41,30 @@ export interface ScheduleInfrastructure {
  * @param dataDir     - Root data directory (e.g. `~/.coc/`).
  * @param queueFacade - Aggregate queue facade used by the schedule manager to
  *                      enqueue triggered jobs.
+ * @param store       - Process store instance (SQLite DB is extracted from SqliteProcessStore).
  */
 export function createScheduleInfrastructure(
     dataDir: string,
     queueFacade: TaskQueueManager,
+    store: ProcessStore,
 ): ScheduleInfrastructure {
+    // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
+    let db: Database.Database;
+    let ownsDb = false;
+    if (store instanceof SqliteProcessStore) {
+        db = store.getDatabase();
+    } else {
+        const path = require('path');
+        const fs = require('fs');
+        fs.mkdirSync(dataDir, { recursive: true });
+        db = new DatabaseConstructor(path.join(dataDir, 'processes.db'));
+        initializeDatabase(db);
+        ownsDb = true;
+    }
+
     const schedulePersistence = new ScheduleYamlPersistence(dataDir);
     schedulePersistence.migrateAllFromJson(); // non-destructive, idempotent
-    const scheduleRunPersistence = new ScheduleRunPersistence(dataDir);
+    const scheduleRunPersistence = new SqliteScheduleRunPersistence(db);
     const scheduleOverrideStore = new RepoScheduleOverrideStore(dataDir);
     const scheduleManager = new ScheduleManager(
         schedulePersistence,
@@ -51,5 +73,12 @@ export function createScheduleInfrastructure(
     );
     scheduleManager.restore();
     scheduleManager.restoreRunHistory(scheduleRunPersistence);
-    return { scheduleManager, scheduleRunPersistence };
+
+    const dispose = () => {
+        if (ownsDb) {
+            try { db.close(); } catch { /* already closed */ }
+        }
+    };
+
+    return { scheduleManager, scheduleRunPersistence, dispose };
 }

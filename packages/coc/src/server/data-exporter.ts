@@ -20,6 +20,8 @@ import type {
     ScheduleSnapshot,
 } from './export-import-types';
 import { EXPORT_SCHEMA_VERSION } from './export-import-types';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 // TODO(coc-merge): redirect to ./preferences-handler once fully migrated
 import { PREFERENCES_FILE_NAME } from './preferences-handler';
 
@@ -53,7 +55,7 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
     const repoPreferences = readRepoPrefsFiles(dataDir);
 
     // Gather schedule data
-    const scheduleHistory = readScheduleFiles(dataDir);
+    const scheduleHistory = readScheduleFiles(dataDir, store);
 
     // Gather global preferences (raw JSON to preserve all fields regardless of schema)
     const prefFile = path.join(dataDir, PREFERENCES_FILE_NAME);
@@ -175,24 +177,59 @@ function readRepoPrefsFiles(dataDir: string): RepoPreferencesSnapshot[] {
 
 /**
  * Read per-repo schedule data from `dataDir/repos/<id>/schedules/*.yaml`.
- * Also reads `schedule-runs.json` (unchanged JSON format).
+ * Schedule runs are read from the `schedule_runs` SQLite table.
  * Corrupt or missing files are silently skipped.
  */
-function readScheduleFiles(dataDir: string): ScheduleSnapshot[] {
+function readScheduleFiles(dataDir: string, store: ProcessStore): ScheduleSnapshot[] {
     const reposDir = path.join(dataDir, 'repos');
     const repoDirs = listRepoDirs(reposDir);
+
+    // Load schedule runs from SQLite, grouped by repo_id
+    const runsByRepo = new Map<string, unknown[]>();
+    if (store instanceof SqliteProcessStore) {
+        try {
+            const db = store.getDatabase();
+            const rows = db.prepare('SELECT * FROM schedule_runs ORDER BY started_at DESC').all() as any[];
+            for (const row of rows) {
+                const repoId = row.repo_id;
+                if (!runsByRepo.has(repoId)) {
+                    runsByRepo.set(repoId, []);
+                }
+                runsByRepo.get(repoId)!.push({
+                    id: row.id,
+                    scheduleId: row.schedule_id,
+                    repoId: row.repo_id,
+                    startedAt: row.started_at,
+                    completedAt: row.completed_at ?? undefined,
+                    status: row.status,
+                    error: row.error ?? undefined,
+                    durationMs: row.duration_ms ?? undefined,
+                    processId: row.process_id ?? undefined,
+                    taskId: row.task_id ?? undefined,
+                });
+            }
+        } catch { /* table may not exist yet */ }
+    }
+
     const snapshots: ScheduleSnapshot[] = [];
 
+    // Collect all repo IDs from both disk and SQLite
+    const allRepoIds = new Set<string>();
     for (const repoDir of repoDirs) {
+        allRepoIds.add(path.basename(repoDir));
+    }
+    for (const repoId of runsByRepo.keys()) {
+        allRepoIds.add(repoId);
+    }
+
+    for (const repoId of allRepoIds) {
+        const repoDir = path.join(reposDir, repoId);
         const schedulesDir = path.join(repoDir, 'schedules');
-        const runsPath = path.join(repoDir, 'schedule-runs.json');
 
         const hasSchedulesDir =
             fs.existsSync(schedulesDir) && fs.statSync(schedulesDir).isDirectory();
-        const hasRuns = fs.existsSync(runsPath);
-        if (!hasSchedulesDir && !hasRuns) { continue; }
-
-        const repoId = path.basename(repoDir);
+        const scheduleRuns = runsByRepo.get(repoId) ?? [];
+        if (!hasSchedulesDir && scheduleRuns.length === 0) { continue; }
 
         // Try to extract repoRootPath from sibling queues.json (unchanged)
         let repoRootPath = '';
@@ -219,15 +256,6 @@ function readScheduleFiles(dataDir: string): ScheduleSnapshot[] {
                     }
                 } catch { /* skip corrupt */ }
             }
-        }
-
-        // Read schedule runs (still JSON)
-        let scheduleRuns: unknown[] = [];
-        if (hasRuns) {
-            try {
-                const raw = JSON.parse(fs.readFileSync(runsPath, 'utf-8'));
-                scheduleRuns = Array.isArray(raw) ? raw : [];
-            } catch { /* skip corrupt */ }
         }
 
         // Only add snapshot if there is any data

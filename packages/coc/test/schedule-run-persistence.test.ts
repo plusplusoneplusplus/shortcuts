@@ -1,28 +1,23 @@
 /**
- * Tests for ScheduleRunPersistence
+ * Tests for SqliteScheduleRunPersistence
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { ScheduleRunPersistence } from '../src/server/schedule-run-persistence';
+import Database from 'better-sqlite3';
+import { initializeDatabase } from '@plusplusoneplusplus/forge';
+import { SqliteScheduleRunPersistence } from '../src/server/sqlite-schedule-run-persistence';
 import type { ScheduleRunRecord } from '../src/server/schedule-manager';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-function createTempDir(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'schedule-run-persist-test-'));
-}
-
-function cleanupDir(dir: string): void {
-    try {
-        fs.rmSync(dir, { recursive: true, force: true });
-    } catch { /* ignore */ }
+function createDb(): Database.Database {
+    const db = new Database(':memory:');
+    initializeDatabase(db);
+    return db;
 }
 
 function createRun(overrides: Partial<ScheduleRunRecord> = {}): ScheduleRunRecord {
@@ -42,15 +37,15 @@ function createRun(overrides: Partial<ScheduleRunRecord> = {}): ScheduleRunRecor
 // Tests
 // ============================================================================
 
-describe('ScheduleRunPersistence', () => {
-    let dataDir: string;
+describe('SqliteScheduleRunPersistence', () => {
+    let db: Database.Database;
 
     beforeEach(() => {
-        dataDir = createTempDir();
+        db = createDb();
     });
 
     afterEach(() => {
-        cleanupDir(dataDir);
+        db.close();
     });
 
     // ========================================================================
@@ -59,7 +54,7 @@ describe('ScheduleRunPersistence', () => {
 
     describe('save and load round-trip', () => {
         it('saves runs and loads them back via loadAll grouped by scheduleId', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
+            const persistence = new SqliteScheduleRunPersistence(db);
             const run1 = createRun({ id: 'run_1', scheduleId: 'sch_a' });
             const run2 = createRun({ id: 'run_2', scheduleId: 'sch_b' });
 
@@ -73,7 +68,7 @@ describe('ScheduleRunPersistence', () => {
         });
 
         it('preserves all fields on round-trip', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
+            const persistence = new SqliteScheduleRunPersistence(db);
             const run = createRun({
                 id: 'run_full',
                 processId: 'queue_task123',
@@ -92,7 +87,7 @@ describe('ScheduleRunPersistence', () => {
         });
 
         it('load() returns runs for specific repo', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
+            const persistence = new SqliteScheduleRunPersistence(db);
             const run = createRun({ id: 'run_x', repoId: 'repo_x' });
             persistence.save('repo_x', [run]);
 
@@ -102,7 +97,7 @@ describe('ScheduleRunPersistence', () => {
         });
 
         it('load() returns [] for missing repo', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
+            const persistence = new SqliteScheduleRunPersistence(db);
             expect(persistence.load('nonexistent')).toEqual([]);
         });
     });
@@ -112,18 +107,13 @@ describe('ScheduleRunPersistence', () => {
     // ========================================================================
 
     describe('multiple repos', () => {
-        it('stores runs for different repos in separate files', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
+        it('stores runs for different repos in the same table', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
             const runA = createRun({ id: 'run_a', repoId: 'repo_a', scheduleId: 'sch_1' });
             const runB = createRun({ id: 'run_b', repoId: 'repo_b', scheduleId: 'sch_2' });
 
             persistence.save('repo_a', [runA]);
             persistence.save('repo_b', [runB]);
-
-            const repoDirA = path.join(dataDir, 'repos', 'repo_a');
-            const repoDirB = path.join(dataDir, 'repos', 'repo_b');
-            expect(fs.existsSync(path.join(repoDirA, 'schedule-runs.json'))).toBe(true);
-            expect(fs.existsSync(path.join(repoDirB, 'schedule-runs.json'))).toBe(true);
 
             const loaded = persistence.loadAll();
             expect(loaded.get('sch_1')![0].id).toBe('run_a');
@@ -136,8 +126,8 @@ describe('ScheduleRunPersistence', () => {
     // ========================================================================
 
     describe('trimming', () => {
-        it('trims terminal entries beyond maxRuns', () => {
-            const persistence = new ScheduleRunPersistence(dataDir, 5);
+        it('trims terminal entries beyond maxRuns via save()', () => {
+            const persistence = new SqliteScheduleRunPersistence(db, 5);
             const runs: ScheduleRunRecord[] = [];
             for (let i = 0; i < 7; i++) {
                 runs.push(createRun({
@@ -154,7 +144,7 @@ describe('ScheduleRunPersistence', () => {
         });
 
         it('protects running entries from trimming', () => {
-            const persistence = new ScheduleRunPersistence(dataDir, 3);
+            const persistence = new SqliteScheduleRunPersistence(db, 3);
             const runs: ScheduleRunRecord[] = [
                 createRun({ id: 'run_running', status: 'running', startedAt: '2026-03-01T09:00:00Z' }),
                 createRun({ id: 'run_c1', status: 'completed', startedAt: '2026-02-01T09:00:00Z' }),
@@ -170,7 +160,7 @@ describe('ScheduleRunPersistence', () => {
         });
 
         it('protects missed entries from trimming', () => {
-            const persistence = new ScheduleRunPersistence(dataDir, 3);
+            const persistence = new SqliteScheduleRunPersistence(db, 3);
             const runs: ScheduleRunRecord[] = [
                 createRun({ id: 'run_missed', status: 'missed', startedAt: '2026-03-01T09:00:00Z' }),
                 createRun({ id: 'run_c1', status: 'completed', startedAt: '2026-02-01T09:00:00Z' }),
@@ -186,7 +176,7 @@ describe('ScheduleRunPersistence', () => {
         });
 
         it('keeps newest terminal entries when trimming', () => {
-            const persistence = new ScheduleRunPersistence(dataDir, 2);
+            const persistence = new SqliteScheduleRunPersistence(db, 2);
             const runs: ScheduleRunRecord[] = [
                 createRun({ id: 'run_old', status: 'completed', startedAt: '2026-01-01T09:00:00Z' }),
                 createRun({ id: 'run_new', status: 'completed', startedAt: '2026-03-01T09:00:00Z' }),
@@ -201,20 +191,89 @@ describe('ScheduleRunPersistence', () => {
             expect(loaded.some(r => r.id === 'run_mid')).toBe(true);
             expect(loaded.some(r => r.id === 'run_old')).toBe(false);
         });
+
+        it('trim() removes old terminal entries after upserts', () => {
+            const persistence = new SqliteScheduleRunPersistence(db, 3);
+            // Insert 5 runs via upsert
+            for (let i = 0; i < 5; i++) {
+                persistence.upsert(createRun({
+                    id: `run_${i}`,
+                    startedAt: `2026-03-0${i + 1}T09:00:00Z`,
+                    status: 'completed',
+                }));
+            }
+            expect(persistence.load('repo_abc').length).toBe(5);
+
+            persistence.trim('repo_abc');
+
+            const loaded = persistence.load('repo_abc');
+            expect(loaded.length).toBe(3);
+        });
     });
 
     // ========================================================================
-    // 4. Empty state
+    // 4. Upsert
+    // ========================================================================
+
+    describe('upsert', () => {
+        it('inserts a new record', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
+            const run = createRun();
+            persistence.upsert(run);
+
+            const loaded = persistence.load('repo_abc');
+            expect(loaded).toHaveLength(1);
+            expect(loaded[0].id).toBe('run_test001');
+        });
+
+        it('updates an existing record', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
+            const run = createRun({ status: 'running' });
+            persistence.upsert(run);
+
+            run.status = 'completed';
+            run.completedAt = '2026-03-01T09:02:00Z';
+            persistence.upsert(run);
+
+            const loaded = persistence.load('repo_abc');
+            expect(loaded).toHaveLength(1);
+            expect(loaded[0].status).toBe('completed');
+            expect(loaded[0].completedAt).toBe('2026-03-01T09:02:00Z');
+        });
+
+        it('handles optional fields as null', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
+            const run: ScheduleRunRecord = {
+                id: 'run_minimal',
+                scheduleId: 'sch_1',
+                repoId: 'repo_abc',
+                startedAt: '2026-03-01T09:00:00Z',
+                status: 'running',
+            };
+            persistence.upsert(run);
+
+            const loaded = persistence.load('repo_abc');
+            expect(loaded).toHaveLength(1);
+            expect(loaded[0].completedAt).toBeUndefined();
+            expect(loaded[0].error).toBeUndefined();
+            expect(loaded[0].durationMs).toBeUndefined();
+            expect(loaded[0].processId).toBeUndefined();
+            expect(loaded[0].taskId).toBeUndefined();
+        });
+    });
+
+    // ========================================================================
+    // 5. Empty state
     // ========================================================================
 
     describe('empty state', () => {
-        it('loadAll returns empty map when no files exist', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
+        it('loadAll returns empty map when no rows exist', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
             expect(persistence.loadAll().size).toBe(0);
         });
 
-        it('save with empty runs array produces file with empty runs', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
+        it('save with empty runs array results in no rows', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
             persistence.save('repo_empty', []);
             const loaded = persistence.load('repo_empty');
             expect(loaded).toEqual([]);
@@ -222,112 +281,66 @@ describe('ScheduleRunPersistence', () => {
     });
 
     // ========================================================================
-    // 5. Delete repo
+    // 6. Delete repo
     // ========================================================================
 
     describe('deleteRepo', () => {
-        it('removes the run history file for a repo', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
-            persistence.save('repo_del', [createRun()]);
+        it('removes all run history for a repo', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
+            persistence.save('repo_del', [createRun({ repoId: 'repo_del' })]);
 
-            const filePath = path.join(dataDir, 'repos', 'repo_del', 'schedule-runs.json');
-            expect(fs.existsSync(filePath)).toBe(true);
+            expect(persistence.load('repo_del')).toHaveLength(1);
 
             persistence.deleteRepo('repo_del');
-            expect(fs.existsSync(filePath)).toBe(false);
+            expect(persistence.load('repo_del')).toEqual([]);
         });
 
         it('handles deleting non-existent repo gracefully', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
+            const persistence = new SqliteScheduleRunPersistence(db);
             expect(() => persistence.deleteRepo('nonexistent')).not.toThrow();
         });
-    });
 
-    // ========================================================================
-    // 6. Corrupt file handling
-    // ========================================================================
+        it('does not affect other repos', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
+            persistence.save('repo_a', [createRun({ id: 'r1', repoId: 'repo_a' })]);
+            persistence.save('repo_b', [createRun({ id: 'r2', repoId: 'repo_b' })]);
 
-    describe('corrupt file handling', () => {
-        it('returns [] for corrupt JSON on load()', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
-            const repoDir = path.join(dataDir, 'repos', 'corrupt');
-            fs.mkdirSync(repoDir, { recursive: true });
-            fs.writeFileSync(path.join(repoDir, 'schedule-runs.json'), '{ not valid !!!', 'utf-8');
+            persistence.deleteRepo('repo_a');
 
-            expect(persistence.load('corrupt')).toEqual([]);
-        });
-
-        it('skips corrupt files in loadAll()', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
-            const corruptDir = path.join(dataDir, 'repos', 'corrupt2');
-            fs.mkdirSync(corruptDir, { recursive: true });
-            fs.writeFileSync(path.join(corruptDir, 'schedule-runs.json'), '{ broken', 'utf-8');
-            persistence.save('repo_good', [createRun({ id: 'run_good', scheduleId: 'sch_good' })]);
-
-            const loaded = persistence.loadAll();
-            expect(loaded.has('sch_good')).toBe(true);
+            expect(persistence.load('repo_a')).toEqual([]);
+            expect(persistence.load('repo_b')).toHaveLength(1);
         });
     });
 
     // ========================================================================
-    // 7. Atomic write safety
+    // 7. Count and deleteAll
     // ========================================================================
 
-    describe('atomic write safety', () => {
-        it('leaves no .tmp file after save', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
-            persistence.save('repo_atomic', [createRun()]);
+    describe('count and deleteAll', () => {
+        it('count returns the total number of rows', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
+            persistence.upsert(createRun({ id: 'r1' }));
+            persistence.upsert(createRun({ id: 'r2' }));
+            expect(persistence.count()).toBe(2);
+        });
 
-            const repoDir = path.join(dataDir, 'repos', 'repo_atomic');
-            const tmpFiles = fs.readdirSync(repoDir).filter(f => f.endsWith('.tmp'));
-            expect(tmpFiles).toHaveLength(0);
+        it('deleteAll removes all rows', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
+            persistence.upsert(createRun({ id: 'r1' }));
+            persistence.upsert(createRun({ id: 'r2' }));
+            persistence.deleteAll();
+            expect(persistence.count()).toBe(0);
         });
     });
 
     // ========================================================================
-    // 8. File format
+    // 8. No eager side effects
     // ========================================================================
 
-    describe('file format', () => {
-        it('saves with version 1 and correct structure', () => {
-            const persistence = new ScheduleRunPersistence(dataDir);
-            persistence.save('repo_fmt', [createRun()]);
-
-            const filePath = path.join(dataDir, 'repos', 'repo_fmt', 'schedule-runs.json');
-            const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-            expect(raw.version).toBe(1);
-            expect(raw.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-            expect(raw.repoId).toBe('repo_fmt');
-            expect(Array.isArray(raw.runs)).toBe(true);
-        });
-    });
-
-    // ========================================================================
-    // 9. Directory creation
-    // ========================================================================
-
-    describe('directory creation', () => {
-        it('does not eagerly create directories in constructor', () => {
-            const freshDir = createTempDir();
-            const reposDir = path.join(freshDir, 'repos');
-            expect(fs.existsSync(reposDir)).toBe(false);
-
-            new ScheduleRunPersistence(freshDir);
-            expect(fs.existsSync(reposDir)).toBe(false);
-
-            cleanupDir(freshDir);
-        });
-
-        it('creates repo directory on first save call', () => {
-            const freshDir = createTempDir();
-            const persistence = new ScheduleRunPersistence(freshDir);
-            persistence.save('new-repo', [createRun()]);
-
-            const repoDir = path.join(freshDir, 'repos', 'new-repo');
-            expect(fs.existsSync(repoDir)).toBe(true);
-            expect(fs.existsSync(path.join(repoDir, 'schedule-runs.json'))).toBe(true);
-
-            cleanupDir(freshDir);
+    describe('constructor', () => {
+        it('does not write data on construction', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
+            expect(persistence.count()).toBe(0);
         });
     });
 });

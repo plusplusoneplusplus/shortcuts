@@ -27,6 +27,8 @@ import { PREFERENCES_FILE_NAME } from './preferences-handler';
 import { getRepoQueueFilePath } from './queue/queue-persistence';
 import { getRepoDataPath } from './paths';
 import { atomicWriteJson } from './shared/fs-utils';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Public API
@@ -137,7 +139,7 @@ async function replaceImport(
 
     // 8. Restore schedule files
     if (payload.scheduleHistory) {
-        result.importedScheduleFiles = writeScheduleFiles(dataDir, payload.scheduleHistory, result.errors);
+        result.importedScheduleFiles = writeScheduleFiles(dataDir, store, payload.scheduleHistory, result.errors);
     }
 
     // 9. Restore queue from written files into the manager
@@ -238,7 +240,7 @@ async function mergeImport(
 
     // 6. Merge schedule files
     if (payload.scheduleHistory) {
-        result.importedScheduleFiles = mergeScheduleFiles(dataDir, payload.scheduleHistory, result.errors);
+        result.importedScheduleFiles = mergeScheduleFiles(dataDir, store, payload.scheduleHistory, result.errors);
     }
 
     return result;
@@ -441,10 +443,10 @@ function mergeRepoPreferences(dataDir: string, snapshots: RepoPreferencesSnapsho
 /**
  * Write schedule YAML files to disk (replace mode — overwrite entire dir).
  * Each element of `snap.schedules` is written to `schedules/<id>.yaml`.
- * `schedule-runs.json` is written as a flat JSON array (unchanged).
+ * Schedule runs are written to the `schedule_runs` SQLite table.
  * Returns the number of repo schedule sets successfully written.
  */
-function writeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], errors: string[]): number {
+function writeScheduleFiles(dataDir: string, store: ProcessStore, snapshots: ScheduleSnapshot[], errors: string[]): number {
     let written = 0;
     for (const snap of snapshots) {
         if (!snap.repoId) { continue; }
@@ -462,9 +464,8 @@ function writeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], erro
                 fs.writeFileSync(filePath, content, 'utf-8');
             }
 
-            // Write schedule-runs.json (unchanged format)
-            const runsPath = getRepoDataPath(dataDir, snap.repoId, 'schedule-runs.json');
-            atomicWriteJson(runsPath, snap.scheduleRuns);
+            // Write schedule runs to SQLite
+            writeScheduleRunsToSqlite(store, snap.repoId, snap.scheduleRuns);
             written++;
         } catch (err: any) {
             errors.push(`Failed to write schedule files for ${snap.repoId}: ${err.message}`);
@@ -475,10 +476,10 @@ function writeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], erro
 
 /**
  * Merge schedule YAML files — add only schedules whose `id` is not already
- * present on disk. `schedule-runs.json` is merged by id (unchanged logic).
+ * present on disk. Schedule runs are merged by id into SQLite.
  * Returns the number of repo schedule sets successfully written.
  */
-function mergeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], errors: string[]): number {
+function mergeScheduleFiles(dataDir: string, store: ProcessStore, snapshots: ScheduleSnapshot[], errors: string[]): number {
     let written = 0;
     for (const snap of snapshots) {
         if (!snap.repoId) { continue; }
@@ -508,10 +509,8 @@ function mergeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], erro
                 existingIds.add(id);
             }
 
-            // Merge schedule-runs.json (reuse existing mergeArraysById helper)
-            const runsPath = getRepoDataPath(dataDir, snap.repoId, 'schedule-runs.json');
-            const mergedRuns = mergeArraysById(runsPath, snap.scheduleRuns);
-            atomicWriteJson(runsPath, mergedRuns);
+            // Merge schedule runs into SQLite (upsert — existing IDs are updated)
+            writeScheduleRunsToSqlite(store, snap.repoId, snap.scheduleRuns);
             written++;
         } catch (err: any) {
             errors.push(`Failed to merge schedule files for ${snap.repoId}: ${err.message}`);
@@ -521,22 +520,33 @@ function mergeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], erro
 }
 
 /**
- * Read an existing JSON array file, combine with incoming items, dedup by `id`.
+ * Write schedule run records to the schedule_runs SQLite table.
+ * Uses INSERT OR REPLACE for idempotent upsert behavior.
  */
-function mergeArraysById(filePath: string, incoming: unknown[]): unknown[] {
-    let existing: unknown[] = [];
-    if (fs.existsSync(filePath)) {
-        try {
-            const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-            existing = Array.isArray(raw) ? raw : [];
-        } catch { /* treat corrupt as empty */ }
-    }
-    const seenIds = new Set(existing.map((item: any) => item?.id).filter(Boolean));
-    for (const item of incoming) {
-        const id = (item as any)?.id;
-        if (id && seenIds.has(id)) { continue; }
-        if (id) { seenIds.add(id); }
-        existing.push(item);
-    }
-    return existing;
+function writeScheduleRunsToSqlite(store: ProcessStore, repoId: string, runs: unknown[]): void {
+    if (!(store instanceof SqliteProcessStore) || !runs.length) return;
+    const db = store.getDatabase();
+    const stmt = db.prepare(`
+        INSERT OR REPLACE INTO schedule_runs (id, schedule_id, repo_id, started_at, completed_at, status, error, duration_ms, process_id, task_id)
+        VALUES (@id, @scheduleId, @repoId, @startedAt, @completedAt, @status, @error, @durationMs, @processId, @taskId)
+    `);
+    const batch = db.transaction(() => {
+        for (const run of runs) {
+            const r = run as any;
+            if (!r?.id) continue;
+            stmt.run({
+                id: r.id,
+                scheduleId: r.scheduleId ?? '',
+                repoId: r.repoId ?? repoId,
+                startedAt: r.startedAt ?? '',
+                completedAt: r.completedAt ?? null,
+                status: r.status ?? 'completed',
+                error: r.error ?? null,
+                durationMs: r.durationMs ?? null,
+                processId: r.processId ?? null,
+                taskId: r.taskId ?? null,
+            });
+        }
+    });
+    batch();
 }

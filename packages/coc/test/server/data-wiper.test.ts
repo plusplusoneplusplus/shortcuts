@@ -170,14 +170,16 @@ describe('DataWiper', () => {
             const schedulesDir = path.join(repoDir, 'schedules');
             fs.mkdirSync(schedulesDir, { recursive: true });
             fs.writeFileSync(path.join(schedulesDir, 'sched-1.yaml'), 'id: sched-1\nname: Test');
-            writeJSON(path.join(repoDir, 'schedule-runs.json'), []);
+            // Insert schedule runs into SQLite
+            const db = store.getDatabase();
+            db.prepare('INSERT INTO schedule_runs (id, schedule_id, repo_id, started_at, status) VALUES (?, ?, ?, ?, ?)').run('run1', 'sched-1', 'abc123', '2026-03-01T00:00:00Z', 'completed');
             writeJSON(path.join(repoDir, 'git-ops.json'), {});
             writeJSON(path.join(repoDir, 'preferences.json'), {});
 
             const wiper = new DataWiper(dataDir, store);
             const summary = await wiper.getDryRunSummary();
 
-            expect(summary.deletedSchedules).toBe(2);
+            expect(summary.deletedSchedules).toBe(2); // 1 YAML + 1 SQLite row
             expect(summary.deletedGitOps).toBe(1);
             expect(summary.deletedRepoPreferences).toBe(1);
         });
@@ -354,24 +356,28 @@ describe('DataWiper', () => {
             expect(result.errors).toEqual([]);
         });
 
-        it('should delete schedule and git-ops files from repos/', async () => {
+        it('should delete schedule files and schedule run rows from repos/', async () => {
             const repoDir = path.join(dataDir, 'repos', 'abc123');
             fs.mkdirSync(repoDir, { recursive: true });
             // New YAML schedule format: individual files in schedules/ directory
             const schedulesDir = path.join(repoDir, 'schedules');
             fs.mkdirSync(schedulesDir, { recursive: true });
             fs.writeFileSync(path.join(schedulesDir, 'sched-1.yaml'), 'id: sched-1\nname: Test');
-            writeJSON(path.join(repoDir, 'schedule-runs.json'), []);
+            // Insert schedule runs into SQLite
+            const db = store.getDatabase();
+            db.prepare('INSERT INTO schedule_runs (id, schedule_id, repo_id, started_at, status) VALUES (?, ?, ?, ?, ?)').run('run1', 'sched-1', 'abc123', '2026-03-01T00:00:00Z', 'completed');
             writeJSON(path.join(repoDir, 'git-ops.json'), {});
 
             const wiper = new DataWiper(dataDir, store);
             const result = await wiper.wipeData({ includeWikis: false });
 
-            expect(result.deletedSchedules).toBe(2);
+            expect(result.deletedSchedules).toBe(2); // 1 YAML + 1 SQLite row
             expect(result.deletedGitOps).toBe(1);
             expect(fs.existsSync(schedulesDir)).toBe(false);
-            expect(fs.existsSync(path.join(repoDir, 'schedule-runs.json'))).toBe(false);
             expect(fs.existsSync(path.join(repoDir, 'git-ops.json'))).toBe(false);
+            // SQLite rows should be gone
+            const runCount = (db.prepare('SELECT COUNT(*) as cnt FROM schedule_runs').get() as { cnt: number }).cnt;
+            expect(runCount).toBe(0);
         });
 
         it('should handle non-existent wiki directory gracefully', async () => {

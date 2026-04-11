@@ -155,7 +155,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 
 **Storage layout — `~/.coc/` (top-level, global):**
 - `config.yaml` — server configuration
-- `processes.db` — SQLite process store (default backend)
+- `processes.db` — SQLite process store (default backend); also stores queue tasks, schedule runs
 - `preferences.json` — global UI preferences (theme, etc.)
 - `memory/` — cross-repo and system memory (see Memory System section)
 - `skills/` — global skill definitions
@@ -163,7 +163,6 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 **Storage layout — `~/.coc/repos/<workspaceId>/` (per-repo):**
 - `queues.json` — queue state
 - `schedules.json` — schedule definitions
-- `schedule-runs.json` — schedule run history
 - `git-ops.json` — background git operations
 - `preferences.json` — per-repo UI preferences
 - `tasks/` — task and plan files

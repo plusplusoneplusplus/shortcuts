@@ -17,7 +17,7 @@ import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { TargetType, ChatMode } from './task-types';
 import { getErrorMessage } from './shared/fs-utils';
 import { ScheduleYamlPersistence } from './schedule-yaml-persistence';
-import type { ScheduleRunPersistence } from './schedule-run-persistence';
+import type { SqliteScheduleRunPersistence } from './sqlite-schedule-run-persistence';
 import { loadRepoSchedules, getRepoScheduleDir } from './repo-schedule-loader';
 import type { RepoScheduleOverrideStore } from './repo-schedule-overrides';
 import { parseCron, nextCronTime, describeCron, slugifyName } from './cron-utils';
@@ -111,7 +111,7 @@ export class ScheduleManager extends EventEmitter {
     // Dependencies
     private readonly persistence: ScheduleYamlPersistence;
     private readonly queueManager: TaskQueueManager | null;
-    private runPersistence: ScheduleRunPersistence | null = null;
+    private runPersistence: SqliteScheduleRunPersistence | null = null;
     private readonly overrideStore: RepoScheduleOverrideStore | null;
     private disposed = false;
 
@@ -152,7 +152,7 @@ export class ScheduleManager extends EventEmitter {
      * Restore run history from persistence and inject into in-memory runHistory map.
      * Must be called after restore().
      */
-    restoreRunHistory(persistence: ScheduleRunPersistence): void {
+    restoreRunHistory(persistence: SqliteScheduleRunPersistence): void {
         this.runPersistence = persistence;
         const restored = persistence.loadAll();
         for (const [scheduleId, runs] of restored) {
@@ -677,7 +677,7 @@ export class ScheduleManager extends EventEmitter {
         if (history.length > MAX_HISTORY_PER_SCHEDULE) {
             history.pop();
         }
-        this.persistRunHistory(run.repoId);
+        this.persistRun(run);
     }
 
     private updateRunRecord(scheduleId: string, run: ScheduleRunRecord): void {
@@ -687,25 +687,13 @@ export class ScheduleManager extends EventEmitter {
         if (idx >= 0) {
             history[idx] = run;
         }
-        this.persistRunHistory(run.repoId);
+        this.persistRun(run);
     }
 
-    private persistRunHistory(repoId: string): void {
+    private persistRun(run: ScheduleRunRecord): void {
         if (!this.runPersistence) return;
-        const allRuns = this.getAllRunsForRepo(repoId);
-        this.runPersistence.save(repoId, allRuns);
-    }
-
-    private getAllRunsForRepo(repoId: string): ScheduleRunRecord[] {
-        const result: ScheduleRunRecord[] = [];
-        for (const runs of this.runHistory.values()) {
-            for (const run of runs) {
-                if (run.repoId === repoId) {
-                    result.push(run);
-                }
-            }
-        }
-        return result;
+        this.runPersistence.upsert(run);
+        this.runPersistence.trim(run.repoId);
     }
 
     private persist(repoId: string): void {

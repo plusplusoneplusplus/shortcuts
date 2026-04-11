@@ -140,6 +140,22 @@ export function initializeDatabase(db: Database.Database): void {
             )
         `);
 
+        // ── schedule_runs ────────────────────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS schedule_runs (
+                id            TEXT PRIMARY KEY,
+                schedule_id   TEXT NOT NULL,
+                repo_id       TEXT NOT NULL,
+                started_at    TEXT NOT NULL,
+                completed_at  TEXT,
+                status        TEXT NOT NULL,
+                error         TEXT,
+                duration_ms   INTEGER,
+                process_id    TEXT,
+                task_id       TEXT
+            )
+        `);
+
         // ── indexes ──────────────────────────────────────────────────
         db.exec(`
             CREATE INDEX IF NOT EXISTS idx_processes_workspace_id
@@ -176,6 +192,15 @@ export function initializeDatabase(db: Database.Database): void {
 
             CREATE INDEX IF NOT EXISTS idx_queue_tasks_status
                 ON queue_tasks(status);
+
+            CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule_id
+                ON schedule_runs(schedule_id);
+
+            CREATE INDEX IF NOT EXISTS idx_schedule_runs_repo_id
+                ON schedule_runs(repo_id);
+
+            CREATE INDEX IF NOT EXISTS idx_schedule_runs_status
+                ON schedule_runs(status);
         `);
 
         // Stamp the schema version

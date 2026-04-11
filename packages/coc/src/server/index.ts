@@ -50,6 +50,7 @@ interface CloseHandlerDeps {
     templateWatcher: { closeAll(): void };
     wikiManager: { disposeAll(): void } | undefined;
     scheduleManager: { dispose(): void };
+    scheduleInfraDispose: () => void;
     bridge: MultiRepoQueueExecutorBridge;
     queuePersistence: { dispose(): void };
     wsServer: ProcessWebSocketServer;
@@ -71,6 +72,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         templateWatcher.closeAll();
         wikiManager?.disposeAll();
         scheduleManager.dispose();
+        deps.scheduleInfraDispose();
         gitInfoCache.dispose();
 
         let drainOutcome: 'completed' | 'timeout' | undefined;
@@ -131,7 +133,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         store, dataDir, options, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, () => wsServer,
     );
-    const { scheduleManager } = createScheduleInfrastructure(dataDir, queueFacade);
+    const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
     const { outputPruner, staleDetector } = createCleanupInfrastructure(store, dataDir, queueFacade);
 
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
@@ -187,7 +189,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
             staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher,
-            wikiManager, scheduleManager, bridge, queuePersistence, wsServer,
+            wikiManager, scheduleManager, scheduleInfraDispose, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             activeSockets, server,
@@ -258,7 +260,7 @@ export { generateImportToken, generateWipeToken, generateMigrateToken, importTok
 
 // Scheduling
 export { ScheduleYamlPersistence } from './schedule-yaml-persistence';
-export { ScheduleRunPersistence } from './schedule-run-persistence';
+export { SqliteScheduleRunPersistence } from './sqlite-schedule-run-persistence';
 export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule-manager';
 export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule-manager';
 

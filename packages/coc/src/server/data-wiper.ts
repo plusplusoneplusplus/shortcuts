@@ -99,7 +99,6 @@ export class DataWiper {
         const repoDirs = this.listRepoDirs(reposDir);
 
         const scheduleFiles: string[] = [];
-        const scheduleRunFiles: string[] = [];
         const scheduleDirs: string[] = [];
         const gitOpsFiles: string[] = [];
         const repoPrefsFiles: string[] = [];
@@ -115,9 +114,6 @@ export class DataWiper {
                 // Track the directory itself for later rmdir
                 scheduleDirs.push(schedulesDir);
             }
-            // schedule-runs.json is still a flat JSON file — unchanged
-            const srf = path.join(repoDir, 'schedule-runs.json');
-            if (fs.existsSync(srf)) { scheduleRunFiles.push(srf); }
             const gf = path.join(repoDir, 'git-ops.json');
             if (fs.existsSync(gf)) { gitOpsFiles.push(gf); }
             const pf = path.join(repoDir, 'preferences.json');
@@ -126,7 +122,7 @@ export class DataWiper {
 
         // Count queue rows from SQLite
         result.deletedQueues = this.countQueueRows();
-        result.deletedSchedules = scheduleFiles.length + scheduleRunFiles.length;
+        result.deletedSchedules = scheduleFiles.length + this.countScheduleRunRows();
         result.deletedGitOps = gitOpsFiles.length;
         result.deletedRepoPreferences = repoPrefsFiles.length;
 
@@ -182,8 +178,15 @@ export class DataWiper {
             result.errors.push(`Failed to clear queue tables: ${err.message}`);
         }
 
+        // Clear schedule run rows from SQLite
+        try {
+            this.deleteScheduleRunRows();
+        } catch (err: any) {
+            result.errors.push(`Failed to clear schedule_runs table: ${err.message}`);
+        }
+
         // Delete per-repo files
-        const allRepoFiles = [...scheduleFiles, ...scheduleRunFiles, ...gitOpsFiles, ...repoPrefsFiles];
+        const allRepoFiles = [...scheduleFiles, ...gitOpsFiles, ...repoPrefsFiles];
         for (const filePath of allRepoFiles) {
             try {
                 fs.unlinkSync(filePath);
@@ -287,6 +290,33 @@ export class DataWiper {
         // queue_repo_paths is created lazily by SqliteQueuePersistence — may not exist yet.
         try {
             db.prepare('DELETE FROM queue_repo_paths').run();
+        } catch {
+            // Table doesn't exist yet — nothing to clean.
+        }
+    }
+
+    /**
+     * Count schedule run rows in SQLite. Returns 0 if the store is not SQLite
+     * or the table doesn't exist.
+     */
+    private countScheduleRunRows(): number {
+        if (!(this.store instanceof SqliteProcessStore)) return 0;
+        const db = this.store.getDatabase();
+        try {
+            return (db.prepare('SELECT COUNT(*) as cnt FROM schedule_runs').get() as { cnt: number }).cnt;
+        } catch {
+            return 0;
+        }
+    }
+
+    /**
+     * Delete all schedule run rows from SQLite.
+     */
+    private deleteScheduleRunRows(): void {
+        if (!(this.store instanceof SqliteProcessStore)) return;
+        const db = this.store.getDatabase();
+        try {
+            db.prepare('DELETE FROM schedule_runs').run();
         } catch {
             // Table doesn't exist yet — nothing to clean.
         }

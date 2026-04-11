@@ -1136,8 +1136,12 @@ describe('ScheduleManager', () => {
 
     describe('restoreRunHistory', () => {
         it('restores run history from persistence on startup', async () => {
-            const { ScheduleRunPersistence } = await import('../src/server/schedule-run-persistence');
-            const runPersistence = new ScheduleRunPersistence(dataDir);
+            const Database = (await import('better-sqlite3')).default;
+            const { initializeDatabase } = await import('@plusplusoneplusplus/forge');
+            const { SqliteScheduleRunPersistence } = await import('../src/server/sqlite-schedule-run-persistence');
+            const db = new Database(':memory:');
+            initializeDatabase(db);
+            const runPersistence = new SqliteScheduleRunPersistence(db);
 
             const schedule = manager.addSchedule(REPO_ID, {
                 name: 'History Restore',
@@ -1163,11 +1167,16 @@ describe('ScheduleManager', () => {
             expect(history[0].scheduleId).toBe(schedule.id);
 
             newManager.dispose();
+            db.close();
         });
 
         it('does not persist run history when no runPersistence is wired', async () => {
-            const { ScheduleRunPersistence } = await import('../src/server/schedule-run-persistence');
-            const runPersistence = new ScheduleRunPersistence(dataDir);
+            const Database = (await import('better-sqlite3')).default;
+            const { initializeDatabase } = await import('@plusplusoneplusplus/forge');
+            const { SqliteScheduleRunPersistence } = await import('../src/server/sqlite-schedule-run-persistence');
+            const db = new Database(':memory:');
+            initializeDatabase(db);
+            const runPersistence = new SqliteScheduleRunPersistence(db);
 
             const schedule = manager.addSchedule(REPO_ID, {
                 name: 'No Persist',
@@ -1191,6 +1200,7 @@ describe('ScheduleManager', () => {
             expect(history).toHaveLength(0);
 
             newManager.dispose();
+            db.close();
         });
     });
 });

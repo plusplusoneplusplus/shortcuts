@@ -6,10 +6,12 @@
  * instances equivalent to the inline setup it replaced in index.ts.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import Database from 'better-sqlite3';
+import { initializeDatabase } from '@plusplusoneplusplus/forge';
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -18,7 +20,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 
 import { createScheduleInfrastructure } from '../../../src/server/infrastructure/schedule-infrastructure';
 import { ScheduleManager } from '../../../src/server/schedule-manager';
-import { ScheduleRunPersistence } from '../../../src/server/schedule-run-persistence';
+import { SqliteScheduleRunPersistence } from '../../../src/server/sqlite-schedule-run-persistence';
 
 function makeTempDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'schedule-infra-test-'));
@@ -34,24 +36,38 @@ function makeQueueFacade(): any {
     };
 }
 
+function makeStubStore(): any {
+    return {
+        getAllProcesses: vi.fn().mockResolvedValue([]),
+        getWorkspaces: vi.fn().mockResolvedValue([]),
+    };
+}
+
 describe('createScheduleInfrastructure', () => {
     let dataDir: string;
+    let db: Database.Database;
 
     beforeEach(() => {
         dataDir = makeTempDir();
+        db = new Database(':memory:');
+        initializeDatabase(db);
+    });
+
+    afterEach(() => {
+        db.close();
     });
 
     it('returns scheduleManager and scheduleRunPersistence', () => {
         const queueFacade = makeQueueFacade();
-        const result = createScheduleInfrastructure(dataDir, queueFacade);
+        const result = createScheduleInfrastructure(dataDir, queueFacade, makeStubStore());
 
         expect(result.scheduleManager).toBeInstanceOf(ScheduleManager);
-        expect(result.scheduleRunPersistence).toBeInstanceOf(ScheduleRunPersistence);
+        expect(result.scheduleRunPersistence).toBeInstanceOf(SqliteScheduleRunPersistence);
     });
 
     it('scheduleManager has restore and dispose methods', () => {
         const queueFacade = makeQueueFacade();
-        const { scheduleManager } = createScheduleInfrastructure(dataDir, queueFacade);
+        const { scheduleManager } = createScheduleInfrastructure(dataDir, queueFacade, makeStubStore());
 
         expect(typeof scheduleManager.restore).toBe('function');
         expect(typeof scheduleManager.dispose).toBe('function');
@@ -59,7 +75,7 @@ describe('createScheduleInfrastructure', () => {
 
     it('works with a fresh empty dataDir', () => {
         const queueFacade = makeQueueFacade();
-        expect(() => createScheduleInfrastructure(dataDir, queueFacade)).not.toThrow();
+        expect(() => createScheduleInfrastructure(dataDir, queueFacade, makeStubStore())).not.toThrow();
     });
 
     it('migrates existing JSON schedules during construction', () => {
@@ -67,12 +83,9 @@ describe('createScheduleInfrastructure', () => {
         const repoId = 'test-repo';
         const reposDir = path.join(dataDir, 'repos', repoId);
         fs.mkdirSync(reposDir, { recursive: true });
-        // ScheduleRunPersistence file — just ensure no crash with existing files
-        const scheduleRunFile = path.join(reposDir, 'schedule-runs.json');
-        fs.writeFileSync(scheduleRunFile, JSON.stringify([]));
 
         const queueFacade = makeQueueFacade();
-        expect(() => createScheduleInfrastructure(dataDir, queueFacade)).not.toThrow();
+        expect(() => createScheduleInfrastructure(dataDir, queueFacade, makeStubStore())).not.toThrow();
     });
 
     it('restoreRunHistory is called with scheduleRunPersistence', () => {
@@ -81,6 +94,7 @@ describe('createScheduleInfrastructure', () => {
         const { scheduleManager, scheduleRunPersistence } = createScheduleInfrastructure(
             dataDir,
             queueFacade,
+            makeStubStore(),
         );
         expect(() => scheduleManager.restoreRunHistory(scheduleRunPersistence)).not.toThrow();
     });
