@@ -97,6 +97,30 @@ export interface ChatSessionItem {
     turnCount?: number;    // number of conversation turns (from enriched history)
 }
 
+/** Process-native history item returned by GET /api/workspaces/:id/history. */
+export interface ProcessHistoryItem {
+    id: string;
+    type: string;
+    status: string;
+    title: string;
+    promptPreview?: string;
+    startTime: number;
+    endTime?: number;
+    error?: string;
+    mode?: string;
+    model?: string;
+    workspaceId: string;
+    planFilePath?: string;
+    turnCount: number;
+    lastActivityAt?: number;
+    seenAt?: string;
+}
+
+export interface ProcessHistoryResponse {
+    history: ProcessHistoryItem[];
+    hasMore: boolean;
+}
+
 export interface ClientTokenUsageStatsEntry {
     date: string;                               // YYYY-MM-DD
     byModel: Record<string, ClientTokenUsage>;  // model → usage
