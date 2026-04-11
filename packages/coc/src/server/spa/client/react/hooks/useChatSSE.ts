@@ -138,7 +138,11 @@ export function useChatSSE({
         es.addEventListener('message-queued', (event: Event) => {
             try {
                 const { optimisticId } = JSON.parse((event as MessageEvent).data);
-                setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'queued' as const } : m));
+                setPendingQueue(prev => prev.map(m => {
+                    if (m.id !== optimisticId) return m;
+                    if (m.status === 'sent-immediate') return m;
+                    return { ...m, status: 'queued' as const };
+                }));
             } catch { /* ignore */ }
         });
 
@@ -178,7 +182,7 @@ export function useChatSSE({
             setBackgroundTasks(null);
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
             void refreshConversation(processId);
-            setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
+            setPendingQueue(prev => prev.filter(m => m.status !== 'steering' && m.status !== 'sent-immediate'));
             onSendComplete();
         };
 

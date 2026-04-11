@@ -5,7 +5,7 @@ export interface QueuedMessage {
     id: string;           // crypto.randomUUID() — used as React key and bubble identifier
     content: string;
     deliveryMode: DeliveryMode;
-    status: 'pending-send' | 'queued' | 'steering';
+    status: 'pending-send' | 'queued' | 'steering' | 'sent-immediate';
 }
 
 export function buildMetadataProcess(task: any, processDetails: any, processId: string | null): any {

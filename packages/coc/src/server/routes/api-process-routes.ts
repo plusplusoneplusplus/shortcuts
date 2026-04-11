@@ -19,7 +19,7 @@ import {
 } from '../api-handler';
 import type { QueueExecutorBridge } from '../api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, internalError, APIError } from '../errors';
-import { handleProcessStream, emitMessageQueued, emitPendingMessageAdded } from '../sse-handler';
+import { handleProcessStream, emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../sse-handler';
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../image-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
@@ -504,6 +504,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 emitPendingMessageAdded(store, id, pendingMsg);
             };
 
+            let steerSucceeded = false;
+
             try {
                 if (bridge.enqueue) {
                     const displayName = truncateDisplayName(messageContent.trim());
@@ -515,6 +517,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         if (!steered) {
                             // Steering failed (no active SDK session); buffer for server-side drain
                             await bufferAsPendingMessage();
+                        } else {
+                            steerSucceeded = true;
                         }
                     } else if (
                         (parentTask && (parentTask.status === 'running' || parentTask.status === 'queued')) ||
@@ -563,6 +567,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 queuePosition: deliveryMode === 'immediate' ? 0 : 1,
                 optimisticId,
             });
+
+            if (steerSucceeded) {
+                emitMessageSteering(store, id, { turnIndex, optimisticId });
+            }
 
             globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${turnIndex}\n`);
 

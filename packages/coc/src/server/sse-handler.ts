@@ -34,6 +34,8 @@ export interface MessageQueuedPayload {
 export interface MessageSteeringPayload {
     /** Zero-based turn index — matches the turnIndex in the preceding message-queued event. */
     turnIndex: number;
+    /** Client-provided optimistic ID echoed back for reconciliation. */
+    optimisticId?: string;
 }
 
 /** Fired when a pending message is persisted on the process (queued while AI is busy). */
@@ -65,6 +67,7 @@ export function emitMessageSteering(store: ProcessStore, processId: string, payl
     store.emitProcessEvent(processId, {
         type: 'message-steering',
         turnIndex: payload.turnIndex,
+        ...(payload.optimisticId !== undefined ? { optimisticId: payload.optimisticId } : {}),
     } as ProcessOutputEvent);
 }
 

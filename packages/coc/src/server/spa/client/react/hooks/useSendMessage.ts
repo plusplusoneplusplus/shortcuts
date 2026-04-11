@@ -121,7 +121,7 @@ export function useSendMessage({
         flushQueueRef.current = () => {
             if (pendingQueue.length === 0 || !processId) return;
             // Server drains 'enqueue' messages; client only drains 'immediate' (steering)
-            const immediateMsg = pendingQueue.find(m => m.deliveryMode === 'immediate');
+            const immediateMsg = pendingQueue.find(m => m.deliveryMode === 'immediate' && m.status !== 'sent-immediate');
             if (!immediateMsg) return;
             setPendingQueue(prev => prev.filter(m => m.id !== immediateMsg.id));
             setSending(true);
@@ -153,7 +153,7 @@ export function useSendMessage({
                 .finally(() => {
                     setSending(false);
                     queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
-                    setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
+                    setPendingQueue(prev => prev.filter(m => m.status !== 'steering' && m.status !== 'sent-immediate'));
                     setTimeout(() => { flushQueueRef.current?.(); }, 0);
                 });
         };
@@ -181,17 +181,28 @@ export function useSendMessage({
         setError(null);
 
         if (sending) {
+            const isImmediate = deliveryMode === 'immediate';
             const qm: QueuedMessage = {
                 id: crypto.randomUUID(),
                 content: rawContent,
                 deliveryMode,
-                status: 'pending-send',
+                status: isImmediate ? 'sent-immediate' : 'pending-send',
             };
             setPendingQueue(prev => [...prev, qm]);
 
-            if (deliveryMode === 'immediate') {
+            if (isImmediate) {
+                // Bug A fix: add optimistic user turn so it appears immediately
+                const timestamp = new Date().toISOString();
+                setTurnsAndRef(prev => {
+                    const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
+                    return [
+                        ...prev,
+                        { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx },
+                    ];
+                });
+
                 // Steering messages must reach the server immediately to inject into the running session
-                await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
+                fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -277,7 +288,7 @@ export function useSendMessage({
         } finally {
             setSending(false);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
-            setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
+            setPendingQueue(prev => prev.filter(m => m.status !== 'steering' && m.status !== 'sent-immediate'));
             void refreshConversation(processId);
             setTimeout(() => { flushQueueRef.current?.(); }, 0);
         }
