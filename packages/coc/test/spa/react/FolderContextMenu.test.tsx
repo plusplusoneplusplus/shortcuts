@@ -24,6 +24,30 @@ const mockUseTaskGeneration = useTaskGeneration as Mock;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
+/** Captures the latest QueueContext state into an external ref for assertions. */
+function QueueStateCapture({ stateRef }: { stateRef: { current: any } }) {
+    const { state } = useQueue();
+    stateRef.current = state;
+    return null;
+}
+
+function WrapWithCapture({ children, stateRef }: { children: ReactNode; stateRef: { current: any } }) {
+    return (
+        <AppProvider>
+            <QueueProvider>
+                <MinimizedDialogsProvider>
+                    <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                        {children}
+                        <QueueStateCapture stateRef={stateRef} />
+                        <EnqueueDialog />
+                        <MinimizedDialogsTray />
+                    </ToastProvider>
+                </MinimizedDialogsProvider>
+            </QueueProvider>
+        </AppProvider>
+    );
+}
+
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>
@@ -310,6 +334,28 @@ describe('Folder context menu', () => {
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         const queueBtn = screen.getByText('Queue All Tasks');
         expect(queueBtn.closest('button')?.disabled).toBe(false);
+    });
+
+    it('"Queue All Tasks" click opens EnqueueDialog with the correct workspaceId (regression)', async () => {
+        const stateRef: { current: any } = { current: null };
+        render(<WrapWithCapture stateRef={stateRef}><TasksPanel wsId="ws1" /></WrapWithCapture>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
+
+        // "Queue All Tasks" is a submenu parent — hover to open it, then click the nested child
+        const parentItem = screen.getAllByText('Queue All Tasks')[0].closest('[data-testid^="context-menu-item-"]');
+        fireEvent.mouseEnter(parentItem!);
+
+        const nestedQueueBtn = screen.getAllByText('Queue All Tasks')[1];
+        fireEvent.click(nestedQueueBtn);
+
+        await waitFor(() => {
+            expect(stateRef.current?.showDialog).toBe(true);
+        });
+        expect(stateRef.current?.dialogInitialWorkspaceId).toBe('ws1');
     });
 
     it('"Archive Folder" label shows for non-archived folders', async () => {

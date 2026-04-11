@@ -161,7 +161,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         refresh,
         addToast,
         siblingRepos,
-        onQueueFolder: (fp) => queueDispatch({ type: 'OPEN_DIALOG', folderPath: fp }),
+        onQueueFolder: (fp) => queueDispatch({ type: 'OPEN_DIALOG', folderPath: fp, workspaceId: wsId }),
         handleFolderContextMenuAction: folderDlg.handleFolderContextMenuAction,
         queueDispatch,
         wsId,
