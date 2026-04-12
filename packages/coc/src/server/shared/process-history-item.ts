@@ -36,6 +36,10 @@ export interface ProcessHistoryItem {
 
     // Seen state (injected by handler)
     seenAt?: string;
+
+    // Pin & archive state
+    pinnedAt?: string;
+    archived?: boolean;
 }
 
 export function toProcessHistoryItem(
@@ -67,5 +71,7 @@ export function toProcessHistoryItem(
         turnCount: turns.length,
         lastActivityAt,
         seenAt,
+        pinnedAt: proc.pinnedAt,
+        archived: proc.archived || undefined,
     };
 }

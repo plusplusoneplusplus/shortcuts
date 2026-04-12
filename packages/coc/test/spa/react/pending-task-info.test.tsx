@@ -15,6 +15,7 @@ import { ActivityChatDetail } from '../../../src/server/spa/client/react/repos/A
 
 // Mock useChatPrefs to avoid ChatPreferencesProvider requirement
 vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: new Set<string>(),
         unarchiveChat: vi.fn(),

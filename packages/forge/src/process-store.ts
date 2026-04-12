@@ -235,6 +235,10 @@ export interface ProcessIndexEntry {
     duration?: number;
     /** Timestamp of the last conversation event (ISO string). */
     lastEventAt?: string;
+    /** ISO timestamp when the process was pinned (null = not pinned). */
+    pinnedAt?: string;
+    /** Whether the process is archived. */
+    archived?: boolean;
 }
 
 /**

@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * Read the current schema version from the database.
@@ -58,6 +58,7 @@ export function initializeDatabase(db: Database.Database): void {
                 stale                 INTEGER DEFAULT 0,
                 data_file_path        TEXT,
                 archived              INTEGER DEFAULT 0,
+                pinned_at             TEXT,
                 seen_at               TEXT,
                 last_event_at         TEXT
             )
@@ -272,6 +273,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore >= 1 && versionBefore < 5) {
             migrateV4toV5(db);
         }
+        if (versionBefore >= 1 && versionBefore < 6) {
+            migrateV5toV6(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -322,4 +326,14 @@ function migrateV4toV5(db: Database.Database): void {
     if (ftsCount > 0) return;
 
     db.exec('INSERT INTO conversation_search(rowid, content) SELECT id, content FROM conversation_turns');
+}
+
+/**
+ * V5 → V6: add `pinned_at TEXT` column to `processes`.
+ */
+function migrateV5toV6(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'pinned_at')) {
+        db.exec('ALTER TABLE processes ADD COLUMN pinned_at TEXT');
+    }
 }

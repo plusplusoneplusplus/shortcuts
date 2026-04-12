@@ -43,6 +43,7 @@ import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
 import { registerDbBrowserRoutes } from '../db-browser-handler';
 import { registerSeenStateRoutes } from '../seen-state-handler';
+import { registerPinArchiveRoutes } from '../pin-archive-handler';
 import { registerProcessHistoryRoutes } from '../process-history-handler';
 import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
@@ -121,6 +122,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
     registerSeenStateRoutes(routes, store as any);
+    registerPinArchiveRoutes(routes, store as any);
     registerProcessHistoryRoutes(routes, store as any);
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);

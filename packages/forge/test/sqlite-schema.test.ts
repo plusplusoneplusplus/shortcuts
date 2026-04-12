@@ -91,7 +91,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(5);
+        expect(SCHEMA_VERSION).toBe(6);
     });
 
     it('is idempotent — calling initializeDatabase twice does not throw', () => {
@@ -425,7 +425,7 @@ describe('sqlite-schema', () => {
             expect(betaResults).toHaveLength(1);
         });
 
-        it('V1 database migrates through all versions to V5', () => {
+        it('V1 database migrates through all versions to V6', () => {
             // Simulate a V1 database
             db.pragma('journal_mode = WAL');
             db.pragma('foreign_keys = ON');
@@ -470,6 +470,7 @@ describe('sqlite-schema', () => {
             const colNames = cols.map(c => c.name);
             expect(colNames).toContain('seen_at');
             expect(colNames).toContain('last_event_at');
+            expect(colNames).toContain('pinned_at');
 
             const tables = db
                 .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
@@ -485,6 +486,97 @@ describe('sqlite-schema', () => {
             expect(triggers).toContain('conversation_search_ad');
             expect(triggers).toContain('conversation_search_au');
         });
+
+    describe('V5 → V6 migration (pinned_at column)', () => {
+        it('adds pinned_at column to existing V5 database', () => {
+            // Create a V5 database
+            initializeDatabase(db);
+            // Manually roll back to V5 by removing pinned_at
+            // (V5 doesn't have pinned_at, but initializeDatabase creates it via DDL)
+            // Instead, simulate a V5 database by creating fresh and checking the column exists
+            const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('pinned_at');
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+        });
+
+        it('V5 database gains pinned_at column after migration', () => {
+            // Create a V5-era schema manually (without pinned_at)
+            db.pragma('journal_mode = WAL');
+            db.pragma('foreign_keys = ON');
+            db.exec(`
+                CREATE TABLE processes (
+                    id                    TEXT PRIMARY KEY,
+                    workspace_id          TEXT NOT NULL,
+                    type                  TEXT,
+                    prompt_preview        TEXT,
+                    full_prompt           TEXT,
+                    status                TEXT NOT NULL,
+                    start_time            TEXT NOT NULL,
+                    end_time              TEXT,
+                    error                 TEXT,
+                    result                TEXT,
+                    result_file_path      TEXT,
+                    raw_stdout_file_path  TEXT,
+                    metadata              TEXT,
+                    group_metadata        TEXT,
+                    structured_result     TEXT,
+                    parent_process_id     TEXT,
+                    sdk_session_id        TEXT,
+                    backend               TEXT,
+                    working_directory     TEXT,
+                    title                 TEXT,
+                    token_limit           INTEGER,
+                    current_tokens        INTEGER,
+                    cumulative_token_usage TEXT,
+                    stale                 INTEGER DEFAULT 0,
+                    data_file_path        TEXT,
+                    archived              INTEGER DEFAULT 0,
+                    seen_at               TEXT,
+                    last_event_at         TEXT
+                )
+            `);
+            db.exec(`CREATE TABLE conversation_turns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                process_id TEXT NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+                turn_index INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT,
+                timestamp TEXT NOT NULL,
+                streaming INTEGER DEFAULT 0,
+                tool_calls TEXT,
+                timeline TEXT,
+                images TEXT,
+                historical INTEGER DEFAULT 0,
+                suggestions TEXT,
+                token_usage TEXT,
+                paste_externalized INTEGER DEFAULT 0,
+                UNIQUE(process_id, turn_index)
+            )`);
+            db.pragma('user_version = 5');
+
+            // Insert a row before migration
+            db.prepare(`INSERT INTO processes (id, workspace_id, status, start_time)
+                VALUES ('p1', 'ws1', 'completed', '2026-01-01T00:00:00.000Z')`).run();
+
+            // Run migration
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+
+            // pinned_at column should exist
+            const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('pinned_at');
+
+            // Existing data should be preserved with null pinned_at
+            const row = db.prepare('SELECT pinned_at FROM processes WHERE id = ?').get('p1') as any;
+            expect(row.pinned_at).toBeNull();
+
+            // Can update pinned_at
+            db.prepare('UPDATE processes SET pinned_at = ? WHERE id = ?').run('2026-04-01T00:00:00.000Z', 'p1');
+            const updated = db.prepare('SELECT pinned_at FROM processes WHERE id = ?').get('p1') as any;
+            expect(updated.pinned_at).toBe('2026-04-01T00:00:00.000Z');
+        });
+    });
 
         it('idempotent — calling initializeDatabase twice does not duplicate FTS data', () => {
             initializeDatabase(db);

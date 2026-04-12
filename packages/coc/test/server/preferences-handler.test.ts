@@ -335,42 +335,6 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs.lastSkills).toBeUndefined();
     });
 
-    it('round-trips pinnedChats through write and read', () => {
-        writeRepoPreferences(tmpDir, 'r', { pinnedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } });
-        const loaded = readRepoPreferences(tmpDir, 'r');
-        expect(loaded.pinnedChats).toEqual({ ws1: ['id-a', 'id-b'], ws2: ['id-c'] });
-    });
-
-    it('strips invalid pinnedChats entries on read', () => {
-        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
-        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
-        fs.writeFileSync(
-            repoPrefsPath,
-            JSON.stringify({ pinnedChats: { ws1: ['valid', 42, ''], ws2: [null] } }),
-            'utf-8'
-        );
-        const prefs = readRepoPreferences(tmpDir, 'r');
-        expect(prefs.pinnedChats).toEqual({ ws1: ['valid'] });
-    });
-
-    it('round-trips archivedChats through write and read', () => {
-        writeRepoPreferences(tmpDir, 'r', { archivedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } });
-        const loaded = readRepoPreferences(tmpDir, 'r');
-        expect(loaded.archivedChats).toEqual({ ws1: ['id-a', 'id-b'], ws2: ['id-c'] });
-    });
-
-    it('strips invalid archivedChats entries on read', () => {
-        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
-        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
-        fs.writeFileSync(
-            repoPrefsPath,
-            JSON.stringify({ archivedChats: { ws1: ['valid', 42, ''], ws2: [null] } }),
-            'utf-8'
-        );
-        const prefs = readRepoPreferences(tmpDir, 'r');
-        expect(prefs.archivedChats).toEqual({ ws1: ['valid'] });
-    });
-
     it('multiple repos are stored independently', () => {
         writeRepoPreferences(tmpDir, 'repo-a', { lastModel: 'gpt-4' });
         writeRepoPreferences(tmpDir, 'repo-b', { lastModel: 'claude-3' });
@@ -532,82 +496,6 @@ describe('validatePreferences', () => {
     it('accepts lastSkills alongside other fields', () => {
         const result = validatePreferences({ lastModel: 'gpt-5.4', lastSkills: { task: ['go-deep'] } });
         expect(result).toEqual({ lastModel: 'gpt-5.4', lastSkills: { task: ['go-deep'] } });
-    });
-
-    // -- pinnedChats field --
-
-    it('accepts valid pinnedChats record', () => {
-        const result = validatePreferences({ pinnedChats: { ws1: ['a', 'b'], ws2: ['c'] } });
-        expect(result.pinnedChats).toEqual({ ws1: ['a', 'b'], ws2: ['c'] });
-    });
-
-    it('rejects non-object pinnedChats', () => {
-        expect(validatePreferences({ pinnedChats: 'not-object' })).toEqual({});
-        expect(validatePreferences({ pinnedChats: 42 })).toEqual({});
-        expect(validatePreferences({ pinnedChats: null })).toEqual({});
-        expect(validatePreferences({ pinnedChats: true })).toEqual({});
-    });
-
-    it('rejects array pinnedChats', () => {
-        expect(validatePreferences({ pinnedChats: ['a', 'b'] })).toEqual({});
-    });
-
-    it('filters out non-string IDs from pinnedChats arrays', () => {
-        const result = validatePreferences({ pinnedChats: { ws1: ['valid', 42, '', null, 'also-valid'] } });
-        expect(result.pinnedChats).toEqual({ ws1: ['valid', 'also-valid'] });
-    });
-
-    it('omits workspace keys with empty arrays after filtering', () => {
-        const result = validatePreferences({ pinnedChats: { ws1: ['valid'], ws2: [42, ''] } });
-        expect(result.pinnedChats).toEqual({ ws1: ['valid'] });
-    });
-
-    it('omits pinnedChats when all workspaces empty after filtering', () => {
-        const result = validatePreferences({ pinnedChats: { ws1: [42], ws2: [''] } });
-        expect(result.pinnedChats).toBeUndefined();
-    });
-
-    it('omits pinnedChats when empty object', () => {
-        const result = validatePreferences({ pinnedChats: {} });
-        expect(result.pinnedChats).toBeUndefined();
-    });
-
-    it('accepts pinnedChats alongside other fields', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.4', pinnedChats: { ws1: ['id1'] } });
-        expect(result).toEqual({ lastModel: 'gpt-5.4', pinnedChats: { ws1: ['id1'] } });
-    });
-
-    // -- archivedChats field --
-
-    it('accepts valid archivedChats record', () => {
-        const result = validatePreferences({ archivedChats: { ws1: ['a', 'b'], ws2: ['c'] } });
-        expect(result.archivedChats).toEqual({ ws1: ['a', 'b'], ws2: ['c'] });
-    });
-
-    it('rejects non-object archivedChats', () => {
-        expect(validatePreferences({ archivedChats: 'not-object' })).toEqual({});
-        expect(validatePreferences({ archivedChats: 42 })).toEqual({});
-        expect(validatePreferences({ archivedChats: null })).toEqual({});
-        expect(validatePreferences({ archivedChats: true })).toEqual({});
-    });
-
-    it('rejects array archivedChats', () => {
-        expect(validatePreferences({ archivedChats: ['a', 'b'] })).toEqual({});
-    });
-
-    it('filters out non-string IDs from archivedChats arrays', () => {
-        const result = validatePreferences({ archivedChats: { ws1: ['valid', 42, '', null, 'also-valid'] } });
-        expect(result.archivedChats).toEqual({ ws1: ['valid', 'also-valid'] });
-    });
-
-    it('omits archivedChats when empty object', () => {
-        const result = validatePreferences({ archivedChats: {} });
-        expect(result.archivedChats).toBeUndefined();
-    });
-
-    it('accepts archivedChats alongside pinnedChats', () => {
-        const result = validatePreferences({ pinnedChats: { ws1: ['p1'] }, archivedChats: { ws1: ['a1'] } });
-        expect(result).toEqual({ pinnedChats: { ws1: ['p1'] }, archivedChats: { ws1: ['a1'] } });
     });
 
     // -- linkedRepoIds field --
@@ -1366,70 +1254,6 @@ describe('Per-Repo Preferences REST API', () => {
 
         const res = await getJSON(repoUrl(repoId));
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4', lastDepth: 'deep' });
-    });
-
-    // -- pinnedChats --
-
-    it('PATCH persists pinnedChats', async () => {
-        const pinnedChats = { ws1: ['id-a', 'id-b'] };
-        const res = await patchJSON(repoUrl(repoId), { pinnedChats });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body).pinnedChats).toEqual(pinnedChats);
-
-        const get = await getJSON(repoUrl(repoId));
-        expect(JSON.parse(get.body).pinnedChats).toEqual(pinnedChats);
-    });
-
-    it('PATCH with pinnedChats:{} clears existing pins', async () => {
-        await patchJSON(repoUrl(repoId), { pinnedChats: { ws1: ['id-a'] } });
-
-        const res = await patchJSON(repoUrl(repoId), { pinnedChats: {} });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body).pinnedChats).toBeUndefined();
-
-        const get = await getJSON(repoUrl(repoId));
-        expect(JSON.parse(get.body).pinnedChats).toBeUndefined();
-    });
-
-    it('PATCH with pinnedChats:{} does not affect other fields', async () => {
-        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4', pinnedChats: { ws1: ['id-a'] } });
-        const res = await patchJSON(repoUrl(repoId), { pinnedChats: {} });
-        expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.lastModel).toBe('gpt-4');
-        expect(body.pinnedChats).toBeUndefined();
-    });
-
-    // -- archivedChats --
-
-    it('PATCH persists archivedChats', async () => {
-        const archivedChats = { ws1: ['id-a', 'id-b'] };
-        const res = await patchJSON(repoUrl(repoId), { archivedChats });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body).archivedChats).toEqual(archivedChats);
-
-        const get = await getJSON(repoUrl(repoId));
-        expect(JSON.parse(get.body).archivedChats).toEqual(archivedChats);
-    });
-
-    it('PATCH with archivedChats:{} clears existing archives', async () => {
-        await patchJSON(repoUrl(repoId), { archivedChats: { ws1: ['id-a'] } });
-
-        const res = await patchJSON(repoUrl(repoId), { archivedChats: {} });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body).archivedChats).toBeUndefined();
-
-        const get = await getJSON(repoUrl(repoId));
-        expect(JSON.parse(get.body).archivedChats).toBeUndefined();
-    });
-
-    it('PATCH with archivedChats:{} does not affect other fields', async () => {
-        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4', archivedChats: { ws1: ['id-a'] } });
-        const res = await patchJSON(repoUrl(repoId), { archivedChats: {} });
-        expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.lastModel).toBe('gpt-4');
-        expect(body.archivedChats).toBeUndefined();
     });
 
     // -- lastModel/lastDepth/lastEffort/lastSkill persistence --

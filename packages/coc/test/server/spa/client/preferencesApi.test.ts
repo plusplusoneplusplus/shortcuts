@@ -13,7 +13,7 @@ describe('getWorkspacePreferences', () => {
     afterEach(() => { vi.resetAllMocks(); });
 
     it('returns parsed preferences on 200', async () => {
-        const prefs = { pinnedChats: { 'ws-abc': ['task-1'] }, archivedChats: {} };
+        const prefs = { filesViewMode: 'tree' };
         mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => prefs });
         const result = await getWorkspacePreferences('ws-abc');
         expect(result).toEqual(prefs);
@@ -40,13 +40,13 @@ describe('patchWorkspacePreferences', () => {
 
     it('sends PATCH with JSON body and correct headers', async () => {
         mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
-        await patchWorkspacePreferences('ws-abc', { pinnedChats: { 'ws-abc': ['t1'] } });
+        await patchWorkspacePreferences('ws-abc', { filesViewMode: 'flat' });
         expect(mockFetch).toHaveBeenCalledWith(
             '/api/workspaces/ws-abc/preferences',
             expect.objectContaining({
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pinnedChats: { 'ws-abc': ['t1'] } }),
+                body: JSON.stringify({ filesViewMode: 'flat' }),
             })
         );
     });

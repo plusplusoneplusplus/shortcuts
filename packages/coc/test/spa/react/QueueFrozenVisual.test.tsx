@@ -52,6 +52,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useQueueTouchDragDrop', () =
     }),
 }));
 vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         pinnedChatIds: new Set(),
         archivedChatIds: new Set(),

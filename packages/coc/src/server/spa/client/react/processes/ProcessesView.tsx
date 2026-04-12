@@ -15,7 +15,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { toQueueProcessId } from '../utils/queue-process-id';
 import { ActivityListPane } from '../repos/ActivityListPane';
 import { ActivityDetailPane } from '../repos/ActivityDetailPane';
-import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
+import { ChatPreferencesProvider, ChatPrefsSync } from '../context/ChatPreferencesContext';
 import { ProcessesViewSkeleton } from './QueueTaskSkeleton';
 
 export function ProcessesView() {
@@ -205,6 +205,7 @@ export function ProcessesView() {
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
+                <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <ProcessesViewSkeleton heightClass={heightClass} />
             </ChatPreferencesProvider>
         );
@@ -232,6 +233,7 @@ export function ProcessesView() {
     if (isMobile) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
+                <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div id="view-processes" className={`flex flex-col ${heightClass} overflow-hidden`} data-testid="activity-split-panel">
                     {mobileShowDetail && selectedTaskId ? (
                         <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel">
@@ -253,6 +255,7 @@ export function ProcessesView() {
 
     return (
         <ChatPreferencesProvider workspaceId={workspaceId}>
+            <ChatPrefsSync history={history} workspaceId={workspaceId} />
             <div id="view-processes" className={`flex ${heightClass} overflow-hidden`} data-testid="activity-split-panel">
                 {/* Left panel — task list */}
                 <div className={cn(

@@ -95,10 +95,6 @@ export interface PerRepoPreferences {
     lastEffort?: 'low' | 'medium' | 'high';
     /** Per-mode last-used skill names (task / ask / plan). */
     lastSkills?: LastSkillsByMode;
-    /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
-    pinnedChats?: Record<string, string[]>;
-    /** Archived chat session IDs per workspace. */
-    archivedChats?: Record<string, string[]>;
     /** Skill usage timestamps for ordering skill dropdowns (skillName → ISO timestamp). */
     skillUsageMap?: Record<string, string>;
     /** IDs of workspaces whose skill folders are linked via "Extra Skill Folders". */
@@ -232,36 +228,6 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         }
         if (Object.keys(validated).length > 0) {
             result.lastSkills = validated;
-        }
-    }
-
-    if (typeof obj.pinnedChats === 'object' && obj.pinnedChats !== null && !Array.isArray(obj.pinnedChats)) {
-        const validatedPins: Record<string, string[]> = {};
-        for (const [key, value] of Object.entries(obj.pinnedChats as Record<string, unknown>)) {
-            if (typeof key === 'string' && Array.isArray(value)) {
-                const ids = value.filter((id: unknown) => typeof id === 'string' && id.length > 0);
-                if (ids.length > 0) {
-                    validatedPins[key] = ids;
-                }
-            }
-        }
-        if (Object.keys(validatedPins).length > 0) {
-            result.pinnedChats = validatedPins;
-        }
-    }
-
-    if (typeof obj.archivedChats === 'object' && obj.archivedChats !== null && !Array.isArray(obj.archivedChats)) {
-        const validatedArchived: Record<string, string[]> = {};
-        for (const [key, value] of Object.entries(obj.archivedChats as Record<string, unknown>)) {
-            if (typeof key === 'string' && Array.isArray(value)) {
-                const ids = value.filter((id: unknown) => typeof id === 'string' && id.length > 0);
-                if (ids.length > 0) {
-                    validatedArchived[key] = ids;
-                }
-            }
-        }
-        if (Object.keys(validatedArchived).length > 0) {
-            result.archivedChats = validatedArchived;
         }
     }
 
@@ -428,19 +394,6 @@ export function writeRepoPreferences(dataDir: string, workspaceId: string, data:
 }
 
 // ============================================================================
-// Internal helpers
-// ============================================================================
-
-function isEmptyObjectBody(body: unknown, key: string): boolean {
-    if (typeof body !== 'object' || body === null || !(key in (body as object))) {
-        return false;
-    }
-    const val = (body as Record<string, unknown>)[key];
-    return typeof val === 'object' && val !== null && !Array.isArray(val) &&
-        Object.keys(val as object).length === 0;
-}
-
-// ============================================================================
 // Route Registration
 // ============================================================================
 
@@ -567,16 +520,6 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             // preserves existing task/plan values.
             if (patch.lastModels && existingRepo.lastModels) {
                 merged.lastModels = { ...existingRepo.lastModels, ...patch.lastModels };
-            }
-
-            // Explicitly clear pinnedChats/archivedChats when the body sends {}
-            // (validatePerRepoPreferences drops empty objects so the spread would
-            // leave the old value intact).
-            if (isEmptyObjectBody(body, 'pinnedChats')) {
-                delete merged.pinnedChats;
-            }
-            if (isEmptyObjectBody(body, 'archivedChats')) {
-                delete merged.archivedChats;
             }
 
             // Explicitly set linkedRepoIds to empty array when client sends [] to clear

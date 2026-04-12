@@ -8,6 +8,7 @@ import { useSendMessage } from '../../../src/server/spa/client/react/hooks/useSe
 
 // ── Mock useChatPrefs ─────────────────────────────────────────────────────────
 vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: new Set<string>(),
         unarchiveChat: vi.fn(),

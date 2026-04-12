@@ -150,6 +150,7 @@ vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext'
             'data-testid': 'chat-prefs-provider',
             'data-workspace-id': workspaceId,
         }, children),
+    ChatPrefsSync: () => null,
 }));
 
 // Imports (after mocks)

@@ -82,6 +82,7 @@ interface ProcessRow {
     stale: number;
     data_file_path: string | null;
     archived: number;
+    pinned_at: string | null;
     seen_at: string | null;
     last_event_at: string | null;
 }
@@ -315,7 +316,8 @@ function processToRow(process: AIProcess): Record<string, unknown> {
         cumulative_token_usage: jsonStringify(process.cumulativeTokenUsage),
         stale: boolToInt(process.stale),
         data_file_path: process.dataFilePath ?? null,
-        archived: 0,
+        archived: boolToInt(process.archived),
+        pinned_at: process.pinnedAt ?? null,
         last_event_at: dateToIso(process.lastEventAt ?? process.startTime),
     };
 }
@@ -368,6 +370,8 @@ function rowToProcess(row: ProcessRow, turns?: ConversationTurn[]): AIProcess {
         dataFilePath: row.data_file_path ?? undefined,
         pendingMessages,
         lastEventAt: isoToDate(row.last_event_at),
+        pinnedAt: row.pinned_at ?? undefined,
+        archived: intToBool(row.archived),
     };
 
     if (turns) {
@@ -551,14 +555,14 @@ export class SqliteProcessStore implements ProcessStore {
                 raw_stdout_file_path, metadata, group_metadata, structured_result,
                 parent_process_id, sdk_session_id, backend, working_directory,
                 title, token_limit, current_tokens, cumulative_token_usage,
-                stale, data_file_path, archived, last_event_at
+                stale, data_file_path, archived, pinned_at, last_event_at
             ) VALUES (
                 @id, @workspace_id, @type, @prompt_preview, @full_prompt, @status,
                 @start_time, @end_time, @error, @result, @result_file_path,
                 @raw_stdout_file_path, @metadata, @group_metadata, @structured_result,
                 @parent_process_id, @sdk_session_id, @backend, @working_directory,
                 @title, @token_limit, @current_tokens, @cumulative_token_usage,
-                @stale, @data_file_path, @archived, @last_event_at
+                @stale, @data_file_path, @archived, @pinned_at, @last_event_at
             )
         `);
 
@@ -673,7 +677,7 @@ export class SqliteProcessStore implements ProcessStore {
         const total = countRow.cnt;
 
         // Fetch summary columns with pagination
-        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, last_event_at FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
+        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, last_event_at, pinned_at, archived FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
             (filter?.limit !== undefined ? ` LIMIT ?` : '') +
             (filter?.offset !== undefined ? ` OFFSET ?` : '');
 
@@ -699,6 +703,8 @@ export class SqliteProcessStore implements ProcessStore {
                 title: row.title ?? undefined,
                 duration: endMs !== undefined ? endMs - startMs : undefined,
                 lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
+                pinnedAt: row.pinned_at ?? undefined,
+                archived: intToBool(row.archived) || undefined,
             };
         });
 
@@ -745,6 +751,11 @@ export class SqliteProcessStore implements ProcessStore {
             values.push(boolToInt(updates.stale));
         }
         mapField('data_file_path', updates.dataFilePath);
+        mapField('pinned_at', updates.pinnedAt);
+        if (updates.archived !== undefined) {
+            setClauses.push('archived = ?');
+            values.push(boolToInt(updates.archived));
+        }
 
         // Handle metadata envelope rebuild when any metadata field changes
         if ('metadata' in updates || 'codeReviewMetadata' in updates ||
@@ -799,6 +810,65 @@ export class SqliteProcessStore implements ProcessStore {
         const result = this.db.prepare(`DELETE FROM processes ${sql}`).run(...params);
         this.onProcessChange?.({ type: 'processes-cleared' });
         return result.changes;
+    }
+
+    // ========================================================================
+    // Pin & Archive Operations
+    // ========================================================================
+
+    pinProcess(id: string, pinnedAt: string): void {
+        this.db.prepare('UPDATE processes SET pinned_at = ? WHERE id = ?').run(pinnedAt, id);
+    }
+
+    unpinProcess(id: string): void {
+        this.db.prepare('UPDATE processes SET pinned_at = NULL WHERE id = ?').run(id);
+    }
+
+    archiveProcess(id: string): void {
+        this.db.prepare('UPDATE processes SET archived = 1 WHERE id = ?').run(id);
+    }
+
+    unarchiveProcess(id: string): void {
+        this.db.prepare('UPDATE processes SET archived = 0 WHERE id = ?').run(id);
+    }
+
+    archiveProcesses(ids: string[]): void {
+        if (ids.length === 0) return;
+        const placeholders = ids.map(() => '?').join(', ');
+        this.db.prepare(`UPDATE processes SET archived = 1 WHERE id IN (${placeholders})`).run(...ids);
+    }
+
+    unarchiveProcesses(ids: string[]): void {
+        if (ids.length === 0) return;
+        const placeholders = ids.map(() => '?').join(', ');
+        this.db.prepare(`UPDATE processes SET archived = 0 WHERE id IN (${placeholders})`).run(...ids);
+    }
+
+    getPinnedProcesses(workspaceId: string): ProcessIndexEntry[] {
+        const rows = this.db.prepare(
+            'SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, last_event_at, pinned_at, archived FROM processes WHERE workspace_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC'
+        ).all(workspaceId) as ProcessRow[];
+
+        return rows.map(row => {
+            const startMs = new Date(row.start_time).getTime();
+            const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
+            return {
+                id: row.id,
+                workspaceId: row.workspace_id,
+                status: row.status,
+                type: row.type || 'clarification',
+                startTime: new Date(row.start_time).toISOString(),
+                endTime: row.end_time ? new Date(row.end_time).toISOString() : undefined,
+                promptPreview: row.prompt_preview ?? '',
+                error: row.error ?? undefined,
+                parentProcessId: row.parent_process_id ?? undefined,
+                title: row.title ?? undefined,
+                duration: endMs !== undefined ? endMs - startMs : undefined,
+                lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
+                pinnedAt: row.pinned_at ?? undefined,
+                archived: intToBool(row.archived) || undefined,
+            };
+        });
     }
 
     // ========================================================================
@@ -1429,6 +1499,11 @@ export class SqliteProcessStore implements ProcessStore {
             values.push(boolToInt(updates.stale));
         }
         mapField('data_file_path', updates.dataFilePath);
+        mapField('pinned_at', updates.pinnedAt);
+        if (updates.archived !== undefined) {
+            setClauses.push('archived = ?');
+            values.push(boolToInt(updates.archived));
+        }
 
         // Handle metadata envelope if any metadata-related fields are updated
         if ('metadata' in updates || 'codeReviewMetadata' in updates ||

@@ -2,28 +2,36 @@
  * Tests for ChatPreferencesContext — provider and consumer hook.
  *
  * Validates that:
- * - SET_ALL is dispatched after provider mounts (state reflects loaded pinnedIds + archivedIds)
- * - pinChat / archiveChat update state optimistically before the PATCH resolves
- * - Only one GET /preferences is issued even when multiple consumers call useChatPrefs()
+ * - SET_ALL dispatch sets loaded=true with correct pinnedIds + archivedIds
+ * - pinChat / archiveChat update state optimistically and call REST endpoints
+ * - Multiple consumers share the same state
  * - useChatPrefs() throws when used outside a provider
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 import {
     ChatPreferencesProvider,
     useChatPrefs,
 } from '../../../../src/server/spa/client/react/context/ChatPreferencesContext';
 
-// ── Mock preferencesApi ─────────────────────────────────────────────────────
+// ── Mock pinArchiveApi ──────────────────────────────────────────────────────
 
-const getWorkspacePreferencesMock = vi.fn();
-const patchWorkspacePreferencesMock = vi.fn();
+const pinProcessMock = vi.fn().mockResolvedValue(undefined);
+const unpinProcessMock = vi.fn().mockResolvedValue(undefined);
+const archiveProcessMock = vi.fn().mockResolvedValue(undefined);
+const unarchiveProcessMock = vi.fn().mockResolvedValue(undefined);
+const archiveProcessesMock = vi.fn().mockResolvedValue(undefined);
+const unarchiveProcessesMock = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('../../../../src/server/spa/client/react/hooks/preferencesApi', () => ({
-    getWorkspacePreferences: (...args: any[]) => getWorkspacePreferencesMock(...args),
-    patchWorkspacePreferences: (...args: any[]) => patchWorkspacePreferencesMock(...args),
+vi.mock('../../../../src/server/spa/client/react/hooks/pinArchiveApi', () => ({
+    pinProcess: (...args: any[]) => pinProcessMock(...args),
+    unpinProcess: (...args: any[]) => unpinProcessMock(...args),
+    archiveProcess: (...args: any[]) => archiveProcessMock(...args),
+    unarchiveProcess: (...args: any[]) => unarchiveProcessMock(...args),
+    archiveProcesses: (...args: any[]) => archiveProcessesMock(...args),
+    unarchiveProcesses: (...args: any[]) => unarchiveProcessesMock(...args),
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -34,31 +42,48 @@ function makeWrapper(workspaceId: string) {
     );
 }
 
+/** Render hook and initialise state via SET_ALL dispatch. */
+function renderWithState(workspaceId: string, pinnedIds: string[] = [], archivedIds: string[] = []) {
+    const hook = renderHook(() => useChatPrefs(), { wrapper: makeWrapper(workspaceId) });
+    act(() => {
+        hook.result.current.dispatch({ type: 'SET_ALL', pinnedIds, archivedIds, workspaceId });
+    });
+    return hook;
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('ChatPreferencesContext', () => {
     beforeEach(() => {
-        getWorkspacePreferencesMock.mockReset();
-        patchWorkspacePreferencesMock.mockReset();
+        pinProcessMock.mockReset().mockResolvedValue(undefined);
+        unpinProcessMock.mockReset().mockResolvedValue(undefined);
+        archiveProcessMock.mockReset().mockResolvedValue(undefined);
+        unarchiveProcessMock.mockReset().mockResolvedValue(undefined);
+        archiveProcessesMock.mockReset().mockResolvedValue(undefined);
+        unarchiveProcessesMock.mockReset().mockResolvedValue(undefined);
     });
 
     afterEach(() => {
         vi.clearAllMocks();
     });
 
-    it('dispatches SET_ALL: state reflects loaded pinnedIds and archivedIds after mount', async () => {
-        getWorkspacePreferencesMock.mockResolvedValue({
-            pinnedChats: { ws1: ['p1', 'p2'] },
-            archivedChats: { ws1: ['a1'] },
-        });
-
+    it('dispatches SET_ALL: state reflects loaded pinnedIds and archivedIds', () => {
         const { result } = renderHook(() => useChatPrefs(), {
             wrapper: makeWrapper('ws1'),
         });
 
         expect(result.current.loaded).toBe(false);
 
-        await waitFor(() => expect(result.current.loaded).toBe(true));
+        act(() => {
+            result.current.dispatch({
+                type: 'SET_ALL',
+                pinnedIds: ['p1', 'p2'],
+                archivedIds: ['a1'],
+                workspaceId: 'ws1',
+            });
+        });
+
+        expect(result.current.loaded).toBe(true);
         expect(result.current.pinnedChatIds.has('p1')).toBe(true);
         expect(result.current.pinnedChatIds.has('p2')).toBe(true);
         expect(result.current.archivedChatIds.has('a1')).toBe(true);
@@ -66,55 +91,42 @@ describe('ChatPreferencesContext', () => {
         expect(result.current.archivedChatIds.size).toBe(1);
     });
 
-    it('pinChat updates state optimistically before PATCH resolves', async () => {
-        getWorkspacePreferencesMock.mockResolvedValue({});
-        // PATCH deliberately never resolves
-        patchWorkspacePreferencesMock.mockReturnValue(new Promise(() => {}));
-
-        const { result } = renderHook(() => useChatPrefs(), {
-            wrapper: makeWrapper('ws1'),
-        });
-
-        await waitFor(() => expect(result.current.loaded).toBe(true));
+    it('pinChat updates state optimistically and calls pinProcess', () => {
+        const { result } = renderWithState('ws1');
 
         act(() => { result.current.pinChat('task-x'); });
 
         // Optimistic update: state must contain 'task-x' synchronously
         expect(result.current.pinnedChatIds.has('task-x')).toBe(true);
+        expect(pinProcessMock).toHaveBeenCalledWith('task-x');
     });
 
-    it('archiveChat updates state optimistically before PATCH resolves', async () => {
-        getWorkspacePreferencesMock.mockResolvedValue({});
-        patchWorkspacePreferencesMock.mockReturnValue(new Promise(() => {}));
-
-        const { result } = renderHook(() => useChatPrefs(), {
-            wrapper: makeWrapper('ws1'),
-        });
-
-        await waitFor(() => expect(result.current.loaded).toBe(true));
+    it('archiveChat updates state optimistically and calls archiveProcess', () => {
+        const { result } = renderWithState('ws1');
 
         act(() => { result.current.archiveChat('task-y'); });
 
         expect(result.current.archivedChatIds.has('task-y')).toBe(true);
+        expect(archiveProcessMock).toHaveBeenCalledWith('task-y');
     });
 
-    it('issues only one GET even when multiple consumers call useChatPrefs() inside the same provider', async () => {
-        getWorkspacePreferencesMock.mockResolvedValue({
-            pinnedChats: { ws1: ['p1'] },
-            archivedChats: { ws1: ['a1'] },
-        });
-
-        // Two useChatPrefs() calls rendered inside a single provider wrapper
+    it('multiple consumers inside the same provider share identical state', () => {
         const { result } = renderHook(
             () => ({ c1: useChatPrefs(), c2: useChatPrefs() }),
             { wrapper: makeWrapper('ws1') },
         );
 
-        await waitFor(() => expect(result.current.c1.loaded).toBe(true));
-        expect(result.current.c2.loaded).toBe(true);
+        act(() => {
+            result.current.c1.dispatch({
+                type: 'SET_ALL',
+                pinnedIds: ['p1'],
+                archivedIds: ['a1'],
+                workspaceId: 'ws1',
+            });
+        });
 
-        // Only one GET was fired
-        expect(getWorkspacePreferencesMock).toHaveBeenCalledTimes(1);
+        expect(result.current.c1.loaded).toBe(true);
+        expect(result.current.c2.loaded).toBe(true);
 
         // Both consumers see the same state
         expect(result.current.c1.pinnedChatIds.has('p1')).toBe(true);

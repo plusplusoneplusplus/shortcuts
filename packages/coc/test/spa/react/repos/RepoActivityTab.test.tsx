@@ -96,6 +96,7 @@ vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext'
             'data-workspace-id': workspaceId,
         }, children);
     },
+    ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         pinnedChatIds: new Set(),
         archivedChatIds: new Set(),

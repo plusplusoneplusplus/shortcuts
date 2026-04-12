@@ -21,6 +21,7 @@ const mockUnarchiveChat = vi.fn();
 let mockArchivedChatIds = new Set<string>();
 
 vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: mockArchivedChatIds,
         unarchiveChat: mockUnarchiveChat,

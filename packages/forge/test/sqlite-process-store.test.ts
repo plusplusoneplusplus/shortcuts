@@ -1152,3 +1152,106 @@ describe('SqliteProcessStore — searchConversations', () => {
         expect(results[0].processTitle).toBe('My Custom Title');
     });
 });
+
+// ============================================================================
+// Pin & Archive Operations
+// ============================================================================
+
+describe('SqliteProcessStore — Pin & Archive', () => {
+    it('pinProcess sets pinned_at and unpinProcess clears it', async () => {
+        await store.addProcess(makeProcess('p-pin', { status: 'completed' }));
+
+        const ts = '2026-04-01T12:00:00.000Z';
+        store.pinProcess('p-pin', ts);
+
+        const proc = await store.getProcess('p-pin');
+        expect(proc!.pinnedAt).toBe(ts);
+
+        store.unpinProcess('p-pin');
+        const proc2 = await store.getProcess('p-pin');
+        expect(proc2!.pinnedAt).toBeUndefined();
+    });
+
+    it('archiveProcess / unarchiveProcess toggle archived flag', async () => {
+        await store.addProcess(makeProcess('p-arc', { status: 'completed' }));
+
+        store.archiveProcess('p-arc');
+        const proc = await store.getProcess('p-arc');
+        expect(proc!.archived).toBe(true);
+
+        store.unarchiveProcess('p-arc');
+        const proc2 = await store.getProcess('p-arc');
+        // intToBool(0) returns undefined (convention: false ↔ undefined)
+        expect(proc2!.archived).toBeUndefined();
+    });
+
+    it('archiveProcesses handles batch archive', async () => {
+        await store.addProcess(makeProcess('b1', { status: 'completed' }));
+        await store.addProcess(makeProcess('b2', { status: 'completed' }));
+        await store.addProcess(makeProcess('b3', { status: 'completed' }));
+
+        store.archiveProcesses(['b1', 'b2']);
+
+        const p1 = await store.getProcess('b1');
+        const p2 = await store.getProcess('b2');
+        const p3 = await store.getProcess('b3');
+        expect(p1!.archived).toBe(true);
+        expect(p2!.archived).toBe(true);
+        expect(p3!.archived).toBeUndefined();
+    });
+
+    it('unarchiveProcesses handles batch unarchive', async () => {
+        await store.addProcess(makeProcess('u1', { status: 'completed' }));
+        await store.addProcess(makeProcess('u2', { status: 'completed' }));
+        store.archiveProcesses(['u1', 'u2']);
+
+        store.unarchiveProcesses(['u1', 'u2']);
+
+        const p1 = await store.getProcess('u1');
+        const p2 = await store.getProcess('u2');
+        expect(p1!.archived).toBeUndefined();
+        expect(p2!.archived).toBeUndefined();
+    });
+
+    it('getPinnedProcesses returns only pinned processes for workspace', async () => {
+        await store.addProcess(makeProcess('pp1', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws1' } }));
+        await store.addProcess(makeProcess('pp2', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws1' } }));
+        await store.addProcess(makeProcess('pp3', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws2' } }));
+
+        store.pinProcess('pp1', '2026-04-01T12:00:00.000Z');
+        store.pinProcess('pp2', '2026-04-02T12:00:00.000Z');
+        store.pinProcess('pp3', '2026-04-03T12:00:00.000Z');
+
+        const pinned = store.getPinnedProcesses('ws1');
+        expect(pinned).toHaveLength(2);
+        // Should be ordered newest-first
+        expect(pinned[0].id).toBe('pp2');
+        expect(pinned[1].id).toBe('pp1');
+        expect(pinned[0].pinnedAt).toBe('2026-04-02T12:00:00.000Z');
+    });
+
+    it('getProcessSummaries includes pinnedAt and archived', async () => {
+        await store.addProcess(makeProcess('sum1', { status: 'completed' }));
+        store.pinProcess('sum1', '2026-04-01T12:00:00.000Z');
+        store.archiveProcess('sum1');
+
+        const { entries } = await store.getProcessSummaries({ workspaceId: 'ws-test' });
+        const entry = entries.find(e => e.id === 'sum1');
+        expect(entry).toBeDefined();
+        expect(entry!.pinnedAt).toBe('2026-04-01T12:00:00.000Z');
+        expect(entry!.archived).toBe(true);
+    });
+
+    it('pinnedAt round-trips through processToRow/rowToProcess', async () => {
+        const p = makeProcess('rt1', { status: 'completed', pinnedAt: '2026-04-01T00:00:00.000Z' });
+        await store.addProcess(p);
+
+        const result = await store.getProcess('rt1');
+        expect(result!.pinnedAt).toBe('2026-04-01T00:00:00.000Z');
+    });
+
+    it('archiveProcesses with empty array is a no-op', () => {
+        // Should not throw
+        store.archiveProcesses([]);
+    });
+});

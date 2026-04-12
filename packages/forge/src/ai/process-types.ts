@@ -450,6 +450,16 @@ export interface AIProcess {
 
     /** Timestamp of the last conversation event (turn completion). Set server-side only. */
     lastEventAt?: Date;
+
+    // ========================================================================
+    // Pin & Archive State (Added 2026-04)
+    // ========================================================================
+
+    /** ISO timestamp when the process was pinned (undefined = not pinned). */
+    pinnedAt?: string;
+
+    /** Whether the process is archived. */
+    archived?: boolean;
 }
 
 /**

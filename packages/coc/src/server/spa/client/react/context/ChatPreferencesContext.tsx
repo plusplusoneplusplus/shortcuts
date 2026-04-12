@@ -1,19 +1,27 @@
 /**
  * ChatPreferencesContext — centralised state for chat pin/archive preferences.
- * Replaces per-component useChatPreferences hook calls with a single shared
- * fetch and in-memory state, following the QueueContext pattern.
+ * Pin/archive state is stored on each process row in SQLite and toggled via
+ * dedicated REST endpoints, not through the preferences file.
  */
 
 import {
     createContext,
     useContext,
     useReducer,
-    useEffect,
     useCallback,
+    useEffect,
+    useRef,
     type ReactNode,
     type Dispatch,
 } from 'react';
-import { getWorkspacePreferences, patchWorkspacePreferences } from '../hooks/preferencesApi';
+import {
+    pinProcess as apiPinProcess,
+    unpinProcess as apiUnpinProcess,
+    archiveProcess as apiArchiveProcess,
+    unarchiveProcess as apiUnarchiveProcess,
+    archiveProcesses as apiArchiveProcesses,
+    unarchiveProcesses as apiUnarchiveProcesses,
+} from '../hooks/pinArchiveApi';
 
 const MAX_PINNED = 50;
 const MAX_ARCHIVED = 500;
@@ -25,7 +33,7 @@ export interface ChatPrefsState {
     pinnedIds: string[];
     /** Ordered array of archived task IDs (newest-first). Max MAX_ARCHIVED entries. */
     archivedIds: string[];
-    /** True once the initial GET /preferences response has been processed. */
+    /** True once the initial process data has been processed. */
     loaded: boolean;
     /** The workspaceId currently loaded, stored here so useChatPrefs can access it. */
     workspaceId: string;
@@ -97,6 +105,14 @@ const ChatPreferencesContext = createContext<{
 
 // ── Provider ───────────────────────────────────────────────────────────────
 
+/**
+ * Provider for chat pin/archive state.
+ *
+ * Pin/archive state is now derived from process summaries (which include
+ * `pinnedAt` and `archived` fields from SQLite). The parent component
+ * must call `dispatch({ type: 'SET_ALL', ... })` after loading process
+ * summaries to populate the initial state.
+ */
 export function ChatPreferencesProvider({
     workspaceId,
     children,
@@ -110,25 +126,6 @@ export function ChatPreferencesProvider({
         loaded: false,
         workspaceId: '',
     });
-
-    useEffect(() => {
-        dispatch({ type: 'RESET' });
-        if (!workspaceId) return;
-
-        let cancelled = false;
-        getWorkspacePreferences(workspaceId)
-            .then(prefs => {
-                if (cancelled) return;
-                const pinnedIds = prefs.pinnedChats?.[workspaceId] ?? [];
-                const archivedIds = prefs.archivedChats?.[workspaceId] ?? [];
-                dispatch({ type: 'SET_ALL', pinnedIds, archivedIds, workspaceId });
-            })
-            .catch(() => {
-                if (!cancelled) dispatch({ type: 'SET_ALL', pinnedIds: [], archivedIds: [], workspaceId });
-            });
-
-        return () => { cancelled = true; };
-    }, [workspaceId]);
 
     return (
         <ChatPreferencesContext.Provider value={{ state, dispatch }}>
@@ -149,6 +146,7 @@ export interface ChatPrefsAPI {
     archiveChats: (taskIds: string[]) => void;
     unarchiveChats: (taskIds: string[]) => void;
     loaded: boolean;
+    dispatch: Dispatch<ChatPrefsAction>;
 }
 
 export function useChatPrefs(): ChatPrefsAPI {
@@ -159,59 +157,42 @@ export function useChatPrefs(): ChatPrefsAPI {
 
     const pinChat = useCallback((taskId: string) => {
         if (state.pinnedIds.includes(taskId)) return;
-        const nextIds = [taskId, ...state.pinnedIds].slice(0, MAX_PINNED);
         dispatch({ type: 'PIN', taskId });
-        patchWorkspacePreferences(state.workspaceId, {
-            pinnedChats: { [state.workspaceId]: nextIds },
-        }).catch(() => {});
-    }, [dispatch, state.pinnedIds, state.workspaceId]);
+        apiPinProcess(taskId).catch(() => {});
+    }, [dispatch, state.pinnedIds]);
 
     const unpinChat = useCallback((taskId: string) => {
         if (!state.pinnedIds.includes(taskId)) return;
-        const nextIds = state.pinnedIds.filter(id => id !== taskId);
         dispatch({ type: 'UNPIN', taskId });
-        patchWorkspacePreferences(state.workspaceId, {
-            pinnedChats: { [state.workspaceId]: nextIds },
-        }).catch(() => {});
-    }, [dispatch, state.pinnedIds, state.workspaceId]);
+        apiUnpinProcess(taskId).catch(() => {});
+    }, [dispatch, state.pinnedIds]);
 
     const archiveChat = useCallback((taskId: string) => {
         if (state.archivedIds.includes(taskId)) return;
-        const nextIds = [taskId, ...state.archivedIds].slice(0, MAX_ARCHIVED);
         dispatch({ type: 'ARCHIVE', taskId });
-        patchWorkspacePreferences(state.workspaceId, {
-            archivedChats: { [state.workspaceId]: nextIds },
-        }).catch(() => {});
-    }, [dispatch, state.archivedIds, state.workspaceId]);
+        apiArchiveProcess(taskId).catch(() => {});
+    }, [dispatch, state.archivedIds]);
 
     const unarchiveChat = useCallback((taskId: string) => {
         if (!state.archivedIds.includes(taskId)) return;
-        const nextIds = state.archivedIds.filter(id => id !== taskId);
         dispatch({ type: 'UNARCHIVE', taskId });
-        patchWorkspacePreferences(state.workspaceId, {
-            archivedChats: { [state.workspaceId]: nextIds },
-        }).catch(() => {});
-    }, [dispatch, state.archivedIds, state.workspaceId]);
+        apiUnarchiveProcess(taskId).catch(() => {});
+    }, [dispatch, state.archivedIds]);
 
     const archiveChats = useCallback((taskIds: string[]) => {
         const toAdd = taskIds.filter(id => !state.archivedIds.includes(id));
         if (toAdd.length === 0) return;
-        const nextIds = [...toAdd, ...state.archivedIds].slice(0, MAX_ARCHIVED);
         dispatch({ type: 'ARCHIVE_MANY', taskIds });
-        patchWorkspacePreferences(state.workspaceId, {
-            archivedChats: { [state.workspaceId]: nextIds },
-        }).catch(() => {});
-    }, [dispatch, state.archivedIds, state.workspaceId]);
+        apiArchiveProcesses(taskIds).catch(() => {});
+    }, [dispatch, state.archivedIds]);
 
     const unarchiveChats = useCallback((taskIds: string[]) => {
         const removing = new Set(taskIds);
-        const nextIds = state.archivedIds.filter(id => !removing.has(id));
-        if (nextIds.length === state.archivedIds.length) return;
+        const filtered = state.archivedIds.filter(id => !removing.has(id));
+        if (filtered.length === state.archivedIds.length) return;
         dispatch({ type: 'UNARCHIVE_MANY', taskIds });
-        patchWorkspacePreferences(state.workspaceId, {
-            archivedChats: { [state.workspaceId]: nextIds },
-        }).catch(() => {});
-    }, [dispatch, state.archivedIds, state.workspaceId]);
+        apiUnarchiveProcesses(taskIds).catch(() => {});
+    }, [dispatch, state.archivedIds]);
 
     return {
         pinnedChatIds: new Set(state.pinnedIds),
@@ -223,5 +204,45 @@ export function useChatPrefs(): ChatPrefsAPI {
         archiveChats,
         unarchiveChats,
         loaded: state.loaded,
+        dispatch,
     };
+}
+
+// ── History sync helper ────────────────────────────────────────────────────
+
+interface HistoryLikeItem {
+    id: string;
+    pinnedAt?: string;
+    archived?: boolean;
+}
+
+/**
+ * Syncs pin/archive state from history items (e.g. ProcessHistoryItem) into
+ * the ChatPreferencesContext. Must be rendered inside a ChatPreferencesProvider.
+ */
+export function ChatPrefsSync<T extends HistoryLikeItem>({
+    history,
+    workspaceId,
+}: {
+    history: T[];
+    workspaceId: string;
+}) {
+    const { dispatch } = useChatPrefs();
+    const prevHistoryRef = useRef<T[]>([]);
+
+    useEffect(() => {
+        if (history === prevHistoryRef.current) return;
+        prevHistoryRef.current = history;
+
+        const pinnedIds = history
+            .filter(h => h.pinnedAt)
+            .sort((a, b) => (b.pinnedAt! > a.pinnedAt! ? 1 : -1))
+            .map(h => h.id);
+        const archivedIds = history
+            .filter(h => h.archived)
+            .map(h => h.id);
+        dispatch({ type: 'SET_ALL', pinnedIds, archivedIds, workspaceId });
+    }, [history, workspaceId, dispatch]);
+
+    return null;
 }

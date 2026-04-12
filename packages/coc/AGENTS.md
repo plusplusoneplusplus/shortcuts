@@ -108,7 +108,8 @@ src/
 │   ├── process-resume-handler.ts # Resume interrupted processes
 │   ├── prompt-handler.ts         # Prompt management API
 │   ├── prompt-utils.ts           # Prompt utilities
-│   ├── preferences-handler.ts    # User preference storage API
+│   ├── preferences-handler.ts    # User preference storage API (UI prefs only; pin/archive moved to processes table)
+│   ├── pin-archive-handler.ts    # Pin/archive REST API (PATCH /api/processes/:id/pin, /archive; POST /api/processes/archive, /unarchive; GET /api/workspaces/:id/pinned)
 │   ├── admin-handler.ts          # Admin/diagnostic endpoints
 │   ├── output-file-manager.ts    # Manage output file storage
 │   ├── output-pruner.ts          # Prune old output files

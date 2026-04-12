@@ -2,14 +2,10 @@ import { getApiBase } from '../utils/config';
 
 /**
  * Client-side subset of PerRepoPreferences (server: preferences-handler.ts).
- * Only the fields consumed by the chat-preferences context are listed here;
+ * Only the fields consumed by the preferences context are listed here;
  * expand as needed.
  */
 export interface PerRepoPrefsClient {
-  /** Pinned chat task IDs per workspace key, newest-first. */
-  pinnedChats?: Record<string, string[]>;
-  /** Archived chat task IDs per workspace key. */
-  archivedChats?: Record<string, string[]>;
   /** Preferred file-list display mode across all git views. */
   filesViewMode?: 'flat' | 'tree';
 }

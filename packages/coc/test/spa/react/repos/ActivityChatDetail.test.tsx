@@ -57,6 +57,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useDisplaySettings', () =
 
 // Chat preferences
 vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
+    ChatPrefsSync: () => null,
     useChatPrefs: () => ({
         archivedChatIds: new Set<string>(),
         pinnedChatIds: new Set<string>(),

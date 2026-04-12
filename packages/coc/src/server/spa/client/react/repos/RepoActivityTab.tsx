@@ -17,7 +17,7 @@ import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ActivityListPane } from './ActivityListPane';
 import { ActivityDetailPane } from './ActivityDetailPane';
 import { useUnseenActivity } from '../hooks/useUnseenActivity';
-import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
+import { ChatPreferencesProvider, ChatPrefsSync } from '../context/ChatPreferencesContext';
 import { useNotifications } from '../context/NotificationContext';
 import type { ProcessHistoryItem } from '../../../../shared/process-history-item';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../utils/queue-process-id';
@@ -340,6 +340,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
+                <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div className="p-4 text-sm text-[#848484]">Loading queue...</div>
             </ChatPreferencesProvider>
         );
@@ -379,6 +380,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     if (isMobile) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
+                <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div className="flex flex-col h-full overflow-hidden" data-testid="activity-split-panel">
                     {mobileShowDetail && selectedTaskId ? (
                         <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel" data-pane="detail">
@@ -401,6 +403,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
 
     return (
         <ChatPreferencesProvider workspaceId={workspaceId}>
+            <ChatPrefsSync history={history} workspaceId={workspaceId} />
             <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="activity-split-panel">
             {/* Left panel — task list */}
             <div
