@@ -817,6 +817,56 @@ describe('ActivityListPane pinned chats', () => {
             expect(memo).toContain('taskMatchesSearch(t, searchQuery)');
         });
     });
+
+    describe('status icon cleanup — no ✅/🚫 for completed/cancelled', () => {
+        it('does not render ✅ emoji anywhere in the file', () => {
+            expect(source).not.toContain("'✅'");
+        });
+
+        it('does not render 🚫 emoji as a status icon in chat list items', () => {
+            // 🚫 may still exist in context menus, but should not appear in status ternaries
+            expect(source).not.toContain("'cancelled' ? '🚫'");
+        });
+
+        it('still renders ❌ for failed status', () => {
+            expect(source).toContain("'failed'");
+            expect(source).toContain('❌');
+        });
+    });
+
+    describe('thinking indicator for running chats', () => {
+        it('renders a thinking-indicator element with data-testid', () => {
+            expect(source).toContain('data-testid="thinking-indicator"');
+        });
+
+        it('uses animate-pulse on the thinking dot', () => {
+            const thinkingIdx = source.indexOf('thinking-indicator');
+            const block = source.substring(thinkingIdx, thinkingIdx + 300);
+            expect(block).toContain('animate-pulse');
+        });
+
+        it('shows "Thinking" text in the indicator', () => {
+            const thinkingIdx = source.indexOf('thinking-indicator');
+            const block = source.substring(thinkingIdx, thinkingIdx + 300);
+            expect(block).toContain('Thinking');
+        });
+
+        it('thinking indicator is conditional on isRunning', () => {
+            const thinkingIdx = source.indexOf('thinking-indicator');
+            const precedingBlock = source.substring(Math.max(0, thinkingIdx - 200), thinkingIdx);
+            expect(precedingBlock).toContain('{isRunning &&');
+        });
+
+        it('failed icon is hidden when running', () => {
+            expect(source).toContain("{!isRunning && task.status === 'failed'");
+        });
+
+        it('renders thinking indicator in both pinned and unpinned chat sections', () => {
+            const matches = source.match(/data-testid="thinking-indicator"/g);
+            expect(matches).not.toBeNull();
+            expect(matches!.length).toBe(2);
+        });
+    });
 });
 
 // ── Filter dropdown rework ─────────────────────────────────────────────
