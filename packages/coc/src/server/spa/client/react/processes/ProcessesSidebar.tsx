@@ -196,6 +196,28 @@ export function ProcessesSidebar() {
 
     const isEmpty = filteredRunning.length === 0 && filteredQueued.length === 0 && filteredLegacy.length === 0;
 
+    // When search results are active (non-null), render search results view
+    if (state.searchResults !== null) {
+        return (
+            <div className="flex flex-col gap-3 min-h-0 p-2">
+                <SearchResultsView
+                    results={state.searchResults}
+                    loading={state.searchLoading}
+                    onSelectProcess={(processId: string) => {
+                        const nextHash = '#process/' + encodeURIComponent(processId);
+                        if (location.hash !== nextHash) {
+                            location.hash = nextHash;
+                        } else {
+                            dispatch({ type: 'SELECT_PROCESS', id: processId });
+                            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                        }
+                    }}
+                    selectedId={state.selectedId}
+                />
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-3 min-h-0 p-2">
             {/* Drain banner */}
@@ -515,5 +537,120 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
                 </>
             )}
         </Card>
+    );
+}
+
+// ── Search results grouped by process ──────────────────────────────────
+
+interface GroupedSearchResult {
+    processId: string;
+    processTitle?: string;
+    promptPreview: string;
+    processStatus: string;
+    startTime: string;
+    turns: { turnIndex: number; role: string; snippet: string; rank: number }[];
+}
+
+function groupSearchResults(results: any[]): GroupedSearchResult[] {
+    const map = new Map<string, GroupedSearchResult>();
+    for (const r of results) {
+        if (!map.has(r.processId)) {
+            map.set(r.processId, {
+                processId: r.processId,
+                processTitle: r.processTitle,
+                promptPreview: r.promptPreview,
+                processStatus: r.processStatus,
+                startTime: r.startTime,
+                turns: [],
+            });
+        }
+        map.get(r.processId)!.turns.push({
+            turnIndex: r.turnIndex,
+            role: r.role,
+            snippet: r.snippet,
+            rank: r.rank,
+        });
+    }
+    return Array.from(map.values());
+}
+
+function SearchResultsView({ results, loading, onSelectProcess, selectedId }: {
+    results: any[];
+    loading: boolean;
+    onSelectProcess: (processId: string) => void;
+    selectedId: string | null;
+}) {
+    if (loading) {
+        return (
+            <div className="py-6 text-center text-sm text-[#848484]" data-testid="search-results-loading">
+                Searching…
+            </div>
+        );
+    }
+
+    if (results.length === 0) {
+        return (
+            <div className="py-6 text-center text-sm text-[#848484]" data-testid="search-no-results">
+                No results found
+            </div>
+        );
+    }
+
+    const grouped = groupSearchResults(results);
+
+    return (
+        <div data-testid="search-results-view">
+            <div className="text-[11px] text-[#848484] mb-2 font-medium" data-testid="search-results-count">
+                {results.length} result{results.length !== 1 ? 's' : ''} in {grouped.length} process{grouped.length !== 1 ? 'es' : ''}
+            </div>
+            <div className="flex flex-col gap-2">
+                {grouped.map((group) => {
+                    const isActive = selectedId === group.processId;
+                    const title = group.processTitle || (
+                        group.promptPreview
+                            ? (group.promptPreview.length > 60 ? group.promptPreview.slice(0, 60) + '…' : group.promptPreview)
+                            : group.processId
+                    );
+
+                    return (
+                        <Card
+                            key={group.processId}
+                            onClick={() => onSelectProcess(group.processId)}
+                            className={cn(
+                                'p-2 cursor-pointer',
+                                isActive && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]'
+                            )}
+                            data-testid="search-result-card"
+                        >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                                <Badge status={group.processStatus}>
+                                    {statusIcon(group.processStatus)} {statusLabel(group.processStatus)}
+                                </Badge>
+                            </div>
+                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc] line-clamp-1 break-words mb-1.5">
+                                {title}
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                {group.turns.map((turn) => (
+                                    <div
+                                        key={`${group.processId}-${turn.turnIndex}`}
+                                        className="text-[11px] text-[#848484] bg-[#f5f5f5] dark:bg-[#2d2d2d] rounded px-1.5 py-1"
+                                        data-testid="search-result-snippet"
+                                    >
+                                        <span className="inline-block text-[10px] font-medium mr-1 text-[#0078d4] dark:text-[#3794ff]">
+                                            {turn.role}
+                                        </span>
+                                        <span
+                                            className="search-snippet"
+                                            dangerouslySetInnerHTML={{ __html: turn.snippet }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
+                    );
+                })}
+            </div>
+        </div>
     );
 }

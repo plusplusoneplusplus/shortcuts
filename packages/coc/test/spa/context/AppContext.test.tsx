@@ -16,6 +16,8 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         workspace: '__all',
         statusFilter: '__all',
         searchQuery: '',
+        searchResults: null,
+        searchLoading: false,
         expandedGroups: {},
         activeTab: 'repos',
         workspaces: [],

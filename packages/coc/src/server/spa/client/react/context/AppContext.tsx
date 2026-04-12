@@ -38,6 +38,9 @@ export interface AppContextState {
     workspace: string;
     statusFilter: string;
     searchQuery: string;
+    /** null = not searching; [] = no results found */
+    searchResults: any[] | null;
+    searchLoading: boolean;
     expandedGroups: Record<string, boolean>;
     activeTab: DashboardTab;
     workspaces: any[];
@@ -96,6 +99,8 @@ const initialState: AppContextState = {
     workspace: '__all',
     statusFilter: '__all',
     searchQuery: '',
+    searchResults: null,
+    searchLoading: false,
     expandedGroups: {},
     activeTab: 'repos',
     workspaces: [],
@@ -161,6 +166,8 @@ export type AppAction =
     | { type: 'SET_WORKSPACE_FILTER'; value: string }
     | { type: 'SET_STATUS_FILTER'; value: string }
     | { type: 'SET_SEARCH_QUERY'; value: string }
+    | { type: 'SET_SEARCH_RESULTS'; results: any[] | null }
+    | { type: 'SET_SEARCH_LOADING'; loading: boolean }
     | { type: 'SET_ACTIVE_TAB'; tab: DashboardTab }
     | { type: 'SET_SELECTED_REPO'; id: string | null }
     | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
@@ -255,8 +262,19 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, workspace: action.value };
         case 'SET_STATUS_FILTER':
             return { ...state, statusFilter: action.value };
-        case 'SET_SEARCH_QUERY':
-            return { ...state, searchQuery: action.value };
+        case 'SET_SEARCH_QUERY': {
+            const next: AppContextState = { ...state, searchQuery: action.value };
+            // Clear search results when query is emptied
+            if (!action.value) {
+                next.searchResults = null;
+                next.searchLoading = false;
+            }
+            return next;
+        }
+        case 'SET_SEARCH_RESULTS':
+            return { ...state, searchResults: action.results };
+        case 'SET_SEARCH_LOADING':
+            return { ...state, searchLoading: action.loading };
         case 'SET_ACTIVE_TAB': {
             const newState = { ...state, activeTab: action.tab };
             if (action.tab === 'wiki' && !state.onboardingProgress.hasOpenedWiki) {

@@ -6,19 +6,48 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
+import { useProcessSearch } from '../hooks/useProcessSearch';
 
 export function ProcessFilters() {
     const { state, dispatch } = useApp();
     const [searchInput, setSearchInput] = useState(state.searchQuery);
     const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-    // Debounced search dispatch
+    // Server-side FTS5 search (activates for queries >= 2 chars)
+    const { results, total, loading } = useProcessSearch(searchInput, {
+        workspace: state.workspace,
+        statusFilter: state.statusFilter,
+    });
+
+    // Sync search hook results into global state
+    useEffect(() => {
+        dispatch({ type: 'SET_SEARCH_LOADING', loading });
+    }, [loading, dispatch]);
+
+    useEffect(() => {
+        // Only dispatch results for queries >= 2 chars; shorter queries use client-side filtering
+        if (searchInput.length >= 2) {
+            dispatch({ type: 'SET_SEARCH_RESULTS', results });
+        } else {
+            dispatch({ type: 'SET_SEARCH_RESULTS', results: null });
+        }
+    }, [results, searchInput, dispatch]);
+
+    // Debounced search dispatch for client-side filtering (short queries)
     const onSearchChange = useCallback((value: string) => {
         setSearchInput(value);
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
             dispatch({ type: 'SET_SEARCH_QUERY', value });
         }, 200);
+    }, [dispatch]);
+
+    const clearSearch = useCallback(() => {
+        setSearchInput('');
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        dispatch({ type: 'SET_SEARCH_QUERY', value: '' });
+        dispatch({ type: 'SET_SEARCH_RESULTS', results: null });
+        dispatch({ type: 'SET_SEARCH_LOADING', loading: false });
     }, [dispatch]);
 
     useEffect(() => {
@@ -45,14 +74,32 @@ export function ProcessFilters() {
 
     return (
         <div className="filter-bar p-2 flex flex-col gap-2">
-            <input
-                id="search-input"
-                type="text"
-                placeholder="Search processes..."
-                value={searchInput}
-                onChange={e => onSearchChange(e.target.value)}
-                className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4]"
-            />
+            <div className="relative">
+                <input
+                    id="search-input"
+                    type="text"
+                    placeholder="Search processes..."
+                    value={searchInput}
+                    onChange={e => onSearchChange(e.target.value)}
+                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] pr-7"
+                />
+                {searchInput && (
+                    <button
+                        type="button"
+                        onClick={clearSearch}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm leading-none p-0.5"
+                        title="Clear search"
+                        data-testid="clear-search-btn"
+                    >
+                        ×
+                    </button>
+                )}
+            </div>
+            {loading && (
+                <div className="text-[11px] text-[#848484]" data-testid="search-loading">
+                    Searching…
+                </div>
+            )}
             <select
                 id="status-filter"
                 value={state.statusFilter}
