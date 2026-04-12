@@ -56,7 +56,7 @@ export interface SkillFolderGroup {
     key: string;
     label: string;
     folderPath: string;
-    source: 'global' | 'repo' | 'linked-repo' | 'extra-folder';
+    source: 'global' | 'repo' | 'bundled' | 'linked-repo' | 'extra-folder';
     skills: Skill[];
     repoId?: string;
     isRemovable: boolean;
@@ -94,7 +94,20 @@ export function groupSkillsByFolder(
         });
     }
 
-    // 3. Extra groups — one per unique folderPath
+    // 3. Bundled group (📦 Built-in)
+    const bundledSkills = skills.filter(s => s.source === 'bundled');
+    if (bundledSkills.length > 0) {
+        groups.push({
+            key: 'bundled',
+            label: '📦 Built-in',
+            folderPath: bundledSkills[0].folderPath ?? '',
+            source: 'bundled',
+            skills: bundledSkills,
+            isRemovable: false,
+        });
+    }
+
+    // 4. Extra groups — one per unique folderPath
     const extraSkills = skills.filter(s => s.source === 'linked-repo' || s.source === 'extra-folder');
     const seenFolders = new Set<string>();
     for (const skill of extraSkills) {
@@ -221,7 +234,7 @@ function SkillFolderSection({
                             onSetDeleteConfirm={(c) => onSetDeleteConfirm(c ? skill.name : null)}
                             toggleDisabled={skillToggleSaving || skillsLoading}
                             testIdPrefix="skill"
-                            hideDelete={skill.source === 'linked-repo' || skill.source === 'global'}
+                            hideDelete={skill.source === 'linked-repo' || skill.source === 'global' || skill.source === 'bundled'}
                         />
                     ))}
                 </ul>

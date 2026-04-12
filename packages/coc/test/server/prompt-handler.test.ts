@@ -129,13 +129,14 @@ describe('Prompt Handler', () => {
             expect(body.error).toBe('Workspace not found');
         });
 
-        it('should return empty skills when .github/skills does not exist', async () => {
+        it('should return only bundled skills when .github/skills does not exist', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
             const res = await request(`${srv.url}/api/workspaces/${encodeURIComponent(wsId)}/skills`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.skills).toEqual([]);
+            const nonBundled = body.skills.filter((s: any) => s.source !== 'bundled');
+            expect(nonBundled).toEqual([]);
         });
 
         it('should discover skill with description from frontmatter', async () => {
