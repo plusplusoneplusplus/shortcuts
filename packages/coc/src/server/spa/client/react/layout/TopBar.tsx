@@ -56,9 +56,9 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const hostname = getHostname();
     const fallbackLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
     const fallbackTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
-    const selectedRepo = state.selectedRepoId ? repos.find(r => r.id === state.selectedRepoId) : undefined;
-    const brandLabel = selectedRepo ? selectedRepo.name : fallbackLabel;
-    const brandTooltip = selectedRepo ? selectedRepo.name : fallbackTooltip;
+    const selectedRepo = state.selectedRepoId ? repos.find(r => r.workspace.id === state.selectedRepoId) : undefined;
+    const brandLabel = selectedRepo ? selectedRepo.workspace.name : fallbackLabel;
+    const brandTooltip = selectedRepo ? selectedRepo.workspace.name : fallbackTooltip;
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -142,7 +142,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     title={brandTooltip}
                     data-testid="topbar-mobile-brand"
                 >
-                    {selectedRepo ? selectedRepo.name : 'CoC'}
+                    {selectedRepo ? selectedRepo.workspace.name : 'CoC'}
                 </span>
                 <a
                     href="#"
