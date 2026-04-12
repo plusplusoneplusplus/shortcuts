@@ -1,11 +1,11 @@
 /**
  * DbBrowserSection — browser for the SQLite database tables.
  * Shows a table list sidebar with row counts, a paginated data grid,
- * and inline row editing via the PUT endpoint.
+ * inline row editing via the PUT endpoint, and row deletion (single + bulk).
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Spinner } from '../shared';
+import { Button, Dialog, Spinner, useToast, ToastContainer } from '../shared';
 import { getApiBase } from '../utils/config';
 import { useApp } from '../context/AppContext';
 import { buildDbBrowserHash } from '../layout/Router';
@@ -96,6 +96,18 @@ function EditableCell({ value, column, isEditing, onChange }: {
     );
 }
 
+function getRowPkValues(row: Record<string, unknown>, columns: ColumnInfo[]): Record<string, unknown> {
+    const pk: Record<string, unknown> = {};
+    for (const col of columns) {
+        if (col.pk) pk[col.name] = row[col.name];
+    }
+    return pk;
+}
+
+function serializeRowKey(row: Record<string, unknown>, columns: ColumnInfo[]): string {
+    return JSON.stringify(getRowPkValues(row, columns));
+}
+
 export function DbBrowserSection() {
     const { state, dispatch } = useApp();
     const [tables, setTables] = useState<TableInfo[]>([]);
@@ -111,6 +123,12 @@ export function DbBrowserSection() {
     const [editValues, setEditValues] = useState<Record<string, unknown>>({});
     const [saving, setSaving] = useState(false);
     const [editError, setEditError] = useState<string | null>(null);
+    const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+    const [deleting, setDeleting] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<'single' | 'bulk'>('single');
+    const [singleDeleteRow, setSingleDeleteRow] = useState<Record<string, unknown> | null>(null);
+    const { toasts, addToast, removeToast } = useToast();
     // Track whether the initial deep-link table has been consumed
     const deepLinkConsumed = useRef(false);
 
@@ -182,6 +200,7 @@ export function DbBrowserSection() {
         setPage(1);
         setSortColumn(null);
         setSortOrder(null);
+        clearSelection();
         // Table selection = navigation — creates a history entry
         location.hash = buildDbBrowserHash(name, 1, null, null);
     };
@@ -276,6 +295,97 @@ export function DbBrowserSection() {
         return tableData.columns.filter(c => c.pk).every(c => row[c.name] === editingRow[c.name]);
     };
 
+    // ── Selection helpers ─────────────────────────────────────────────────────
+    const toggleRowSelection = (key: string) => {
+        setSelectedRows(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (!tableData) return;
+        const allKeys = tableData.rows.map(r => serializeRowKey(r, tableData.columns));
+        const allSelected = allKeys.length > 0 && allKeys.every(k => selectedRows.has(k));
+        if (allSelected) {
+            setSelectedRows(new Set());
+        } else {
+            setSelectedRows(new Set(allKeys));
+        }
+    };
+
+    const clearSelection = () => setSelectedRows(new Set());
+
+    // ── Delete handlers ───────────────────────────────────────────────────────
+    const handleDeleteSingle = (row: Record<string, unknown>) => {
+        setSingleDeleteRow(row);
+        setDeleteTarget('single');
+        setShowDeleteConfirm(true);
+    };
+
+    const handleDeleteBulk = () => {
+        setDeleteTarget('bulk');
+        setShowDeleteConfirm(true);
+    };
+
+    const handleDeleteConfirm = async () => {
+        if (!tableData) return;
+        setDeleting(true);
+        try {
+            if (deleteTarget === 'single' && singleDeleteRow) {
+                const pkColumns = getRowPkValues(singleDeleteRow, tableData.columns);
+                const res = await fetch(
+                    `${getApiBase()}/admin/db/tables/${encodeURIComponent(tableData.table)}/rows`,
+                    {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pkColumns }),
+                    }
+                );
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || `HTTP ${res.status}`);
+                }
+                addToast('1 row deleted', 'success');
+            } else {
+                // Bulk delete
+                const rows = Array.from(selectedRows).map(key => JSON.parse(key) as Record<string, unknown>);
+                const res = await fetch(
+                    `${getApiBase()}/admin/db/tables/${encodeURIComponent(tableData.table)}/rows/delete-bulk`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rows }),
+                    }
+                );
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || `HTTP ${res.status}`);
+                }
+                const result = await res.json();
+                addToast(`${result.deleted} row(s) deleted`, 'success');
+            }
+            clearSelection();
+            setSingleDeleteRow(null);
+            setShowDeleteConfirm(false);
+            fetchTableData(tableData.table, page, sortColumn, sortOrder);
+        } catch (err) {
+            addToast(err instanceof Error ? err.message : String(err), 'error');
+            setShowDeleteConfirm(false);
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    const handleDeleteCancel = () => {
+        setShowDeleteConfirm(false);
+        setSingleDeleteRow(null);
+    };
+
+    const deleteCount = deleteTarget === 'single' ? 1 : selectedRows.size;
+
     if (loading) {
         return <div className="flex items-center justify-center p-8"><Spinner size="sm" /></div>;
     }
@@ -340,10 +450,44 @@ export function DbBrowserSection() {
                             </h3>
                         </div>
 
+                        {/* ── Bulk action bar ── */}
+                        {selectedRows.size > 0 && (
+                            <div className="flex items-center gap-3 px-3 py-2 mb-2 rounded bg-[var(--bg-secondary)] border border-[var(--border)]" data-testid="db-bulk-bar">
+                                <span className="text-xs text-[var(--text-secondary)]" data-testid="db-bulk-count">
+                                    {selectedRows.size} row{selectedRows.size !== 1 ? 's' : ''} selected
+                                </span>
+                                <Button
+                                    variant="danger"
+                                    size="sm"
+                                    onClick={handleDeleteBulk}
+                                    data-testid="db-bulk-delete"
+                                >
+                                    Delete Selected
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={clearSelection}
+                                    data-testid="db-bulk-clear"
+                                >
+                                    Clear Selection
+                                </Button>
+                            </div>
+                        )}
+
                         <div className="overflow-x-auto border border-[var(--border)] rounded">
                             <table className="w-full text-xs">
                                 <thead>
                                     <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
+                                        <th className="px-2 py-1.5 w-8">
+                                            <input
+                                                type="checkbox"
+                                                checked={tableData.rows.length > 0 && tableData.rows.every(r => selectedRows.has(serializeRowKey(r, tableData.columns)))}
+                                                onChange={toggleSelectAll}
+                                                data-testid="db-select-all"
+                                                className="cursor-pointer"
+                                            />
+                                        </th>
                                         {tableData.columns.map(col => (
                                             <th
                                                 key={col.name}
@@ -359,7 +503,7 @@ export function DbBrowserSection() {
                                                 )}
                                             </th>
                                         ))}
-                                        <th className="px-2 py-1.5 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap w-20">
+                                        <th className="px-2 py-1.5 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap w-28">
                                             Actions
                                         </th>
                                     </tr>
@@ -367,15 +511,26 @@ export function DbBrowserSection() {
                                 <tbody>
                                     {tableData.rows.length === 0 ? (
                                         <tr>
-                                            <td colSpan={tableData.columns.length + 1} className="px-2 py-4 text-center text-[var(--text-tertiary)]">
+                                            <td colSpan={tableData.columns.length + 2} className="px-2 py-4 text-center text-[var(--text-tertiary)]">
                                                 No rows
                                             </td>
                                         </tr>
                                     ) : (
                                         tableData.rows.map((row, idx) => {
                                             const editing = isEditingThisRow(row);
+                                            const rowKey = serializeRowKey(row, tableData.columns);
+                                            const isSelected = selectedRows.has(rowKey);
                                             return (
-                                                <tr key={idx} className={`border-b border-[var(--border)] ${editing ? 'bg-[var(--accent)]/5' : 'hover:bg-[var(--bg-secondary)]/50'}`}>
+                                                <tr key={idx} className={`border-b border-[var(--border)] ${editing ? 'bg-[var(--accent)]/5' : isSelected ? 'bg-[var(--accent)]/10' : 'hover:bg-[var(--bg-secondary)]/50'}`}>
+                                                    <td className="px-2 py-1 w-8 align-top">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => toggleRowSelection(rowKey)}
+                                                            data-testid={`db-select-row-${idx}`}
+                                                            className="cursor-pointer"
+                                                        />
+                                                    </td>
                                                     {tableData.columns.map(col => (
                                                         <td key={col.name} className="px-2 py-1 max-w-xs align-top">
                                                             <EditableCell
@@ -409,16 +564,28 @@ export function DbBrowserSection() {
                                                                 </Button>
                                                             </span>
                                                         ) : (
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={() => handleEditStart(row)}
-                                                                data-testid={`db-edit-row-${idx}`}
-                                                                title="Edit row"
-                                                                disabled={!!editingRow}
-                                                            >
-                                                                ✏️
-                                                            </Button>
+                                                            <span className="flex gap-1">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => handleEditStart(row)}
+                                                                    data-testid={`db-edit-row-${idx}`}
+                                                                    title="Edit row"
+                                                                    disabled={!!editingRow}
+                                                                >
+                                                                    ✏️
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => handleDeleteSingle(row)}
+                                                                    data-testid={`db-delete-row-${idx}`}
+                                                                    title="Delete row"
+                                                                    disabled={!!editingRow}
+                                                                >
+                                                                    🗑️
+                                                                </Button>
+                                                            </span>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -470,6 +637,29 @@ export function DbBrowserSection() {
                     </div>
                 )}
             </div>
+
+            {/* ── Delete confirmation dialog ── */}
+            <Dialog
+                open={showDeleteConfirm}
+                onClose={handleDeleteCancel}
+                title="Confirm Delete"
+                footer={
+                    <>
+                        <Button variant="ghost" size="sm" onClick={handleDeleteCancel} disabled={deleting} data-testid="db-delete-cancel">
+                            Cancel
+                        </Button>
+                        <Button variant="danger" size="sm" loading={deleting} onClick={handleDeleteConfirm} data-testid="db-delete-confirm">
+                            Delete
+                        </Button>
+                    </>
+                }
+            >
+                <p data-testid="db-delete-message">
+                    Are you sure you want to delete {deleteCount} row{deleteCount !== 1 ? 's' : ''}? This action cannot be undone.
+                </p>
+            </Dialog>
+
+            <ToastContainer toasts={toasts} removeToast={removeToast} />
         </div>
     );
 }

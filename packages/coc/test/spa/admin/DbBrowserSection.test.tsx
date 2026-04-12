@@ -62,6 +62,19 @@ function mockDefaultFetch() {
                 json: () => Promise.resolve({ row: { id: 1, name: 'Updated', email: 'new@example.com' }, changes: 1 }),
             };
         }
+        if (urlStr.includes('/rows/delete-bulk') && opts?.method === 'POST') {
+            const body = JSON.parse(opts.body as string);
+            return {
+                ok: true,
+                json: () => Promise.resolve({ deleted: body.rows.length, requested: body.rows.length }),
+            };
+        }
+        if (urlStr.includes('/admin/db/tables/') && opts?.method === 'DELETE') {
+            return {
+                ok: true,
+                json: () => Promise.resolve({ deleted: 1 }),
+            };
+        }
         if (urlStr.match(/\/admin\/db\/tables\/[^/]+\?/)) {
             return {
                 ok: true,
@@ -307,6 +320,328 @@ describe('DbBrowserSection — inline editing', () => {
             expect(putCall).toBeDefined();
             const body = JSON.parse(putCall![1].body);
             expect(body.updates.email).toBeNull();
+        });
+    });
+});
+
+describe('DbBrowserSection — row selection', () => {
+    it('renders a checkbox for each data row', async () => {
+        renderSection();
+        await waitFor(() => {
+            expect(screen.getByTestId('db-select-row-0')).toBeDefined();
+            expect(screen.getByTestId('db-select-row-1')).toBeDefined();
+        });
+    });
+
+    it('renders a select-all checkbox in the header', async () => {
+        renderSection();
+        await waitFor(() => {
+            expect(screen.getByTestId('db-select-all')).toBeDefined();
+        });
+    });
+
+    it('clicking a row checkbox toggles selection', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-row-0'));
+
+        const checkbox = screen.getByTestId('db-select-row-0') as HTMLInputElement;
+        expect(checkbox.checked).toBe(false);
+
+        fireEvent.click(checkbox);
+        expect(checkbox.checked).toBe(true);
+
+        fireEvent.click(checkbox);
+        expect(checkbox.checked).toBe(false);
+    });
+
+    it('select-all toggles all visible row checkboxes on', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-all'));
+
+        fireEvent.click(screen.getByTestId('db-select-all'));
+
+        await waitFor(() => {
+            expect((screen.getByTestId('db-select-row-0') as HTMLInputElement).checked).toBe(true);
+            expect((screen.getByTestId('db-select-row-1') as HTMLInputElement).checked).toBe(true);
+        });
+    });
+
+    it('select-all toggles all off when all are selected', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-all'));
+
+        // Select all
+        fireEvent.click(screen.getByTestId('db-select-all'));
+        await waitFor(() => {
+            expect((screen.getByTestId('db-select-row-0') as HTMLInputElement).checked).toBe(true);
+        });
+
+        // Deselect all
+        fireEvent.click(screen.getByTestId('db-select-all'));
+        await waitFor(() => {
+            expect((screen.getByTestId('db-select-row-0') as HTMLInputElement).checked).toBe(false);
+            expect((screen.getByTestId('db-select-row-1') as HTMLInputElement).checked).toBe(false);
+        });
+    });
+
+    it('shows bulk action bar when rows are selected', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-row-0'));
+
+        expect(screen.queryByTestId('db-bulk-bar')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('db-select-row-0'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('db-bulk-bar')).toBeDefined();
+            expect(screen.getByTestId('db-bulk-count').textContent).toBe('1 row selected');
+        });
+    });
+
+    it('bulk action bar shows correct plural count', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-all'));
+
+        fireEvent.click(screen.getByTestId('db-select-all'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('db-bulk-count').textContent).toBe('2 rows selected');
+        });
+    });
+
+    it('clear selection button clears all checkboxes and hides bulk bar', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-all'));
+
+        fireEvent.click(screen.getByTestId('db-select-all'));
+        await waitFor(() => screen.getByTestId('db-bulk-bar'));
+
+        fireEvent.click(screen.getByTestId('db-bulk-clear'));
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('db-bulk-bar')).toBeNull();
+            expect((screen.getByTestId('db-select-row-0') as HTMLInputElement).checked).toBe(false);
+        });
+    });
+});
+
+describe('DbBrowserSection — single row delete', () => {
+    it('renders a delete button for each data row', async () => {
+        renderSection();
+        await waitFor(() => {
+            expect(screen.getByTestId('db-delete-row-0')).toBeDefined();
+            expect(screen.getByTestId('db-delete-row-1')).toBeDefined();
+        });
+    });
+
+    it('clicking delete button shows confirmation dialog', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-delete-row-0'));
+
+        fireEvent.click(screen.getByTestId('db-delete-row-0'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('db-delete-message')).toBeDefined();
+            expect(screen.getByTestId('db-delete-message').textContent).toContain('delete 1 row?');
+        });
+    });
+
+    it('cancel dismisses dialog without API call', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-delete-row-0'));
+
+        fireEvent.click(screen.getByTestId('db-delete-row-0'));
+        await waitFor(() => screen.getByTestId('db-delete-cancel'));
+
+        const fetchCountBefore = mockFetch.mock.calls.length;
+        fireEvent.click(screen.getByTestId('db-delete-cancel'));
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('db-delete-message')).toBeNull();
+        });
+        expect(mockFetch.mock.calls.length).toBe(fetchCountBefore);
+    });
+
+    it('confirm sends DELETE request with correct pkColumns', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-delete-row-0'));
+
+        fireEvent.click(screen.getByTestId('db-delete-row-0'));
+        await waitFor(() => screen.getByTestId('db-delete-confirm'));
+
+        fireEvent.click(screen.getByTestId('db-delete-confirm'));
+
+        await waitFor(() => {
+            const deleteCall = mockFetch.mock.calls.find(
+                (call: any[]) => call[1]?.method === 'DELETE'
+            );
+            expect(deleteCall).toBeDefined();
+            const body = JSON.parse(deleteCall![1].body);
+            expect(body.pkColumns).toEqual({ id: 1 });
+        });
+    });
+
+    it('successful delete refreshes data and shows success toast', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-delete-row-0'));
+
+        const fetchCountBefore = mockFetch.mock.calls.length;
+        fireEvent.click(screen.getByTestId('db-delete-row-0'));
+        await waitFor(() => screen.getByTestId('db-delete-confirm'));
+        fireEvent.click(screen.getByTestId('db-delete-confirm'));
+
+        await waitFor(() => {
+            // Dialog should close
+            expect(screen.queryByTestId('db-delete-message')).toBeNull();
+            // A new data fetch should have been made (refresh)
+            const newCalls = mockFetch.mock.calls.slice(fetchCountBefore);
+            expect(newCalls.length).toBeGreaterThan(0);
+        });
+
+        // Success toast
+        await waitFor(() => {
+            expect(screen.getByText('1 row deleted')).toBeDefined();
+        });
+    });
+
+    it('delete error shows error toast', async () => {
+        mockFetch.mockImplementation(async (url: string, opts?: RequestInit) => {
+            const urlStr = String(url);
+            if (opts?.method === 'DELETE') {
+                return {
+                    ok: false,
+                    status: 404,
+                    json: () => Promise.resolve({ error: 'Row not found' }),
+                };
+            }
+            if (urlStr.match(/\/admin\/db\/tables\/[^/]+\?/)) {
+                return { ok: true, json: () => Promise.resolve(TABLE_DATA_RESPONSE) };
+            }
+            if (urlStr.includes('/admin/db/tables')) {
+                return { ok: true, json: () => Promise.resolve(TABLES_RESPONSE) };
+            }
+            return { ok: true, json: () => Promise.resolve([]) };
+        });
+
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-delete-row-0'));
+
+        fireEvent.click(screen.getByTestId('db-delete-row-0'));
+        await waitFor(() => screen.getByTestId('db-delete-confirm'));
+        fireEvent.click(screen.getByTestId('db-delete-confirm'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Row not found')).toBeDefined();
+        });
+    });
+
+    it('delete button is disabled while editing a row', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-edit-row-0'));
+
+        fireEvent.click(screen.getByTestId('db-edit-row-0'));
+
+        await waitFor(() => {
+            const deleteBtn = screen.getByTestId('db-delete-row-1');
+            expect(deleteBtn.closest('button')?.disabled || deleteBtn.hasAttribute('disabled')).toBeTruthy();
+        });
+    });
+});
+
+describe('DbBrowserSection — bulk delete', () => {
+    it('Delete Selected button shows confirmation with correct count', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-all'));
+
+        fireEvent.click(screen.getByTestId('db-select-all'));
+        await waitFor(() => screen.getByTestId('db-bulk-delete'));
+
+        fireEvent.click(screen.getByTestId('db-bulk-delete'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('db-delete-message').textContent).toContain('delete 2 rows?');
+        });
+    });
+
+    it('confirm bulk delete sends POST to bulk-delete endpoint', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-all'));
+
+        fireEvent.click(screen.getByTestId('db-select-all'));
+        await waitFor(() => screen.getByTestId('db-bulk-delete'));
+
+        fireEvent.click(screen.getByTestId('db-bulk-delete'));
+        await waitFor(() => screen.getByTestId('db-delete-confirm'));
+
+        fireEvent.click(screen.getByTestId('db-delete-confirm'));
+
+        await waitFor(() => {
+            const bulkCall = mockFetch.mock.calls.find(
+                (call: any[]) => String(call[0]).includes('/delete-bulk') && call[1]?.method === 'POST'
+            );
+            expect(bulkCall).toBeDefined();
+            const body = JSON.parse(bulkCall![1].body);
+            expect(body.rows).toHaveLength(2);
+            expect(body.rows).toContainEqual({ id: 1 });
+            expect(body.rows).toContainEqual({ id: 2 });
+        });
+    });
+
+    it('successful bulk delete clears selection and shows toast', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-all'));
+
+        fireEvent.click(screen.getByTestId('db-select-all'));
+        await waitFor(() => screen.getByTestId('db-bulk-delete'));
+
+        fireEvent.click(screen.getByTestId('db-bulk-delete'));
+        await waitFor(() => screen.getByTestId('db-delete-confirm'));
+
+        fireEvent.click(screen.getByTestId('db-delete-confirm'));
+
+        await waitFor(() => {
+            // Bulk bar should be gone (selection cleared)
+            expect(screen.queryByTestId('db-bulk-bar')).toBeNull();
+        });
+
+        // Success toast
+        await waitFor(() => {
+            expect(screen.getByText('2 row(s) deleted')).toBeDefined();
+        });
+    });
+
+    it('bulk delete error shows error toast', async () => {
+        mockFetch.mockImplementation(async (url: string, opts?: RequestInit) => {
+            const urlStr = String(url);
+            if (urlStr.includes('/delete-bulk') && opts?.method === 'POST') {
+                return {
+                    ok: false,
+                    status: 500,
+                    json: () => Promise.resolve({ error: 'Database locked' }),
+                };
+            }
+            if (urlStr.match(/\/admin\/db\/tables\/[^/]+\?/)) {
+                return { ok: true, json: () => Promise.resolve(TABLE_DATA_RESPONSE) };
+            }
+            if (urlStr.includes('/admin/db/tables')) {
+                return { ok: true, json: () => Promise.resolve(TABLES_RESPONSE) };
+            }
+            return { ok: true, json: () => Promise.resolve([]) };
+        });
+
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-select-all'));
+
+        fireEvent.click(screen.getByTestId('db-select-all'));
+        await waitFor(() => screen.getByTestId('db-bulk-delete'));
+
+        fireEvent.click(screen.getByTestId('db-bulk-delete'));
+        await waitFor(() => screen.getByTestId('db-delete-confirm'));
+
+        fireEvent.click(screen.getByTestId('db-delete-confirm'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Database locked')).toBeDefined();
         });
     });
 });
