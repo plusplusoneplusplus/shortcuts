@@ -15,7 +15,9 @@ import { ResizableImage } from './extensions/resizableImage';
 import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
 import { notesApi } from '../notesApi';
 import type { CommentThread } from '../notesApi';
-import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToApi, rewriteImageSrcToRelative } from './noteMarkdown';
+import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToRelative } from './noteMarkdown';
+import type { NoteEditorIO } from './NoteEditorIO';
+import { defaultNoteEditorIO, rewriteHtmlImageSrc } from './NoteEditorIO';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { SourceEditor } from '../../shared/SourceEditor';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
@@ -27,6 +29,8 @@ export type NoteViewMode = 'rich' | 'source';
 export interface NoteEditorProps {
     workspaceId: string;
     notePath: string | null;
+    /** Injectable content I/O adapter. Defaults to the notes-backed implementation. */
+    io?: NoteEditorIO;
     onCommentActivated?: (commentId: string | null) => void;
     onEditorReady?: (editor: Editor) => void;
     onCommentCreate?: () => void;
@@ -42,6 +46,7 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 export function NoteEditor({
     workspaceId,
     notePath,
+    io = defaultNoteEditorIO,
     onCommentActivated,
     onEditorReady,
     onCommentCreate,
@@ -69,10 +74,12 @@ export function NoteEditor({
     const pendingSourceContentRef = useRef<string | null>(null);
     const notePathRef = useRef(notePath);
     const workspaceIdRef = useRef(workspaceId);
+    const ioRef = useRef(io);
 
     // Keep refs in sync
     notePathRef.current = notePath;
     workspaceIdRef.current = workspaceId;
+    ioRef.current = io;
 
     // View mode setter that also notifies parent
     const setViewMode = useCallback((mode: NoteViewMode) => {
@@ -137,12 +144,12 @@ export function NoteEditor({
 
                             setUploadingImage(true);
                             try {
-                                const result = await notesApi.uploadImage(
+                                const result = await ioRef.current.uploadImage(
                                     workspaceIdRef.current,
                                     file.name || 'pasted-image',
                                     dataUrl,
                                 );
-                                const apiUrl = `/api/workspaces/${encodeURIComponent(workspaceIdRef.current)}/notes/image?path=${encodeURIComponent(result.path)}`;
+                                const apiUrl = ioRef.current.imageApiUrl(workspaceIdRef.current, result.path);
                                 view.dispatch(
                                     view.state.tr.replaceSelectionWith(
                                         view.state.schema.nodes.image.create({ src: apiUrl, alt: file.name || '' }),
@@ -189,7 +196,7 @@ export function NoteEditor({
         pendingContentRef.current = null;
         setSaveState('saving');
         try {
-            await notesApi.saveContent(workspaceIdRef.current, path, content);
+            await ioRef.current.saveContent(workspaceIdRef.current, path, content);
             setSaveState('saved');
             setDirty(false);
             setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
@@ -233,7 +240,7 @@ export function NoteEditor({
         pendingSourceContentRef.current = null;
         setSaveState('saving');
         try {
-            await notesApi.saveContent(workspaceIdRef.current, path, content);
+            await ioRef.current.saveContent(workspaceIdRef.current, path, content);
             setSaveState('saved');
             setSourceDirty(false);
             setDirty(false);
@@ -282,7 +289,7 @@ export function NoteEditor({
                     const dataUrl = ev.target?.result as string;
                     if (!dataUrl) { setUploadingImage(false); return; }
                     try {
-                        const result = await notesApi.uploadImage(
+                        const result = await ioRef.current.uploadImage(
                             workspaceIdRef.current,
                             file.name || 'pasted-image',
                             dataUrl,
@@ -323,7 +330,7 @@ export function NoteEditor({
         const path = notePathRef.current;
         if (!path) return;
         try {
-            const { content } = await notesApi.getContent(workspaceIdRef.current, path);
+            const { content } = await ioRef.current.loadContent(workspaceIdRef.current, path);
             setRawMarkdown(content);
             setSourceDirty(false);
             setViewMode('source');
@@ -339,7 +346,7 @@ export function NoteEditor({
             const path = notePathRef.current;
             if (path) {
                 try {
-                    await notesApi.saveContent(workspaceIdRef.current, path, pendingSource);
+                    await ioRef.current.saveContent(workspaceIdRef.current, path, pendingSource);
                     pendingSourceContentRef.current = null;
                 } catch { /* continue anyway */ }
             }
@@ -351,7 +358,7 @@ export function NoteEditor({
         // Convert raw markdown to HTML and load into Tiptap
         if (editor) {
             let html = markdownToHtml(rawMarkdown);
-            html = rewriteImageSrcToApi(html, workspaceIdRef.current);
+            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
             editor.commands.setContent(html);
 
             // Re-anchor comments
@@ -394,12 +401,12 @@ export function NoteEditor({
         setLoadError(null);
         setSaveState('idle');
 
-        notesApi
-            .getContent(workspaceId, notePath)
+        ioRef.current
+            .loadContent(workspaceId, notePath)
             .then(({ content }) => {
                 if (cancelled) return;
                 let html = markdownToHtml(content);
-                html = rewriteImageSrcToApi(html, workspaceId);
+                html = rewriteHtmlImageSrc(html, ioRef.current, workspaceId);
                 editor?.commands.setContent(html);
                 setDirty(false);
 

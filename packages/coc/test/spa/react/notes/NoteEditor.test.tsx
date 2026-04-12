@@ -16,6 +16,21 @@ vi.mock('../../../../src/server/spa/client/react/repos/notesApi', () => ({
     },
 }));
 
+// Mock NoteEditorIO — the default export delegates to notesApi under the hood,
+// but we override it here so tests can intercept all IO calls via mockIo.
+const mockLoadContent = vi.fn();
+const mockIOSaveContent = vi.fn();
+const mockUploadImage = vi.fn();
+const mockImageApiUrl = vi.fn((wsId: string, relPath: string) =>
+    `/api/workspaces/${encodeURIComponent(wsId)}/notes/image?path=${encodeURIComponent(relPath)}`);
+
+const mockIo = {
+    loadContent: (...args: unknown[]) => mockLoadContent(...(args as [string, string])),
+    saveContent: (...args: unknown[]) => mockIOSaveContent(...(args as [string, string, string])),
+    uploadImage: (...args: unknown[]) => mockUploadImage(...(args as [string, string, string])),
+    imageApiUrl: (...args: unknown[]) => mockImageApiUrl(...(args as [string, string])),
+};
+
 vi.mock(
     '../../../../src/server/spa/client/react/repos/notes/noteMarkdown',
     () => ({
@@ -77,6 +92,12 @@ describe('NoteEditor', () => {
     beforeEach(() => {
         mockGetContent.mockReset();
         mockSaveContent.mockReset();
+        mockLoadContent.mockReset();
+        mockIOSaveContent.mockReset();
+        mockUploadImage.mockReset();
+        mockImageApiUrl.mockClear();
+        mockImageApiUrl.mockImplementation((wsId: string, relPath: string) =>
+            `/api/workspaces/${encodeURIComponent(wsId)}/notes/image?path=${encodeURIComponent(relPath)}`);
         mockSetContent.mockReset();
         mockClearContent.mockReset();
         mockGetHTML.mockReturnValue('<p>content</p>');
@@ -91,17 +112,17 @@ describe('NoteEditor', () => {
     // ── Empty state ─────────────────────────────────────────────────────
 
     it('shows empty-state placeholder when notePath is null', () => {
-        render(<NoteEditor workspaceId="ws1" notePath={null} />);
+        render(<NoteEditor workspaceId="ws1" notePath={null} io={mockIo} />);
         expect(screen.getByTestId('note-editor-empty')).toBeDefined();
         expect(screen.getByText('Select a page to start editing')).toBeDefined();
-        expect(mockGetContent).not.toHaveBeenCalled();
+        expect(mockLoadContent).not.toHaveBeenCalled();
     });
 
     // ── Loading state ───────────────────────────────────────────────────
 
     it('shows loading spinner while content loads', () => {
-        mockGetContent.mockReturnValue(new Promise(() => {}));
-        render(<NoteEditor workspaceId="ws1" notePath="path/page.md" />);
+        mockLoadContent.mockReturnValue(new Promise(() => {}));
+        render(<NoteEditor workspaceId="ws1" notePath="path/page.md" io={mockIo} />);
         expect(screen.getByTestId('note-editor-loading')).toBeDefined();
         expect(screen.getByText('Loading…')).toBeDefined();
     });
@@ -109,12 +130,12 @@ describe('NoteEditor', () => {
     // ── Content load ────────────────────────────────────────────────────
 
     it('loads content and sets it on the editor', async () => {
-        mockGetContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+        mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="page.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
         });
         await waitFor(() => {
-            expect(mockGetContent).toHaveBeenCalledWith('ws1', 'page.md');
+            expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md');
             expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>');
         });
     });
@@ -122,9 +143,9 @@ describe('NoteEditor', () => {
     // ── Load error ──────────────────────────────────────────────────────
 
     it('shows error banner when load fails', async () => {
-        mockGetContent.mockRejectedValue(new Error('Not found'));
+        mockLoadContent.mockRejectedValue(new Error('Not found'));
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="page.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
         });
         await waitFor(() => {
             expect(screen.getByTestId('note-editor-error')).toBeDefined();
@@ -135,11 +156,11 @@ describe('NoteEditor', () => {
     // ── Autosave fires after debounce ───────────────────────────────────
 
     it('autosaves after 1.5s debounce', async () => {
-        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
-        mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
+        mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockIOSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
@@ -147,21 +168,21 @@ describe('NoteEditor', () => {
         vi.useFakeTimers();
 
         act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
-        expect(mockSaveContent).not.toHaveBeenCalled();
+        expect(mockIOSaveContent).not.toHaveBeenCalled();
 
         await act(async () => { vi.advanceTimersByTime(1600); });
 
-        expect(mockSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
+        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
     });
 
     // ── Debounce resets on rapid edits ──────────────────────────────────
 
     it('resets debounce on rapid edits — only one save', async () => {
-        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
-        mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
+        mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockIOSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
@@ -173,18 +194,18 @@ describe('NoteEditor', () => {
 
         await act(async () => { vi.advanceTimersByTime(1600); });
 
-        expect(mockSaveContent).toHaveBeenCalledTimes(1);
+        expect(mockIOSaveContent).toHaveBeenCalledTimes(1);
     });
 
     // ── Save indicator: saving ──────────────────────────────────────────
 
     it('shows "Saving…" during save', async () => {
         let resolveSave!: (v: unknown) => void;
-        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
-        mockSaveContent.mockReturnValue(new Promise((r) => { resolveSave = r; }));
+        mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockIOSaveContent.mockReturnValue(new Promise((r) => { resolveSave = r; }));
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
@@ -201,11 +222,11 @@ describe('NoteEditor', () => {
     // ── Save indicator: saved ───────────────────────────────────────────
 
     it('shows "Saved ✓" after save then clears after 3s', async () => {
-        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
-        mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
+        mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockIOSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
@@ -225,11 +246,11 @@ describe('NoteEditor', () => {
     // ── Save indicator: error ───────────────────────────────────────────
 
     it('shows "Save failed" with retry button on error', async () => {
-        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
-        mockSaveContent.mockRejectedValue(new Error('Network'));
+        mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockIOSaveContent.mockRejectedValue(new Error('Network'));
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
@@ -250,10 +271,10 @@ describe('NoteEditor', () => {
     // ── Toolbar renders ─────────────────────────────────────────────────
 
     it('renders toolbar buttons', async () => {
-        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => expect(screen.getByTestId('note-editor')).toBeDefined());
 
@@ -269,11 +290,11 @@ describe('NoteEditor', () => {
     // ── Ctrl+S suppresses browser dialog and flushes save ─────────────
 
     it('Ctrl+S calls preventDefault and triggers save', async () => {
-        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
-        mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
+        mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockIOSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
@@ -291,15 +312,15 @@ describe('NoteEditor', () => {
         await act(async () => { document.dispatchEvent(event); });
 
         expect(preventSpy).toHaveBeenCalled();
-        expect(mockSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
+        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
     });
 
     it('Cmd+S (metaKey) also suppresses dialog and saves', async () => {
-        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
-        mockSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
+        mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockIOSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
@@ -316,11 +337,11 @@ describe('NoteEditor', () => {
         await act(async () => { document.dispatchEvent(event); });
 
         expect(preventSpy).toHaveBeenCalled();
-        expect(mockSaveContent).toHaveBeenCalled();
+        expect(mockIOSaveContent).toHaveBeenCalled();
     });
 
     it('Ctrl+S with no note selected does not error', () => {
-        render(<NoteEditor workspaceId="ws1" notePath={null} />);
+        render(<NoteEditor workspaceId="ws1" notePath={null} io={mockIo} />);
 
         const event = new KeyboardEvent('keydown', {
             key: 's',
@@ -333,17 +354,17 @@ describe('NoteEditor', () => {
         document.dispatchEvent(event);
 
         expect(preventSpy).toHaveBeenCalled();
-        expect(mockSaveContent).not.toHaveBeenCalled();
+        expect(mockIOSaveContent).not.toHaveBeenCalled();
     });
 
     // ── beforeunload ────────────────────────────────────────────────────
 
     it('registers beforeunload when dirty', async () => {
-        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
+        mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
         const addSpy = vi.spyOn(window, 'addEventListener');
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
@@ -356,13 +377,53 @@ describe('NoteEditor', () => {
     // ── EditorContent renders ───────────────────────────────────────────
 
     it('renders EditorContent when path is provided', async () => {
-        mockGetContent.mockResolvedValue({ content: '# Hi', path: 'p.md' });
+        mockLoadContent.mockResolvedValue({ content: '# Hi', path: 'p.md' });
 
         await act(async () => {
-            render(<NoteEditor workspaceId="ws1" notePath="p.md" />);
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} />);
         });
         await waitFor(() => {
             expect(screen.getByTestId('editor-content')).toBeDefined();
         });
+    });
+
+    // ── NoteEditorIO adapter ────────────────────────────────────────────
+
+    it('works unchanged when no io prop is passed (uses default)', async () => {
+        // The default IO delegates to notesApi — verify via the notesApi mock
+        mockGetContent.mockResolvedValue({ content: 'default', path: 'd.md' });
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="d.md" />);
+        });
+        await waitFor(() => {
+            expect(mockGetContent).toHaveBeenCalledWith('ws1', 'd.md');
+            expect(mockSetContent).toHaveBeenCalledWith('<p>default</p>');
+        });
+    });
+
+    it('uses custom io adapter for load and save', async () => {
+        const customIo = {
+            loadContent: vi.fn().mockResolvedValue({ content: 'custom', path: 'c.md' }),
+            saveContent: vi.fn().mockResolvedValue({ path: 'c.md', updated: true }),
+            uploadImage: vi.fn().mockResolvedValue({ path: 'img.png' }),
+            imageApiUrl: vi.fn((_ws: string, p: string) => `/custom/${p}`),
+        };
+
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="c.md" io={customIo} />);
+        });
+        await waitFor(() => {
+            expect(customIo.loadContent).toHaveBeenCalledWith('ws1', 'c.md');
+            expect(mockSetContent).toHaveBeenCalledWith('<p>custom</p>');
+        });
+        // notesApi should NOT have been called for content
+        expect(mockGetContent).not.toHaveBeenCalled();
+
+        vi.useFakeTimers();
+        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        await act(async () => { vi.advanceTimersByTime(1600); });
+
+        expect(customIo.saveContent).toHaveBeenCalledWith('ws1', 'c.md', 'content');
+        expect(mockSaveContent).not.toHaveBeenCalled();
     });
 });
