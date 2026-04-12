@@ -670,13 +670,13 @@ describe('useUnseenActivity hook: structure', () => {
         expect(UNSEEN_HOOK_SOURCE).toContain('seededRef');
     });
 
-    it('auto-marks selected task as seen when it completes', () => {
+    it('auto-marks selected task as seen when state changes', () => {
         expect(UNSEEN_HOOK_SOURCE).toContain('selectedTaskId');
-        expect(UNSEEN_HOOK_SOURCE).toContain('task?.completedAt');
+        expect(UNSEEN_HOOK_SOURCE).toContain('getItemSnapshot');
     });
 
-    it('compares completedAt for unseen detection', () => {
-        expect(UNSEEN_HOOK_SOURCE).toContain("seen !== task.completedAt");
+    it('compares snapshots for unseen detection', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain("seen !== snapshot");
     });
 
     it('cleans up stale entries for tasks no longer in history', () => {
@@ -690,8 +690,9 @@ describe('RepoActivityTab: unseen activity wiring', () => {
         expect(ACTIVITY_TAB_SOURCE).toContain("import { useUnseenActivity } from '../hooks/useUnseenActivity'");
     });
 
-    it('calls useUnseenActivity with workspaceId, history, and selectedTaskId', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain('useUnseenActivity(workspaceId, history, selectedTaskId)');
+    it('calls useUnseenActivity with workspaceId, history, selectedTaskId, queued, and running', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('useUnseenActivity(');
+        expect(ACTIVITY_TAB_SOURCE).toContain('workspaceId, history, selectedTaskId, queued, running');
     });
 
     it('destructures unseenTaskIds and markSeen from the hook', () => {
