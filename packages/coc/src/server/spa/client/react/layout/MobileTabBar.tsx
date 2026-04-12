@@ -11,6 +11,12 @@ import type { RepoSubTab } from '../types/dashboard';
 
 const DEFAULT_PINNED: RepoSubTab[] = ['chats', 'work-items', 'git'];
 
+export interface MobileTabBarAction {
+    label: string;
+    icon?: string;
+    onClick: () => void;
+}
+
 export interface MobileTabBarProps {
     activeTab: RepoSubTab;
     onTabChange: (tab: RepoSubTab) => void;
@@ -19,6 +25,7 @@ export interface MobileTabBarProps {
     taskCount?: number;
     activityCount?: number;
     gitPendingCount?: number;
+    actions?: MobileTabBarAction[];
 }
 
 export function MobileTabBar({
@@ -29,6 +36,7 @@ export function MobileTabBar({
     taskCount = 0,
     activityCount = 0,
     gitPendingCount = 0,
+    actions = [],
 }: MobileTabBarProps){
     const [moreOpen, setMoreOpen] = useState(false);
 
@@ -101,6 +109,22 @@ export function MobileTabBar({
 
             <BottomSheet isOpen={moreOpen} onClose={() => setMoreOpen(false)} title="More">
                 <div data-testid="mobile-tab-more-sheet">
+                    {actions.length > 0 && (
+                        <>
+                            {actions.map((action, i) => (
+                                <button
+                                    key={i}
+                                    className="w-full text-left px-4 min-h-[44px] flex items-center text-sm text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10"
+                                    onClick={() => { setMoreOpen(false); action.onClick(); }}
+                                    data-testid={`mobile-tab-action-${i}`}
+                                >
+                                    {action.icon && <span className="mr-2">{action.icon}</span>}
+                                    {action.label}
+                                </button>
+                            ))}
+                            <div className="h-px bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-4 my-1" />
+                        </>
+                    )}
                     {moreTabItems.map(t => {
                         const active = activeTab === t.key;
                         return (

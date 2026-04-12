@@ -383,22 +383,25 @@ describe('RepoDetail Run Script button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('title="Run a script in this repo"');
     });
 
-    it('mobile overflow menu includes Run Script option', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-run-script"');
+    it('mobile Run Script action is passed to MobileTabBar via actions prop', () => {
+        // Run Script action moved from inline BottomSheet to MobileTabBar actions prop
+        expect(REPO_DETAIL_SOURCE).toContain("label: 'Run Script'");
+        expect(REPO_DETAIL_SOURCE).toContain("icon: '⚡'");
+        expect(REPO_DETAIL_SOURCE).toContain("type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id");
     });
 
-    it('mobile Run Script option appears in overflow menu', () => {
-        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
-        expect(scriptIdx).toBeGreaterThan(-1);
+    it('mobile Run Script action appears in MobileTabBar actions array', () => {
+        const actionsIdx = REPO_DETAIL_SOURCE.indexOf("label: 'Run Script'");
+        expect(actionsIdx).toBeGreaterThan(-1);
     });
 
     it('mobile overflow menu does not include Ask (Ask is a top-level button)', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-ask"');
     });
 
-    it('mobile Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId', () => {
-        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, scriptIdx - 300), scriptIdx + 200);
+    it('mobile Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId via actions', () => {
+        const actionsIdx = REPO_DETAIL_SOURCE.indexOf("label: 'Run Script'");
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, actionsIdx - 100), actionsIdx + 200);
         expect(block).toContain("type: 'OPEN_SCRIPT_DIALOG'");
         expect(block).toContain('workspaceId: ws.id');
     });
