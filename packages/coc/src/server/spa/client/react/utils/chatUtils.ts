@@ -1,11 +1,8 @@
-import type { DeliveryMode } from '@plusplusoneplusplus/forge';
-
-/** A message waiting to be sent after the current AI turn completes. */
+/** A server-confirmed queued follow-up waiting for execution. */
 export interface QueuedMessage {
-    id: string;           // crypto.randomUUID() — used as React key and bubble identifier
+    id: string;           // server-assigned UUID — used as React key and identifier
     content: string;
-    deliveryMode: DeliveryMode;
-    status: 'pending-send' | 'queued' | 'steering' | 'sent-immediate';
+    status: 'queued' | 'steering';
 }
 
 export function buildMetadataProcess(task: any, processDetails: any, processId: string | null): any {

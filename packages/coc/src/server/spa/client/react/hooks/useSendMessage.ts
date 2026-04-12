@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { getApiBase } from '../utils/config';
 import { clearDraft } from './useDraftStore';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
 import type { ClientConversationTurn } from '../types/dashboard';
-import type { QueuedMessage } from '../utils/chatUtils';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
-type SetPendingQueue = (updater: ((prev: QueuedMessage[]) => QueuedMessage[]) | QueuedMessage[]) => void;
 
 export interface UseSendMessageOptions {
     processId: string | null;
@@ -19,8 +17,6 @@ export interface UseSendMessageOptions {
     setError: (v: string | null) => void;
     setSessionExpired: (v: boolean) => void;
     setSuggestions: (v: string[]) => void;
-    pendingQueue: QueuedMessage[];
-    setPendingQueue: SetPendingQueue;
     setTurnsAndRef: SetTurnsAndRef;
     removeStreamingPlaceholder: () => void;
     refreshConversation: (pid: string) => Promise<void>;
@@ -51,8 +47,6 @@ export function useSendMessage({
     setError,
     setSessionExpired,
     setSuggestions,
-    pendingQueue,
-    setPendingQueue,
     setTurnsAndRef,
     removeStreamingPlaceholder,
     refreshConversation,
@@ -70,13 +64,11 @@ export function useSendMessage({
     setTask,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
-    flushQueueRef: React.MutableRefObject<(() => void) | null>;
     closeFollowUpStream: () => void;
     onSendComplete: () => void;
 } {
     const { archivedChatIds, unarchiveChat } = useChatPrefs();
     const followUpEventSourceRef = useRef<EventSource | null>(null);
-    const flushQueueRef = useRef<(() => void) | null>(null);
     const resolveCurrentSendRef = useRef<(() => void) | null>(null);
 
     const closeFollowUpStream = useCallback(() => {
@@ -101,7 +93,6 @@ export function useSendMessage({
         }
         return new Promise<void>(resolve => {
             resolveCurrentSendRef.current = resolve;
-            // Safety timeout in case 'done' never fires
             const timeout = setTimeout(() => {
                 if (resolveCurrentSendRef.current === resolve) {
                     resolveCurrentSendRef.current = null;
@@ -116,52 +107,8 @@ export function useSendMessage({
         });
     }, [refreshConversation]);
 
-    // Keep flushQueueRef in sync with current pendingQueue for stale-closure-safe drain
-    useEffect(() => {
-        flushQueueRef.current = () => {
-            if (pendingQueue.length === 0 || !processId) return;
-            // Server drains 'enqueue' messages; client only drains 'immediate' (steering)
-            const immediateMsg = pendingQueue.find(m => m.deliveryMode === 'immediate' && m.status !== 'sent-immediate');
-            if (!immediateMsg) return;
-            setPendingQueue(prev => prev.filter(m => m.id !== immediateMsg.id));
-            setSending(true);
-            queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
-            const timestamp = new Date().toISOString();
-            setTurnsAndRef(prev => {
-                const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
-                return [
-                    ...prev,
-                    { role: 'user' as const, content: immediateMsg.content, timestamp, timeline: [], turnIndex: nextIdx },
-                    { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1 },
-                ];
-            });
-            const drainedMsgId = immediateMsg.id;
-            fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: immediateMsg.content, mode: selectedModeRef.current, deliveryMode: immediateMsg.deliveryMode }),
-            })
-                .then(async (response) => {
-                    if (!response.ok) { removeStreamingPlaceholder(); return; }
-                    // Remove the consumed pending message from the server
-                    fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/pending-messages/${encodeURIComponent(drainedMsgId)}`, {
-                        method: 'DELETE',
-                    }).catch(() => {});
-                    await waitForSendCompletion(processId);
-                })
-                .catch(() => { removeStreamingPlaceholder(); })
-                .finally(() => {
-                    setSending(false);
-                    queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
-                    setPendingQueue(prev => prev.filter(m => m.status !== 'steering' && m.status !== 'sent-immediate'));
-                    setTimeout(() => { flushQueueRef.current?.(); }, 0);
-                });
-        };
-    }, [pendingQueue, processId]); // eslint-disable-line react-hooks/exhaustive-deps
-
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue') => {
         const userText = (overrideContent ?? followUpInputRef.current).trim();
-        // Compose the full content: user text + pasted content (if any)
         const pastedContent = getPastedContent?.() ?? null;
         const rawContent = pastedContent
             ? (userText ? userText + '\n\n' + pastedContent : pastedContent)
@@ -180,18 +127,14 @@ export function useSendMessage({
         slashCommands.dismissMenu();
         setError(null);
 
+        // ── While AI is running: route through /message, let server decide ──
         if (sending) {
-            const isImmediate = deliveryMode === 'immediate';
-            const qm: QueuedMessage = {
-                id: crypto.randomUUID(),
-                content: rawContent,
-                deliveryMode,
-                status: isImmediate ? 'sent-immediate' : 'pending-send',
-            };
-            setPendingQueue(prev => [...prev, qm]);
-
-            if (isImmediate) {
-                // Bug A fix: add optimistic user turn so it appears immediately
+            if (deliveryMode === 'immediate') {
+                // Immediate steer: add optimistic user turn so it appears in
+                // the conversation right away. The server will attempt to inject
+                // into the live session; if steering fails, the message is
+                // buffered as a pending message and the SSE event will surface it
+                // in the queued section.
                 const timestamp = new Date().toISOString();
                 setTurnsAndRef(prev => {
                     const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
@@ -200,40 +143,28 @@ export function useSendMessage({
                         { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx },
                     ];
                 });
-
-                // Steering messages must reach the server immediately to inject into the running session
-                fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        content: rawContent,
-                        images: images.length > 0 ? images : undefined,
-                        mode: selectedMode,
-                        deliveryMode,
-                        optimisticId: qm.id,
-                        ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
-                    }),
-                }).catch(() => {});
-            } else {
-                // Persist enqueued message on the server so it survives chat switches / refreshes.
-                // Server-side drain handles delivery — remove from local queue after persist.
-                fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/pending-messages`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: rawContent, mode: selectedMode }),
-                })
-                    .then(async (resp) => {
-                        if (!resp.ok) return;
-                        // Server now owns this message; remove from local drain queue
-                        setPendingQueue(prev => prev.filter(m => m.id !== qm.id));
-                    })
-                    .catch(() => {});
             }
+            // Both immediate and enqueue: fire POST to /message and let the
+            // server steer, buffer, or enqueue as appropriate.  No local
+            // pending queue entry — the server is the source of truth.
+            fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: rawContent,
+                    images: images.length > 0 ? images : undefined,
+                    mode: selectedMode,
+                    deliveryMode,
+                    ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
+                }),
+            }).catch(() => {});
+
             clearImages();
             clearPaste();
             return;
         }
 
+        // ── AI is idle: start a new streaming follow-up ──
         setSending(true);
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
 
@@ -288,11 +219,9 @@ export function useSendMessage({
         } finally {
             setSending(false);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
-            setPendingQueue(prev => prev.filter(m => m.status !== 'steering' && m.status !== 'sent-immediate'));
             void refreshConversation(processId);
-            setTimeout(() => { flushQueueRef.current?.(); }, 0);
         }
     }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return { sendFollowUp, flushQueueRef, closeFollowUpStream, onSendComplete };
+    return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

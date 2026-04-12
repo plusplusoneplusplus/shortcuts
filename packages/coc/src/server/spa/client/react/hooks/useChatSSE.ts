@@ -4,6 +4,7 @@ import type { ClientConversationTurn } from '../types/dashboard';
 import type { QueuedMessage } from '../utils/chatUtils';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
+type SetPendingQueue = (updater: ((prev: QueuedMessage[]) => QueuedMessage[]) | QueuedMessage[]) => void;
 
 /** Snapshot of active background tasks relayed from the SDK via SSE. */
 export interface BackgroundTasksState {
@@ -19,7 +20,7 @@ export interface UseChatSSEOptions {
     processId: string | null;
     setIsStreaming: (v: boolean) => void;
     setTask: (updater: (prev: any) => any) => void;
-    setPendingQueue: (updater: (prev: QueuedMessage[]) => QueuedMessage[]) => void;
+    setPendingQueue: SetPendingQueue;
     setSuggestions: (v: string[]) => void;
     setSessionTokenLimit: (v: number | undefined) => void;
     setSessionCurrentTokens: (v: number | undefined) => void;
@@ -135,22 +136,16 @@ export function useChatSSE({
         es.addEventListener('tool-complete', handleToolSSE('tool-complete'));
         es.addEventListener('tool-failed', handleToolSSE('tool-failed'));
 
-        es.addEventListener('message-queued', (event: Event) => {
-            try {
-                const { optimisticId } = JSON.parse((event as MessageEvent).data);
-                setPendingQueue(prev => prev.map(m => {
-                    if (m.id !== optimisticId) return m;
-                    if (m.status === 'sent-immediate') return m;
-                    return { ...m, status: 'queued' as const };
-                }));
-            } catch { /* ignore */ }
+        es.addEventListener('message-queued', (_event: Event) => {
+            // Acknowledged — the server has committed the user turn.
+            // No client-side queue reconciliation needed; pending follow-ups
+            // arrive via the 'pending-message-added' event instead.
         });
 
-        es.addEventListener('message-steering', (event: Event) => {
-            try {
-                const { optimisticId } = JSON.parse((event as MessageEvent).data);
-                setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'steering' as const } : m));
-            } catch { /* ignore */ }
+        es.addEventListener('message-steering', (_event: Event) => {
+            // Acknowledged — steering succeeded. The message content is being
+            // injected into the live session. No queue item to update since
+            // immediate-steer messages don't create local pending entries.
         });
 
         es.addEventListener('pending-message-added', (event: Event) => {
@@ -163,7 +158,6 @@ export function useChatSSE({
                         return [...prev, {
                             id: pendingMessage.id,
                             content: pendingMessage.content,
-                            deliveryMode: 'enqueue' as const,
                             status: 'queued' as const,
                         }];
                     });
@@ -182,7 +176,9 @@ export function useChatSSE({
             setBackgroundTasks(null);
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
             void refreshConversation(processId);
-            setPendingQueue(prev => prev.filter(m => m.status !== 'steering' && m.status !== 'sent-immediate'));
+            // Server drains one pending message on task completion; sync
+            // the queued section from the refreshed process data.
+            setPendingQueue([]);
             onSendComplete();
         };
 

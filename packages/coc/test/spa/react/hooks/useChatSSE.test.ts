@@ -253,89 +253,68 @@ describe('useChatSSE', () => {
         expect(result.status).toBe('completed');
     });
 
-    // ── Group 4: SSE event handling for steering ──
+    // ── Group 4: SSE event handling ──
 
-    describe('steering SSE events', () => {
-        it('SSE1: message-queued updates pendingQueue item status via optimisticId', () => {
+    describe('SSE queue events', () => {
+        it('SSE1: message-queued is acknowledged (no-op on pending queue)', () => {
             const setPendingQueue = vi.fn();
             renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
             act(() => {
-                MockEventSource.last._emit('message-queued', { optimisticId: 'opt-1' });
+                MockEventSource.last._emit('message-queued', { turnIndex: 2, deliveryMode: 'enqueue' });
+            });
+            // message-queued no longer touches pendingQueue
+            expect(setPendingQueue).not.toHaveBeenCalled();
+        });
+
+        it('SSE2: message-steering is acknowledged (no-op on pending queue)', () => {
+            const setPendingQueue = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
+            act(() => {
+                MockEventSource.last._emit('message-steering', { turnIndex: 2 });
+            });
+            // message-steering no longer touches pendingQueue
+            expect(setPendingQueue).not.toHaveBeenCalled();
+        });
+
+        it('SSE3: pending-message-added adds a server-confirmed queued item', () => {
+            const setPendingQueue = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
+            act(() => {
+                MockEventSource.last._emit('pending-message-added', {
+                    pendingMessage: { id: 'pm-1', content: 'queued msg', createdAt: '2024-01-01' },
+                });
             });
             expect(setPendingQueue).toHaveBeenCalled();
             const updater = setPendingQueue.mock.calls[0][0];
-            const result = updater([
-                { id: 'opt-1', content: 'msg', deliveryMode: 'immediate', status: 'pending-send' },
-                { id: 'opt-2', content: 'other', deliveryMode: 'enqueue', status: 'pending-send' },
-            ]);
-            expect(result[0].status).toBe('queued');
-            expect(result[1].status).toBe('pending-send');
+            const result = updater([]);
+            expect(result).toHaveLength(1);
+            expect(result[0]).toEqual({ id: 'pm-1', content: 'queued msg', status: 'queued' });
         });
 
-        it('SSE1b: message-queued does NOT downgrade sent-immediate to queued', () => {
+        it('SSE4: pending-message-added deduplicates by id', () => {
             const setPendingQueue = vi.fn();
             renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
             act(() => {
-                MockEventSource.last._emit('message-queued', { optimisticId: 'opt-1' });
+                MockEventSource.last._emit('pending-message-added', {
+                    pendingMessage: { id: 'pm-1', content: 'queued msg', createdAt: '2024-01-01' },
+                });
             });
             const updater = setPendingQueue.mock.calls[0][0];
-            const result = updater([
-                { id: 'opt-1', content: 'msg', deliveryMode: 'immediate', status: 'sent-immediate' },
-            ]);
-            expect(result[0].status).toBe('sent-immediate');
+            const existing = [{ id: 'pm-1', content: 'queued msg', status: 'queued' as const }];
+            const result = updater(existing);
+            expect(result).toHaveLength(1); // no duplicate added
         });
 
-        it('SSE2: message-steering updates pendingQueue item status via optimisticId', () => {
-            const setPendingQueue = vi.fn();
-            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
-            act(() => {
-                MockEventSource.last._emit('message-steering', { optimisticId: 'opt-1' });
-            });
-            expect(setPendingQueue).toHaveBeenCalled();
-            const updater = setPendingQueue.mock.calls[0][0];
-            const result = updater([
-                { id: 'opt-1', content: 'msg', deliveryMode: 'immediate', status: 'sent-immediate' },
-            ]);
-            expect(result[0].status).toBe('steering');
-        });
-
-        it('SSE3: done event filters out steering and sent-immediate items from pendingQueue', async () => {
+        it('SSE5: done event clears all pending queue items', async () => {
             const setPendingQueue = vi.fn();
             renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
             await act(async () => {
                 MockEventSource.last._emit('done', {});
             });
-            // Find the filter updater (not the one from SSE events)
-            const filterCall = setPendingQueue.mock.calls.find((call: any[]) => {
-                const fn = call[0];
-                if (typeof fn !== 'function') return false;
-                // Test that it filters out steering/sent-immediate
-                const testItems = [
-                    { id: '1', status: 'steering' },
-                    { id: '2', status: 'sent-immediate' },
-                    { id: '3', status: 'pending-send' },
-                ];
-                const result = fn(testItems);
-                return result.length === 1 && result[0].id === '3';
-            });
-            expect(filterCall).toBeDefined();
+            expect(setPendingQueue).toHaveBeenCalledWith([]);
         });
 
-        it('SSE4: message-steering without optimisticId is a no-op for matching', () => {
-            const setPendingQueue = vi.fn();
-            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
-            act(() => {
-                MockEventSource.last._emit('message-steering', {});
-            });
-            const updater = setPendingQueue.mock.calls[0][0];
-            const result = updater([
-                { id: 'opt-1', content: 'msg', deliveryMode: 'immediate', status: 'sent-immediate' },
-            ]);
-            // No match since optimisticId is undefined → item unchanged
-            expect(result[0].status).toBe('sent-immediate');
-        });
-
-        it('SSE5: onSendComplete is called on done event', async () => {
+        it('SSE6: onSendComplete is called on done event', async () => {
             const onSendComplete = vi.fn();
             renderHook(() => useChatSSE(makeOptions({ onSendComplete })));
             await act(async () => {

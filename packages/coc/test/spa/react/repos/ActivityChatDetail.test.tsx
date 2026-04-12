@@ -104,7 +104,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useSendMessage', () => ({
             sendFollowUp: mockState.sendFollowUp,
             closeFollowUpStream: mockState.closeFollowUpStream,
             onSendComplete: mockState.onSendComplete,
-            flushQueueRef: { current: null },
         };
     },
 }));

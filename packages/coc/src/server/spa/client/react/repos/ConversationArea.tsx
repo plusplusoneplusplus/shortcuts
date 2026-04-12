@@ -2,7 +2,7 @@ import { Spinner } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import { cn } from '../shared/cn';
-import { QueuedBubble } from './QueuedBubble';
+import { QueuedFollowUps } from './QueuedBubble';
 import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { QueuedMessage } from '../utils/chatUtils';
@@ -86,7 +86,7 @@ export function ConversationArea({
                                 <ConversationTurnBubble key={turn.turnIndex ?? i} turn={turn} taskId={taskId} wsId={wsId} />
                             ));
                         })()}
-                        {pendingQueue.map(msg => <QueuedBubble key={msg.id} msg={msg} />)}
+                        {pendingQueue.length > 0 && <QueuedFollowUps queue={pendingQueue} />}
                         {backgroundTasks && backgroundTasks.backgroundTotalActive > 0 && (
                             <BackgroundTasksIndicator backgroundTasks={backgroundTasks} />
                         )}

@@ -204,10 +204,17 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             setProcessDetails(data?.process || null);
             const refreshedTurns = getConversationTurns(data);
             setTurnsAndRef(refreshedTurns);
+            // Sync queued follow-ups from server state
+            const serverPending: any[] = data?.process?.pendingMessages ?? [];
+            setPendingQueue(serverPending.map((m: any) => ({
+                id: m.id,
+                content: m.content,
+                status: 'queued' as const,
+            })));
         } catch { /* keep current turns */ }
     }, [setTurnsAndRef]);
 
-    const { sendFollowUp, flushQueueRef, closeFollowUpStream, onSendComplete } = useSendMessage({
+    const { sendFollowUp, closeFollowUpStream, onSendComplete } = useSendMessage({
         processId,
         taskId,
         inputDisabled,
@@ -216,8 +223,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setError,
         setSessionExpired,
         setSuggestions,
-        pendingQueue,
-        setPendingQueue,
         setTurnsAndRef,
         removeStreamingPlaceholder,
         refreshConversation,
@@ -377,7 +382,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
                     setTask(loadedTask);
                     setTurnsAndRef(cached.turns);
-                    // Background-refresh metadata + restore pending messages
+                    // Background-refresh metadata
                     fetchApi(`/processes/${encodeURIComponent(pid)}`)
                         .then((data: any) => {
                             setProcessDetails(data?.process || null);
@@ -385,17 +390,13 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                             if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
                                 setSelectedMode(processMode);
                             }
-                            // Restore server-persisted pending messages
+                            // Sync queued follow-ups from server
                             const serverPending: any[] = data?.process?.pendingMessages ?? [];
-                            if (serverPending.length > 0) {
-                                setPendingQueue(serverPending.map((m: any) => ({
-                                    id: m.id,
-                                    content: m.content,
-                                    deliveryMode: 'enqueue' as const,
-                                    status: 'queued' as const,
-                                })));
-                                setTimeout(() => flushQueueRef.current?.(), 0);
-                            }
+                            setPendingQueue(serverPending.map((m: any) => ({
+                                id: m.id,
+                                content: m.content,
+                                status: 'queued' as const,
+                            })));
                         })
                         .catch(() => { /* metadata refresh is best-effort */ });
                 } else {
@@ -429,19 +430,13 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                         setTurnsAndRef(loadedTurns);
                     }
 
-                    // Restore server-persisted pending messages
+                    // Sync queued follow-ups from server
                     const serverPending: any[] = procData?.process?.pendingMessages ?? [];
-                    if (serverPending.length > 0) {
-                        setPendingQueue(serverPending.map((m: any) => ({
-                            id: m.id,
-                            content: m.content,
-                            deliveryMode: 'enqueue' as const,
-                            status: 'queued' as const,
-                        })));
-                        if (!sending) {
-                            setTimeout(() => flushQueueRef.current?.(), 0);
-                        }
-                    }
+                    setPendingQueue(serverPending.map((m: any) => ({
+                        id: m.id,
+                        content: m.content,
+                        status: 'queued' as const,
+                    })));
                 }
             } catch (err: any) {
                 if (loadCounterRef.current !== loadId) return;

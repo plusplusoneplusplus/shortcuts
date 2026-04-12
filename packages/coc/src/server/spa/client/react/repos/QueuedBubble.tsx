@@ -1,25 +1,34 @@
 import type { QueuedMessage } from '../utils/chatUtils';
 
-export function QueuedBubble({ msg }: { msg: QueuedMessage }) {
-    const icon =
-        msg.status === 'steering' ? '⚡' :
-        msg.status === 'queued'   ? '🕐' :
-        '…';
-    const label =
-        msg.status === 'steering' ? 'steering' :
-        msg.status === 'queued'   ? 'queued' :
-        'sending…';
+function QueuedItem({ msg }: { msg: QueuedMessage }) {
     return (
-        <div className="turn-bubble turn-bubble--optimistic" data-status={msg.status} style={{
-            opacity: msg.status === 'steering' ? 0.9 : 0.75,
-            borderLeft: `3px solid ${msg.status === 'steering' ? 'var(--color-warning, #e8912d)' : 'var(--color-accent-muted, #0078d4)'}`,
-            fontStyle: 'italic',
-            padding: '8px 12px',
-            borderRadius: '6px',
-        }}>
-            <span>{icon}</span>{' '}
-            <span>{msg.content}</span>{' '}
-            <span style={{ fontSize: '0.75em', color: 'var(--color-text-secondary, #848484)', marginLeft: '0.5em' }}>{label}</span>
+        <div
+            className="flex items-start gap-2 px-3 py-1.5 text-sm"
+            data-status={msg.status}
+        >
+            <span className="shrink-0 text-xs leading-5" aria-hidden>🕐</span>
+            <span className="text-[#1e1e1e] dark:text-[#cccccc] line-clamp-2 break-all">{msg.content}</span>
         </div>
     );
+}
+
+/** Compact queued-follow-ups section shown below conversation turns. */
+export function QueuedFollowUps({ queue }: { queue: QueuedMessage[] }) {
+    if (queue.length === 0) return null;
+    return (
+        <div
+            className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] mx-2 my-1"
+            data-testid="queued-followups"
+        >
+            <div className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-[#848484] border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                Queued follow-ups ({queue.length})
+            </div>
+            {queue.map(msg => <QueuedItem key={msg.id} msg={msg} />)}
+        </div>
+    );
+}
+
+/** @deprecated Use QueuedFollowUps instead */
+export function QueuedBubble({ msg }: { msg: QueuedMessage }) {
+    return <QueuedItem msg={msg} />;
 }

@@ -52,7 +52,7 @@ function ensureAssistantTurn(prev: MinimalTurn[]): MinimalTurn[] {
     return [...prev, { role: 'assistant', streaming: true, turnIndex: idx }];
 }
 
-/** Simulates sendFollowUp / flushQueueRef synthetic turn appending. */
+/** Simulates sendFollowUp synthetic turn appending. */
 function appendFollowUp(prev: MinimalTurn[], content?: string): MinimalTurn[] {
     const idx = nextTurnIndex(prev);
     return [
