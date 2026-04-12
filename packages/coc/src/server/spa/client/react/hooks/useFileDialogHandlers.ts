@@ -116,7 +116,7 @@ export function useFileDialogHandlers({ fileActions, refresh, addToast, onSearch
         setFileDialog(s => ({ ...s, submitting: true }));
         try {
             for (const p of fileDialog.ctxItem.paths) {
-                await fileActions.deleteFile(p);
+                await fileActions.deleteFile(p, fileDialog.ctxItem.taskRootPath);
             }
             refresh();
             closeFileDialog();

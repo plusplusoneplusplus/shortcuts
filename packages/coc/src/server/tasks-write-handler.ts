@@ -351,12 +351,24 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { path: itemPath } = body || {};
+            const { path: itemPath, folderPath: clientFolderPath } = body || {};
             if (!itemPath || typeof itemPath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+            // Resolve the task root: prefer client-supplied folderPath, fall back to primary root.
+            let tasksFolder: string;
+            if (clientFolderPath && typeof clientFolderPath === 'string') {
+                const settings = await readTasksSettings(dataDir, ws.id);
+                const allRoots = resolveAllTaskRoots({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }, settings.folderPaths);
+                const rootMatch = allRoots.find(r => path.resolve(r.absolutePath) === path.resolve(clientFolderPath));
+                if (!rootMatch) {
+                    return sendError(res, 403, 'Access denied: folderPath is not a configured task root');
+                }
+                tasksFolder = rootMatch.absolutePath;
+            } else {
+                tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+            }
             const resolvedPath = resolveAndValidatePath(tasksFolder, itemPath);
             if (!resolvedPath) {
                 return sendError(res, 403, 'Access denied: path is outside tasks folder');

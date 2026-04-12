@@ -14,7 +14,7 @@ export interface FolderActionsResult {
     unarchiveFolder: (folderPath: string, taskRootPath?: string) => Promise<void>;
     moveFolder:      (sourcePath: string, destinationFolder: string) => Promise<void>;
     moveFolderToWorkspace: (sourcePath: string, destinationWorkspaceId: string, destinationFolder: string) => Promise<void>;
-    deleteFolder:    (folderPath: string) => Promise<void>;
+    deleteFolder:    (folderPath: string, taskRootPath?: string) => Promise<void>;
 }
 
 async function apiFetch(method: string, url: string, body: object): Promise<void> {
@@ -66,8 +66,8 @@ export function useFolderActions(wsId: string, options?: FolderActionsOptions): 
         moveFolderToWorkspace: (sourcePath, destinationWorkspaceId, destinationFolder) =>
             apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder, destinationWorkspaceId }),
 
-        deleteFolder: (folderPath) =>
-            apiFetch('DELETE', base, { path: folderPath }),
+        deleteFolder: (folderPath, taskRootPath?) =>
+            apiFetch('DELETE', base, { path: folderPath, ...(taskRootPath ? { folderPath: taskRootPath } : {}) }),
     };
 }
 

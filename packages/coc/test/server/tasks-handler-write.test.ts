@@ -570,6 +570,89 @@ describe('Tasks Handler Write', () => {
     });
 
     // ========================================================================
+    // DELETE with secondary task root (folderPath)
+    // ========================================================================
+
+    describe('Delete with secondary task root (folderPath)', () => {
+        let secondaryDir: string;
+
+        function createSecondaryFiles(files: Record<string, string>): void {
+            for (const [filePath, content] of Object.entries(files)) {
+                const fullPath = path.join(secondaryDir, filePath);
+                fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+                fs.writeFileSync(fullPath, content, 'utf-8');
+            }
+        }
+
+        it('should delete a file from a secondary root when folderPath is provided', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            secondaryDir = path.join(workspaceDir, '.github', 'tasks');
+            fs.mkdirSync(secondaryDir, { recursive: true });
+            createSecondaryFiles({ 'my-task.md': '# Secondary Task' });
+            await writeTasksSettings(dataDir, wsId, { folderPaths: ['.github/tasks'] });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'DELETE', {
+                path: 'my-task.md',
+                folderPath: secondaryDir,
+            });
+            expect(res.status).toBe(204);
+            expect(fs.existsSync(path.join(secondaryDir, 'my-task.md'))).toBe(false);
+            // Primary root should be untouched
+            expect(fs.existsSync(path.join(tasksDir(), 'my-task.md'))).toBe(false);
+        });
+
+        it('should delete a folder recursively from a secondary root', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            secondaryDir = path.join(workspaceDir, '.github', 'tasks');
+            fs.mkdirSync(secondaryDir, { recursive: true });
+            createSecondaryFiles({
+                'folder/task1.md': '# Task 1',
+                'folder/task2.md': '# Task 2',
+            });
+            await writeTasksSettings(dataDir, wsId, { folderPaths: ['.github/tasks'] });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'DELETE', {
+                path: 'folder',
+                folderPath: secondaryDir,
+            });
+            expect(res.status).toBe(204);
+            expect(fs.existsSync(path.join(secondaryDir, 'folder'))).toBe(false);
+        });
+
+        it('should return 403 when folderPath is not a configured task root', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const bogusDir = path.join(workspaceDir, 'not-a-root');
+            fs.mkdirSync(bogusDir, { recursive: true });
+            fs.writeFileSync(path.join(bogusDir, 'task.md'), '# Bad', 'utf-8');
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'DELETE', {
+                path: 'task.md',
+                folderPath: bogusDir,
+            });
+            expect(res.status).toBe(403);
+            expect(res.body).toContain('not a configured task root');
+        });
+
+        it('should fall back to primary root when no folderPath is provided', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'primary-task.md': '# Primary Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'DELETE', {
+                path: 'primary-task.md',
+            });
+            expect(res.status).toBe(204);
+            expect(fs.existsSync(path.join(tasksDir(), 'primary-task.md'))).toBe(false);
+        });
+    });
+
+    // ========================================================================
     // POST /api/workspaces/:id/tasks/archive — Archive/Unarchive
     // ========================================================================
 

@@ -10,7 +10,7 @@ export interface FileActionsResult {
     renameFile:    (filePath: string, newName: string) => Promise<void>;
     archiveFile:   (filePath: string, taskRootPath?: string) => Promise<void>;
     unarchiveFile: (filePath: string, taskRootPath?: string) => Promise<void>;
-    deleteFile:    (filePath: string) => Promise<void>;
+    deleteFile:    (filePath: string, taskRootPath?: string) => Promise<void>;
     moveFile:      (sourcePath: string, destinationFolder: string) => Promise<void>;
     moveFileToWorkspace: (sourcePath: string, destinationWorkspaceId: string, destinationFolder: string) => Promise<void>;
     updateStatus:  (filePath: string, status: string) => Promise<void>;
@@ -48,8 +48,8 @@ export function useFileActions(wsId: string, options?: FileActionsOptions): File
         unarchiveFile: (filePath, taskRootPath?) =>
             apiFetch('POST', `${base}/archive`, { path: filePath, action: 'unarchive', ...(taskRootPath ? { folderPath: taskRootPath } : {}) }),
 
-        deleteFile: (filePath) =>
-            apiFetch('DELETE', base, { path: filePath }),
+        deleteFile: (filePath, taskRootPath?) =>
+            apiFetch('DELETE', base, { path: filePath, ...(taskRootPath ? { folderPath: taskRootPath } : {}) }),
 
         moveFile: (sourcePath, destinationFolder) =>
             apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder }),

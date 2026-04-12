@@ -114,7 +114,7 @@ export function useFolderDialogHandlers({ folderActions, fileActions, refresh, a
         if (!folderDialog.folder) return;
         setFolderDialog(s => ({ ...s, submitting: true }));
         try {
-            await folderActions.deleteFolder(folderDialog.folder.relativePath);
+            await folderActions.deleteFolder(folderDialog.folder.relativePath, folderDialog.folder.taskRootPath);
             refresh();
             closeFolderDialog();
         } catch (err: any) {
