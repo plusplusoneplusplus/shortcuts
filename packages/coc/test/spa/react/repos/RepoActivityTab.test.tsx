@@ -21,6 +21,7 @@ import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import { renderWithProviders } from '../test-utils';
 import { useQueue } from '../../../../src/server/spa/client/react/context/QueueContext';
+import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/queue-process-id';
 
 // ── Mock child components ──────────────────────────────────────────────
 
@@ -179,7 +180,7 @@ function makeRunningTask(id = 'task-r1', overrides: any = {}) {
 }
 
 function makeQueuedTask(id = 'task-q1', overrides: any = {}) {
-    return { id, type: 'chat', status: 'queued', displayName: `Queued ${id}`, ...overrides };
+    return { id, type: 'chat', status: 'queued', displayName: `Queued ${id}`, processId: toQueueProcessId(id), ...overrides };
 }
 
 function makeHistoryTask(id = 'task-h1', overrides: any = {}) {
@@ -213,7 +214,7 @@ function setupFetchMock(opts: {
         if (url.match(/\/processes\//)) {
             const processId = decodeURIComponent(url.split('/processes/')[1]?.split('?')[0] || '');
             const all = [...running, ...queued, ...history];
-            const found = all.find(t => t.id === processId);
+            const found = all.find(t => t.id === processId || t.processId === processId);
             if (found) return { process: found };
             throw new Error('not found');
         }
@@ -1078,7 +1079,8 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
     });
 
     it('refetches history when a completed task arrives in running (follow-up re-queue)', async () => {
-        const h1 = makeHistoryTask('h1');
+        const h1 = makeHistoryTask(toQueueProcessId('h1'));
+        const runningH1 = makeRunningTask('h1', { processId: h1.id });
         setupFetchMock({ history: [h1] });
         const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
 
@@ -1096,21 +1098,44 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
 
         // Reset to track new calls after mount
         mockFetchApi.mockClear();
-        setupFetchMock({ running: [{ ...h1, status: 'running' }], history: [] });
+        let resolveHistoryFetch: ((value: any) => void) | null = null;
+        mockFetchApi.mockImplementation(async (url: string, init?: any) => {
+            if (init?.method === 'POST') {
+                return {};
+            }
+            if (url.includes('/workspaces/') && url.includes('/history')) {
+                return await new Promise((resolve) => {
+                    resolveHistoryFetch = resolve;
+                });
+            }
+            if (url.match(/\/queue\?repoId=/)) {
+                return { running: [runningH1], queued: [], stats: { isPaused: false } };
+            }
+            return {};
+        });
 
         // Simulate WS push: h1 now appears in running (follow-up re-queued it)
         await act(async () => {
-            dispatchRef.current?.({ running: [{ ...h1, status: 'running' }], queued: [], stats: { isPaused: false } });
+            dispatchRef.current?.({ running: [runningH1], queued: [], stats: { isPaused: false } });
         });
+
+        const latestProps = mockListPane.mock.calls.at(-1)?.[0];
+        expect(latestProps?.running).toEqual([runningH1]);
+        expect(latestProps?.history).toEqual([]);
 
         // Should have refetched history because h1 arrived from history into running
         await waitFor(() => {
             expect(mockFetchApi).toHaveBeenCalledWith(expect.stringContaining('/workspaces/ws-1/history'));
         });
+
+        await act(async () => {
+            resolveHistoryFetch?.({ history: [], hasMore: false });
+        });
     });
 
     it('refetches history when a completed task arrives in queued (follow-up re-queue initial state)', async () => {
-        const h1 = makeHistoryTask('h1');
+        const h1 = makeHistoryTask(toQueueProcessId('h1'));
+        const queuedH1 = makeQueuedTask('h1', { processId: h1.id });
         setupFetchMock({ history: [h1] });
         const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
 
@@ -1128,11 +1153,11 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
 
         // Reset to track new calls after mount
         mockFetchApi.mockClear();
-        setupFetchMock({ queued: [{ ...h1, status: 'queued' }], history: [] });
+        setupFetchMock({ queued: [queuedH1], history: [] });
 
         // Simulate WS push: h1 appears in queued (not yet running)
         await act(async () => {
-            dispatchRef.current?.({ running: [], queued: [{ ...h1, status: 'queued' }], stats: { isPaused: false } });
+            dispatchRef.current?.({ running: [], queued: [queuedH1], stats: { isPaused: false } });
         });
 
         // Should have refetched history because h1 arrived from history into queued

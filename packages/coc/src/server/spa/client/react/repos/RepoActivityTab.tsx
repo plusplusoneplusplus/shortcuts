@@ -26,6 +26,10 @@ export interface RepoActivityTabProps {
     workspaceId: string;
 }
 
+function getActiveProcessIds(tasks: any[]): string[] {
+    return tasks.map((task: any) => task.processId ?? toQueueProcessId(task.id));
+}
+
 export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
@@ -122,7 +126,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         fetchQueue();
     }, [workspaceId, fetchQueue]);
 
-    // Track active (running + queued) task IDs to detect departures and arrivals
+    // Track active (running + queued) process IDs to detect departures and arrivals
     const prevActiveIdsRef = useRef<string[]>([]);
 
     // Apply per-repo WS updates
@@ -131,15 +135,22 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         setRunning(repoQueue.running);
         setQueued(repoQueue.queued);
 
-        // Detect task departures or arrivals and refetch history.
-        // Departure: a previously-active ID disappeared (task completed/failed).
-        // Arrival: a new active ID exists in our local history (follow-up re-queue).
-        const currIds = [
-            ...repoQueue.running.map((t: any) => t.id),
-            ...repoQueue.queued.map((t: any) => t.id),
+        const activeProcessIds = [
+            ...getActiveProcessIds(repoQueue.running),
+            ...getActiveProcessIds(repoQueue.queued),
         ];
+        const activeProcessIdSet = new Set(activeProcessIds);
+        setHistory(prev => {
+            const next = prev.filter((task: any) => !activeProcessIdSet.has(task.id));
+            return next.length === prev.length ? prev : next;
+        });
+
+        // Detect task departures or arrivals and refetch history.
+        // Departure: a previously-active process disappeared (task completed/failed).
+        // Arrival: a process already in local history became active again (follow-up re-queue).
+        const currIds = activeProcessIds;
         const prevIds = prevActiveIdsRef.current;
-        const hasDeparture = prevIds.some(id => !currIds.includes(id));
+        const hasDeparture = prevIds.some(id => !activeProcessIdSet.has(id));
         const historyIds = new Set(history.map((t: any) => t.id));
         const hasArrivalFromHistory = currIds.some(id => !prevIds.includes(id) && historyIds.has(id));
         prevActiveIdsRef.current = currIds;
@@ -156,7 +167,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             setIsAutopilotPaused(repoQueue.stats.isAutopilotPaused);
         }
         setLoading(false);
-    }, [repoQueue, workspaceId]);
+    }, [repoQueue, history, fetchHistory]);
 
     // Clear selection if the selected task is no longer reachable.
     // Tasks from deep-links may not appear in the paginated history list,
