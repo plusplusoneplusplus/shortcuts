@@ -89,7 +89,7 @@ export function registerDbBrowserRoutes(routes: Route[], store: ProcessStore): v
                 // Parse sort params
                 const sortColumn = parsed.query.sort as string | undefined;
                 const sortOrderRaw = (parsed.query.order as string || '').toLowerCase();
-                const sortOrder = sortOrderRaw === 'desc' ? 'DESC' : 'ASC';
+                const sortOrder = sortOrderRaw === 'asc' ? 'ASC' : 'DESC';
                 const hasValidSort = sortColumn !== undefined && sortColumn !== '' && columnNames.has(sortColumn);
 
                 // Row count

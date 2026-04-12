@@ -144,9 +144,9 @@ export function DbBrowserSection() {
     const handleSort = (colName: string) => {
         if (sortColumn !== colName) {
             setSortColumn(colName);
-            setSortOrder('asc');
-        } else if (sortOrder === 'asc') {
             setSortOrder('desc');
+        } else if (sortOrder === 'desc') {
+            setSortOrder('asc');
         } else {
             setSortColumn(null);
             setSortOrder(null);

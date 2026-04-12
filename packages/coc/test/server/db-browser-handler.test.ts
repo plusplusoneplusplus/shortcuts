@@ -261,7 +261,7 @@ describe('DB Browser Handler', () => {
             expect(ids).toEqual(sorted);
         });
 
-        it('should default to ascending when order param is missing', async () => {
+        it('should default to descending when order param is missing', async () => {
             const srv = await startSqliteServer();
 
             await sqliteStore!.registerWorkspace({ id: 'ws-b', name: 'Bravo', rootPath: '/tmp/b' });
@@ -272,7 +272,7 @@ describe('DB Browser Handler', () => {
 
             const body = JSON.parse(res.body);
             const ids = body.rows.map((r: any) => r.id);
-            const sorted = [...ids].sort();
+            const sorted = [...ids].sort().reverse();
             expect(ids).toEqual(sorted);
         });
 
@@ -301,7 +301,7 @@ describe('DB Browser Handler', () => {
             expect(Array.isArray(body.rows)).toBe(true);
         });
 
-        it('should treat invalid order value as ascending', async () => {
+        it('should treat invalid order value as descending', async () => {
             const srv = await startSqliteServer();
 
             await sqliteStore!.registerWorkspace({ id: 'ws-b', name: 'Bravo', rootPath: '/tmp/b' });
@@ -312,7 +312,7 @@ describe('DB Browser Handler', () => {
 
             const body = JSON.parse(res.body);
             const ids = body.rows.map((r: any) => r.id);
-            const sorted = [...ids].sort();
+            const sorted = [...ids].sort().reverse();
             expect(ids).toEqual(sorted);
         });
 
