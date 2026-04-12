@@ -1,7 +1,7 @@
 /**
  * DB Browser Handler Tests
  *
- * Tests for the database browser admin API endpoints (read + edit).
+ * Tests for the database browser admin API endpoints (read + edit + delete).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -452,6 +452,197 @@ describe('DB Browser Handler', () => {
                 updates: {},
             });
             expect(res.status).toBe(400);
+        });
+    });
+
+    // ── DELETE /api/admin/db/tables/:name/rows ─────────────────────────
+
+    describe('DELETE /api/admin/db/tables/:name/rows', () => {
+        function seedTestTable(store: SqliteProcessStore): void {
+            const db = store.getDatabase();
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS test_items (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    status TEXT DEFAULT 'draft',
+                    score INTEGER DEFAULT 0
+                )
+            `);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(1, 'Alpha', 'active', 10);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(2, 'Bravo', 'draft', 20);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(3, 'Charlie', 'active', 30);
+        }
+
+        function deleteRows(url: string, tableName: string, body: object) {
+            const bodyStr = JSON.stringify(body);
+            return request(`${url}/api/admin/db/tables/${tableName}/rows`, {
+                method: 'DELETE',
+                body: bodyStr,
+                headers: { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(bodyStr)) },
+            });
+        }
+
+        it('should delete a row by PK and return deleted count', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await deleteRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+            });
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.deleted).toBe(1);
+        });
+
+        it('should verify row is actually removed from table after delete', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            // Delete row with id=2
+            const res = await deleteRows(srv.url, 'test_items', {
+                pkColumns: { id: 2 },
+            });
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).deleted).toBe(1);
+
+            // Verify row is gone by fetching table data
+            const tableRes = await request(`${srv.url}/api/admin/db/tables/test_items`);
+            expect(tableRes.status).toBe(200);
+            const tableBody = JSON.parse(tableRes.body);
+            const ids = tableBody.rows.map((r: any) => r.id);
+            expect(ids).not.toContain(2);
+            expect(ids).toContain(1);
+            expect(ids).toContain(3);
+        });
+
+        it('should return 404 when PK values do not match any row', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await deleteRows(srv.url, 'test_items', {
+                pkColumns: { id: 999 },
+            });
+            expect(res.status).toBe(404);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/not found/i);
+        });
+
+        it('should return 400 when pkColumns references a non-PK column', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await deleteRows(srv.url, 'test_items', {
+                pkColumns: { name: 'Alpha' },
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/not a primary key/i);
+        });
+
+        it('should return 400 when body is missing pkColumns', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await deleteRows(srv.url, 'test_items', {});
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/pkColumns/i);
+        });
+
+        it('should return 400 for invalid table name', async () => {
+            const srv = await startSqliteServer();
+
+            // Route regex rejects names with invalid chars → 404 from router
+            const res = await deleteRows(srv.url, 'DROP%20TABLE', {
+                pkColumns: { id: 1 },
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 501 for non-SQLite store', async () => {
+            const srv = await startFileServer();
+
+            const res = await deleteRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+            });
+            expect(res.status).toBe(501);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('SQLite');
+        });
+
+        it('should return 404 on second delete of same row', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            // First delete succeeds
+            const res1 = await deleteRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+            });
+            expect(res1.status).toBe(200);
+            expect(JSON.parse(res1.body).deleted).toBe(1);
+
+            // Second delete returns 404
+            const res2 = await deleteRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+            });
+            expect(res2.status).toBe(404);
+
+            const body = JSON.parse(res2.body);
+            expect(body.error).toMatch(/not found/i);
+        });
+
+        it('should handle composite primary keys', async () => {
+            const srv = await startSqliteServer();
+            const db = sqliteStore!.getDatabase();
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS composite_pk_del (
+                    org TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    role TEXT DEFAULT 'member',
+                    PRIMARY KEY (org, user_id)
+                )
+            `);
+            db.prepare('INSERT INTO composite_pk_del (org, user_id, role) VALUES (?, ?, ?)').run('acme', 'u1', 'member');
+            db.prepare('INSERT INTO composite_pk_del (org, user_id, role) VALUES (?, ?, ?)').run('acme', 'u2', 'admin');
+
+            const res = await deleteRows(srv.url, 'composite_pk_del', {
+                pkColumns: { org: 'acme', user_id: 'u1' },
+            });
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).deleted).toBe(1);
+
+            // Verify only u1 was deleted
+            const tableRes = await request(`${srv.url}/api/admin/db/tables/composite_pk_del`);
+            const tableBody = JSON.parse(tableRes.body);
+            expect(tableBody.rows.length).toBe(1);
+            expect(tableBody.rows[0].user_id).toBe('u2');
+        });
+
+        it('should return 400 when pkColumns is an empty object', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await deleteRows(srv.url, 'test_items', {
+                pkColumns: {},
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 400 for non-existent table', async () => {
+            const srv = await startSqliteServer();
+
+            const res = await deleteRows(srv.url, 'totally_fake_table', {
+                pkColumns: { id: 1 },
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/not found/i);
         });
     });
 

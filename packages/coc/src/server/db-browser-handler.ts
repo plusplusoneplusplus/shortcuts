@@ -1,7 +1,7 @@
 /**
  * DB Browser Handler — admin endpoints for inspecting and mutating the SQLite database.
  *
- * Exposes table list with row counts, paginated table data, and row editing.
+ * Exposes table list with row counts, paginated table data, row editing, and row deletion.
  * Only works when the process store is SQLite-backed.
  */
 
@@ -16,6 +16,50 @@ import { handleAPIError, badRequest } from './errors';
 /** Validates that a table name is a safe SQL identifier (letters, digits, underscores). */
 function isValidIdentifier(name: string): boolean {
     return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
+}
+
+/** Column metadata from PRAGMA table_info. */
+interface ColumnInfo {
+    cid: number; name: string; type: string; notnull: number; dflt_value: unknown; pk: number;
+}
+
+/** Validates the table exists and returns column metadata + PK column names. */
+function validateTableAndGetMeta(db: any, tableName: string): { columns: ColumnInfo[]; columnNames: Set<string>; pkColumnNames: Set<string> } {
+    if (!tableName || !isValidIdentifier(tableName)) {
+        throw badRequest(`Invalid table name: ${tableName}`);
+    }
+
+    const tableExists = db.prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`
+    ).get(tableName) as { name: string } | undefined;
+
+    if (!tableExists) {
+        throw badRequest(`Table not found: ${tableName}`);
+    }
+
+    const columns = db.prepare(`PRAGMA table_info("${tableName}")`).all() as ColumnInfo[];
+    const columnNames = new Set(columns.map(c => c.name));
+    const pkColumnNames = new Set(columns.filter(c => c.pk > 0).map(c => c.name));
+
+    return { columns, columnNames, pkColumnNames };
+}
+
+/** Validates that all keys in the provided object are actual PK columns. */
+function validatePkColumns(pkColumnNames: Set<string>, providedPk: Record<string, unknown>): void {
+    for (const key of Object.keys(providedPk)) {
+        if (!pkColumnNames.has(key)) {
+            throw badRequest(`Column "${key}" is not a primary key column`);
+        }
+    }
+}
+
+/** Validates that all provided column names exist in the table. */
+function validateColumnNames(columnNames: Set<string>, providedNames: string[], tableName: string): void {
+    for (const key of providedNames) {
+        if (!columnNames.has(key)) {
+            throw badRequest(`Column "${key}" does not exist in table "${tableName}"`);
+        }
+    }
 }
 
 export function registerDbBrowserRoutes(routes: Route[], store: ProcessStore): void {
@@ -59,32 +103,14 @@ export function registerDbBrowserRoutes(routes: Route[], store: ProcessStore): v
                 }
 
                 const tableName = decodeURIComponent(match![1]);
-                if (!tableName || !isValidIdentifier(tableName)) {
-                    throw badRequest(`Invalid table name: ${tableName}`);
-                }
-
                 const db = store.getDatabase();
-
-                // Verify table exists
-                const tableExists = db.prepare(
-                    `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`
-                ).get(tableName) as { name: string } | undefined;
-
-                if (!tableExists) {
-                    throw badRequest(`Table not found: ${tableName}`);
-                }
+                const { columns, columnNames } = validateTableAndGetMeta(db, tableName);
 
                 // Parse pagination params
                 const parsed = url.parse(req.url || '/', true);
                 const page = Math.max(1, parseInt(parsed.query.page as string, 10) || 1);
                 const pageSize = Math.min(200, Math.max(1, parseInt(parsed.query.pageSize as string, 10) || 50));
                 const offset = (page - 1) * pageSize;
-
-                // Column metadata
-                const columns = db.prepare(`PRAGMA table_info("${tableName}")`).all() as {
-                    cid: number; name: string; type: string; notnull: number; dflt_value: unknown; pk: number;
-                }[];
-                const columnNames = new Set(columns.map(c => c.name));
 
                 // Parse sort params
                 const sortColumn = parsed.query.sort as string | undefined;
@@ -127,20 +153,8 @@ export function registerDbBrowserRoutes(routes: Route[], store: ProcessStore): v
                 }
 
                 const tableName = decodeURIComponent(match![1]);
-                if (!tableName || !isValidIdentifier(tableName)) {
-                    throw badRequest(`Invalid table name: ${tableName}`);
-                }
-
                 const db = store.getDatabase();
-
-                // Verify table exists
-                const tableExists = db.prepare(
-                    `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`
-                ).get(tableName) as { name: string } | undefined;
-
-                if (!tableExists) {
-                    throw badRequest(`Table not found: ${tableName}`);
-                }
+                const { columnNames, pkColumnNames } = validateTableAndGetMeta(db, tableName);
 
                 // Parse request body
                 let body: any;
@@ -159,26 +173,8 @@ export function registerDbBrowserRoutes(routes: Route[], store: ProcessStore): v
                     throw badRequest('Missing or invalid updates: must be a non-empty object');
                 }
 
-                // Get column metadata
-                const columns = db.prepare(`PRAGMA table_info("${tableName}")`).all() as {
-                    cid: number; name: string; type: string; notnull: number; dflt_value: unknown; pk: number;
-                }[];
-                const columnNames = new Set(columns.map(c => c.name));
-                const pkColumnNames = new Set(columns.filter(c => c.pk > 0).map(c => c.name));
-
-                // Validate pkColumns are actual PK columns
-                for (const key of Object.keys(pkColumns)) {
-                    if (!pkColumnNames.has(key)) {
-                        throw badRequest(`Column "${key}" is not a primary key column`);
-                    }
-                }
-
-                // Validate updates reference valid columns
-                for (const key of Object.keys(updates)) {
-                    if (!columnNames.has(key)) {
-                        throw badRequest(`Column "${key}" does not exist in table "${tableName}"`);
-                    }
-                }
+                validatePkColumns(pkColumnNames, pkColumns);
+                validateColumnNames(columnNames, Object.keys(updates), tableName);
 
                 // Reject updates to PK columns
                 for (const key of Object.keys(updates)) {
@@ -208,6 +204,56 @@ export function registerDbBrowserRoutes(routes: Route[], store: ProcessStore): v
                 ).get(...fetchParams);
 
                 sendJSON(res, 200, { row, changes: result.changes });
+            } catch (err) {
+                handleAPIError(res, err);
+            }
+        },
+    });
+
+    // ── DELETE /api/admin/db/tables/:name/rows ──────────────────────────
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/admin\/db\/tables\/([a-zA-Z_][a-zA-Z0-9_]*)\/rows$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            try {
+                if (!(store instanceof SqliteProcessStore)) {
+                    sendJSON(res, 501, { error: 'Database browser is only available with the SQLite store backend.' });
+                    return;
+                }
+
+                const tableName = decodeURIComponent(match![1]);
+                const db = store.getDatabase();
+                const { pkColumnNames } = validateTableAndGetMeta(db, tableName);
+
+                // Parse request body
+                let body: any;
+                try {
+                    body = await parseBody(req);
+                } catch {
+                    throw badRequest('Invalid JSON body');
+                }
+
+                const { pkColumns } = body || {};
+
+                if (!pkColumns || typeof pkColumns !== 'object' || Array.isArray(pkColumns) || Object.keys(pkColumns).length === 0) {
+                    throw badRequest('Missing or invalid pkColumns: must be a non-empty object');
+                }
+
+                validatePkColumns(pkColumnNames, pkColumns);
+
+                // Build parameterized DELETE statement
+                const whereClauses = Object.keys(pkColumns).map(col => `"${col}" = ?`);
+                const params = Object.values(pkColumns);
+
+                const sql = `DELETE FROM "${tableName}" WHERE ${whereClauses.join(' AND ')}`;
+                const result = db.prepare(sql).run(...params);
+
+                if (result.changes === 0) {
+                    sendJSON(res, 404, { error: 'Row not found' });
+                    return;
+                }
+
+                sendJSON(res, 200, { deleted: result.changes });
             } catch (err) {
                 handleAPIError(res, err);
             }
