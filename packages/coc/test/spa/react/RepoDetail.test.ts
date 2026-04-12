@@ -40,7 +40,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'work-items', 'git', 'pull-requests', 'workflows', 'schedules', 'explorer', 'tasks', 'settings', 'wiki']);
+        expect(keys).toEqual(['chats', 'work-items', 'schedules', 'explorer', 'workflows', 'git', 'pull-requests', 'tasks', 'settings', 'wiki']);
     });
 
     it('includes "wiki" entry', () => {
@@ -48,8 +48,8 @@ describe('RepoDetail SUB_TABS', () => {
         expect(wikiTab).toBeDefined();
     });
 
-    it('has git as the third tab (after work-items)', () => {
-        expect(SUB_TABS[2].key).toBe('git');
+    it('has jobs as the third tab (after work-items)', () => {
+        expect(SUB_TABS[2].key).toBe('schedules');
     });
 
     it('chats is the first entry', () => {
@@ -74,7 +74,7 @@ describe('RepoDetail BASE_VISIBLE_SUB_TABS', () => {
 
     it('contains all non-wiki tabs in order', () => {
         const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'work-items', 'git', 'pull-requests', 'workflows', 'schedules', 'explorer', 'tasks', 'settings']);
+        expect(keys).toEqual(['chats', 'work-items', 'schedules', 'explorer', 'workflows', 'git', 'pull-requests', 'tasks', 'settings']);
     });
 
     it('renders visibleSubTabs.map in the tab strip', () => {
