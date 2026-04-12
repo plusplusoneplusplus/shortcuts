@@ -412,6 +412,38 @@ describe('useUnseenActivity', () => {
         expect(r2.current.unseenProcessIds.has('a')).toBe(true);
     });
 
+    it('does NOT auto-mark when task completes while selected (running → history)', async () => {
+        // Start with task selected but not in history (it's running).
+        // Use non-empty seen map so first-visit seeding doesn't fire.
+        mockFetchSeenMap.mockResolvedValue({ other: '2026-01-01T00:00:00Z' });
+        const { result, rerender } = renderHook(
+            ({ h, sel }) => useUnseenActivity('ws1', h, sel),
+            { initialProps: { h: [] as any[], sel: 'a' } },
+        );
+        await waitFor(() => expect(result.current.unseenCount).toBe(0));
+
+        // Task completes — appears in history while still selected
+        const completed = makeTasks('a');
+        rerender({ h: completed, sel: 'a' });
+
+        // Should remain unseen (not auto-marked)
+        expect(result.current.unseenProcessIds.has('a')).toBe(true);
+    });
+
+    it('auto-marks when user navigates to an already-completed task', async () => {
+        const history = makeTasks('a', 'b');
+        mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
+        const { result, rerender } = renderHook(
+            ({ sel }) => useUnseenActivity('ws1', history, sel),
+            { initialProps: { sel: null as string | null } },
+        );
+        await waitFor(() => expect(result.current.unseenProcessIds.has('b')).toBe(true));
+
+        // User clicks task 'b' → selectedTaskId changes → auto-mark fires
+        rerender({ sel: 'b' });
+        await waitFor(() => expect(result.current.unseenProcessIds.has('b')).toBe(false));
+    });
+
     describe('localStorage migration', () => {
         it('migrates localStorage data to server on first load', async () => {
             const history = makeTasks('a', 'b');

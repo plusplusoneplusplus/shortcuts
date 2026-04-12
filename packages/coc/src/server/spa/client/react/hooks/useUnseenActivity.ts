@@ -46,6 +46,7 @@ export function useUnseenActivity(
     const [seenMap, setSeenMap] = useState<Record<string, string>>({});
     const initializedRef = useRef(false);
     const seededRef = useRef(false);
+    const prevSelectedRef = useRef<string | null>(null);
 
     // Debounce batch for patchSeenState calls
     const pendingEntriesRef = useRef<Array<{ processId: string; seenAt: string }>>([]);
@@ -144,9 +145,16 @@ export function useUnseenActivity(
         }
     }, [history, seenMap, workspaceId]);
 
-    // Auto-mark currently selected task as seen when it appears in history.
+    // Auto-mark currently selected task as seen when user navigates to it.
+    // Guard: skip when only history changed (e.g. running → completed transition).
     useEffect(() => {
-        if (!selectedTaskId || !initializedRef.current) return;
+        if (!selectedTaskId || !initializedRef.current) {
+            prevSelectedRef.current = selectedTaskId;
+            return;
+        }
+        if (prevSelectedRef.current === selectedTaskId) return;
+        prevSelectedRef.current = selectedTaskId;
+
         const task = history.find(t => t.id === selectedTaskId);
         const completedAt = task ? getTaskCompletedAtIso(task) : undefined;
         if (completedAt) {
