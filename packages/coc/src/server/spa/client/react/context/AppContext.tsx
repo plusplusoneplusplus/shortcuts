@@ -72,6 +72,10 @@ export interface AppContextState {
     activeMemorySubTab: MemorySubTab;
     activeSkillsSubTab: SkillsSubTab;
     activeAdminSubTab: AdminSubTab;
+    adminDbTable: string | null;
+    adminDbPage: number;
+    adminDbSort: string | null;
+    adminDbOrder: 'asc' | 'desc' | null;
     /** Per-repo remembered sub-tab (in-memory only, resets on page refresh). */
     repoTabState: Record<string, RepoSubTab>;
     /** Per-wiki remembered project tab (in-memory only, resets on page refresh). */
@@ -126,6 +130,10 @@ const initialState: AppContextState = {
     activeMemorySubTab: 'config',
     activeSkillsSubTab: 'installed',
     activeAdminSubTab: 'settings',
+    adminDbTable: null,
+    adminDbPage: 1,
+    adminDbSort: null,
+    adminDbOrder: null,
     repoTabState: {},
     wikiTabState: {},
     repoSubTabNavState: {},
@@ -193,6 +201,7 @@ export type AppAction =
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
     | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
     | { type: 'SET_ADMIN_SUB_TAB'; tab: AdminSubTab }
+    | { type: 'SET_ADMIN_DB_DEEP_LINK'; table: string | null; page: number; sort: string | null; order: 'asc' | 'desc' | null }
     | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string }
     | { type: 'SET_SELECTED_PR'; prId: number | string }
     | { type: 'SET_PR_DETAIL_TAB'; tab: PrDetailTab }
@@ -423,6 +432,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, activeSkillsSubTab: action.tab };
         case 'SET_ADMIN_SUB_TAB':
             return { ...state, activeAdminSubTab: action.tab };
+        case 'SET_ADMIN_DB_DEEP_LINK':
+            return { ...state, adminDbTable: action.table, adminDbPage: action.page, adminDbSort: action.sort, adminDbOrder: action.order };
         case 'SET_WIKI_TAB':
             return { ...state, wikiTabState: { ...state.wikiTabState, [action.wikiId]: action.tab } };
         case 'SET_SELECTED_PR':

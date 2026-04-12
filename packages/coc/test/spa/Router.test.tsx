@@ -15,6 +15,10 @@ import {
     parseGitCommitDeepLink,
     parseSettingsSection,
     VALID_REPO_SUB_TABS,
+    parseAdminSubTab,
+    VALID_ADMIN_SUB_TABS,
+    parseAdminDatabaseDeepLink,
+    buildDbBrowserHash,
 } from '../../src/server/spa/client/react/layout/Router';
 
 // ── tabFromHash ───────────────────────────────────────────────────────────────
@@ -191,5 +195,55 @@ describe('VALID_REPO_SUB_TABS', () => {
     it('does not include removed tabs', () => {
         expect(VALID_REPO_SUB_TABS.has('info')).toBe(false);
         expect(VALID_REPO_SUB_TABS.has('copilot')).toBe(false);
+    });
+});
+
+// ── VALID_ADMIN_SUB_TABS includes database ────────────────────────────────────
+
+describe('VALID_ADMIN_SUB_TABS', () => {
+    it('includes database', () => {
+        expect(VALID_ADMIN_SUB_TABS.has('database')).toBe(true);
+    });
+});
+
+// ── parseAdminSubTab ──────────────────────────────────────────────────────────
+
+describe('parseAdminSubTab', () => {
+    it('returns "database" for #admin/database', () => {
+        expect(parseAdminSubTab('#admin/database')).toBe('database');
+    });
+});
+
+// ── parseAdminDatabaseDeepLink ────────────────────────────────────────────────
+
+describe('parseAdminDatabaseDeepLink', () => {
+    it('parses table from #admin/database/processes', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/processes');
+        expect(r.table).toBe('processes');
+        expect(r.page).toBe(1);
+    });
+
+    it('parses full deep-link with all params', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/processes?page=2&sort=created_at&order=desc');
+        expect(r).toEqual({ table: 'processes', page: 2, sort: 'created_at', order: 'desc' });
+    });
+
+    it('returns defaults for non-database hash', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/settings');
+        expect(r).toEqual({ table: null, page: 1, sort: null, order: null });
+    });
+});
+
+// ── buildDbBrowserHash ────────────────────────────────────────────────────────
+
+describe('buildDbBrowserHash', () => {
+    it('builds hash with table only', () => {
+        expect(buildDbBrowserHash('processes', 1, null, null)).toBe('admin/database/processes');
+    });
+
+    it('roundtrips with parseAdminDatabaseDeepLink', () => {
+        const hash = buildDbBrowserHash('processes', 3, 'id', 'asc');
+        const parsed = parseAdminDatabaseDeepLink('#' + hash);
+        expect(parsed).toEqual({ table: 'processes', page: 3, sort: 'id', order: 'asc' });
     });
 });

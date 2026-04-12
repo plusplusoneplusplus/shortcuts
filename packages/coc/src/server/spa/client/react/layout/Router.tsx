@@ -246,13 +246,52 @@ export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
     : Object.fromEntries(Object.entries(ALL_REPO_TAB_SHORTCUTS).filter(([, v]) => v !== 'wiki'));
 
 
-export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts']);
+export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database']);
 
 export function parseAdminSubTab(hash: string): AdminSubTab | null {
     const parts = hash.replace(/^#/, '').split('/');
     if (parts[0] !== 'admin') return null;
     if (parts.length >= 2 && VALID_ADMIN_SUB_TABS.has(parts[1])) return parts[1] as AdminSubTab;
     return null;
+}
+
+export interface AdminDatabaseDeepLink {
+    table: string | null;
+    page: number;
+    sort: string | null;
+    order: 'asc' | 'desc' | null;
+}
+
+export function parseAdminDatabaseDeepLink(hash: string): AdminDatabaseDeepLink {
+    const defaults: AdminDatabaseDeepLink = { table: null, page: 1, sort: null, order: null };
+    const cleaned = hash.replace(/^#/, '');
+    // Split query string from path
+    const [pathPart, queryPart] = cleaned.split('?');
+    const parts = pathPart.split('/');
+    if (parts[0] !== 'admin' || parts[1] !== 'database') return defaults;
+    const table = parts[2] ? decodeURIComponent(parts[2]) : null;
+    if (!table) return defaults;
+
+    const params = new URLSearchParams(queryPart || '');
+    const pageStr = params.get('page');
+    const page = pageStr ? Math.max(1, parseInt(pageStr, 10) || 1) : 1;
+    const sort = params.get('sort') ? decodeURIComponent(params.get('sort')!) : null;
+    const rawOrder = params.get('order');
+    const order: 'asc' | 'desc' | null = rawOrder === 'asc' || rawOrder === 'desc' ? rawOrder : null;
+
+    return { table, page, sort, order };
+}
+
+export function buildDbBrowserHash(table: string | null, page: number, sort: string | null, order: 'asc' | 'desc' | null): string {
+    if (!table) return 'admin/database';
+    const params = new URLSearchParams();
+    if (page > 1) params.set('page', String(page));
+    if (sort && order) {
+        params.set('sort', sort);
+        params.set('order', order);
+    }
+    const qs = params.toString();
+    return `admin/database/${encodeURIComponent(table)}${qs ? '?' + qs : ''}`;
 }
 
 export function Router() {
@@ -495,6 +534,11 @@ export function Router() {
             if (tab === 'admin') {
                 const subTab = parseAdminSubTab('#' + hash);
                 dispatch({ type: 'SET_ADMIN_SUB_TAB', tab: subTab ?? 'settings' });
+                // Parse database deep-link: #admin/database/{table}?page=N&sort=col&order=asc|desc
+                if (subTab === 'database') {
+                    const dbLink = parseAdminDatabaseDeepLink(hash);
+                    dispatch({ type: 'SET_ADMIN_DB_DEEP_LINK', table: dbLink.table, page: dbLink.page, sort: dbLink.sort, order: dbLink.order });
+                }
             }
         };
         handleHash();

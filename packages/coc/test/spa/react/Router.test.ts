@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
@@ -2194,8 +2194,8 @@ describe('memory sub-tab deep-link parsing', () => {
 // ─── admin sub-tab deep-link parsing ────────────────────────────
 
 describe('admin sub-tab deep-link parsing', () => {
-    it('VALID_ADMIN_SUB_TABS contains all 5 tabs', () => {
-        expect(VALID_ADMIN_SUB_TABS).toEqual(new Set(['settings', 'providers', 'data', 'server', 'prompts']));
+    it('VALID_ADMIN_SUB_TABS contains all 6 tabs', () => {
+        expect(VALID_ADMIN_SUB_TABS).toEqual(new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database']));
     });
 
     it('returns "settings" for #admin/settings', () => {
@@ -2230,7 +2230,139 @@ describe('admin sub-tab deep-link parsing', () => {
         expect(parseAdminSubTab('#repos/my-repo')).toBeNull();
     });
 
+    it('returns "database" for #admin/database', () => {
+        expect(parseAdminSubTab('#admin/database')).toBe('database');
+    });
+
+    it('returns "database" for #admin/database/processes (extra segments ignored)', () => {
+        expect(parseAdminSubTab('#admin/database/processes')).toBe('database');
+    });
+
     it('handles hash without # prefix', () => {
         expect(parseAdminSubTab('admin/data')).toBe('data');
+    });
+});
+
+// ─── parseAdminDatabaseDeepLink ─────────────────────────────────
+
+describe('parseAdminDatabaseDeepLink', () => {
+    it('returns defaults for #admin/database (no table)', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database');
+        expect(r).toEqual({ table: null, page: 1, sort: null, order: null });
+    });
+
+    it('parses table name from #admin/database/processes', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/processes');
+        expect(r.table).toBe('processes');
+        expect(r.page).toBe(1);
+        expect(r.sort).toBeNull();
+        expect(r.order).toBeNull();
+    });
+
+    it('parses page from query string', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/processes?page=3');
+        expect(r.table).toBe('processes');
+        expect(r.page).toBe(3);
+    });
+
+    it('parses sort and order from query string', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/processes?sort=created_at&order=desc');
+        expect(r.table).toBe('processes');
+        expect(r.sort).toBe('created_at');
+        expect(r.order).toBe('desc');
+    });
+
+    it('parses all params together', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/processes?page=2&sort=id&order=asc');
+        expect(r).toEqual({ table: 'processes', page: 2, sort: 'id', order: 'asc' });
+    });
+
+    it('decodes URL-encoded table names', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/my%20table');
+        expect(r.table).toBe('my table');
+    });
+
+    it('defaults page to 1 for non-numeric page param', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/t?page=abc');
+        expect(r.page).toBe(1);
+    });
+
+    it('clamps page to minimum 1', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/t?page=0');
+        expect(r.page).toBe(1);
+    });
+
+    it('ignores invalid order values', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/database/t?sort=col&order=invalid');
+        expect(r.sort).toBe('col');
+        expect(r.order).toBeNull();
+    });
+
+    it('returns defaults for non-admin hash', () => {
+        const r = parseAdminDatabaseDeepLink('#repos/some-id');
+        expect(r).toEqual({ table: null, page: 1, sort: null, order: null });
+    });
+
+    it('returns defaults for #admin/settings (wrong sub-tab)', () => {
+        const r = parseAdminDatabaseDeepLink('#admin/settings');
+        expect(r).toEqual({ table: null, page: 1, sort: null, order: null });
+    });
+
+    it('works without # prefix', () => {
+        const r = parseAdminDatabaseDeepLink('admin/database/processes?page=5');
+        expect(r.table).toBe('processes');
+        expect(r.page).toBe(5);
+    });
+});
+
+// ─── buildDbBrowserHash ─────────────────────────────────────────
+
+describe('buildDbBrowserHash', () => {
+    it('returns base path when no table selected', () => {
+        expect(buildDbBrowserHash(null, 1, null, null)).toBe('admin/database');
+    });
+
+    it('includes table name', () => {
+        expect(buildDbBrowserHash('processes', 1, null, null)).toBe('admin/database/processes');
+    });
+
+    it('omits page when page=1 (default)', () => {
+        expect(buildDbBrowserHash('processes', 1, null, null)).toBe('admin/database/processes');
+    });
+
+    it('includes page when page > 1', () => {
+        expect(buildDbBrowserHash('processes', 3, null, null)).toBe('admin/database/processes?page=3');
+    });
+
+    it('includes sort and order', () => {
+        expect(buildDbBrowserHash('processes', 1, 'created_at', 'desc')).toBe('admin/database/processes?sort=created_at&order=desc');
+    });
+
+    it('includes all params together', () => {
+        expect(buildDbBrowserHash('processes', 2, 'id', 'asc')).toBe('admin/database/processes?page=2&sort=id&order=asc');
+    });
+
+    it('encodes special characters in table name', () => {
+        expect(buildDbBrowserHash('my table', 1, null, null)).toBe('admin/database/my%20table');
+    });
+
+    it('omits sort/order when sort is null', () => {
+        expect(buildDbBrowserHash('t', 2, null, null)).toBe('admin/database/t?page=2');
+    });
+
+    it('omits sort/order when order is null', () => {
+        expect(buildDbBrowserHash('t', 1, 'col', null)).toBe('admin/database/t');
+    });
+
+    it('roundtrips with parseAdminDatabaseDeepLink', () => {
+        const hash = buildDbBrowserHash('processes', 5, 'created_at', 'desc');
+        const parsed = parseAdminDatabaseDeepLink('#' + hash);
+        expect(parsed).toEqual({ table: 'processes', page: 5, sort: 'created_at', order: 'desc' });
+    });
+
+    it('roundtrips defaults', () => {
+        const hash = buildDbBrowserHash('processes', 1, null, null);
+        const parsed = parseAdminDatabaseDeepLink('#' + hash);
+        expect(parsed).toEqual({ table: 'processes', page: 1, sort: null, order: null });
     });
 });

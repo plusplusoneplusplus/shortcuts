@@ -3,9 +3,11 @@
  * Shows a table list sidebar with row counts and a paginated data grid.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Spinner } from '../shared';
 import { getApiBase } from '../utils/config';
+import { useApp } from '../context/AppContext';
+import { buildDbBrowserHash } from '../layout/Router';
 
 interface TableInfo {
     name: string;
@@ -69,15 +71,18 @@ function CellValue({ value }: { value: unknown }) {
 }
 
 export function DbBrowserSection() {
+    const { state, dispatch } = useApp();
     const [tables, setTables] = useState<TableInfo[]>([]);
-    const [selectedTable, setSelectedTable] = useState<string | null>(null);
+    const [selectedTable, setSelectedTable] = useState<string | null>(state.adminDbTable);
     const [tableData, setTableData] = useState<TableData | null>(null);
-    const [page, setPage] = useState(1);
-    const [sortColumn, setSortColumn] = useState<string | null>(null);
-    const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
+    const [page, setPage] = useState(state.adminDbPage);
+    const [sortColumn, setSortColumn] = useState<string | null>(state.adminDbSort);
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(state.adminDbOrder);
     const [loading, setLoading] = useState(true);
     const [dataLoading, setDataLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Track whether the initial deep-link table has been consumed
+    const deepLinkConsumed = useRef(false);
 
     // Fetch table list
     const fetchTables = useCallback(async () => {
@@ -91,8 +96,16 @@ export function DbBrowserSection() {
             }
             const data = await res.json();
             setTables(data.tables);
-            // Auto-select first table if none selected
-            if (!selectedTable && data.tables.length > 0) {
+            // If a deep-link table was provided and exists, keep it; otherwise auto-select first
+            if (!deepLinkConsumed.current && state.adminDbTable) {
+                deepLinkConsumed.current = true;
+                const exists = data.tables.some((t: TableInfo) => t.name === state.adminDbTable);
+                if (exists) {
+                    setSelectedTable(state.adminDbTable);
+                } else if (data.tables.length > 0) {
+                    setSelectedTable(data.tables[0].name);
+                }
+            } else if (!selectedTable && data.tables.length > 0) {
                 setSelectedTable(data.tables[0].name);
             }
         } catch (err) {
@@ -139,19 +152,28 @@ export function DbBrowserSection() {
         setPage(1);
         setSortColumn(null);
         setSortOrder(null);
+        // Table selection = navigation — creates a history entry
+        location.hash = buildDbBrowserHash(name, 1, null, null);
     };
 
     const handleSort = (colName: string) => {
+        let newSortCol: string | null;
+        let newSortOrder: 'asc' | 'desc' | null;
         if (sortColumn !== colName) {
-            setSortColumn(colName);
-            setSortOrder('desc');
+            newSortCol = colName;
+            newSortOrder = 'desc';
         } else if (sortOrder === 'desc') {
-            setSortOrder('asc');
+            newSortCol = colName;
+            newSortOrder = 'asc';
         } else {
-            setSortColumn(null);
-            setSortOrder(null);
+            newSortCol = null;
+            newSortOrder = null;
         }
+        setSortColumn(newSortCol);
+        setSortOrder(newSortOrder);
         setPage(1);
+        // Sort/page changes = in-place state — no history entry
+        history.replaceState(null, '', '#' + buildDbBrowserHash(selectedTable, 1, newSortCol, newSortOrder));
     };
 
     if (loading) {
@@ -264,7 +286,11 @@ export function DbBrowserSection() {
                                     variant="ghost"
                                     size="sm"
                                     disabled={page <= 1}
-                                    onClick={() => setPage(p => p - 1)}
+                                    onClick={() => {
+                                        const newPage = page - 1;
+                                        setPage(newPage);
+                                        history.replaceState(null, '', '#' + buildDbBrowserHash(selectedTable, newPage, sortColumn, sortOrder));
+                                    }}
                                 >
                                     ← Previous
                                 </Button>
@@ -275,7 +301,11 @@ export function DbBrowserSection() {
                                     variant="ghost"
                                     size="sm"
                                     disabled={page >= tableData.totalPages}
-                                    onClick={() => setPage(p => p + 1)}
+                                    onClick={() => {
+                                        const newPage = page + 1;
+                                        setPage(newPage);
+                                        history.replaceState(null, '', '#' + buildDbBrowserHash(selectedTable, newPage, sortColumn, sortOrder));
+                                    }}
                                 >
                                     Next →
                                 </Button>
