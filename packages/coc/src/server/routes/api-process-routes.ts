@@ -10,7 +10,7 @@ import * as url from 'url';
 import * as fs from 'fs';
 import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
-    CreateTaskInput, Attachment, QueuedTask,
+    CreateTaskInput, Attachment, QueuedTask, SearchFilter,
 } from '@plusplusoneplusplus/forge';
 import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
@@ -184,6 +184,38 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             await store.addProcess(proc);
             sendJSON(res, 201, proc);
+        },
+    });
+
+    // GET /api/processes/search — Full-text search across conversations
+    // Registered before :id regex patterns to avoid "search" matching as a process ID.
+    routes.push({
+        method: 'GET',
+        pattern: '/api/processes/search',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const q = typeof parsed.query.q === 'string' ? parsed.query.q.trim() : '';
+
+            if (!q) {
+                return sendJSON(res, 200, { results: [], total: 0, query: '' });
+            }
+
+            if (!store.searchConversations) {
+                return handleAPIError(res, badRequest('Full-text search not supported by this store backend'));
+            }
+
+            const filter = parseQueryParams(req.url || '/');
+            const searchFilter: SearchFilter = {
+                workspaceId: filter.workspaceId,
+                status: filter.status,
+                type: filter.type,
+                since: filter.since,
+                limit: filter.limit ?? 50,
+                offset: filter.offset ?? 0,
+            };
+
+            const { results, total } = await store.searchConversations(q, searchFilter);
+            sendJSON(res, 200, { results, total, query: q, limit: searchFilter.limit, offset: searchFilter.offset });
         },
     });
 
