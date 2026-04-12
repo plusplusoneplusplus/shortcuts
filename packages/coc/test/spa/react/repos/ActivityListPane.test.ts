@@ -851,10 +851,14 @@ describe('ActivityListPane pinned chats', () => {
             expect(block).toContain('Thinking');
         });
 
-        it('thinking indicator is conditional on isRunning', () => {
-            const thinkingIdx = source.indexOf('thinking-indicator');
-            const precedingBlock = source.substring(Math.max(0, thinkingIdx - 200), thinkingIdx);
-            expect(precedingBlock).toContain('{isRunning &&');
+        it('thinking indicator is in the timestamp area via isRunning ternary', () => {
+            // The thinking indicator is now rendered in the timestamp span as a ternary: isRunning ? <indicator> : timestamp
+            expect(source).toContain('{isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator">');
+        });
+
+        it('thinking indicator is NOT rendered as a separate element before the title', () => {
+            // Should not have the old pattern: {isRunning && <span ... data-testid="thinking-indicator">
+            expect(source).not.toContain('{isRunning && <span');
         });
 
         it('failed icon is hidden when running', () => {
