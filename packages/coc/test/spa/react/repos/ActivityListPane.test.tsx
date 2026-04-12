@@ -1380,6 +1380,215 @@ describe('ActivityListPane', () => {
             expect(comparison & 4).toBeTruthy();
         });
     });
+
+    // ── Server-side search results ─────────────────────────────────────
+    describe('Server-side search results', () => {
+        function makeSearchResultTask(overrides: Record<string, any> = {}) {
+            return {
+                id: 'sr-1',
+                type: 'chat',
+                status: 'completed',
+                displayName: 'Search Result Task',
+                title: 'Search Result Task',
+                promptPreview: 'some prompt',
+                completedAt: '2026-01-01T00:00:00Z',
+                endTime: '2026-01-01T00:00:00Z',
+                _searchSnippet: 'found <mark>test</mark> in response',
+                _isSearchResult: true,
+                ...overrides,
+            };
+        }
+
+        it('renders search results section when searchResults is non-null', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask()],
+                searchTotal: 1,
+            });
+            expect(screen.getByText(/Search Results/)).toBeTruthy();
+            expect(document.querySelector('[data-testid="search-result-item"]')).toBeTruthy();
+        });
+
+        it('hides pinned/completed/archived sections when searching', () => {
+            mockPinnedChatIds = new Set(['h-1']);
+            renderPane({
+                history: [makeHistoryTask({ id: 'h-1' }), makeHistoryTask({ id: 'h-2' })],
+                searchResults: [makeSearchResultTask()],
+                searchTotal: 1,
+            });
+            expect(screen.queryByTestId('pinned-chats-section-toggle')).toBeNull();
+            expect(screen.queryByText(/Completed Tasks/)).toBeNull();
+        });
+
+        it('shows search result count including total', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask()],
+                searchTotal: 47,
+            });
+            expect(screen.getByText(/Search Results/).textContent).toContain('1');
+            expect(screen.getByText(/Search Results/).textContent).toContain('47');
+        });
+
+        it('shows "No matching conversations found" for empty results', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [],
+                searchTotal: 0,
+            });
+            expect(screen.getByTestId('search-no-results')).toBeTruthy();
+            expect(screen.getByText('No matching conversations found')).toBeTruthy();
+        });
+
+        it('renders search snippet with dangerouslySetInnerHTML', () => {
+            const { container } = renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask({
+                    _searchSnippet: 'found <mark>query</mark> here',
+                })],
+                searchTotal: 1,
+            });
+            const snippetEl = container.querySelector('[data-testid="search-snippet"]');
+            expect(snippetEl).toBeTruthy();
+            expect(snippetEl!.innerHTML).toContain('<mark>query</mark>');
+        });
+
+        it('renders task type icon and status in search results', () => {
+            const { container } = renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [
+                    makeSearchResultTask({ id: 'sr-ok', status: 'completed' }),
+                    makeSearchResultTask({ id: 'sr-fail', status: 'failed' }),
+                ],
+                searchTotal: 2,
+            });
+            expect(container.textContent).toContain('✅');
+            expect(container.textContent).toContain('❌');
+        });
+
+        it('calls onSelectTask when clicking a search result', () => {
+            const onSelectTask = vi.fn();
+            renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask({ id: 'sr-click' })],
+                searchTotal: 1,
+                onSelectTask,
+            });
+            fireEvent.click(screen.getByTestId('search-result-item'));
+            expect(onSelectTask).toHaveBeenCalledWith('sr-click', expect.objectContaining({ id: 'sr-click' }));
+        });
+
+        it('highlights selected search result with ring', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask({ id: 'sr-sel' })],
+                searchTotal: 1,
+                selectedTaskId: 'sr-sel',
+            });
+            const card = document.querySelector('[data-task-id="sr-sel"]');
+            expect(card?.className).toContain('ring-2');
+        });
+
+        it('shows Load more results button when searchHasMore is true', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask()],
+                searchTotal: 100,
+                searchHasMore: true,
+                onLoadMoreSearchResults: vi.fn(),
+            });
+            expect(screen.getByTestId('search-load-more-btn')).toBeTruthy();
+            expect(screen.getByTestId('search-load-more-btn').textContent).toContain('Load more results');
+        });
+
+        it('calls onLoadMoreSearchResults when Load more results is clicked', () => {
+            const onLoadMore = vi.fn();
+            renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask()],
+                searchTotal: 100,
+                searchHasMore: true,
+                onLoadMoreSearchResults: onLoadMore,
+            });
+            fireEvent.click(screen.getByTestId('search-load-more-btn'));
+            expect(onLoadMore).toHaveBeenCalledTimes(1);
+        });
+
+        it('shows loading state on Load more results button', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask()],
+                searchTotal: 100,
+                searchHasMore: true,
+                searchLoadingMore: true,
+                onLoadMoreSearchResults: vi.fn(),
+            });
+            expect(screen.getByTestId('search-load-more-btn').textContent).toContain('Loading');
+            expect(screen.getByTestId('search-load-more-btn')).toHaveProperty('disabled', true);
+        });
+
+        it('does not show normal Load more when in search mode', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask()],
+                searchTotal: 1,
+                hasMore: true,
+                onLoadMore: vi.fn(),
+            });
+            expect(screen.queryByTestId('activity-load-more-btn')).toBeNull();
+        });
+
+        it('running tasks are still shown with client-side filter while searching', () => {
+            renderPane({
+                running: [makeRunningTask({ id: 'r-1', displayName: 'Active Run' })],
+                history: [makeHistoryTask()],
+                searchResults: [makeSearchResultTask()],
+                searchTotal: 1,
+            });
+            expect(document.querySelector('[data-task-id="r-1"]')).toBeTruthy();
+        });
+
+        it('calls onSearchQueryChange when search input changes', () => {
+            const onSearchQueryChange = vi.fn();
+            renderPane({
+                history: [makeHistoryTask()],
+                onSearchQueryChange,
+            });
+            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+            fireEvent.change(screen.getByTestId('queue-search-input'), { target: { value: 'test' } });
+            expect(onSearchQueryChange).toHaveBeenCalledWith('test');
+        });
+
+        it('shows loading indicator when searchLoading is true', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                searchLoading: true,
+                searchResults: [],
+                searchTotal: 0,
+            });
+            // Search loading indicator only visible when search bar is open
+            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+            fireEvent.change(screen.getByTestId('queue-search-input'), { target: { value: 'test' } });
+            expect(screen.getByTestId('search-loading-indicator')).toBeTruthy();
+        });
+
+        it('search placeholder says "Search all conversations…"', () => {
+            renderPane({ history: [makeHistoryTask()] });
+            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+            const input = screen.getByTestId('queue-search-input');
+            expect(input.getAttribute('placeholder')).toBe('Search all conversations…');
+        });
+
+        it('reverts to normal view when searchResults is null', () => {
+            renderPane({
+                history: [makeHistoryTask({ id: 'h-normal' })],
+                searchResults: null,
+                searchTotal: 0,
+            });
+            expect(screen.queryByText(/Search Results/)).toBeNull();
+            expect(document.querySelector('[data-task-id="h-normal"]')).toBeTruthy();
+        });
+    });
 });
 
 describe('taskMatchesFilter: exclusion logic', () => {

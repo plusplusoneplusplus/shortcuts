@@ -33,6 +33,7 @@ export interface UseProcessSearchOptions {
     statusFilter?: string;
     debounceMs?: number;
     minQueryLength?: number;
+    limit?: number;
 }
 
 export interface UseProcessSearchReturn {
@@ -40,6 +41,9 @@ export interface UseProcessSearchReturn {
     total: number;
     loading: boolean;
     error: string | null;
+    hasMore: boolean;
+    loadMore: () => void;
+    loadingMore: boolean;
 }
 
 export function useProcessSearch(
@@ -51,17 +55,22 @@ export function useProcessSearch(
         statusFilter,
         debounceMs = 300,
         minQueryLength = 2,
+        limit = 50,
     } = options;
 
     const [results, setResults] = useState<ProcessSearchResult[]>([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const abortRef = useRef<AbortController | null>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+    // Track current query for loadMore to reference
+    const queryRef = useRef(query);
+    queryRef.current = query;
 
-    const executeSearch = useCallback(async (q: string, signal: AbortSignal) => {
+    const executeSearch = useCallback(async (q: string, signal: AbortSignal, offset = 0) => {
         const params = new URLSearchParams({ q });
         if (workspace && workspace !== '__all') {
             params.set('workspaceId', workspace);
@@ -69,13 +78,15 @@ export function useProcessSearch(
         if (statusFilter && statusFilter !== '__all') {
             params.set('status', statusFilter);
         }
+        params.set('limit', String(limit));
+        if (offset > 0) params.set('offset', String(offset));
         const url = getApiBase() + '/processes/search?' + params.toString();
         const res = await fetch(url, { signal });
         if (!res.ok) {
             throw new Error(`Search failed: ${res.status}`);
         }
         return res.json() as Promise<ProcessSearchResponse>;
-    }, [workspace, statusFilter]);
+    }, [workspace, statusFilter, limit]);
 
     useEffect(() => {
         // Clear debounce on every query/filter change
@@ -127,6 +138,27 @@ export function useProcessSearch(
         };
     }, [query, executeSearch, debounceMs, minQueryLength]);
 
+    const loadMore = useCallback(() => {
+        const q = queryRef.current;
+        if (q.length < minQueryLength || loadingMore || loading) return;
+        setLoadingMore(true);
+        const controller = new AbortController();
+        executeSearch(q, controller.signal, results.length)
+            .then((data) => {
+                if (!controller.signal.aborted) {
+                    setResults(prev => [...prev, ...data.results]);
+                    setTotal(data.total);
+                    setLoadingMore(false);
+                }
+            })
+            .catch((err) => {
+                if (!controller.signal.aborted) {
+                    setError(err?.message || 'Load more failed');
+                    setLoadingMore(false);
+                }
+            });
+    }, [executeSearch, results.length, minQueryLength, loadingMore, loading]);
+
     // Cleanup abort controller on unmount
     useEffect(() => {
         return () => {
@@ -134,5 +166,7 @@ export function useProcessSearch(
         };
     }, []);
 
-    return { results, total, loading, error };
+    const hasMore = results.length < total;
+
+    return { results, total, loading, error, hasMore, loadMore, loadingMore };
 }

@@ -19,6 +19,8 @@ import { ActivityDetailPane } from './ActivityDetailPane';
 import { useUnseenActivity } from '../hooks/useUnseenActivity';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../context/ChatPreferencesContext';
 import { useNotifications } from '../context/NotificationContext';
+import { useProcessSearch } from '../hooks/useProcessSearch';
+import { adaptSearchResults } from '../utils/search-adapter';
 import type { ProcessHistoryItem } from '../../../../shared/process-history-item';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../utils/queue-process-id';
 
@@ -44,6 +46,25 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [isAutopilotPauseLoading, setIsAutopilotPauseLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pauseReason, setPauseReason] = useState<{ taskId: string; displayName: string; failedAt: string } | undefined>();
+
+    // Server-side search state
+    const [searchQuery, setSearchQuery] = useState('');
+    const {
+        results: rawSearchResults,
+        total: searchTotal,
+        loading: searchLoading,
+        hasMore: searchHasMore,
+        loadMore: searchLoadMore,
+        loadingMore: searchLoadingMore,
+    } = useProcessSearch(searchQuery, { workspace: workspaceId });
+    const searchResults = useMemo(
+        () => searchQuery.length >= 2 ? adaptSearchResults(rawSearchResults) : null,
+        [rawSearchResults, searchQuery],
+    );
+
+    const handleSearchQueryChange = useCallback((query: string) => {
+        setSearchQuery(query);
+    }, []);
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { dispatch: appDispatch } = useApp();
@@ -374,6 +395,13 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             hasMore={hasMore}
             loadingMore={loadingMore}
             onLoadMore={handleLoadMore}
+            searchResults={searchResults}
+            searchLoading={searchLoading}
+            searchTotal={searchTotal}
+            searchHasMore={searchHasMore}
+            searchLoadingMore={searchLoadingMore}
+            onSearchQueryChange={handleSearchQueryChange}
+            onLoadMoreSearchResults={searchLoadMore}
         />
     );
 

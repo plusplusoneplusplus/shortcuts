@@ -122,6 +122,20 @@ export interface ActivityListPaneProps {
     loadingMore?: boolean;
     /** Callback to load the next page of completed tasks. */
     onLoadMore?: () => void;
+    /** Server-side FTS5 search results (null = not searching, [] = no results). */
+    searchResults?: any[] | null;
+    /** True while server search is in-flight. */
+    searchLoading?: boolean;
+    /** Total number of server-side search matches. */
+    searchTotal?: number;
+    /** Whether there are more search results to load. */
+    searchHasMore?: boolean;
+    /** True while loading more search results. */
+    searchLoadingMore?: boolean;
+    /** Callback when user types in search — drives server-side search from parent. */
+    onSearchQueryChange?: (query: string) => void;
+    /** Callback to load more server-side search results. */
+    onLoadMoreSearchResults?: () => void;
 }
 
 function formatMetadataText(task: any): string {
@@ -155,6 +169,13 @@ export function ActivityListPane({
     hasMore,
     loadingMore,
     onLoadMore,
+    searchResults,
+    searchLoading,
+    searchTotal,
+    searchHasMore,
+    searchLoadingMore,
+    onSearchQueryChange,
+    onLoadMoreSearchResults,
 }: ActivityListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
@@ -168,9 +189,16 @@ export function ActivityListPane({
         return false;
     }, [selectedTaskId]);
     const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
+
+    const setSearchQuery = useCallback((q: string) => {
+        setSearchQueryRaw(q);
+        onSearchQueryChange?.(q);
+    }, [onSearchQueryChange]);
+
+    const isServerSearchActive = searchResults != null;
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed'; bulkIds?: string[] } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
@@ -185,7 +213,8 @@ export function ActivityListPane({
 
     useEffect(() => {
         setExcludedTypes(new Set());
-        setSearchQuery('');
+        setSearchQueryRaw('');
+        onSearchQueryChange?.('');
         setSearchVisible(false);
     }, [workspaceId]);
 
@@ -751,15 +780,20 @@ export function ActivityListPane({
                         <input
                             ref={searchInputRef}
                             type="text"
-                            placeholder="Search title, prompt…"
+                            placeholder="Search all conversations…"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             className="flex-1 bg-transparent outline-none text-xs placeholder:text-[#848484]"
                             data-testid="queue-search-input"
                         />
-                        {searchQuery && (
-                            <span className="text-[#848484] tabular-nums">
-                                {filteredRunning.length + filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length + filteredHistory.length}
+                        {searchLoading && (
+                            <span className="text-[#848484] animate-pulse" data-testid="search-loading-indicator">⏳</span>
+                        )}
+                        {searchQuery && !searchLoading && (
+                            <span className="text-[#848484] tabular-nums" data-testid="search-result-count">
+                                {isServerSearchActive
+                                    ? searchTotal ?? 0
+                                    : filteredRunning.length + filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length + filteredHistory.length}
                             </span>
                         )}
                         <button
@@ -881,6 +915,75 @@ export function ActivityListPane({
                     </div>
                 )}
 
+                {isServerSearchActive ? (
+                    /* ── Server-side search results ── */
+                    <div>
+                        <div className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">
+                            🔍 Search Results
+                            <span className="text-[10px]">({searchResults!.length}{searchTotal != null && searchTotal > searchResults!.length ? ` of ${searchTotal}` : ''})</span>
+                        </div>
+                        {searchQuery.length === 1 && (
+                            <div className="text-[10px] text-[#848484] dark:text-[#bbb] italic" data-testid="search-min-chars-hint">
+                                Type 2+ characters to search all conversations
+                            </div>
+                        )}
+                        {searchResults!.length === 0 && !searchLoading && (
+                            <div className="text-[10px] text-[#848484] dark:text-[#bbb]" data-testid="search-no-results">
+                                No matching conversations found
+                            </div>
+                        )}
+                        <div className={cn("flex flex-col mt-1", isDense ? "gap-0.5" : "gap-1")}>
+                            {searchResults!.map(task => (
+                                <Card
+                                    key={task.id}
+                                    className={cn(
+                                        isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
+                                        isSelected(task.id) && "ring-2 ring-[#0078d4]"
+                                    )}
+                                    onClick={() => onSelectTask(task.id, task)}
+                                    data-task-id={task.id}
+                                    data-testid="search-result-item"
+                                >
+                                    <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                                        <span className="flex items-center gap-1 min-w-0 truncate">
+                                            <span className="shrink-0">
+                                                {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                                            </span>
+                                            <span className="truncate" title={task.displayName || task.title || task.type || 'Task'}>
+                                                {task.displayName || task.title || task.type || 'Task'}
+                                            </span>
+                                        </span>
+                                        <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
+                                            {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
+                                        </span>
+                                    </div>
+                                    {!isDense && task._searchSnippet && (
+                                        <div
+                                            className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb] [&_mark]:bg-yellow-200 [&_mark]:dark:bg-yellow-700/50 [&_mark]:text-inherit [&_mark]:rounded-sm [&_mark]:px-px"
+                                            data-testid="search-snippet"
+                                            dangerouslySetInnerHTML={{ __html: task._searchSnippet }}
+                                        />
+                                    )}
+                                    {!isDense && !task._searchSnippet && (() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb]" title={p}>{p}</div> : null; })()}
+                                </Card>
+                            ))}
+                        </div>
+                        {searchHasMore && onLoadMoreSearchResults && (
+                            <div className="px-4 py-2">
+                                <button
+                                    onClick={onLoadMoreSearchResults}
+                                    disabled={searchLoadingMore}
+                                    className="w-full text-xs text-[#848484] dark:text-[#858585] hover:text-[#3c3c3c] dark:hover:text-[#cccccc] disabled:opacity-50 disabled:cursor-not-allowed py-1"
+                                    data-testid="search-load-more-btn"
+                                >
+                                    {searchLoadingMore ? 'Loading…' : 'Load more results'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    /* ── Normal history view (pinned + unpinned + archived + load more) ── */
+                    <>
                 {(filteredPinned.length > 0 || pinnedRunningCount > 0) && (
                     <div>
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -1139,6 +1242,8 @@ export function ActivityListPane({
                     </button>
                 </div>
             )}
+                    </>
+                )}
         </div>
         {contextMenu && (
             <ContextMenu
