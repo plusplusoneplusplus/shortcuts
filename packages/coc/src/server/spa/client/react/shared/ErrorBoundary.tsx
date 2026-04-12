@@ -1,141 +1,90 @@
-/**
- * ErrorBoundary — catches unhandled React render errors and displays
- * a recovery UI instead of a white screen.
- *
- * Without this, any uncaught error in the component tree causes React
- * to unmount the entire app, producing a blank page with no feedback.
- */
+import { Component, type ReactNode, type ErrorInfo } from 'react';
 
-import { Component, type ErrorInfo, type ReactNode } from 'react';
-
-interface Props {
+interface ErrorBoundaryProps {
     children: ReactNode;
+    /** Shown in the fallback UI heading. Defaults to "Something went wrong". */
+    label?: string;
+    /** When true, renders a compact inline error instead of a full-page overlay. */
+    inline?: boolean;
 }
 
-interface State {
-    hasError: boolean;
+interface ErrorBoundaryState {
     error: Error | null;
-    errorInfo: ErrorInfo | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-    constructor(props: Props) {
-        super(props);
-        this.state = { hasError: false, error: null, errorInfo: null };
+/**
+ * Generic React ErrorBoundary.
+ *
+ * - **Top-level** (`inline=false`, default): full-screen overlay with reload button.
+ * - **Inline** (`inline=true`): compact card suitable for wrapping dialogs or panels.
+ */
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+    state: ErrorBoundaryState = { error: null };
+
+    static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+        return { error };
     }
 
-    static getDerivedStateFromError(error: Error): Partial<State> {
-        return { hasError: true, error };
-    }
-
-    componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-        this.setState({ errorInfo });
-        console.error('[CoC] Unhandled render error:', error, errorInfo);
+    componentDidCatch(error: Error, info: ErrorInfo) {
+        console.error('[ErrorBoundary]', this.props.label ?? 'Uncaught render error', error, info.componentStack);
     }
 
     private handleReload = () => {
         window.location.reload();
     };
 
-    private handleClearAndReload = () => {
-        try {
-            // Remove CoC-specific localStorage keys to clear stale state
-            const keysToRemove: string[] = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key?.startsWith('coc-') || key?.startsWith('coc.')) {
-                    keysToRemove.push(key);
-                }
-            }
-            for (const key of keysToRemove) {
-                localStorage.removeItem(key);
-            }
-        } catch { /* storage unavailable */ }
-        // Force a hard reload bypassing cache
-        window.location.href = window.location.pathname + '?_t=' + Date.now();
+    private handleDismiss = () => {
+        this.setState({ error: null });
     };
 
     render() {
-        if (!this.state.hasError) {
+        if (!this.state.error) {
             return this.props.children;
         }
 
-        const { error } = this.state;
+        const heading = this.props.label ?? 'Something went wrong';
+
+        if (this.props.inline) {
+            return (
+                <div
+                    role="alert"
+                    className="flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-[#1e1e1e] dark:text-[#cccccc]"
+                >
+                    <span className="text-2xl">⚠️</span>
+                    <p className="font-semibold">{heading}</p>
+                    <p className="text-xs text-[#848484] max-w-xs break-words">{this.state.error.message}</p>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={this.handleDismiss}
+                            className="px-3 py-1 rounded text-xs bg-[#e8e8e8] dark:bg-[#3c3c3c] hover:bg-[#d4d4d4] dark:hover:bg-[#505050] transition-colors"
+                        >
+                            Dismiss
+                        </button>
+                        <button
+                            onClick={this.handleReload}
+                            className="px-3 py-1 rounded text-xs bg-[#0078d4] text-white hover:bg-[#106ebe] transition-colors"
+                        >
+                            Reload
+                        </button>
+                    </div>
+                </div>
+            );
+        }
 
         return (
-            <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100vh',
-                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                padding: '2rem',
-                background: '#1e1e1e',
-                color: '#cccccc',
-            }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>⚠️</div>
-                <h1 style={{ fontSize: '1.25rem', fontWeight: 600, margin: '0 0 0.5rem' }}>
-                    Something went wrong
-                </h1>
-                <p style={{ color: '#999', fontSize: '0.875rem', margin: '0 0 1.5rem', textAlign: 'center', maxWidth: 420 }}>
-                    The dashboard encountered an unexpected error. This can happen when
-                    the browser has cached stale data from a previous session.
-                </p>
-
-                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                    <button
-                        onClick={this.handleReload}
-                        style={{
-                            padding: '0.5rem 1.25rem',
-                            border: '1px solid #555',
-                            borderRadius: '4px',
-                            background: 'transparent',
-                            color: '#cccccc',
-                            cursor: 'pointer',
-                            fontSize: '0.875rem',
-                        }}
-                    >
-                        Reload
-                    </button>
-                    <button
-                        onClick={this.handleClearAndReload}
-                        style={{
-                            padding: '0.5rem 1.25rem',
-                            border: 'none',
-                            borderRadius: '4px',
-                            background: '#0078d4',
-                            color: '#ffffff',
-                            cursor: 'pointer',
-                            fontSize: '0.875rem',
-                        }}
-                    >
-                        Clear Cache &amp; Reload
-                    </button>
-                </div>
-
-                {error && (
-                    <details style={{ marginTop: '1.5rem', width: '100%', maxWidth: 600 }}>
-                        <summary style={{ cursor: 'pointer', color: '#848484', fontSize: '0.75rem' }}>
-                            Error details
-                        </summary>
-                        <pre style={{
-                            marginTop: '0.5rem',
-                            padding: '0.75rem',
-                            background: '#2d2d2d',
-                            borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            overflow: 'auto',
-                            maxHeight: 200,
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                        }}>
-                            {error.message}
-                            {'\n'}
-                            {error.stack}
-                        </pre>
-                    </details>
-                )}
+            <div
+                role="alert"
+                className="fixed inset-0 z-[99999] flex flex-col items-center justify-center gap-4 bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]"
+            >
+                <span className="text-5xl">😵</span>
+                <h1 className="text-lg font-semibold">{heading}</h1>
+                <p className="text-sm text-[#848484] max-w-md text-center break-words">{this.state.error.message}</p>
+                <button
+                    onClick={this.handleReload}
+                    className="mt-2 px-4 py-2 rounded bg-[#0078d4] text-white text-sm hover:bg-[#106ebe] transition-colors"
+                >
+                    Reload
+                </button>
             </div>
         );
     }

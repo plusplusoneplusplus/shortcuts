@@ -12,7 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './react/App';
 import { PopOutActivityShell } from './react/layout/PopOutActivityShell';
 import { PopOutMarkdownShell } from './react/layout/PopOutMarkdownShell';
-import { PopOutGitReviewShell } from './react/layout/PopOutGitReviewShell';
+import { ErrorBoundary } from './react/shared/ErrorBoundary';
 import './react/file-path-preview';
 import './react/repos/explorer/monaco-setup';
 
@@ -21,11 +21,9 @@ if (!container) throw new Error('No #app-root element found');
 const root = createRoot(container);
 
 if (window.location.hash.startsWith('#popout/activity/')) {
-    root.render(<PopOutActivityShell />);
+    root.render(<ErrorBoundary><PopOutActivityShell /></ErrorBoundary>);
 } else if (window.location.hash.startsWith('#popout/markdown')) {
-    root.render(<PopOutMarkdownShell />);
-} else if (window.location.hash.startsWith('#popout/git-review')) {
-    root.render(<PopOutGitReviewShell />);
+    root.render(<ErrorBoundary><PopOutMarkdownShell /></ErrorBoundary>);
 } else {
     root.render(<App />);
 }

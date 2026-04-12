@@ -22,7 +22,7 @@ import { Router } from './layout/Router';
 import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
-import { ToastContainer, useToast } from './shared';
+import { ToastContainer, useToast, ErrorBoundary } from './shared';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
@@ -419,19 +419,20 @@ function AppInner() {
                 <FloatingChatManager />
                 <BottomNav />
                 <ToastContainer toasts={toasts} removeToast={removeToast} />
-                <EnqueueDialog />
-                <RunScriptDialog />
-                <MarkdownReviewDialog
-                    open={reviewDialog.open}
-                    onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}
-                    onMinimize={handleMinimizeReview}
-                    wsId={reviewDialog.wsId}
-                    filePath={reviewDialog.filePath}
-                    displayPath={reviewDialog.displayPath}
-                    fetchMode={reviewDialog.fetchMode}
-                    taskRootPath={reviewDialog.taskRootPath}
-                    initialScrollTop={reviewDialog.scrollTop}
-                />
+                <ErrorBoundary label="Dialog error" inline>
+                    <EnqueueDialog />
+                    <RunScriptDialog />
+                    <MarkdownReviewDialog
+                        open={reviewDialog.open}
+                        onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}
+                        onMinimize={handleMinimizeReview}
+                        wsId={reviewDialog.wsId}
+                        filePath={reviewDialog.filePath}
+                        displayPath={reviewDialog.displayPath}
+                        fetchMode={reviewDialog.fetchMode}
+                        initialScrollTop={reviewDialog.scrollTop}
+                    />
+                </ErrorBoundary>
                 <MinimizedDialogsTray />
                 {SHOW_WELCOME_TUTORIAL && <WelcomeModal />}
                 {SHOW_WELCOME_TUTORIAL && <ConceptTour />}
@@ -442,24 +443,26 @@ function AppInner() {
 
 export function App() {
     return (
-        <AppProvider>
-            <QueueProvider>
-                <WorkItemProvider>
-                <NotificationProvider>
-                    <PopOutProvider>
-                        <MarkdownPopOutProvider>
-                            <FloatingChatsProvider>
-                            <MinimizedDialogsProvider>
-                                <ThemeProvider>
-                                    <AppInner />
-                                </ThemeProvider>
-                            </MinimizedDialogsProvider>
-                        </FloatingChatsProvider>
-                        </MarkdownPopOutProvider>
-                    </PopOutProvider>
-                </NotificationProvider>
-                </WorkItemProvider>
-            </QueueProvider>
-        </AppProvider>
+        <ErrorBoundary>
+            <AppProvider>
+                <QueueProvider>
+                    <WorkItemProvider>
+                    <NotificationProvider>
+                        <PopOutProvider>
+                            <MarkdownPopOutProvider>
+                                <FloatingChatsProvider>
+                                <MinimizedDialogsProvider>
+                                    <ThemeProvider>
+                                        <AppInner />
+                                    </ThemeProvider>
+                                </MinimizedDialogsProvider>
+                            </FloatingChatsProvider>
+                            </MarkdownPopOutProvider>
+                        </PopOutProvider>
+                    </NotificationProvider>
+                    </WorkItemProvider>
+                </QueueProvider>
+            </AppProvider>
+        </ErrorBoundary>
     );
 }
