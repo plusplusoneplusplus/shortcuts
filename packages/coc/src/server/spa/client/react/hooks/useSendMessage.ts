@@ -38,6 +38,8 @@ export interface UseSendMessageOptions {
     toPayload?: () => Array<{ name: string; mimeType: string; size: number; dataUrl: string }>;
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
+    /** Workspace/repo ID for dispatching REPO_TASK_REQUEUED to clear stale optimistic history. */
+    workspaceId?: string;
 }
 
 export function useSendMessage({
@@ -65,6 +67,7 @@ export function useSendMessage({
     toPayload,
     lastFailedMessageRef,
     setTask,
+    workspaceId,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     flushQueueRef: React.MutableRefObject<(() => void) | null>;
@@ -242,6 +245,9 @@ export function useSendMessage({
 
             lastFailedMessageRef.current = '';
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
+            if (workspaceId) {
+                queueDispatch({ type: 'REPO_TASK_REQUEUED', repoId: workspaceId, taskId });
+            }
             clearImages();
             await waitForSendCompletion(processId);
         } catch (err: any) {
@@ -252,13 +258,16 @@ export function useSendMessage({
             setSending(false);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-            // Note: refreshConversation is NOT called here — useChatSSE.finish() already
-            // triggers it when the SSE 'done' event fires. Calling it again here would
-            // create a race where two concurrent fetches overwrite each other, potentially
-            // replacing richer in-memory state with stale server data.
+            // Fallback refresh: if we reach here after the 90s safety timeout,
+            // neither finish() nor the safety-net effect triggered the refresh.
+            // refreshConversation uses a monotonic version counter so concurrent
+            // calls safely deduplicate — stale responses are discarded.
+            if (processId) {
+                void refreshConversation(processId);
+            }
             setTimeout(() => { flushQueueRef.current?.(); }, 0);
         }
-    }, [processId, taskId, inputDisabled, sending, selectedMode, images, toPayload, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, selectedMode, images, toPayload, archivedChatIds, unarchiveChat, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, flushQueueRef, closeFollowUpStream, onSendComplete };
 }

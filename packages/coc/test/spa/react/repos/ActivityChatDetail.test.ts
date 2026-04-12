@@ -441,6 +441,17 @@ describe('ActivityChatDetail', () => {
         it('fetches full task data for pending tasks', () => {
             expect(source).toContain('Fetch full task data for pending tasks');
         });
+
+        it('skips PendingTaskInfoPanel for chat tasks (shows conversation instead)', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('isChatTask');
+            expect(CONVERSATION_AREA_SOURCE).toContain('showPendingPanel');
+            // showPendingPanel is only true for non-chat tasks
+            expect(CONVERSATION_AREA_SOURCE).toContain('isPending && !isChatTask');
+        });
+
+        it('shows streaming placeholder for pending chat tasks', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('isPending && isChatTask');
+        });
     });
 
     describe('conversation caching', () => {
@@ -651,6 +662,15 @@ describe('ActivityChatDetail', () => {
                 source.indexOf('const inputDisabled') + 200,
             );
             expect(expr).toContain('loading');
+        });
+
+        it('inputDisabled does not include cancelled so input stays enabled after stop', () => {
+            const expr = source.substring(
+                source.indexOf('const inputDisabled'),
+                source.indexOf('const inputDisabled') + 200,
+            );
+            expect(expr).not.toContain("'cancelled'");
+            expect(expr).not.toContain("'cancelling'");
         });
 
         it('imports DeliveryMode from pipeline-core', () => {
@@ -1180,6 +1200,121 @@ describe('ActivityChatDetail', () => {
             const sendBtnBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(sendBtnIdx - 10, sendBtnIdx + 100);
             expect(sendBtnBlock).toContain('Send');
             expect(sendBtnBlock).not.toContain('...');
+        });
+    });
+
+    describe('safety-net effect calls refreshConversation and onSendComplete', () => {
+        it('safety-net effect references refreshConversation', () => {
+            // The safety-net useEffect must call refreshConversation when it detects
+            // a terminal status in queue context to prevent the SSE race condition
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            expect(safetyNetBlock).toContain('refreshConversation(processId)');
+        });
+
+        it('safety-net effect calls onSendComplete to unblock waitForSendCompletion', () => {
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            expect(safetyNetBlock).toContain('onSendComplete()');
+        });
+
+        it('safety-net effect includes processId, refreshConversation, onSendComplete in deps', () => {
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            expect(safetyNetBlock).toContain('processId');
+            expect(safetyNetBlock).toContain('refreshConversation');
+            expect(safetyNetBlock).toContain('onSendComplete');
+        });
+
+        it('safety-net effect skips when sending is true', () => {
+            // The safety-net must early-return when `sending` is true to avoid
+            // reverting task.status from 'running' back to 'completed' during
+            // a follow-up POST (stale optimistic history race condition).
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            const sendingGuardIdx = safetyNetBlock.indexOf('if (sending) return');
+            // sending guard must exist
+            expect(sendingGuardIdx).toBeGreaterThan(-1);
+            // sending guard should appear before the history find logic
+            const historyFindIdx = safetyNetBlock.indexOf('repo.history?.find');
+            expect(sendingGuardIdx).toBeLessThan(historyFindIdx);
+        });
+
+        it('safety-net effect includes sending in deps', () => {
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            // The dependency array follows the closing }, [ pattern
+            const depsLineIdx = safetyNetBlock.indexOf('}, [');
+            expect(depsLineIdx).toBeGreaterThan(-1);
+            const depsSection = safetyNetBlock.substring(depsLineIdx);
+            expect(depsSection).toContain('sending');
+        });
+    });
+
+    describe('useChatSSE finish() defers setTask after refreshConversation', () => {
+        it('finish() calls refreshConversation before setTask', () => {
+            // setTask must be deferred until after refreshConversation resolves
+            // to prevent the stale-render gap where chat input disappears
+            const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            const refreshIdx = finishBlock.indexOf('refreshConversation(processId)');
+            const setTaskIdx = finishBlock.indexOf('setTask(prev =>');
+            expect(refreshIdx).toBeGreaterThan(-1);
+            expect(setTaskIdx).toBeGreaterThan(-1);
+            // refreshConversation should appear before setTask in the code
+            expect(refreshIdx).toBeLessThan(setTaskIdx);
+        });
+
+        it('setTask is inside refreshConversation.finally() block', () => {
+            const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            // setTask should be inside a .finally() callback
+            expect(finishBlock).toMatch(/\.finally\s*\(/);
+            const finallyMatch = finishBlock.match(/\.finally\s*\(/);
+            const finallyIdx = finishBlock.indexOf(finallyMatch![0]);
+            const setTaskIdx = finishBlock.indexOf('setTask(prev =>');
+            expect(setTaskIdx).toBeGreaterThan(finallyIdx);
+        });
+    });
+
+    describe('useSendMessage finally block refreshConversation fallback', () => {
+        it('sendFollowUp finally block calls refreshConversation as fallback', () => {
+            // The finally block in sendFollowUp should call refreshConversation
+            // as a safety fallback for the 90s timeout path
+            const finallyIdx = USE_SEND_MESSAGE_SOURCE.indexOf('} finally {');
+            const finallyBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                finallyIdx,
+                finallyIdx + 1200,
+            );
+            expect(finallyBlock).toContain('refreshConversation(processId)');
+        });
+    });
+
+    describe('useSendMessage dispatches REPO_TASK_REQUEUED on follow-up', () => {
+        it('dispatches REPO_TASK_REQUEUED after setTask({status: running})', () => {
+            // After setTask sets status to 'running', useSendMessage must dispatch
+            // REPO_TASK_REQUEUED to remove the stale optimistic history entry.
+            // Search within the sendFollowUp function body (not the type definition)
+            const sendFollowUpIdx = USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp = useCallback');
+            const sendFollowUpBlock = USE_SEND_MESSAGE_SOURCE.substring(sendFollowUpIdx);
+            const setTaskRunningIdx = sendFollowUpBlock.indexOf("setTask((prev: any) => prev ? { ...prev, status: 'running' }");
+            const requeueIdx = sendFollowUpBlock.indexOf("REPO_TASK_REQUEUED");
+            expect(setTaskRunningIdx).toBeGreaterThan(-1);
+            expect(requeueIdx).toBeGreaterThan(-1);
+            expect(requeueIdx).toBeGreaterThan(setTaskRunningIdx);
+        });
+
+        it('guards REPO_TASK_REQUEUED dispatch with workspaceId check', () => {
+            // Find the dispatch in sendFollowUp (not the type definition)
+            const sendFollowUpIdx = USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp = useCallback');
+            const sendFollowUpBlock = USE_SEND_MESSAGE_SOURCE.substring(sendFollowUpIdx);
+            const requeueIdx = sendFollowUpBlock.indexOf("REPO_TASK_REQUEUED");
+            const requeueBlock = sendFollowUpBlock.substring(requeueIdx - 200, requeueIdx + 200);
+            expect(requeueBlock).toContain('if (workspaceId)');
+        });
+
+        it('accepts workspaceId in UseSendMessageOptions', () => {
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('workspaceId?: string');
         });
     });
 });

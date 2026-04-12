@@ -520,4 +520,24 @@ describe('useChatSSE', () => {
         await act(async () => { await Promise.resolve(); });
         expect(mockFetch).toHaveBeenCalledTimes(2);
     });
+
+    it('finish() defers setTask until after refreshConversation resolves', async () => {
+        const callOrder: string[] = [];
+        const refreshConversation = vi.fn().mockImplementation(() => {
+            callOrder.push('refreshConversation');
+            return Promise.resolve();
+        });
+        const setTask = vi.fn().mockImplementation(() => {
+            callOrder.push('setTask');
+        });
+        const onSendComplete = vi.fn().mockImplementation(() => {
+            callOrder.push('onSendComplete');
+        });
+
+        renderHook(() => useChatSSE(makeOptions({ setTask, refreshConversation, onSendComplete })));
+        await act(async () => { MockEventSource.last._emit('done', {}); });
+
+        // refreshConversation should run before setTask and onSendComplete
+        expect(callOrder).toEqual(['refreshConversation', 'setTask', 'onSendComplete']);
+    });
 });

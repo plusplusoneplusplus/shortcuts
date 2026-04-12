@@ -8,12 +8,17 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockToPayload, mockAddFromFileInput, mockAddFromPaste, mockClearAttachments, mockRemoveAttachment } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
     },
     mockFetch: vi.fn(),
+    mockToPayload: vi.fn(() => []),
+    mockAddFromFileInput: vi.fn(),
+    mockAddFromPaste: vi.fn(),
+    mockClearAttachments: vi.fn(),
+    mockRemoveAttachment: vi.fn(),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
@@ -59,6 +64,24 @@ vi.mock('../../../../src/server/spa/client/react/repos/CreateWorkItemDialog', ()
     CreateWorkItemDialog: () => null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/hooks/useFileAttachments', () => ({
+    useFileAttachments: () => ({
+        attachments: [],
+        images: [],
+        addFromPaste: mockAddFromPaste,
+        addFromFileInput: mockAddFromFileInput,
+        removeAttachment: mockRemoveAttachment,
+        clearAttachments: mockClearAttachments,
+        error: null,
+        clearError: vi.fn(),
+        toPayload: mockToPayload,
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/shared/AttachmentPreviews', () => ({
+    AttachmentPreviews: () => null,
+}));
+
 import { NewChatArea } from '../../../../src/server/spa/client/react/repos/NewChatArea';
 
 beforeEach(() => {
@@ -78,6 +101,7 @@ describe('NewChatArea', () => {
         expect(screen.getByText('Type a message below to begin')).toBeTruthy();
         expect(screen.getByTestId('new-chat-input')).toBeTruthy();
         expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
+        expect(screen.getByTestId('new-chat-attach-file-btn')).toBeTruthy();
     });
 
     it('does not render back button when onBack is not provided', () => {
@@ -314,5 +338,73 @@ describe('NewChatArea', () => {
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
         expect(body.payload.workingDirectory).toBeUndefined();
+    });
+
+    it('renders attach file button with correct label', () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        const btn = screen.getByTestId('new-chat-attach-file-btn');
+        expect(btn.textContent).toBe('+');
+        expect(btn.getAttribute('aria-label')).toBe('Attach file');
+    });
+
+    it('renders hidden file input for attachment', () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        expect(screen.getByTestId('new-chat-file-input-hidden')).toBeTruthy();
+    });
+
+    it('includes attachments in POST payload when present', async () => {
+        const fakePayload = [{ name: 'test.txt', mimeType: 'text/plain', size: 100, dataUrl: 'data:text/plain;base64,abc' }];
+        mockToPayload.mockReturnValueOnce(fakePayload);
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ id: 'task-with-attach' }),
+        });
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Hello with file' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.attachments).toEqual(fakePayload);
+    });
+
+    it('does not include attachments key when payload is empty', async () => {
+        mockToPayload.mockReturnValueOnce([]);
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ id: 'task-no-attach' }),
+        });
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.attachments).toBeUndefined();
+    });
+
+    it('clears attachments after successful send', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ id: 'task-clear' }),
+        });
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        expect(mockClearAttachments).toHaveBeenCalled();
     });
 });

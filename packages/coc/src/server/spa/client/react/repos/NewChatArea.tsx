@@ -6,10 +6,12 @@
 import { useRef, useState } from 'react';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
+import { AttachmentPreviews } from '../shared/AttachmentPreviews';
 import { cn } from '../shared/cn';
 import { MODE_BORDER_COLORS } from './modeConfig';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
+import { useFileAttachments } from '../hooks/useFileAttachments';
 import { getApiBase } from '../utils/config';
 
 export interface NewChatAreaProps {
@@ -22,10 +24,12 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
     const { dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
+    const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
     async function handleSend() {
         const text = input.trim();
@@ -37,6 +41,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
         try {
             const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
+            const attachmentPayload = toPayload();
             const res = await fetch(getApiBase() + '/queue/tasks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -51,6 +56,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         workingDirectory: ws?.rootPath,
                         workspaceId,
                     },
+                    ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
                 }),
             });
 
@@ -63,6 +69,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newTask.task?.id ?? newTask.id, repoId: workspaceId });
             setInput('');
             richTextRef.current?.setValue('');
+            clearAttachments();
         } catch (err: any) {
             if (err?.name !== 'AbortError') {
                 setError(err.message || 'Failed to create task');
@@ -109,7 +116,37 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             {/* Input area */}
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 pb-3 space-y-2">
                 {error && <div className="text-xs text-[#f14c4c]" data-testid="new-chat-error">{error}</div>}
+                <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
+                {attachmentError && (
+                    <div className="text-xs text-[#f14c4c]" data-testid="new-chat-attachment-error">{attachmentError}</div>
+                )}
                 <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
+                    {/* Hidden file input for the + button */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        data-testid="new-chat-file-input-hidden"
+                        onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                                addFromFileInput(e.target.files);
+                            }
+                            e.target.value = '';
+                        }}
+                    />
+                    {/* Attach file button */}
+                    <button
+                        type="button"
+                        disabled={sending}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="shrink-0 h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        data-testid="new-chat-attach-file-btn"
+                        aria-label="Attach file"
+                        title="Attach files"
+                    >
+                        +
+                    </button>
                     <div className="flex-1 min-w-0">
                         <RichTextInput
                             ref={richTextRef}
@@ -127,6 +164,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     void handleSend();
                                 }
                             }}
+                            onPaste={addFromPaste}
                             data-testid="new-chat-input"
                         />
                     </div>
