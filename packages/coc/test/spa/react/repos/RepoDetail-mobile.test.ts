@@ -48,17 +48,9 @@ describe('RepoDetail mobile: header layout', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-splitter"');
     });
 
-    it('title row has truncate class to prevent overflow', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('truncate');
-    });
-
-    it('title row has min-w-0 for proper flex shrinking', () => {
-        // The title row div has min-w-0 class
-        const titleRowSection = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('Title row'));
-        expect(titleRowSection).toBeDefined();
-        const titleRowIdx = REPO_DETAIL_SOURCE.indexOf('Title row');
-        const nearby = REPO_DETAIL_SOURCE.substring(titleRowIdx, titleRowIdx + 200);
-        expect(nearby).toContain('min-w-0');
+    it('mobile header has no title row (repo name shown in TopBar)', () => {
+        // Title row was removed — repo name is now in TopBar
+        expect(REPO_DETAIL_SOURCE).not.toContain('Title row');
     });
 });
 
@@ -190,35 +182,10 @@ describe('RepoDetail mobile: tab scroll affordance', () => {
     });
 });
 
-describe('RepoDetail mobile: back button in header', () => {
-    it('renders mobile back button with data-testid="repo-back-btn"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-back-btn"');
-    });
-
-    it('back button is only shown on mobile (gated on isMobile)', () => {
-        // The button is wrapped in {isMobile && (...)}
-        const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
-        // isMobile guard is in the parent conditional block
-        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 700), backBtnIdx);
-        expect(nearby).toContain('isMobile');
-    });
-
-    it('back button dispatches SET_SELECTED_REPO with null', () => {
-        // onClick handler is before data-testid in the source
-        const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
-        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 400), backBtnIdx + 100);
-        expect(nearby).toContain("type: 'SET_SELECTED_REPO', id: null");
-    });
-
-    it('back button clears hash (repos is implicit default, not #repos)', () => {
-        // location.hash assignment is before data-testid in the source
-        const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
-        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 400), backBtnIdx + 100);
-        expect(nearby).toContain("''");
-    });
-
-    it('back button has aria-label "Back to repos"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('aria-label="Back to repos"');
+describe('RepoDetail mobile: back button removed (repo switching via TopBar)', () => {
+    it('does not render a back button (repo name is in TopBar)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-back-btn"');
+        expect(REPO_DETAIL_SOURCE).not.toContain('aria-label="Back to repos"');
     });
 });
 
