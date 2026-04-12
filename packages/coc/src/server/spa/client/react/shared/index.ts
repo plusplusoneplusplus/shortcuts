@@ -45,3 +45,5 @@ export type { SectionHeaderProps } from './SectionHeader';
 export { ErrorBoundary } from './ErrorBoundary';
 export { SendButton, SplitSendButton } from './SplitSendButton';
 export type { SendButtonProps, SplitSendButtonProps } from './SplitSendButton';
+export { CommentPanelAdapter } from './CommentPanelAdapter';
+export type { CommentPanelAdapterProps, NotesCommentPanelProps, TaskCommentPanelProps } from './CommentPanelAdapter';
