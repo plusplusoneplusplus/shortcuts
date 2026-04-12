@@ -469,4 +469,187 @@ describe('scanTurnsForCreatedFiles', () => {
             expect(results[0].filePath).toBe('/tmp/recovered.yaml');
         });
     });
+
+    // ==================================================================
+    // apply_patch support
+    // ==================================================================
+
+    describe('apply_patch support', () => {
+        /** Build a turn with an apply_patch tool-complete result. */
+        function makeApplyPatchResultTurn(
+            id: string,
+            result: string
+        ): ClientConversationTurn {
+            return {
+                role: 'assistant',
+                content: '',
+                timeline: [{
+                    type: 'tool-complete' as const,
+                    timestamp: '',
+                    toolCall: {
+                        id,
+                        toolName: 'apply_patch',
+                        args: {},
+                        result,
+                        status: 'completed' as const,
+                    } as any,
+                }],
+            };
+        }
+
+        /** Build a turn with apply_patch tool-start (string args) + tool-complete. */
+        function makeApplyPatchArgsTurn(
+            id: string,
+            patchArgs: string,
+            result?: string
+        ): ClientConversationTurn {
+            return {
+                role: 'assistant',
+                content: '',
+                timeline: [
+                    {
+                        type: 'tool-start' as const,
+                        timestamp: '',
+                        toolCall: {
+                            id,
+                            toolName: 'apply_patch',
+                            args: patchArgs,
+                            status: 'running' as const,
+                        } as any,
+                    },
+                    {
+                        type: 'tool-complete' as const,
+                        timestamp: '',
+                        toolCall: {
+                            id,
+                            toolName: 'apply_patch',
+                            args: {},
+                            result: result ?? '',
+                            status: 'completed' as const,
+                        } as any,
+                    },
+                ],
+            };
+        }
+
+        it('detects single file creation via result text', () => {
+            const turns = [
+                makeApplyPatchResultTurn('tc0', 'Added 1 file(s): /tmp/plan.md'),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/plan.md');
+        });
+
+        it('detects multi-file creation via result text', () => {
+            const turns = [
+                makeApplyPatchResultTurn('tc0', 'Added 2 file(s): /tmp/a.md, /tmp/b.yaml'),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(2);
+            expect(results.map(r => r.filePath)).toEqual(['/tmp/a.md', '/tmp/b.yaml']);
+        });
+
+        it('detects file path from tool-start string args', () => {
+            const patchArgs = '*** Begin Patch\n*** Add File: /tmp/plan.md\n+# Plan\n+Content';
+            const turns = [
+                makeApplyPatchArgsTurn('tc0', patchArgs),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/plan.md');
+        });
+
+        it('ignores Modified files in result text', () => {
+            const turns = [
+                makeApplyPatchResultTurn('tc0', 'Modified 1 file(s): /tmp/existing.md'),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(0);
+        });
+
+        it('ignores Update File lines in tool-start args, detects Add File', () => {
+            const patchArgs = [
+                '*** Begin Patch',
+                '*** Add File: /tmp/new.md',
+                '+# New file',
+                '*** Update File: /tmp/old.md',
+                ' context line',
+                '-old',
+                '+new',
+            ].join('\n');
+            const turns = [
+                makeApplyPatchArgsTurn('tc0', patchArgs),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/new.md');
+        });
+
+        it('filters out non-pinned extensions', () => {
+            const turns = [
+                makeApplyPatchResultTurn('tc0', 'Added 2 file(s): /tmp/script.js, /tmp/plan.md'),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/plan.md');
+        });
+
+        it('deduplicates paths from tool-start and tool-complete', () => {
+            const patchArgs = '*** Begin Patch\n*** Add File: /tmp/plan.md\n+# Plan';
+            const turns = [
+                makeApplyPatchArgsTurn('tc0', patchArgs, 'Added 1 file(s): /tmp/plan.md'),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/plan.md');
+        });
+
+        it('detects apply_patch via name fallback (persisted data)', () => {
+            const turns = [
+                makePersistedTurn([{
+                    name: 'apply_patch',
+                    toolName: '',
+                    args: {} as any,
+                    result: 'Added 1 file(s): /tmp/persisted.md',
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/persisted.md');
+        });
+
+        it('resolves apply_patch via tool-start name in live SSE (unknown toolName)', () => {
+            const turn: ClientConversationTurn = {
+                role: 'assistant',
+                content: '',
+                timeline: [
+                    {
+                        type: 'tool-start' as const,
+                        timestamp: '',
+                        toolCall: {
+                            id: 'tc0',
+                            toolName: 'apply_patch',
+                            args: '*** Begin Patch\n*** Add File: /tmp/sse.md\n+# SSE test',
+                            status: 'running' as const,
+                        } as any,
+                    },
+                    {
+                        type: 'tool-complete' as const,
+                        timestamp: '',
+                        toolCall: {
+                            id: 'tc0',
+                            toolName: 'unknown',
+                            args: {},
+                            result: 'Added 1 file(s): /tmp/sse.md',
+                            status: 'completed' as const,
+                        },
+                    },
+                ],
+            };
+            const results = scanTurnsForCreatedFiles([turn]);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/sse.md');
+        });
+    });
 });
