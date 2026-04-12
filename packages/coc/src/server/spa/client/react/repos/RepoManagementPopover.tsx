@@ -32,6 +32,12 @@ export function RepoManagementPopover({ open, onClose, repos, onRefresh }: RepoM
                 target.id === 'repo-picker-btn' || target.closest('#repo-picker-btn')) {
                 return;
             }
+            // Don't close when clicking inside a portal-rendered dialog (e.g. AddRepoDialog,
+            // AddFolderDialog). These render via createPortal to document.body, so their DOM
+            // is outside containerRef even though they are logically children.
+            if (target.closest('[data-testid="dialog-overlay"]')) {
+                return;
+            }
             if (containerRef.current && !containerRef.current.contains(target)) {
                 onClose();
             }
