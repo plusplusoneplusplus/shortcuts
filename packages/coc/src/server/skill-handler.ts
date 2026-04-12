@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import {
     getBundledSkills,
+    getBundledSkillsPath,
     DEFAULT_SKILLS_SETTINGS,
     isWithinDirectory,
 } from '@plusplusoneplusplus/forge';
@@ -321,7 +322,19 @@ async function loadSkillsForWorkspace(
         }
     }
 
-    let skills = [...localSkills, ...globalSkills, ...extraSkills];
+    // Tier 4: Bundled skills (shipped with forge, lowest priority)
+    const bundledSkills: SkillInfo[] = [];
+    const allPreviousNames = new Set([...localNames, ...globalNames, ...extraSkills.map(s => s.name)]);
+    const bundledSkillsPath = getBundledSkillsPath();
+    const bundledList = listInstalledSkills(bundledSkillsPath);
+    for (const skill of bundledList) {
+        if (allPreviousNames.has(skill.name)) continue;
+        skill.source = 'bundled';
+        skill.folderPath = bundledSkillsPath;
+        bundledSkills.push(skill);
+    }
+
+    let skills = [...localSkills, ...globalSkills, ...extraSkills, ...bundledSkills];
     if (dataDir) {
         try {
             const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');
