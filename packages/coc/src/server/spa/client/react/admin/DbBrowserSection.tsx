@@ -1,6 +1,7 @@
 /**
- * DbBrowserSection — read-only browser for the SQLite database tables.
- * Shows a table list sidebar with row counts and a paginated data grid.
+ * DbBrowserSection — browser for the SQLite database tables.
+ * Shows a table list sidebar with row counts, a paginated data grid,
+ * and inline row editing via the PUT endpoint.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -70,6 +71,31 @@ function CellValue({ value }: { value: unknown }) {
     return <span>{str}</span>;
 }
 
+function EditableCell({ value, column, isEditing, onChange }: {
+    value: unknown;
+    column: ColumnInfo;
+    isEditing: boolean;
+    onChange: (value: string) => void;
+}) {
+    if (!isEditing || column.pk) {
+        return (
+            <span className={column.pk && isEditing ? 'text-[var(--text-tertiary)]' : undefined}>
+                <CellValue value={value} />
+            </span>
+        );
+    }
+
+    return (
+        <input
+            type="text"
+            className="w-full px-1 py-0.5 text-xs bg-[var(--bg-primary)] border border-[var(--accent)] rounded text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)]"
+            defaultValue={value === null || value === undefined ? '' : String(value)}
+            onChange={(e) => onChange(e.target.value)}
+            data-testid={`db-edit-${column.name}`}
+        />
+    );
+}
+
 export function DbBrowserSection() {
     const { state, dispatch } = useApp();
     const [tables, setTables] = useState<TableInfo[]>([]);
@@ -81,6 +107,10 @@ export function DbBrowserSection() {
     const [loading, setLoading] = useState(true);
     const [dataLoading, setDataLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [editingRow, setEditingRow] = useState<Record<string, unknown> | null>(null);
+    const [editValues, setEditValues] = useState<Record<string, unknown>>({});
+    const [saving, setSaving] = useState(false);
+    const [editError, setEditError] = useState<string | null>(null);
     // Track whether the initial deep-link table has been consumed
     const deepLinkConsumed = useRef(false);
 
@@ -176,6 +206,76 @@ export function DbBrowserSection() {
         history.replaceState(null, '', '#' + buildDbBrowserHash(selectedTable, 1, newSortCol, newSortOrder));
     };
 
+    const handleEditStart = (row: Record<string, unknown>) => {
+        setEditingRow(row);
+        setEditValues({});
+        setEditError(null);
+    };
+
+    const handleEditCancel = () => {
+        setEditingRow(null);
+        setEditValues({});
+        setEditError(null);
+    };
+
+    const handleEditSave = async () => {
+        if (!tableData || !editingRow) return;
+
+        const pkColumns: Record<string, unknown> = {};
+        const updates: Record<string, unknown> = {};
+
+        for (const col of tableData.columns) {
+            if (col.pk) {
+                pkColumns[col.name] = editingRow[col.name];
+            }
+        }
+
+        // Collect only changed values
+        for (const [colName, newValue] of Object.entries(editValues)) {
+            const originalValue = editingRow[colName];
+            const originalStr = originalValue === null || originalValue === undefined ? '' : String(originalValue);
+            if (String(newValue) !== originalStr) {
+                updates[colName] = newValue === '' ? null : newValue;
+            }
+        }
+
+        if (Object.keys(updates).length === 0) {
+            handleEditCancel();
+            return;
+        }
+
+        setSaving(true);
+        setEditError(null);
+        try {
+            const res = await fetch(
+                `${getApiBase()}/admin/db/tables/${encodeURIComponent(tableData.table)}/rows`,
+                {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pkColumns, updates }),
+                }
+            );
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `HTTP ${res.status}`);
+            }
+            setEditingRow(null);
+            setEditValues({});
+            setEditError(null);
+            // Refresh to show updated data
+            fetchTableData(tableData.table, page, sortColumn, sortOrder);
+        } catch (err) {
+            setEditError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const isEditingThisRow = (row: Record<string, unknown>) => {
+        if (!editingRow || !tableData) return false;
+        return tableData.columns.filter(c => c.pk).every(c => row[c.name] === editingRow[c.name]);
+    };
+
     if (loading) {
         return <div className="flex items-center justify-center p-8"><Spinner size="sm" /></div>;
     }
@@ -225,6 +325,10 @@ export function DbBrowserSection() {
                     <div className="p-2 text-sm text-red-500 mb-2">{error}</div>
                 )}
 
+                {editError && (
+                    <div className="p-2 text-sm text-red-500 mb-2" data-testid="db-edit-error">{editError}</div>
+                )}
+
                 {!dataLoading && tableData && (
                     <>
                         <div className="flex items-center justify-between mb-2">
@@ -255,25 +359,71 @@ export function DbBrowserSection() {
                                                 )}
                                             </th>
                                         ))}
+                                        <th className="px-2 py-1.5 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap w-20">
+                                            Actions
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {tableData.rows.length === 0 ? (
                                         <tr>
-                                            <td colSpan={tableData.columns.length} className="px-2 py-4 text-center text-[var(--text-tertiary)]">
+                                            <td colSpan={tableData.columns.length + 1} className="px-2 py-4 text-center text-[var(--text-tertiary)]">
                                                 No rows
                                             </td>
                                         </tr>
                                     ) : (
-                                        tableData.rows.map((row, idx) => (
-                                            <tr key={idx} className="border-b border-[var(--border)] hover:bg-[var(--bg-secondary)]/50">
-                                                {tableData.columns.map(col => (
-                                                    <td key={col.name} className="px-2 py-1 max-w-xs truncate align-top">
-                                                        <CellValue value={row[col.name]} />
+                                        tableData.rows.map((row, idx) => {
+                                            const editing = isEditingThisRow(row);
+                                            return (
+                                                <tr key={idx} className={`border-b border-[var(--border)] ${editing ? 'bg-[var(--accent)]/5' : 'hover:bg-[var(--bg-secondary)]/50'}`}>
+                                                    {tableData.columns.map(col => (
+                                                        <td key={col.name} className="px-2 py-1 max-w-xs align-top">
+                                                            <EditableCell
+                                                                value={editing ? (col.name in editValues ? editValues[col.name] : row[col.name]) : row[col.name]}
+                                                                column={col}
+                                                                isEditing={editing}
+                                                                onChange={(v) => setEditValues(prev => ({ ...prev, [col.name]: v }))}
+                                                            />
+                                                        </td>
+                                                    ))}
+                                                    <td className="px-2 py-1 whitespace-nowrap align-top">
+                                                        {editing ? (
+                                                            <span className="flex gap-1">
+                                                                <Button
+                                                                    variant="primary"
+                                                                    size="sm"
+                                                                    loading={saving}
+                                                                    onClick={handleEditSave}
+                                                                    data-testid="db-edit-save"
+                                                                >
+                                                                    Save
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    disabled={saving}
+                                                                    onClick={handleEditCancel}
+                                                                    data-testid="db-edit-cancel"
+                                                                >
+                                                                    Cancel
+                                                                </Button>
+                                                            </span>
+                                                        ) : (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleEditStart(row)}
+                                                                data-testid={`db-edit-row-${idx}`}
+                                                                title="Edit row"
+                                                                disabled={!!editingRow}
+                                                            >
+                                                                ✏️
+                                                            </Button>
+                                                        )}
                                                     </td>
-                                                ))}
-                                            </tr>
-                                        ))
+                                                </tr>
+                                            );
+                                        })
                                     )}
                                 </tbody>
                             </table>
