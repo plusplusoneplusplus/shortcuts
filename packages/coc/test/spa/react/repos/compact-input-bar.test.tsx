@@ -53,6 +53,24 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfig: () => ({ apiBasePath: '/api' }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/hooks/useFileAttachments', () => ({
+    useFileAttachments: () => ({
+        attachments: [],
+        images: [],
+        addFromPaste: vi.fn(),
+        addFromFileInput: vi.fn(),
+        removeAttachment: vi.fn(),
+        clearAttachments: vi.fn(),
+        error: null,
+        clearError: vi.fn(),
+        toPayload: vi.fn(() => []),
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/shared/AttachmentPreviews', () => ({
+    AttachmentPreviews: () => null,
+}));
+
 import { FollowUpInputArea } from '../../../../src/server/spa/client/react/repos/FollowUpInputArea';
 import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/repos/FollowUpInputArea';
 import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';
@@ -252,11 +270,11 @@ describe('NewChatArea — compact input bar layout', () => {
         expect(inputWrapper).toBeTruthy();
     });
 
-    it('input bar has two direct children: input wrapper and send button', () => {
+    it('input bar has four direct children: hidden file input, attach button, input wrapper and send button', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const bar = screen.getByTestId('chat-input-bar');
         const children = Array.from(bar.children);
-        expect(children.length).toBe(2);
+        expect(children.length).toBe(4);
     });
 });
 

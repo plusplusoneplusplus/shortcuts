@@ -130,7 +130,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
     const isPending = task?.status === 'queued';
     const isTerminal = task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
-    const inputDisabled = loading || isPending || task?.status === 'cancelled' || task?.status === 'cancelling' || sessionExpired;
+    const inputDisabled = loading || isPending || sessionExpired;
     const resumeSessionId = getSessionIdFromProcess(processDetails || task);
     const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
 
