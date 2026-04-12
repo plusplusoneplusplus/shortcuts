@@ -72,6 +72,10 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
     const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
     const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
 
+    const handleFileSelect = useCallback((filePath: string) => {
+        setSelectedFilePath(prev => prev === filePath ? null : filePath);
+    }, []);
+
     useEffect(() => {
         setLoading(true);
         fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${encodeURIComponent(commitHash)}`)
@@ -124,7 +128,7 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
                 workspaceId={workspaceId}
                 files={fileList}
                 selectedFilePath={selectedFilePath}
-                onFileSelect={setSelectedFilePath}
+                onFileSelect={handleFileSelect}
                 fileCommentMap={fileCommentMap}
             />
             <div className="flex-1 min-w-0 overflow-hidden">
@@ -133,7 +137,8 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
                     hash={commitHash}
                     commit={commit ?? undefined}
                     isPopOut
-                    scrollToFilePath={selectedFilePath}
+                    focusedFilePath={selectedFilePath}
+                    onClearFocus={() => setSelectedFilePath(null)}
                 />
             </div>
         </div>
@@ -150,6 +155,10 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
     const [error, setError] = useState<string | null>(null);
     const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
     const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
+
+    const handleFileSelect = useCallback((filePath: string) => {
+        setSelectedFilePath(prev => prev === filePath ? null : filePath);
+    }, []);
 
     useEffect(() => {
         setLoading(true);
@@ -222,7 +231,7 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
                 workspaceId={workspaceId}
                 files={fileChanges}
                 selectedFilePath={selectedFilePath}
-                onFileSelect={setSelectedFilePath}
+                onFileSelect={handleFileSelect}
                 fileCommentMap={fileCommentMap}
             />
             <div className="flex-1 min-w-0 overflow-hidden">
@@ -232,7 +241,8 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
                     commits={commits}
                     files={files}
                     isPopOut
-                    scrollToFilePath={selectedFilePath}
+                    focusedFilePath={selectedFilePath}
+                    onClearFocus={() => setSelectedFilePath(null)}
                 />
             </div>
         </div>

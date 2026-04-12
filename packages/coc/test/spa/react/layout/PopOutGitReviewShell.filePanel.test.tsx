@@ -45,12 +45,24 @@ describe('PopOutGitReviewShell: file panel integration', () => {
         expect(SOURCE).toMatch(/BranchRangeOverview[\s\S]*?isPopOut/);
     });
 
-    it('passes scrollToFilePath to CommitDetail', () => {
-        expect(SOURCE).toContain('scrollToFilePath={selectedFilePath}');
+    it('passes focusedFilePath to CommitDetail', () => {
+        expect(SOURCE).toContain('focusedFilePath={selectedFilePath}');
     });
 
-    it('passes scrollToFilePath to BranchRangeOverview', () => {
-        expect(SOURCE).toMatch(/BranchRangeOverview[\s\S]*?scrollToFilePath/);
+    it('passes onClearFocus to CommitDetail', () => {
+        expect(SOURCE).toMatch(/CommitDetail[\s\S]*?onClearFocus/);
+    });
+
+    it('passes focusedFilePath to BranchRangeOverview', () => {
+        expect(SOURCE).toMatch(/BranchRangeOverview[\s\S]*?focusedFilePath/);
+    });
+
+    it('passes onClearFocus to BranchRangeOverview', () => {
+        expect(SOURCE).toMatch(/BranchRangeOverview[\s\S]*?onClearFocus/);
+    });
+
+    it('uses toggle-deselect handler for file selection', () => {
+        expect(SOURCE).toContain('prev === filePath ? null : filePath');
     });
 
     it('has selectedFilePath state in CommitReviewContent', () => {

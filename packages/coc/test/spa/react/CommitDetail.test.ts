@@ -98,16 +98,12 @@ describe('CommitDetail', () => {
             expect(source).toContain('const diffUrl = ');
         });
 
-        it('constructs full commit diff URL', () => {
+        it('constructs full commit diff URL by default', () => {
             expect(source).toContain('/git/commits/${hash}/diff');
         });
 
-        it('no longer constructs per-file diff URLs', () => {
-            expect(source).not.toContain('/files/${encodeURIComponent(filePath)}/diff');
-        });
-
-        it('no longer renders file path label', () => {
-            expect(source).not.toContain('data-testid="diff-file-path"');
+        it('constructs per-file diff URL when focusedFilePath is set', () => {
+            expect(source).toContain('/files/${encodeURIComponent(focusedFilePath)}/diff');
         });
     });
 
@@ -165,6 +161,37 @@ describe('CommitDetail', () => {
 
         it('conditionally renders header only for commit mode', () => {
             expect(source).toContain('commit && (');
+        });
+    });
+
+    describe('focused-file mode', () => {
+        it('accepts optional focusedFilePath prop', () => {
+            expect(source).toContain('focusedFilePath?: string | null');
+        });
+
+        it('accepts optional onClearFocus prop', () => {
+            expect(source).toContain('onClearFocus?: () => void');
+        });
+
+        it('has focused-file breadcrumb bar', () => {
+            expect(source).toContain('data-testid="focused-file-breadcrumb"');
+        });
+
+        it('has back button to clear focus', () => {
+            expect(source).toContain('data-testid="focused-file-back-btn"');
+            expect(source).toContain('← All files');
+        });
+
+        it('displays focused file path', () => {
+            expect(source).toContain('data-testid="focused-file-path"');
+        });
+
+        it('calls onClearFocus when back button is clicked', () => {
+            expect(source).toContain('onClick={onClearFocus}');
+        });
+
+        it('skips scrollToFilePath effect when focusedFilePath is set', () => {
+            expect(source).toContain('if (!scrollToFilePath || focusedFilePath) return');
         });
     });
 

@@ -51,6 +51,14 @@ describe('BranchRangeOverview', () => {
         it('imports BranchRangeFile type', () => {
             expect(source).toContain("BranchRangeFile");
         });
+
+        it('imports UnifiedDiffViewer for focused file mode', () => {
+            expect(source).toContain("UnifiedDiffViewer");
+        });
+
+        it('imports Spinner for focused file loading state', () => {
+            expect(source).toContain("Spinner");
+        });
     });
 
     describe('component signature — range props', () => {
@@ -100,6 +108,42 @@ describe('BranchRangeOverview', () => {
 
         it('enforces 80px minimum upper height', () => {
             expect(source).toContain('MIN_UPPER_HEIGHT = 80');
+        });
+    });
+
+    describe('focused-file mode', () => {
+        it('accepts optional focusedFilePath prop', () => {
+            expect(source).toContain('focusedFilePath?: string | null');
+        });
+
+        it('accepts optional onClearFocus prop', () => {
+            expect(source).toContain('onClearFocus?: () => void');
+        });
+
+        it('has focused-file breadcrumb bar', () => {
+            expect(source).toContain('data-testid="focused-file-breadcrumb"');
+        });
+
+        it('has back button to clear focus', () => {
+            expect(source).toContain('data-testid="focused-file-back-btn"');
+            expect(source).toContain('← All files');
+        });
+
+        it('displays focused file path', () => {
+            expect(source).toContain('data-testid="focused-file-path"');
+        });
+
+        it('has FocusedBranchFileDiff component', () => {
+            expect(source).toContain('function FocusedBranchFileDiff');
+        });
+
+        it('fetches per-file diff for branch range', () => {
+            expect(source).toContain('/git/branch-range/files/');
+        });
+
+        it('conditionally renders FocusedBranchFileDiff or BranchAllFilesDiff', () => {
+            expect(source).toContain('focusedFilePath ?');
+            expect(source).toContain('<FocusedBranchFileDiff');
         });
     });
 

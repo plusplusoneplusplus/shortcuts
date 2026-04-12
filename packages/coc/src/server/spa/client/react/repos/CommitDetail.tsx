@@ -33,9 +33,13 @@ export interface CommitDetailProps {
     isPopOut?: boolean;
     /** When set, the viewer scrolls to the given file's diff section. */
     scrollToFilePath?: string | null;
+    /** When set, shows full-file diff for only the focused file instead of the commit-wide diff. */
+    focusedFilePath?: string | null;
+    /** Called when the user wants to return to the commit-wide diff. */
+    onClearFocus?: () => void;
 }
 
-export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFilePath }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFilePath, focusedFilePath, onClearFocus }: CommitDetailProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [chatOpen, setChatOpen] = useState(() => {
         try {
@@ -66,7 +70,9 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
     const [manualOverride, setManualOverride] = useState(false);
 
     const diffUrl = hash
-        ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`
+        ? (focusedFilePath
+            ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(focusedFilePath)}/diff`
+            : `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`)
         : null;
 
     const { diff, loading: diffLoading, error: diffError, retry: handleRetryDiff } = useCachedDiff(diffUrl, workspaceId, hash);
@@ -171,15 +177,14 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
         return () => el.removeEventListener('scroll', handleScroll);
     }, [manualOverride]);
 
-    // Scroll to file when requested via prop
+    // Scroll to file when requested via prop (skip when focused on a single file)
     useEffect(() => {
-        if (!scrollToFilePath) return;
-        // Delay slightly to let the diff render
+        if (!scrollToFilePath || focusedFilePath) return;
         const timer = setTimeout(() => {
             viewerRef.current?.scrollToFile(scrollToFilePath);
         }, 50);
         return () => clearTimeout(timer);
-    }, [scrollToFilePath]);
+    }, [scrollToFilePath, focusedFilePath]);
 
     const handleToggleHeader = useCallback(() => {
         setManualOverride(true);
@@ -264,6 +269,20 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                         </div>
                     </div>
                 </>
+            )}
+            {/* Focused-file breadcrumb */}
+            {focusedFilePath && (
+                <div className="flex items-center gap-2 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fdf6e3]/50 dark:bg-[#3c3520]/30" data-testid="focused-file-breadcrumb">
+                    <button
+                        onClick={onClearFocus}
+                        className="text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline flex-shrink-0"
+                        data-testid="focused-file-back-btn"
+                    >
+                        ← All files
+                    </button>
+                    <span className="text-xs text-[#848484]">·</span>
+                    <span className="text-xs font-mono text-[#1e1e1e] dark:text-[#ccc] truncate" data-testid="focused-file-path">{focusedFilePath}</span>
+                </div>
             )}
             {/* Toolbar for hunk nav + toggle */}
             <div className="sticky top-0 z-10 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-end">
