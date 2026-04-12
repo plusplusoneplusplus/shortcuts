@@ -224,8 +224,8 @@ describe('ItemConversationPanel', () => {
         const body = screen.getByTestId('item-conversation-body');
         // Should contain the optimistic user message
         expect(body.textContent).toContain('Follow up question');
-        // Button should show 'Queue' while sending (no modifier held)
-        expect(screen.getByText('Queue')).toBeDefined();
+        // Button should still show "Send" (no split button anymore)
+        expect(screen.getByText('Send')).toBeDefined();
     });
 
     it('session expired (410 response) shows expired message', async () => {

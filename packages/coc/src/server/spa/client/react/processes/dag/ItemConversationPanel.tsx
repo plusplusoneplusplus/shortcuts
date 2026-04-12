@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchApi } from '../../hooks/useApi';
 import { getApiBase } from '../../utils/config';
-import { Badge, Button, Spinner, SplitSendButton } from '../../shared';
+import { Badge, Button, Spinner, SendButton } from '../../shared';
 import { ConversationTurnBubble } from '../ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { getProcessWorkspaceId } from '../../utils/workspace';
@@ -169,7 +169,22 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
 
     const sendFollowUp = useCallback(async (deliveryMode: DeliveryMode = 'enqueue') => {
         const content = inputValue.trim();
-        if (!content || sending) return;
+        if (!content) return;
+
+        if (sending) {
+            // While a previous send is in-flight, fire-and-forget the new
+            // message to the server with the chosen delivery mode and show an
+            // optimistic user turn. The server will either inject it
+            // immediately (immediate) or queue it for later (enqueue).
+            setInputValue('');
+            setTurns(prev => [...prev, { role: 'user', content, timestamp: new Date().toISOString(), timeline: [] }]);
+            fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content, deliveryMode }),
+            }).catch(() => {});
+            return;
+        }
 
         setInputValue('');
         setSending(true);
@@ -376,8 +391,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                     data-testid="item-conversation-textarea"
                     className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
                 />
-                <SplitSendButton
-                    sending={sending}
+                <SendButton
                     disabled={inputDisabled || !inputValue.trim()}
                     ctrlHeld={modHeld}
                     onSend={(dm) => { void sendFollowUp(dm); }}

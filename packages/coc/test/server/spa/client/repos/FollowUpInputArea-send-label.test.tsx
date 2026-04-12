@@ -16,26 +16,19 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useModifierKey', () =>
 vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
     Button: ({ children, ...rest }: any) => <button {...rest}>{children}</button>,
     SuggestionChips: () => null,
-    SplitSendButton: ({ sending, disabled, ctrlHeld, onSend, ...rest }: any) => {
+    SendButton: ({ disabled, ctrlHeld, onSend, ...rest }: any) => {
         const testId = rest['data-testid'] ?? 'activity-chat-send-btn';
-        if (!sending) {
-            return (
-                <button
-                    disabled={disabled}
-                    className={ctrlHeld ? 'bg-[#e8912d] hover:bg-[#c97a25]' : 'bg-[#0078d4] hover:bg-[#106ebe]'}
-                    onClick={() => onSend()}
-                    data-testid={testId}
-                    title={ctrlHeld ? 'Release Ctrl to queue instead' : 'Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline'}
-                >
-                    {ctrlHeld ? '⚡ Steer' : 'Send'}
-                </button>
-            );
-        }
+        const steering = ctrlHeld;
         return (
-            <span data-testid="split-send-group">
-                <button disabled={disabled} onClick={() => onSend('enqueue')} data-testid={testId} title="Queue after current response (Enter)">Queue</button>
-                <button disabled={disabled} onClick={() => onSend('immediate')} data-testid="split-send-steer-btn" title="Inject into running session now (Ctrl+Enter)" className={ctrlHeld ? 'ring-2 ring-white' : ''}>⚡ Steer</button>
-            </span>
+            <button
+                disabled={disabled}
+                className={steering ? 'bg-[#e8912d] hover:bg-[#c97a25]' : 'bg-[#0078d4] hover:bg-[#106ebe]'}
+                onClick={() => onSend(steering ? 'immediate' : 'enqueue')}
+                data-testid={testId}
+                title={steering ? 'Release Ctrl to queue instead' : 'Send (Enter) · Ctrl+Enter to steer AI · Shift+Enter for newline'}
+            >
+                {steering ? '⚡ Steer' : 'Send'}
+            </button>
         );
     },
 }));
@@ -122,35 +115,36 @@ function getSendButton() {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('FollowUpInputArea – dynamic send button label', () => {
+describe('FollowUpInputArea – single send button', () => {
     beforeEach(() => {
         mockModHeld = false;
     });
 
-    it('shows "Send" by default (not sending, no modifier)', () => {
+    it('shows "Send" by default (no modifier)', () => {
         render(<FollowUpInputArea {...defaultProps()} />);
         expect(getSendButton().textContent).toBe('Send');
     });
 
-    it('shows "Queue" when sending=true and no modifier', () => {
+    it('shows "Send" even when sending=true (no split button)', () => {
         render(<FollowUpInputArea {...defaultProps({ sending: true })} />);
-        expect(getSendButton().textContent).toBe('Queue');
+        expect(getSendButton().textContent).toBe('Send');
+        expect(screen.queryByTestId('split-send-group')).toBeNull();
     });
 
-    it('shows split group with "⚡ Steer" when sending=true and Ctrl is held', () => {
-        mockModHeld = true;
-        render(<FollowUpInputArea {...defaultProps({ sending: true })} />);
-        expect(getSendButton().textContent).toBe('Queue');
-        expect(screen.getByTestId('split-send-steer-btn').textContent).toBe('⚡ Steer');
-    });
-
-    it('shows "⚡ Steer" when not sending and Ctrl is held', () => {
+    it('shows "⚡ Steer" when Ctrl is held', () => {
         mockModHeld = true;
         render(<FollowUpInputArea {...defaultProps()} />);
         expect(getSendButton().textContent).toBe('⚡ Steer');
     });
 
-    it('applies orange background when modHeld && not sending (single mode)', () => {
+    it('shows "⚡ Steer" when Ctrl is held even while sending', () => {
+        mockModHeld = true;
+        render(<FollowUpInputArea {...defaultProps({ sending: true })} />);
+        expect(getSendButton().textContent).toBe('⚡ Steer');
+        expect(screen.queryByTestId('split-send-group')).toBeNull();
+    });
+
+    it('applies orange background when modHeld', () => {
         mockModHeld = true;
         render(<FollowUpInputArea {...defaultProps()} />);
         const btn = getSendButton();

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { Button, SuggestionChips, SplitSendButton } from '../shared';
+import { Button, SuggestionChips, SendButton } from '../shared';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { PastePreview } from '../shared/PastePreview';
 import { cn } from '../shared/cn';
@@ -225,8 +225,7 @@ export function FollowUpInputArea({
                         highlightIndex={slashCommands.highlightIndex}
                     />
                 </div>
-                <SplitSendButton
-                    sending={sending}
+                <SendButton
                     disabled={inputDisabled}
                     ctrlHeld={modHeld}
                     onSend={(dm) => { void onSend(undefined, dm); }}

@@ -43,5 +43,5 @@ export type { RichTextInputProps, RichTextInputHandle } from './RichTextInput';
 export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
 export { ErrorBoundary } from './ErrorBoundary';
-export { SplitSendButton } from './SplitSendButton';
-export type { SplitSendButtonProps } from './SplitSendButton';
+export { SendButton, SplitSendButton } from './SplitSendButton';
+export type { SendButtonProps, SplitSendButtonProps } from './SplitSendButton';
