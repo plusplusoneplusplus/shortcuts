@@ -465,6 +465,33 @@ describe('RepoActivityTab: task selection', () => {
         expect(location.hash).toBe(hashBefore);
     });
 
+    it('re-clicking selected task still calls markSeen and markReadByProcessId', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        await renderTab();
+
+        // First click — selects
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('task-r1'));
+        });
+        await waitFor(() => {
+            expect(mockDetailPane.mock.calls.at(-1)?.[0]?.selectedTaskId).toBe('proc-r1');
+        });
+
+        // Clear mocks so we can assert the re-click calls independently
+        mockMarkSeen.mockClear();
+        mockMarkReadByProcessId.mockClear();
+
+        // Second click — same task
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('task-r1'));
+        });
+
+        // Re-click should still mark the task as seen
+        expect(mockMarkSeen).toHaveBeenCalledWith('proc-r1');
+        expect(mockMarkReadByProcessId).toHaveBeenCalledWith('proc-r1');
+    });
+
     it('selecting task calls markSeen with the task id', async () => {
         const r1 = makeRunningTask('r1');
         setupFetchMock({ running: [r1] });

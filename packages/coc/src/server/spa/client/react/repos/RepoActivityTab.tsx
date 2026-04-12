@@ -260,6 +260,8 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         // Derive processId for seen-state, notifications, and URL
         const processId = isQueueProcessId(id) ? id : (task?.processId ?? toQueueProcessId(id));
         if (selectedTaskId === processId) {
+            markSeen(processId);
+            markReadByProcessId(processId);
             queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
             if (isMobile) setMobileShowDetail(true);
             return;
