@@ -105,16 +105,24 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 >
                     &#9776;
                 </button>
-                {/* Mobile repo picker */}
+                {/* Mobile hamburger */}
                 <button
-                    className="h-7 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-xs font-medium px-2 inline-flex items-center gap-1 touch-target md:hidden"
+                    className="h-7 w-7 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none inline-flex items-center justify-center touch-target md:hidden"
                     id="repo-picker-btn"
                     aria-label="Select repository"
                     aria-expanded={popoverOpen}
                     onClick={() => setPopoverOpen(prev => !prev)}
                 >
-                    <span className="text-[10px]">▾</span> Select Repo
+                    &#9776;
                 </button>
+                {/* Mobile brand / repo name */}
+                <span
+                    className="text-sm font-semibold whitespace-nowrap truncate max-w-[50vw] md:hidden"
+                    title={brandTooltip}
+                    data-testid="topbar-mobile-brand"
+                >
+                    {selectedRepo ? selectedRepo.name : 'CoC'}
+                </span>
                 <a
                     href="#"
                     data-tab="repos"
@@ -152,16 +160,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 )}
             </div>
             <div className="flex items-center gap-1">
-                {/* Mobile: show selected repo name */}
-                {isMobile && selectedRepo && (
-                    <span
-                        className="text-sm font-semibold truncate max-w-[40vw] mr-1"
-                        title={selectedRepo.name}
-                        data-testid="topbar-selected-repo-name"
-                    >
-                        {selectedRepo.name}
-                    </span>
-                )}
+
                 <span
                     className="inline-flex items-center justify-center h-7 w-7 md:h-8 md:w-8"
                     title={wsStatusConfig[state.wsStatus ?? 'closed']?.label}

@@ -69,14 +69,19 @@ describe('TopBar responsive behavior', () => {
         expect(tabBar).toBeNull();
     });
 
-    it('mobile repo picker is visible with md:hidden class', () => {
+    it('mobile hamburger is visible with md:hidden class and shows brand label', () => {
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
         const picker = document.getElementById('repo-picker-btn') as HTMLButtonElement;
         expect(picker).toBeTruthy();
         expect(picker.tagName).toBe('BUTTON');
         expect(picker.className).toContain('md:hidden');
-        expect(picker.textContent).toContain('Select Repo');
+        // Hamburger icon (☰ = &#9776;)
+        expect(picker.textContent).toContain('☰');
+        // Brand label next to hamburger shows "CoC" when no repo selected
+        const brand = screen.getByTestId('topbar-mobile-brand');
+        expect(brand.textContent).toBe('CoC');
+        expect(brand.className).toContain('md:hidden');
     });
 
     it('desktop CoC link shows short label with tooltip', () => {
