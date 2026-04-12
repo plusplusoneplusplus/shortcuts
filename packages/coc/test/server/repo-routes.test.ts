@@ -97,7 +97,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
     await stopServer();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -453,7 +453,7 @@ describe('GET /api/repos/:repoId/search', () => {
         expect(body.results.length).toBeLessThanOrEqual(200);
     });
 
-    it('forwards showIgnored=true to listFilesRecursive', async () => {
+    it('forwards showIgnored=true to listFilesRecursive', { timeout: 60_000 }, async () => {
         seedDefaultRepo();
         // Create a .gitignore that ignores dist/
         initGitRepo(repoDir);

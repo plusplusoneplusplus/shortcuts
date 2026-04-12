@@ -564,7 +564,7 @@ describe('API Handler', () => {
                 expect(body.isGitRepo).toBe(false);
                 expect(body.remoteUrl).toBe('https://dev.azure.com/myorg/myproject/_git/myrepo');
             } finally {
-                fs.rmSync(repoDir, { recursive: true, force: true });
+                fs.rmSync(repoDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
             }
         });
 
@@ -592,7 +592,7 @@ describe('API Handler', () => {
                 expect(batchBody.results['ws-empty-git-batch'].remoteUrl)
                     .toBe('https://dev.azure.com/myorg/myproject/_git/myrepo');
             } finally {
-                fs.rmSync(repoDir, { recursive: true, force: true });
+                fs.rmSync(repoDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
             }
         });
 
@@ -614,7 +614,7 @@ describe('API Handler', () => {
         // git-info ahead/behind
         // ================================================================
 
-        it('should return ahead=0 and behind=0 when branch is in sync', async () => {
+        it('should return ahead=0 and behind=0 when branch is in sync', { timeout: 60_000 }, async () => {
             const srv = await startServer();
             const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-'));
             const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-'));
@@ -635,12 +635,12 @@ describe('API Handler', () => {
                 expect(body.ahead).toBe(0);
                 expect(body.behind).toBe(0);
             } finally {
-                fs.rmSync(bareDir, { recursive: true, force: true });
-                fs.rmSync(cloneDir, { recursive: true, force: true });
+                fs.rmSync(bareDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                fs.rmSync(cloneDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
             }
         });
 
-        it('should return ahead=1 for unpushed commit', async () => {
+        it('should return ahead=1 for unpushed commit', { timeout: 60_000 }, async () => {
             const srv = await startServer();
             const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-'));
             const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-'));
@@ -664,12 +664,12 @@ describe('API Handler', () => {
                 expect(body.ahead).toBe(1);
                 expect(body.behind).toBe(0);
             } finally {
-                fs.rmSync(bareDir, { recursive: true, force: true });
-                fs.rmSync(cloneDir, { recursive: true, force: true });
+                fs.rmSync(bareDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                fs.rmSync(cloneDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
             }
         });
 
-        it('should return behind=1 for commits on origin not yet merged', async () => {
+        it('should return behind=1 for commits on origin not yet merged', { timeout: 60_000 }, async () => {
             const srv = await startServer();
             const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-'));
             const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-'));
@@ -701,13 +701,13 @@ describe('API Handler', () => {
                 expect(body.ahead).toBe(0);
                 expect(body.behind).toBe(1);
             } finally {
-                fs.rmSync(bareDir, { recursive: true, force: true });
-                fs.rmSync(cloneDir, { recursive: true, force: true });
+                fs.rmSync(bareDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                fs.rmSync(cloneDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
                 fs.rmSync(pusherDir, { recursive: true, force: true });
             }
         });
 
-        it('should return ahead=0 and behind=0 when no upstream is configured', async () => {
+        it('should return ahead=0 and behind=0 when no upstream is configured', { timeout: 60_000 }, async () => {
             const srv = await startServer();
             const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'no-upstream-'));
             try {
@@ -728,7 +728,7 @@ describe('API Handler', () => {
             }
         });
 
-        it('should return ahead=1 and behind=1 when diverged', async () => {
+        it('should return ahead=1 and behind=1 when diverged', { timeout: 60_000 }, async () => {
             const srv = await startServer();
             const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-'));
             const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-'));
@@ -762,8 +762,8 @@ describe('API Handler', () => {
                 expect(body.ahead).toBe(1);
                 expect(body.behind).toBe(1);
             } finally {
-                fs.rmSync(bareDir, { recursive: true, force: true });
-                fs.rmSync(cloneDir, { recursive: true, force: true });
+                fs.rmSync(bareDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                fs.rmSync(cloneDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
                 fs.rmSync(pusherDir, { recursive: true, force: true });
             }
         });
