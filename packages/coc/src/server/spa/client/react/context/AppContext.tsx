@@ -443,7 +443,9 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'SET_EXPLORER_PATH':
             return { ...state, selectedExplorerPath: action.path };
         case 'SET_SELECTED_NOTE_PATH':
-            return { ...state, selectedNotePath: action.notePath };
+            return state.selectedNotePath === action.notePath
+                ? state
+                : { ...state, selectedNotePath: action.notePath };
         case 'SET_MEMORY_SUB_TAB':
             return { ...state, activeMemorySubTab: action.tab };
         case 'SET_SKILLS_SUB_TAB':

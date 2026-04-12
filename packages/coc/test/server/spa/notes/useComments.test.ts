@@ -170,6 +170,22 @@ describe('useComments', () => {
             expect(result.current.threads.length).toBe(2);
         });
 
+        it('allThreads returns all threads regardless of active filter', async () => {
+            const { result } = renderHook(() =>
+                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1' }),
+            );
+
+            await waitFor(() => expect(result.current.loading).toBe(false));
+
+            // Default filter = 'all': threads and allThreads should be identical length
+            expect(result.current.allThreads.length).toBe(2);
+
+            // Switch to 'open' filter: threads is filtered, allThreads is not
+            act(() => { result.current.setFilter('open'); });
+            expect(result.current.threads.length).toBe(1);
+            expect(result.current.allThreads.length).toBe(2);
+        });
+
         it('filters to open threads only', async () => {
             const { result } = renderHook(() =>
                 useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1' }),

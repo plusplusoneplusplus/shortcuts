@@ -237,6 +237,7 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                 <NoteEditor
                     workspaceId={workspaceId}
                     notePath={selectedPath}
+                    threads={comments.allThreads}
                     onCommentActivated={setActiveCommentId}
                     onEditorReady={(ed) => { editorRef.current = ed; }}
                     onCommentCreate={handleCommentCreate}

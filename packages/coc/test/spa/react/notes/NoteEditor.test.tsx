@@ -108,6 +108,74 @@ describe('NoteEditor', () => {
         vi.useRealTimers();
     });
 
+    // ── Content loads exactly once (Fix 1: waits for editor) ──────────
+
+    it('loads content exactly once (does not double-fetch before editor is ready)', async () => {
+        mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+        });
+        await waitFor(() => {
+            expect(mockLoadContent).toHaveBeenCalledTimes(1);
+            expect(mockSetContent).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    // ── No spurious autosave after load (Fix 3) ─────────────────────────
+
+    it('does not trigger spurious autosave after loading content', async () => {
+        mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+        });
+        await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+        vi.useFakeTimers();
+
+        // Advance past the 1500ms debounce window
+        await act(async () => { vi.advanceTimersByTime(2000); });
+
+        expect(mockIOSaveContent).not.toHaveBeenCalled();
+    });
+
+    // ── Threads prop skips loadThreads (Fix 2) ──────────────────────────
+
+    it('uses threads prop for marks instead of calling loadThreads', async () => {
+        const fakeThreads = [{
+            id: 'thread-1',
+            anchor: { quotedText: 'Hello', prefix: '', suffix: '' },
+            status: 'open' as const,
+            comments: [{ id: 'c1', body: 'Nice!', createdAt: '2025-01-01T00:00:00Z' }],
+            createdAt: '2025-01-01T00:00:00Z',
+        }];
+
+        const mockBackend = {
+            loadThreads: vi.fn().mockResolvedValue([]),
+            updateThreadAnchor: vi.fn(),
+        };
+
+        mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+        await act(async () => {
+            render(
+                <NoteEditor
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    io={mockIo}
+                    commentBackend={mockBackend}
+                    threads={fakeThreads}
+                    commentsEnabled={true}
+                />,
+            );
+        });
+
+        await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+        // Backend's loadThreads should NOT have been called when threads prop is provided
+        expect(mockBackend.loadThreads).not.toHaveBeenCalled();
+    });
+
     // ── Empty state ─────────────────────────────────────────────────────
 
     it('shows empty-state placeholder when notePath is null', () => {

@@ -43,6 +43,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedPrId: null,
         selectedWorkflowProcessId: null,
         selectedExplorerPath: null,
+        selectedNotePath: null,
         conversationCache: {},
         wsStatus: 'closed',
         activeMemorySubTab: 'entries',
@@ -325,6 +326,26 @@ describe('AppContext reducer', () => {
             appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-a' } });
             expect(fetchSpy).not.toHaveBeenCalled();
             vi.unstubAllGlobals();
+        });
+    });
+
+    describe('SET_SELECTED_NOTE_PATH', () => {
+        it('updates selectedNotePath', () => {
+            const state = makeState({ selectedNotePath: null });
+            const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: 'Notebook/Page1' });
+            expect(result.selectedNotePath).toBe('Notebook/Page1');
+        });
+
+        it('returns same state reference when path is unchanged (no-op)', () => {
+            const state = makeState({ selectedNotePath: 'Notebook/Page1' });
+            const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: 'Notebook/Page1' });
+            expect(result).toBe(state);
+        });
+
+        it('returns same state reference when setting null to null', () => {
+            const state = makeState({ selectedNotePath: null });
+            const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: null });
+            expect(result).toBe(state);
         });
     });
 

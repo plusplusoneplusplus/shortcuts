@@ -29,6 +29,9 @@ export interface NoteEditorProps {
     io?: NoteEditorIO;
     /** Injectable comment-thread backend. Defaults to the notes-backed implementation. */
     commentBackend?: NoteEditorCommentBackend;
+    /** Pre-loaded comment threads (from useComments). When provided, NoteEditor
+     *  uses these for mark application instead of calling commentBackend.loadThreads. */
+    threads?: CommentThread[];
     onCommentActivated?: (commentId: string | null) => void;
     onEditorReady?: (editor: Editor) => void;
     onCommentCreate?: () => void;
@@ -46,6 +49,7 @@ export function NoteEditor({
     notePath,
     io = defaultNoteEditorIO,
     commentBackend = defaultCommentBackend,
+    threads: threadsProp,
     onCommentActivated,
     onEditorReady,
     onCommentCreate,
@@ -345,6 +349,22 @@ export function NoteEditor({
         setViewMode('rich');
     }, [rawMarkdown, editor, commentsEnabled, setViewMode]);
 
+    // ── Apply comment marks from threads prop ─────────────────────────────────
+
+    const contentLoadedRef = useRef(false);
+
+    useEffect(() => {
+        if (!editor || !threadsProp || !notePath || !contentLoadedRef.current || !commentsEnabled) return;
+        loadedThreadsRef.current = threadsProp;
+        for (const thread of threadsProp) {
+            if (thread.status === 'resolved') continue;
+            const result = findAnchorInDoc(editor.state.doc, thread.anchor);
+            if (result) {
+                applyCommentMark(editor, thread.id, result.from, result.to);
+            }
+        }
+    }, [threadsProp, editor, notePath, commentsEnabled]);
+
     // ── Load content on path change ─────────────────────────────────────────
 
     useEffect(() => {
@@ -355,6 +375,7 @@ export function NoteEditor({
         setViewModeRaw('rich');
         setRawMarkdown('');
         setSourceDirty(false);
+        contentLoadedRef.current = false;
 
         if (!notePath) {
             editor?.commands.clearContent();
@@ -362,6 +383,9 @@ export function NoteEditor({
             setLoading(false);
             return;
         }
+
+        // Wait for editor to be ready before loading content
+        if (!editor) return;
 
         let cancelled = false;
         setLoading(true);
@@ -374,22 +398,40 @@ export function NoteEditor({
                 if (cancelled) return;
                 let html = markdownToHtml(content);
                 html = rewriteHtmlImageSrc(html, ioRef.current, workspaceId);
-                editor?.commands.setContent(html);
+                editor.commands.setContent(html);
+                // Cancel any save triggered by setContent — loaded content should not be saved back
+                pendingContentRef.current = null;
+                if (saveTimerRef.current) {
+                    clearTimeout(saveTimerRef.current);
+                    saveTimerRef.current = null;
+                }
                 setDirty(false);
+                contentLoadedRef.current = true;
 
                 // Apply comment marks from persisted threads
-                if (commentsEnabled && editor) {
-                    commentBackendRef.current.loadThreads(workspaceId, notePath).then((threads) => {
-                        if (cancelled) return;
-                        loadedThreadsRef.current = threads;
-                        for (const thread of threads) {
+                if (commentsEnabled) {
+                    if (threadsProp) {
+                        loadedThreadsRef.current = threadsProp;
+                        for (const thread of threadsProp) {
                             if (thread.status === 'resolved') continue;
                             const result = findAnchorInDoc(editor.state.doc, thread.anchor);
                             if (result) {
                                 applyCommentMark(editor, thread.id, result.from, result.to);
                             }
                         }
-                    }).catch(() => { /* non-fatal — comments just won't highlight */ });
+                    } else {
+                        commentBackendRef.current.loadThreads(workspaceId, notePath).then((threads) => {
+                            if (cancelled) return;
+                            loadedThreadsRef.current = threads;
+                            for (const thread of threads) {
+                                if (thread.status === 'resolved') continue;
+                                const result = findAnchorInDoc(editor.state.doc, thread.anchor);
+                                if (result) {
+                                    applyCommentMark(editor, thread.id, result.from, result.to);
+                                }
+                            }
+                        }).catch(() => { /* non-fatal — comments just won't highlight */ });
+                    }
                 }
             })
             .catch((err) => {

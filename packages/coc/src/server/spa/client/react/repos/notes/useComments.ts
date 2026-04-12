@@ -12,6 +12,7 @@ export interface UseCommentsOptions {
 
 export interface UseCommentsReturn {
     threads: CommentThread[];
+    allThreads: CommentThread[];
     selectedThreadId: string | null;
     filter: CommentFilter;
     loading: boolean;
@@ -234,6 +235,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
 
     return {
         threads: filteredAndSorted,
+        allThreads,
         selectedThreadId,
         filter,
         loading,
