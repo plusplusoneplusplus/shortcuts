@@ -1202,4 +1202,67 @@ describe('ActivityChatDetail', () => {
             expect(sendBtnBlock).not.toContain('...');
         });
     });
+
+    describe('safety-net effect calls refreshConversation and onSendComplete', () => {
+        it('safety-net effect references refreshConversation', () => {
+            // The safety-net useEffect must call refreshConversation when it detects
+            // a terminal status in queue context to prevent the SSE race condition
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            expect(safetyNetBlock).toContain('refreshConversation(processId)');
+        });
+
+        it('safety-net effect calls onSendComplete to unblock waitForSendCompletion', () => {
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            expect(safetyNetBlock).toContain('onSendComplete()');
+        });
+
+        it('safety-net effect includes processId, refreshConversation, onSendComplete in deps', () => {
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            expect(safetyNetBlock).toContain('processId');
+            expect(safetyNetBlock).toContain('refreshConversation');
+            expect(safetyNetBlock).toContain('onSendComplete');
+        });
+    });
+
+    describe('useChatSSE finish() defers setTask after refreshConversation', () => {
+        it('finish() calls refreshConversation before setTask', () => {
+            // setTask must be deferred until after refreshConversation resolves
+            // to prevent the stale-render gap where chat input disappears
+            const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            const refreshIdx = finishBlock.indexOf('refreshConversation(processId)');
+            const setTaskIdx = finishBlock.indexOf('setTask(prev =>');
+            expect(refreshIdx).toBeGreaterThan(-1);
+            expect(setTaskIdx).toBeGreaterThan(-1);
+            // refreshConversation should appear before setTask in the code
+            expect(refreshIdx).toBeLessThan(setTaskIdx);
+        });
+
+        it('setTask is inside refreshConversation.finally() block', () => {
+            const finishStart = USE_CHAT_SSE_SOURCE.indexOf('const finish =');
+            const finishBlock = USE_CHAT_SSE_SOURCE.substring(finishStart, finishStart + 1500);
+            // setTask should be inside a .finally() callback
+            expect(finishBlock).toMatch(/\.finally\s*\(/);
+            const finallyMatch = finishBlock.match(/\.finally\s*\(/);
+            const finallyIdx = finishBlock.indexOf(finallyMatch![0]);
+            const setTaskIdx = finishBlock.indexOf('setTask(prev =>');
+            expect(setTaskIdx).toBeGreaterThan(finallyIdx);
+        });
+    });
+
+    describe('useSendMessage finally block refreshConversation fallback', () => {
+        it('sendFollowUp finally block calls refreshConversation as fallback', () => {
+            // The finally block in sendFollowUp should call refreshConversation
+            // as a safety fallback for the 90s timeout path
+            const finallyIdx = USE_SEND_MESSAGE_SOURCE.indexOf('} finally {');
+            const finallyBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                finallyIdx,
+                finallyIdx + 1200,
+            );
+            expect(finallyBlock).toContain('refreshConversation(processId)');
+        });
+    });
 });

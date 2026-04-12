@@ -187,15 +187,16 @@ export function useChatSSE({
             finished = true;
             closeSSE();
             setBackgroundTasks(null);
-            setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
             if (queueDispatch && workspaceId) {
                 queueDispatch({ type: 'REPO_TASK_COMPLETED_OPTIMISTIC', repoId: workspaceId, taskId, status: finalStatus });
             }
             setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-            // Await refreshConversation before signalling completion to prevent
-            // flushQueueRef from adding optimistic turns that refreshConversation
-            // would then overwrite with stale server data.
+            // Await refreshConversation before updating task status and signalling
+            // completion. This ensures processDetails and task.status update atomically,
+            // preventing the stale-render gap where the chat input disappears because
+            // task.status is terminal but conversation data hasn't been fetched yet.
             refreshConversation(processId).finally(() => {
+                setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
                 onSendComplete();
             });
         };

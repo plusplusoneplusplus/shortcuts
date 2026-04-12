@@ -259,10 +259,10 @@ describe('useChatSSE', () => {
         expect(updater([])).toEqual([{ role: 'user', content: 'hi' }]);
     });
 
-    it('calls setTask to mark completed on "done" event', () => {
+    it('calls setTask to mark completed on "done" event', async () => {
         const setTask = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setTask })));
-        act(() => { MockEventSource.latest().emit('done', {}); });
+        await act(async () => { MockEventSource.latest().emit('done', {}); });
         expect(setTask).toHaveBeenCalled();
     });
 });
