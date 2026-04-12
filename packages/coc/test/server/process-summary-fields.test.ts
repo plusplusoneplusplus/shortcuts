@@ -97,4 +97,16 @@ describe('toProcessSummary — field completeness for notifications', () => {
         const summary = toProcessSummary(makeAIProcess({ workingDirectory: undefined }));
         expect(summary.workingDirectory).toBeUndefined();
     });
+
+    it('includes lastEventAt as ISO string when present', () => {
+        const summary = toProcessSummary(makeAIProcess({
+            lastEventAt: new Date('2026-04-01T12:00:00Z'),
+        }));
+        expect(summary.lastEventAt).toBe('2026-04-01T12:00:00.000Z');
+    });
+
+    it('lastEventAt is undefined when not set on process', () => {
+        const summary = toProcessSummary(makeAIProcess({ lastEventAt: undefined }));
+        expect(summary.lastEventAt).toBeUndefined();
+    });
 });

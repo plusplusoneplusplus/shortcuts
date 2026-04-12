@@ -447,6 +447,9 @@ export interface AIProcess {
 
     /** Absolute path to the JSON file backing this process in the store. */
     dataFilePath?: string;
+
+    /** Timestamp of the last conversation event (turn completion). Set server-side only. */
+    lastEventAt?: Date;
 }
 
 /**
@@ -510,6 +513,9 @@ export interface SerializedAIProcess {
 
     /** Messages queued on the server while an AI response is in progress */
     pendingMessages?: PendingMessage[];
+
+    /** Timestamp of the last conversation event (turn completion). ISO string. */
+    lastEventAt?: string;
 }
 
 /**
@@ -621,6 +627,8 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
         cumulativeTokenUsage: process.cumulativeTokenUsage,
         // Pending messages (plain JSON, no Date conversion needed)
         pendingMessages: process.pendingMessages,
+        // Last event timestamp
+        lastEventAt: process.lastEventAt?.toISOString(),
     };
 }
 
@@ -720,6 +728,8 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         cumulativeTokenUsage: serialized.cumulativeTokenUsage,
         // Pending messages (plain JSON, no Date conversion needed)
         pendingMessages: serialized.pendingMessages,
+        // Last event timestamp
+        lastEventAt: serialized.lastEventAt ? new Date(serialized.lastEventAt) : undefined,
     };
 }
 

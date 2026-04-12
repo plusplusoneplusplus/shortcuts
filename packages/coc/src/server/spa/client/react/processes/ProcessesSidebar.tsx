@@ -122,7 +122,7 @@ export function ProcessesSidebar() {
                 const sa = order[a.status] ?? 5;
                 const sb = order[b.status] ?? 5;
                 if (sa !== sb) return sa - sb;
-                return new Date(b.startTime || 0).getTime() - new Date(a.startTime || 0).getTime();
+                return new Date(b.lastEventAt || b.startTime || 0).getTime() - new Date(a.lastEventAt || a.startTime || 0).getTime();
             });
     }, [state.processes, state.workspace, state.statusFilter, state.searchQuery]);
 

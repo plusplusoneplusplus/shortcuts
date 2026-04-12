@@ -81,6 +81,7 @@ interface ProcessRow {
     data_file_path: string | null;
     archived: number;
     seen_at: string | null;
+    last_event_at: string | null;
 }
 
 interface TurnRow {
@@ -313,6 +314,7 @@ function processToRow(process: AIProcess): Record<string, unknown> {
         stale: boolToInt(process.stale),
         data_file_path: process.dataFilePath ?? null,
         archived: 0,
+        last_event_at: dateToIso(process.lastEventAt ?? process.startTime),
     };
 }
 
@@ -363,6 +365,7 @@ function rowToProcess(row: ProcessRow, turns?: ConversationTurn[]): AIProcess {
         stale: intToBool(row.stale),
         dataFilePath: row.data_file_path ?? undefined,
         pendingMessages,
+        lastEventAt: isoToDate(row.last_event_at),
     };
 
     if (turns) {
@@ -546,14 +549,14 @@ export class SqliteProcessStore implements ProcessStore {
                 raw_stdout_file_path, metadata, group_metadata, structured_result,
                 parent_process_id, sdk_session_id, backend, working_directory,
                 title, token_limit, current_tokens, cumulative_token_usage,
-                stale, data_file_path, archived
+                stale, data_file_path, archived, last_event_at
             ) VALUES (
                 @id, @workspace_id, @type, @prompt_preview, @full_prompt, @status,
                 @start_time, @end_time, @error, @result, @result_file_path,
                 @raw_stdout_file_path, @metadata, @group_metadata, @structured_result,
                 @parent_process_id, @sdk_session_id, @backend, @working_directory,
                 @title, @token_limit, @current_tokens, @cumulative_token_usage,
-                @stale, @data_file_path, @archived
+                @stale, @data_file_path, @archived, @last_event_at
             )
         `);
 
@@ -623,7 +626,7 @@ export class SqliteProcessStore implements ProcessStore {
 
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
         const { sql, params } = this.buildProcessWhereClause(filter);
-        const query = `SELECT * FROM processes ${sql} ORDER BY start_time DESC` +
+        const query = `SELECT * FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
             (filter?.limit !== undefined ? ` LIMIT ?` : '') +
             (filter?.offset !== undefined ? ` OFFSET ?` : '');
 
@@ -668,7 +671,7 @@ export class SqliteProcessStore implements ProcessStore {
         const total = countRow.cnt;
 
         // Fetch summary columns with pagination
-        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title FROM processes ${sql} ORDER BY start_time DESC` +
+        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, last_event_at FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
             (filter?.limit !== undefined ? ` LIMIT ?` : '') +
             (filter?.offset !== undefined ? ` OFFSET ?` : '');
 
@@ -693,6 +696,7 @@ export class SqliteProcessStore implements ProcessStore {
                 parentProcessId: row.parent_process_id ?? undefined,
                 title: row.title ?? undefined,
                 duration: endMs !== undefined ? endMs - startMs : undefined,
+                lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
             };
         });
 
@@ -888,6 +892,10 @@ export class SqliteProcessStore implements ProcessStore {
 
             // Insert the new turn
             this.insertTurnStmt.run(turnToRow(turn, processId));
+
+            // Update last_event_at to current time
+            this.db.prepare('UPDATE processes SET last_event_at = ? WHERE id = ?')
+                .run(new Date().toISOString(), processId);
 
             // Apply additional updates
             if (options?.additionalUpdates) {

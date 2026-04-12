@@ -284,4 +284,48 @@ describe('FileProcessStore.appendConversationTurn', () => {
         expect(result!.allTurns).toHaveLength(4);
         expect(result!.allTurns.map(t => t.turnIndex)).toEqual([0, 1, 2, 3]);
     });
+
+    describe('lastEventAt tracking', () => {
+        it('addProcess sets lastEventAt to startTime', async () => {
+            const store = new FileProcessStore({ dataDir: tmpDir });
+            const startTime = new Date('2026-01-15T10:00:00Z');
+            await store.addProcess(makeProcess('p-lea', { startTime }));
+
+            const result = await store.getProcess('p-lea');
+            expect(result).toBeDefined();
+            expect(result!.lastEventAt).toBeInstanceOf(Date);
+            expect(result!.lastEventAt!.toISOString()).toBe(startTime.toISOString());
+        });
+
+        it('appendConversationTurn updates lastEventAt to current time', async () => {
+            const store = new FileProcessStore({ dataDir: tmpDir });
+            const startTime = new Date('2026-01-15T10:00:00Z');
+            await store.addProcess(makeProcess('p-lea2', { startTime }));
+
+            await store.appendConversationTurn('p-lea2', (idx) => ({
+                role: 'assistant',
+                content: 'response',
+                timestamp: new Date(),
+                turnIndex: idx,
+                timeline: [],
+            }));
+
+            const result = await store.getProcess('p-lea2');
+            expect(result).toBeDefined();
+            expect(result!.lastEventAt).toBeInstanceOf(Date);
+            // lastEventAt should be newer than the original startTime
+            expect(result!.lastEventAt!.getTime()).toBeGreaterThan(startTime.getTime());
+        });
+
+        it('lastEventAt appears in the workspace index entry', async () => {
+            const store = new FileProcessStore({ dataDir: tmpDir });
+            const startTime = new Date('2026-01-15T10:00:00Z');
+            await store.addProcess(makeProcess('p-lea3', { startTime }));
+
+            const { entries } = await store.getProcessSummaries({ workspaceId: 'ws-test' });
+            const entry = entries.find(e => e.id === 'p-lea3');
+            expect(entry).toBeDefined();
+            expect(entry!.lastEventAt).toBe(startTime.toISOString());
+        });
+    });
 });

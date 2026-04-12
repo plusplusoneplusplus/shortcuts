@@ -201,6 +201,8 @@ export interface ProcessIndexEntry {
     title?: string;
     /** Duration in milliseconds (computed from startTime/endTime). */
     duration?: number;
+    /** Timestamp of the last conversation event (ISO string). */
+    lastEventAt?: string;
 }
 
 /**

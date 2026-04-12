@@ -830,3 +830,94 @@ describe('SqliteProcessStore — Concurrent operations', () => {
         expect(ids).toEqual(Array.from({ length: n }, (_, i) => `conc-${i}`).sort());
     });
 });
+
+describe('SqliteProcessStore — lastEventAt', () => {
+    it('addProcess sets lastEventAt to startTime when not explicitly provided', async () => {
+        const startTime = new Date('2026-01-15T10:00:00Z');
+        await store.addProcess(makeProcess('p-lea-1', { startTime }));
+
+        const result = await store.getProcess('p-lea-1');
+        expect(result).toBeDefined();
+        expect(result!.lastEventAt).toBeInstanceOf(Date);
+        expect(result!.lastEventAt!.toISOString()).toBe(startTime.toISOString());
+    });
+
+    it('addProcess preserves explicit lastEventAt if provided', async () => {
+        const startTime = new Date('2026-01-15T10:00:00Z');
+        const lastEventAt = new Date('2026-01-15T12:00:00Z');
+        await store.addProcess(makeProcess('p-lea-2', { startTime, lastEventAt }));
+
+        const result = await store.getProcess('p-lea-2');
+        expect(result!.lastEventAt!.toISOString()).toBe(lastEventAt.toISOString());
+    });
+
+    it('appendConversationTurn updates lastEventAt to a time after the original startTime', async () => {
+        const startTime = new Date('2026-01-15T10:00:00Z');
+        await store.addProcess(makeProcess('p-lea-3', { startTime }));
+
+        await store.appendConversationTurn('p-lea-3', (idx) => makeTurn(idx, {
+            role: 'assistant',
+            content: 'Hello!',
+        }));
+
+        const result = await store.getProcess('p-lea-3');
+        expect(result).toBeDefined();
+        expect(result!.lastEventAt).toBeInstanceOf(Date);
+        // lastEventAt should be updated to a time >= startTime (in practice it will be "now")
+        expect(result!.lastEventAt!.getTime()).toBeGreaterThan(startTime.getTime());
+    });
+
+    it('getProcessSummaries includes lastEventAt in the entries', async () => {
+        const startTime = new Date('2026-01-15T10:00:00Z');
+        await store.addProcess(makeProcess('p-lea-4', { startTime }));
+
+        const { entries } = await store.getProcessSummaries({ workspaceId: 'ws-test' });
+        const entry = entries.find(e => e.id === 'p-lea-4');
+        expect(entry).toBeDefined();
+        expect(entry!.lastEventAt).toBeDefined();
+        expect(entry!.lastEventAt).toBe(startTime.toISOString());
+    });
+
+    it('getAllProcesses returns lastEventAt on each process', async () => {
+        await store.addProcess(makeProcess('p-lea-5', {
+            startTime: new Date('2026-01-15T10:00:00Z'),
+        }));
+
+        const all = await store.getAllProcesses({ workspaceId: 'ws-test' });
+        const proc = all.find(p => p.id === 'p-lea-5');
+        expect(proc).toBeDefined();
+        expect(proc!.lastEventAt).toBeInstanceOf(Date);
+    });
+
+    it('processes with follow-up (appendConversationTurn) sort before older processes', async () => {
+        // Create two processes: older one gets a follow-up
+        await store.addProcess(makeProcess('p-old', {
+            startTime: new Date('2026-01-15T08:00:00Z'),
+        }));
+        await store.addProcess(makeProcess('p-new', {
+            startTime: new Date('2026-01-15T09:00:00Z'),
+        }));
+
+        // Append a turn to p-old (updating its lastEventAt to "now")
+        await store.appendConversationTurn('p-old', (idx) => makeTurn(idx, {
+            role: 'assistant',
+            content: 'Follow-up response',
+        }));
+
+        // Query all — p-old should now come first (ORDER BY last_event_at DESC)
+        const all = await store.getAllProcesses({ workspaceId: 'ws-test' });
+        expect(all[0].id).toBe('p-old');
+        expect(all[1].id).toBe('p-new');
+    });
+
+    it('lastEventAt round-trips through addProcess + getProcess', async () => {
+        const ts = new Date('2026-03-01T15:30:00.000Z');
+        await store.addProcess(makeProcess('p-lea-rt', {
+            startTime: ts,
+            lastEventAt: ts,
+        }));
+
+        const result = await store.getProcess('p-lea-rt');
+        expect(result!.lastEventAt!.toISOString()).toBe(ts.toISOString());
+    });
+});

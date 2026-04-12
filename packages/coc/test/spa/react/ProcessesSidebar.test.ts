@@ -236,3 +236,38 @@ describe('filterQueueTask — typeFilter option', () => {
         expect(filterQueueTask(pipelineTask, '', '__all', '__all', opts)).toBe(false);
     });
 });
+
+describe('legacy process sort — lastEventAt preference', () => {
+    // Replicate the inline sort logic from ProcessesSidebar.tsx to verify
+    // that lastEventAt takes precedence over startTime as the secondary key.
+    function sortProcesses(processes: any[]): any[] {
+        return [...processes].sort((a: any, b: any) => {
+            const order: Record<string, number> = { running: 0, queued: 1, failed: 2, completed: 3, cancelled: 4 };
+            const sa = order[a.status] ?? 5;
+            const sb = order[b.status] ?? 5;
+            if (sa !== sb) return sa - sb;
+            return new Date(b.lastEventAt || b.startTime || 0).getTime() - new Date(a.lastEventAt || a.startTime || 0).getTime();
+        });
+    }
+
+    it('process with lastEventAt sorts before process with only startTime at same status', () => {
+        const pOld = { id: 'old', status: 'completed', startTime: '2026-01-01T08:00:00Z', lastEventAt: '2026-04-01T12:00:00Z' };
+        const pNew = { id: 'new', status: 'completed', startTime: '2026-03-01T09:00:00Z' };
+        const sorted = sortProcesses([pNew, pOld]);
+        expect(sorted[0].id).toBe('old'); // lastEventAt is newer
+    });
+
+    it('process without lastEventAt falls back to startTime for sort', () => {
+        const p1 = { id: 'a', status: 'running', startTime: '2026-01-01T10:00:00Z' };
+        const p2 = { id: 'b', status: 'running', startTime: '2026-02-01T10:00:00Z' };
+        const sorted = sortProcesses([p1, p2]);
+        expect(sorted[0].id).toBe('b'); // newer startTime first
+    });
+
+    it('status group takes precedence over lastEventAt', () => {
+        const pRunning = { id: 'running', status: 'running', startTime: '2026-01-01T08:00:00Z' };
+        const pCompleted = { id: 'completed', status: 'completed', startTime: '2026-04-01T08:00:00Z', lastEventAt: '2026-04-01T12:00:00Z' };
+        const sorted = sortProcesses([pCompleted, pRunning]);
+        expect(sorted[0].id).toBe('running'); // running group comes before completed
+    });
+});

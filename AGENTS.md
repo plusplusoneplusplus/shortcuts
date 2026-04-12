@@ -157,7 +157,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 
 **Storage layout — `~/.coc/` (top-level, global):**
 - `config.yaml` — server configuration
-- `processes.db` — SQLite process store (default backend; schema version 3); also stores queue tasks, schedule runs, per-process seen/unseen state (`seen_at` column), and commit-chat bindings
+- `processes.db` — SQLite process store (default backend; schema version 4); also stores queue tasks, schedule runs, per-process seen/unseen state (`seen_at` column), commit-chat bindings, and per-process last-event timestamp (`last_event_at` column)
 - `preferences.json` — global UI preferences (theme, etc.)
 - `memory/` — cross-repo and system memory (see Memory System section)
 - `skills/` — global skill definitions

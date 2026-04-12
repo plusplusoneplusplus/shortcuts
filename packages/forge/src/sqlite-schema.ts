@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * Read the current schema version from the database.
@@ -58,7 +58,8 @@ export function initializeDatabase(db: Database.Database): void {
                 stale                 INTEGER DEFAULT 0,
                 data_file_path        TEXT,
                 archived              INTEGER DEFAULT 0,
-                seen_at               TEXT
+                seen_at               TEXT,
+                last_event_at         TEXT
             )
         `);
 
@@ -232,6 +233,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore >= 1 && versionBefore < 3) {
             migrateV2toV3(db);
         }
+        if (versionBefore >= 1 && versionBefore < 4) {
+            migrateV3toV4(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -257,4 +261,14 @@ function migrateV1toV2(db: Database.Database): void {
  */
 function migrateV2toV3(_db: Database.Database): void {
     // Table already created by the idempotent DDL above.
+}
+
+/**
+ * V3 → V4: add `last_event_at TEXT` column to `processes`.
+ */
+function migrateV3toV4(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'last_event_at')) {
+        db.exec('ALTER TABLE processes ADD COLUMN last_event_at TEXT');
+    }
 }

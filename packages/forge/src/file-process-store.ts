@@ -138,12 +138,13 @@ export class FileProcessStore implements ProcessStore {
     // --- Process CRUD ---
 
     async addProcess(process: AIProcess): Promise<void> {
+        const withLastEvent = { ...process, lastEventAt: process.lastEventAt ?? process.startTime };
         await this.enqueueWrite(async () => {
-            const workspaceId = process.metadata?.workspaceId ?? '';
+            const workspaceId = withLastEvent.metadata?.workspaceId ?? '';
             await ensureDataDir(this.workspaceDirFor(workspaceId));
             const entry: StoredProcessEntry = {
                 workspaceId,
-                process: serializeProcess(process)
+                process: serializeProcess(withLastEvent)
             };
             // Write per-process file first (orphan on crash is harmless)
             await this.writeProcessFile(workspaceId, process.id, entry);
@@ -386,7 +387,7 @@ export class FileProcessStore implements ProcessStore {
                 ? options.additionalUpdates(existing)
                 : (options?.additionalUpdates ?? {});
 
-            const merged: AIProcess = { ...existing, ...extraUpdates, conversationTurns: allTurns };
+            const merged: AIProcess = { ...existing, ...extraUpdates, conversationTurns: allTurns, lastEventAt: new Date() };
             const newEntry: StoredProcessEntry = {
                 workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
                 process: serializeProcess(merged),
@@ -951,6 +952,7 @@ export class FileProcessStore implements ProcessStore {
             duration: entry.process.endTime && entry.process.startTime
                 ? new Date(entry.process.endTime).getTime() - new Date(entry.process.startTime).getTime()
                 : undefined,
+            lastEventAt: entry.process.lastEventAt,
         };
     }
 

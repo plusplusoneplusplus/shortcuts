@@ -62,6 +62,7 @@ export interface ProcessSummary {
     workspaceName?: string;
     workingDirectory?: string;
     title?: string;
+    lastEventAt?: string;
 }
 
 /** Lightweight queue task summary for WebSocket messages. */
@@ -452,6 +453,7 @@ export function toProcessSummary(process: AIProcess): ProcessSummary {
         workspaceName: process.metadata?.workspaceName,
         workingDirectory: process.workingDirectory,
         title: process.title,
+        lastEventAt: process.lastEventAt instanceof Date ? process.lastEventAt.toISOString() : (process.lastEventAt ? String(process.lastEventAt) : undefined),
     };
 }
 
