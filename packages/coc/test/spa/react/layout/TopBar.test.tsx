@@ -69,14 +69,14 @@ describe('TopBar responsive behavior', () => {
         expect(tabBar).toBeNull();
     });
 
-    it('mobile title "CoC" is visible with md:hidden class', () => {
+    it('mobile repo picker is visible with md:hidden class', () => {
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
-        const mobileTitle = document.querySelector('[data-tab-mobile="repos"]') as HTMLAnchorElement;
-        expect(mobileTitle).toBeTruthy();
-        expect(mobileTitle.tagName).toBe('A');
-        expect(mobileTitle.href).toContain('#');
-        expect(mobileTitle.className).toContain('md:hidden');
+        const picker = document.getElementById('repo-picker-btn') as HTMLButtonElement;
+        expect(picker).toBeTruthy();
+        expect(picker.tagName).toBe('BUTTON');
+        expect(picker.className).toContain('md:hidden');
+        expect(picker.textContent).toContain('Select Repo');
     });
 
     it('desktop CoC link shows short label with tooltip', () => {
