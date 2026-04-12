@@ -9,8 +9,6 @@
 
 import {
     AIInvoker,
-    MapContext,
-    Mapper,
     MapReduceJob,
     MapResult,
     ReduceContext,
@@ -18,9 +16,11 @@ import {
     Splitter,
     WorkItem
 } from '../types';
+import type { AIInvokerResult } from '../../ai/types';
 import { createTemplate, renderTemplate, MissingVariableError } from '../prompt-template';
 import { PromptTemplate } from '../types';
 import { BaseReducer, FlattenReducer } from '../reducers';
+import { BaseMapper } from './base-mapper';
 
 /**
  * A single item in the template job input
@@ -113,11 +113,11 @@ class TemplateSplitter implements Splitter<TemplateJobInput, TemplateWorkItemDat
 /**
  * Mapper for template jobs - applies template and invokes AI
  */
-class TemplateMapper<TOutput> implements Mapper<TemplateWorkItemData, TemplateItemResult<TOutput>> {
+class TemplateMapper<TOutput> extends BaseMapper<TemplateWorkItemData, TemplateItemResult<TOutput>> {
     private promptTemplate: PromptTemplate;
 
     constructor(
-        private aiInvoker: AIInvoker,
+        aiInvoker: AIInvoker,
         private options: {
             template: string;
             requiredVariables?: string[];
@@ -126,6 +126,7 @@ class TemplateMapper<TOutput> implements Mapper<TemplateWorkItemData, TemplateIt
             model?: string;
         }
     ) {
+        super(aiInvoker);
         this.promptTemplate = createTemplate({
             template: options.template,
             requiredVariables: options.requiredVariables,
@@ -133,66 +134,63 @@ class TemplateMapper<TOutput> implements Mapper<TemplateWorkItemData, TemplateIt
         });
     }
 
-    async map(
-        workItem: WorkItem<TemplateWorkItemData>,
-        context: MapContext
-    ): Promise<TemplateItemResult<TOutput>> {
+    protected buildPromptAndModel(workItem: WorkItem<TemplateWorkItemData>): { prompt: string; model?: string } {
         const { item, globalVariables } = workItem.data;
+        const variables = { ...globalVariables, ...item.variables };
+        const prompt = renderTemplate(this.promptTemplate, {
+            variables,
+            includeSystemPrompt: !!this.options.systemPrompt
+        });
+        return { prompt, model: this.options.model };
+    }
+
+    protected parseSuccessResponse(
+        workItem: WorkItem<TemplateWorkItemData>,
+        result: AIInvokerResult
+    ): TemplateItemResult<TOutput> {
+        const { item } = workItem.data;
         const itemId = item.id || workItem.id;
-
-        // Merge global and item variables
-        const variables = {
-            ...globalVariables,
-            ...item.variables
+        const output = this.options.responseParser
+            ? this.options.responseParser(result.response!)
+            : result.response as unknown as TOutput;
+        return {
+            itemId,
+            success: true,
+            output,
+            rawResponse: result.response
         };
+    }
 
-        try {
-            // Render the prompt
-            const prompt = renderTemplate(this.promptTemplate, {
-                variables,
-                includeSystemPrompt: !!this.options.systemPrompt
-            });
+    protected buildAIFailureResult(
+        workItem: WorkItem<TemplateWorkItemData>,
+        result: AIInvokerResult
+    ): TemplateItemResult<TOutput> {
+        const itemId = workItem.data.item.id || workItem.id;
+        return {
+            itemId,
+            success: false,
+            error: result.error || 'Unknown error',
+            rawResponse: result.response
+        };
+    }
 
-            // Invoke AI
-            const result = await this.aiInvoker(prompt, {
-                model: this.options.model
-            });
-
-            if (result.success && result.response) {
-                // Parse response if parser provided
-                const output = this.options.responseParser
-                    ? this.options.responseParser(result.response)
-                    : result.response as unknown as TOutput;
-
-                return {
-                    itemId,
-                    success: true,
-                    output,
-                    rawResponse: result.response
-                };
-            }
-
+    protected buildExceptionResult(
+        workItem: WorkItem<TemplateWorkItemData>,
+        error: unknown
+    ): TemplateItemResult<TOutput> {
+        const itemId = workItem.data.item.id || workItem.id;
+        if (error instanceof MissingVariableError) {
             return {
                 itemId,
                 success: false,
-                error: result.error || 'Unknown error',
-                rawResponse: result.response
-            };
-        } catch (error) {
-            if (error instanceof MissingVariableError) {
-                return {
-                    itemId,
-                    success: false,
-                    error: `Missing variable: ${error.variableName}`
-                };
-            }
-
-            return {
-                itemId,
-                success: false,
-                error: error instanceof Error ? error.message : String(error)
+                error: `Missing variable: ${error.variableName}`
             };
         }
+        return {
+            itemId,
+            success: false,
+            error: this.errorMessage(error)
+        };
     }
 }
 

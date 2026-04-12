@@ -3,7 +3,8 @@
  * Used by the compiler to translate legacy pipeline YAML into workflow DAG configs.
  */
 
-import type { OutputFormat as MROutputFormat, PromptItem as MRPromptItem } from '../map-reduce/jobs/prompt-map-job';
+import type { PromptItem as MRPromptItem } from '../ai/types';
+import type { OutputFormat as MROutputFormat } from '../map-reduce/shared-types';
 import type { ToolCallCacheConfig } from '../memory/tool-call-cache-types';
 
 /**

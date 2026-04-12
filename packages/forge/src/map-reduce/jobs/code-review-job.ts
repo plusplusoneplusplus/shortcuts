@@ -9,16 +9,16 @@
 
 import {
     AIInvoker,
-    MapContext,
-    Mapper,
     MapReduceJob,
     MapResult,
     ReduceContext,
     ReduceResult,
     WorkItem
 } from '../types';
+import type { AIInvokerResult } from '../../ai/types';
 import { Rule, RuleInput, RuleSplitter, RuleWorkItemData } from '../splitters';
 import { BaseReducer, Deduplicatable, DeterministicReducer, DeterministicReducerOptions, DeterministicReduceOutput } from '../reducers';
+import { BaseMapper } from './base-mapper';
 
 /**
  * Severity levels for code review findings
@@ -232,57 +232,55 @@ function buildReferenceSection(ref: CommitReference): string {
 /**
  * Mapper for code review - reviews a single rule
  */
-class CodeReviewMapper implements Mapper<RuleWorkItemData, RuleReviewResult> {
+class CodeReviewMapper extends BaseMapper<RuleWorkItemData, RuleReviewResult> {
     constructor(
-        private aiInvoker: AIInvoker,
+        aiInvoker: AIInvoker,
         private promptTemplate: string,
         private responseParser?: (response: string, rule: Rule) => ReviewFinding[]
-    ) {}
+    ) {
+        super(aiInvoker);
+    }
 
-    async map(
-        item: WorkItem<RuleWorkItemData>,
-        context: MapContext
-    ): Promise<RuleReviewResult> {
+    protected buildPromptAndModel(item: WorkItem<RuleWorkItemData>): { prompt: string; model?: string } {
         const { rule, targetContent, context: itemContext } = item.data;
         const commitRef = itemContext?.commitReference as CommitReference | undefined;
-
-        // Build prompt
         const prompt = this.buildPrompt(rule, targetContent, commitRef);
+        const model = rule.frontMatter?.model as string | undefined;
+        return { prompt, model };
+    }
 
-        try {
-            // Get model from rule's front matter
-            const model = rule.frontMatter?.model as string | undefined;
+    protected parseSuccessResponse(
+        item: WorkItem<RuleWorkItemData>,
+        result: AIInvokerResult
+    ): RuleReviewResult {
+        const { rule } = item.data;
+        const findings = this.parseResponse(result.response!, rule);
+        const assessment = this.determineAssessment(findings);
+        return {
+            rule,
+            success: true,
+            findings,
+            rawResponse: result.response,
+            assessment
+        };
+    }
 
-            // Invoke AI
-            const result = await this.aiInvoker(prompt, { model });
+    protected buildAIFailureResult(item: WorkItem<RuleWorkItemData>, result: AIInvokerResult): RuleReviewResult {
+        return {
+            rule: item.data.rule,
+            success: false,
+            error: result.error || 'Unknown error',
+            findings: []
+        };
+    }
 
-            if (result.success && result.response) {
-                const findings = this.parseResponse(result.response, rule);
-                const assessment = this.determineAssessment(findings);
-
-                return {
-                    rule,
-                    success: true,
-                    findings,
-                    rawResponse: result.response,
-                    assessment
-                };
-            }
-
-            return {
-                rule,
-                success: false,
-                error: result.error || 'Unknown error',
-                findings: []
-            };
-        } catch (error) {
-            return {
-                rule,
-                success: false,
-                error: error instanceof Error ? error.message : String(error),
-                findings: []
-            };
-        }
+    protected buildExceptionResult(item: WorkItem<RuleWorkItemData>, error: unknown): RuleReviewResult {
+        return {
+            rule: item.data.rule,
+            success: false,
+            error: this.errorMessage(error),
+            findings: []
+        };
     }
 
     private buildPrompt(rule: Rule, diff: string, commitRef?: CommitReference): string {

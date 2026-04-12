@@ -12,8 +12,6 @@
 
 import {
     AIInvoker,
-    MapContext,
-    Mapper,
     MapReduceJob,
     MapResult,
     ReduceContext,
@@ -21,6 +19,7 @@ import {
     Splitter,
     WorkItem
 } from '../types';
+import type { AIInvokerResult } from '../../ai/types';
 import { BaseReducer } from '../reducers';
 import { 
     extractJSON as sharedExtractJSON, 
@@ -28,13 +27,14 @@ import {
 } from '../../utils/ai-response-parser';
 import { writeTempFile, TempFileResult } from '../temp-file-utils';
 import { getAIServiceLogger } from '../../ai-logger';
+import { BaseMapper } from './base-mapper';
 
 /**
- * A generic item with string key-value pairs for template substitution
+ * A generic item with string key-value pairs for template substitution.
+ * Canonical definition lives in ai/types — re-exported here for backward compat.
  */
-export interface PromptItem {
-    [key: string]: string;
-}
+export type { PromptItem } from '../../ai/types';
+import type { PromptItem } from '../../ai/types';
 
 /**
  * Input for the prompt map job
@@ -91,15 +91,11 @@ export interface PromptMapResult {
 }
 
 /**
- * Output format for the reduce phase
- * - 'list': Markdown formatted list
- * - 'table': Markdown table
- * - 'json': JSON array of results
- * - 'csv': CSV format
- * - 'ai': AI-powered synthesis of results
- * - 'text': Pure text concatenation (for non-structured AI responses)
+ * Output format for the reduce phase.
+ * Canonical definition lives in map-reduce/shared-types — re-exported here for backward compat.
  */
-export type OutputFormat = 'list' | 'table' | 'json' | 'csv' | 'ai' | 'text';
+export type { OutputFormat } from '../shared-types';
+import type { OutputFormat } from '../shared-types';
 
 /**
  * Final aggregated output from reduce phase
@@ -223,84 +219,92 @@ class PromptMapSplitter implements Splitter<PromptMapInput, PromptWorkItemData> 
 // Mapper
 // ============================================================================
 
-class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
+class PromptMapMapper extends BaseMapper<PromptWorkItemData, PromptMapResult> {
     constructor(
-        private aiInvoker: AIInvoker,
+        aiInvoker: AIInvoker,
         private modelTemplate?: string
-    ) {}
+    ) {
+        super(aiInvoker);
+    }
 
-    async map(
-        workItem: WorkItem<PromptWorkItemData>,
-        _context: MapContext
-    ): Promise<PromptMapResult> {
+    protected buildPromptAndModel(workItem: WorkItem<PromptWorkItemData>): { prompt: string; model?: string } {
         const { item, promptTemplate, outputFields, allItems } = workItem.data;
+        const substituted = substituteTemplate(promptTemplate, item, allItems);
+        const prompt = buildFullPrompt(substituted, outputFields);
+
+        // Support template substitution in model (e.g., "{{model}}" reads from item.model)
+        let model: string | undefined;
+        if (this.modelTemplate && typeof this.modelTemplate === 'string') {
+            const substitutedModel = substituteTemplate(this.modelTemplate, item, allItems);
+            model = substitutedModel || undefined;
+        }
+
+        return { prompt, model };
+    }
+
+    protected parseSuccessResponse(
+        workItem: WorkItem<PromptWorkItemData>,
+        result: AIInvokerResult
+    ): PromptMapResult {
+        const { item, outputFields } = workItem.data;
         const isTextMode = !outputFields || outputFields.length === 0;
 
-        try {
-            const substituted = substituteTemplate(promptTemplate, item, allItems);
-            const prompt = buildFullPrompt(substituted, outputFields);
-            
-            // Support template substitution in model (e.g., "{{model}}" reads from item.model)
-            // Ensure modelTemplate is a string before substitution
-            let model: string | undefined;
-            if (this.modelTemplate && typeof this.modelTemplate === 'string') {
-                const substitutedModel = substituteTemplate(this.modelTemplate, item, allItems);
-                model = substitutedModel || undefined;
-            }
-            
-            const result = await this.aiInvoker(prompt, { model });
-
-            if (result.success && result.response) {
-                // Text mode - return raw response without JSON parsing
-                if (isTextMode) {
-                    return {
-                        item,
-                        output: {},
-                        rawText: result.response,
-                        success: true,
-                        rawResponse: result.response,
-                        sessionId: result.sessionId,
-                        tokenUsage: result.tokenUsage,
-                    };
-                }
-
-                // Structured mode - parse JSON response
-                try {
-                    const output = parseAIResponse(result.response, outputFields);
-                    return { item, output, success: true, rawResponse: result.response, sessionId: result.sessionId, tokenUsage: result.tokenUsage };
-                } catch (parseError) {
-                    const aiLog = getAIServiceLogger();
-                    aiLog.debug({ itemId: workItem.id, responseChars: result.response.length }, 'PromptMapMapper: Failed to parse AI response');
-                    return {
-                        item,
-                        output: this.emptyOutput(outputFields),
-                        success: false,
-                        error: `Failed to parse AI response: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-                        rawResponse: result.response,
-                        sessionId: result.sessionId,
-                        tokenUsage: result.tokenUsage,
-                    };
-                }
-            }
-
+        // Text mode - return raw response without JSON parsing
+        if (isTextMode) {
             return {
                 item,
-                output: isTextMode ? {} : this.emptyOutput(outputFields),
-                success: false,
-                error: result.error || 'AI invocation failed',
+                output: {},
+                rawText: result.response,
+                success: true,
                 rawResponse: result.response,
                 sessionId: result.sessionId,
                 tokenUsage: result.tokenUsage,
             };
-        } catch (error) {
+        }
+
+        // Structured mode - parse JSON response
+        try {
+            const output = parseAIResponse(result.response!, outputFields);
+            return { item, output, success: true, rawResponse: result.response, sessionId: result.sessionId, tokenUsage: result.tokenUsage };
+        } catch (parseError) {
+            const aiLog = getAIServiceLogger();
+            aiLog.debug({ itemId: workItem.id, responseChars: result.response!.length }, 'PromptMapMapper: Failed to parse AI response');
             return {
                 item,
-                output: isTextMode ? {} : this.emptyOutput(workItem.data.outputFields),
+                output: this.emptyOutput(outputFields),
                 success: false,
-                error: error instanceof Error ? error.message : String(error),
-                rawResponse: undefined // No AI response available when exception occurs before AI call
+                error: `Failed to parse AI response: ${this.errorMessage(parseError)}`,
+                rawResponse: result.response,
+                sessionId: result.sessionId,
+                tokenUsage: result.tokenUsage,
             };
         }
+    }
+
+    protected buildAIFailureResult(workItem: WorkItem<PromptWorkItemData>, result: AIInvokerResult): PromptMapResult {
+        const { item, outputFields } = workItem.data;
+        const isTextMode = !outputFields || outputFields.length === 0;
+        return {
+            item,
+            output: isTextMode ? {} : this.emptyOutput(outputFields),
+            success: false,
+            error: result.error || 'AI invocation failed',
+            rawResponse: result.response,
+            sessionId: result.sessionId,
+            tokenUsage: result.tokenUsage,
+        };
+    }
+
+    protected buildExceptionResult(workItem: WorkItem<PromptWorkItemData>, error: unknown): PromptMapResult {
+        const { item, outputFields } = workItem.data;
+        const isTextMode = !outputFields || outputFields.length === 0;
+        return {
+            item,
+            output: isTextMode ? {} : this.emptyOutput(outputFields),
+            success: false,
+            error: this.errorMessage(error),
+            rawResponse: undefined // No AI response available when exception occurs before AI call
+        };
     }
 
     private emptyOutput(fields: string[]): Record<string, unknown> {

@@ -133,6 +133,7 @@ export type {
 
 // Jobs
 export {
+    BaseMapper,
     createCodeReviewJob,
     createTemplateJob,
     createSimpleTemplateJob,
