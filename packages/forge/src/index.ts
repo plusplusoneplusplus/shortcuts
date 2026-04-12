@@ -3,33 +3,10 @@
  *
  * AI pipeline execution engine with map-reduce framework.
  * A pure Node.js package for building and executing AI-powered data processing pipelines.
- *
- * Key Features:
- * - YAML-based pipeline configuration
- * - Map-reduce execution framework
- * - Copilot SDK integration
- * - Cross-platform compatible (Linux/Mac/Windows)
- *
- * @example
- * ```typescript
- * import { executePipeline, setLogger, consoleLogger } from 'pipeline-core';
- *
- * // Configure logging
- * setLogger(consoleLogger);
- *
- * // Execute a pipeline
- * const result = await executePipeline(config, {
- *     aiInvoker: async (prompt) => {
- *         // Your AI invocation logic
- *         return { success: true, response: '...' };
- *     },
- *     pipelineDirectory: '/path/to/pipeline'
- * });
- * ```
  */
 
 // ============================================================================
-// Logger
+// Logger (standalone file — cannot use export *)
 // ============================================================================
 
 export {
@@ -70,217 +47,25 @@ export {
 // Errors
 // ============================================================================
 
-export {
-    // Error codes
-    ErrorCode,
-    ErrorCodeType,
-    mapSystemErrorCode,
-    // Core error class
-    PipelineCoreError,
-    ErrorMetadata,
-    isPipelineCoreError,
-    toPipelineCoreError,
-    wrapError,
-    getErrorCauseMessage,
-    logError,
-} from './errors';
+export * from './errors';
 
 // ============================================================================
-// Runtime (Async Policies)
+// Runtime (Async Policies + Concurrency Limiter)
 // ============================================================================
 
-export {
-    // Cancellation
-    CancellationError,
-    IsCancelledFn,
-    isCancellationError,
-    throwIfCancelled,
-    createCancellationToken,
-    // Timeout
-    TimeoutError,
-    TimeoutOptions,
-    withTimeout,
-    isTimeoutError,
-    createTimeoutPromise,
-    // Retry
-    RetryExhaustedError,
-    BackoffStrategy,
-    OnAttemptFn,
-    RetryOnFn,
-    RetryOptions,
-    DEFAULT_RETRY_OPTIONS,
-    defaultRetryOn,
-    retryOnTimeout,
-    calculateDelay,
-    withRetry,
-    isRetryExhaustedError,
-    // Policy (unified runner)
-    PolicyOptions,
-    DEFAULT_POLICY_OPTIONS,
-    runWithPolicy,
-    createPolicyRunner,
-} from './runtime';
+export * from './runtime';
 
 // ============================================================================
 // Utils
 // ============================================================================
 
-export {
-    // File utilities
-    FileOperationResult,
-    ReadFileOptions,
-    WriteFileOptions,
-    YAMLOptions,
-    safeExists,
-    safeIsDirectory,
-    safeIsFile,
-    safeReadFile,
-    safeWriteFile,
-    ensureDirectoryExists,
-    safeReadDir,
-    safeStats,
-    readYAML,
-    writeYAML,
-    safeCopyFile,
-    safeRename,
-    safeRemove,
-    getFileErrorMessage,
-    // Glob utilities
-    glob,
-    getFilesWithExtension,
-    // Exec utilities
-    execAsync,
-    execFileAsync,
-    // HTTP utilities
-    HttpResponse,
-    httpGet,
-    httpDownload,
-    httpGetJson,
-    // Text matching utilities
-    AnchorMatchConfig,
-    DEFAULT_ANCHOR_MATCH_CONFIG,
-    BaseMatchAnchor,
-    hashText,
-    levenshteinDistance,
-    calculateSimilarity,
-    normalizeText,
-    splitIntoLines,
-    getCharOffset,
-    offsetToLineColumn,
-    findAllOccurrences,
-    scoreMatch,
-    findFuzzyMatch,
-    extractContext,
-    // AI response parser
-    extractJSON,
-    parseAIResponse,
-    // Terminal types
-    TerminalType,
-    InteractiveSessionStatus,
-    InteractiveSession,
-    ExternalTerminalLaunchOptions,
-    ExternalTerminalLaunchResult,
-    WindowFocusResult,
-    // Window focus service
-    WindowFocusService,
-    getWindowFocusService,
-    resetWindowFocusService,
-    // External terminal launcher
-    ExternalTerminalLauncher,
-    getExternalTerminalLauncher,
-    resetExternalTerminalLauncher,
-    // Process monitor
-    Disposable,
-    ProcessCheckResult,
-    ProcessMonitorOptions,
-    ProcessMonitor,
-    getProcessMonitor,
-    resetProcessMonitor,
-    DEFAULT_POLL_INTERVAL_MS,
-    // Path utilities
-    toForwardSlashes,
-    toNativePath,
-    isWindowsDrivePath,
-    isLinuxAbsolutePath,
-    isWslUncPath,
-    parseWslUncPath,
-    trimTrailingPathSeparators,
-    windowsPathToWslPath,
-    isWithinDirectory,
-    WindowsExecutionContext,
-    WslExecutionContext,
-    WorkspaceExecutionContext,
-    getWslExecutablePath,
-    clearWorkspaceExecutionCaches,
-    getDefaultWslDistro,
-    resolveWorkspaceExecutionContext,
-    translatePathForExecution,
-    translatePathForHostFilesystem,
-    resolvePathInExecutionContext,
-    resolvePathForHostFilesystem,
-    buildWslCommandArgs,
-    normalizeWslExecutionPath,
-    normalizeExecutionPath,
-    isWslExecutionContext,
-    isWslPath,
-    // Template engine
-    TEMPLATE_VARIABLE_REGEX,
-    SPECIAL_VARIABLES,
-    SubstituteVariablesOptions,
-    TemplateVariableError,
-    substituteVariables,
-    extractTemplateVariables,
-    hasVariables,
-    containsVariables,
-    validateVariables,
-    // Paste context manager
-    PASTE_THRESHOLD,
-    sniffContentExtension,
-    separateQuestionFromPaste,
-    savePasteContent,
-    buildPasteFileReference,
-    rewriteLargePrompt,
-    cleanupStalePasteFiles,
-    cleanupAllStalePasteFiles,
-} from './utils';
-export type { SeparatedContent, SavePasteResult } from './utils';
+export * from './utils';
 
 // ============================================================================
 // Config (Centralized Defaults)
 // ============================================================================
 
-export {
-    // Timeouts
-    DEFAULT_AI_TIMEOUT_MS,
-    DEFAULT_AI_IDLE_TIMEOUT_MS,
-    // Concurrency
-    DEFAULT_PARALLEL_LIMIT,
-    DEFAULT_MAX_CONCURRENCY,
-    // Chunk Splitter
-    DEFAULT_CHUNK_MAX_SIZE,
-    DEFAULT_CHUNK_OVERLAP_SIZE,
-    DEFAULT_CHUNK_STRATEGY,
-    DEFAULT_CHUNK_PRESERVE_BOUNDARIES,
-    // CSV Reader
-    DEFAULT_CSV_DELIMITER,
-    DEFAULT_CSV_QUOTE,
-    DEFAULT_CSV_HAS_HEADER,
-    DEFAULT_CSV_SKIP_EMPTY_LINES,
-    DEFAULT_CSV_TRIM_FIELDS,
-    // Queue Executor
-    DEFAULT_RETRY_ATTEMPTS,
-    DEFAULT_RETRY_DELAY_MS,
-    DEFAULT_QUEUE_MAX_CONCURRENT,
-    DEFAULT_QUEUE_PROCESS_ON_STARTUP,
-    DEFAULT_QUEUE_AUTO_START,
-    DEFAULT_QUEUE_AUTO_PERSIST,
-    // Skills
-    DEFAULT_SKILLS_DIRECTORY,
-    // Text Matching
-    DEFAULT_FUZZY_MATCH_THRESHOLD,
-    DEFAULT_CONTEXT_LINES,
-    DEFAULT_CASE_SENSITIVE
-} from './config';
+export * from './config';
 
 // ============================================================================
 // AI Service
@@ -289,13 +74,13 @@ export {
 export {
     // Types
     AIBackendType,
-    AIModel,
-    VALID_MODELS,
     AIInvocationResult,
     DEFAULT_PROMPTS,
     InteractiveToolType,
-    DEFAULT_MODEL_ID,
     // Model registry
+    AIModel,
+    VALID_MODELS,
+    DEFAULT_MODEL_ID,
     ModelDefinition,
     MODEL_REGISTRY,
     getModelLabel,
@@ -374,6 +159,7 @@ export {
     // Model Metadata Store
     modelMetadataStore,
     ModelInfo,
+    // SDK types
     TokenUsage,
     MCPServerConfigBase,
     MCPLocalServerConfig,
@@ -399,7 +185,6 @@ export {
     ToolHandler,
     ToolInvocation,
     defineTool,
-    // DEFAULT_AI_TIMEOUT_MS is exported from ./config
     // MCP Config Loader
     MCPConfigFile,
     MCPConfigLoadResult,
@@ -412,6 +197,11 @@ export {
     mcpConfigExists,
     getCachedMcpConfig,
     setHomeDirectoryOverride,
+    // Trusted Folder Management
+    ensureFolderTrusted,
+    isFolderTrusted,
+    getCopilotConfigPath,
+    setTrustedFolderHomeOverride,
     // Timeline Utilities
     mergeConsecutiveContentItems,
     // Token Usage Stats
@@ -443,25 +233,12 @@ export {
     StoredProcessEntry,
     ProcessIndexEntry,
     getDefaultDataDir,
-    ensureDataDir
+    ensureDataDir,
 } from './file-process-store';
 
-export {
-    SqliteProcessStore,
-    SqliteProcessStoreOptions,
-} from './sqlite-process-store';
-
-export {
-    SqliteQueueStore,
-    SqliteQueueStoreOptions,
-} from './sqlite-queue-store';
-
-export {
-    Database,
-    initializeDatabase,
-    SCHEMA_VERSION,
-    getSchemaVersion,
-} from './sqlite-schema';
+export { SqliteProcessStore, SqliteProcessStoreOptions } from './sqlite-process-store';
+export { SqliteQueueStore, SqliteQueueStoreOptions } from './sqlite-queue-store';
+export { Database, initializeDatabase, SCHEMA_VERSION, getSchemaVersion } from './sqlite-schema';
 
 // ============================================================================
 // Map-Reduce Framework
@@ -498,10 +275,10 @@ export {
     // Executor
     MapReduceExecutor,
     createExecutor,
-    // Concurrency limiter
-    ConcurrencyLimiter,
-    // CancellationError is now exported from ./runtime
-    // DEFAULT_MAX_CONCURRENCY is exported from ./config
+    // ConcurrencyLimiter is now exported from ./runtime (via export * from './runtime')
+    // Extracted collaborators
+    ProgressReporter,
+    ProcessTrackerAdapter,
     // Prompt template
     renderTemplate,
     createTemplate,
@@ -527,14 +304,6 @@ export {
     HybridReducer,
     createHybridReducer,
     createSimpleHybridReducer,
-    Deduplicatable,
-    DeterministicReducerOptions,
-    DeterministicReduceOutput,
-    AIReducerOptions,
-    TextSynthesisOutput,
-    TextSynthesisOptions,
-    HybridReducerOptions,
-    SimplePolishedOutput,
     // Splitters
     FileSplitter,
     createFileSplitter,
@@ -552,6 +321,33 @@ export {
     createPatternFilteredRuleSplitter,
     BatchedRuleSplitter,
     createBatchedRuleSplitter,
+    // Jobs
+    createCodeReviewJob,
+    createTemplateJob,
+    createSimpleTemplateJob,
+    createJsonTemplateJob,
+    createListProcessingJob,
+    createPromptMapJob,
+    createPromptMapInput,
+    // Temp file utilities
+    writeTempFile,
+    readTempFile,
+    cleanupTempFile,
+    cleanupAllTempFiles,
+    ensureTempDir,
+    generateTempFileName,
+    isTempFilePath,
+    getTempDirPath,
+} from './map-reduce';
+export type {
+    Deduplicatable,
+    DeterministicReducerOptions,
+    DeterministicReduceOutput,
+    AIReducerOptions,
+    TextSynthesisOutput,
+    TextSynthesisOptions,
+    HybridReducerOptions,
+    SimplePolishedOutput,
     FileItem,
     FileInput,
     FileWorkItemData,
@@ -565,14 +361,6 @@ export {
     RuleWorkItemData,
     RuleSplitterOptions,
     BatchedRuleWorkItemData,
-    // Jobs
-    createCodeReviewJob,
-    createTemplateJob,
-    createSimpleTemplateJob,
-    createJsonTemplateJob,
-    createListProcessingJob,
-    createPromptMapJob,
-    createPromptMapInput,
     ReviewSeverity,
     ReviewFinding,
     RuleReviewResult,
@@ -594,16 +382,7 @@ export {
     PromptMapSummary,
     PromptMapJobOptions,
     OutputFormat,
-    // Temp file utilities
-    writeTempFile,
-    readTempFile,
-    cleanupTempFile,
-    cleanupAllTempFiles,
-    ensureTempDir,
-    generateTempFileName,
-    isTempFilePath,
-    getTempDirPath,
-    TempFileResult
+    TempFileResult,
 } from './map-reduce';
 
 // ============================================================================
@@ -740,245 +519,29 @@ export {
 } from './utils/input-generator';
 export type { GenerateInputResult, GeneratedItem, GenerateState } from './utils/input-generator';
 
-// Note: withRetry is already exported from ./runtime with a more capable implementation.
-// The pipeline-specific retry-utils has been relocated to utils/retry-utils.ts but is not
-// re-exported here to avoid naming conflicts.
-
 // ============================================================================
 // Queue System
 // ============================================================================
 
-export {
-    // Core types
-    TaskPriority,
-    QueueStatus,
-
-    // Task configuration
-    TaskExecutionConfig,
-    DEFAULT_TASK_CONFIG,
-
-    // Queued task
-    QueuedTask,
-    CreateTaskInput,
-    TaskUpdate,
-
-    // Events
-    QueueChangeType,
-    QueueChangeEvent,
-    QueueEvents,
-    DrainEvent,
-    DrainCompleteEvent,
-    DrainTimeoutEvent,
-    QueueExecutorDrainEvents,
-
-    // Executor types
-    TaskExecutionResult,
-    TaskExecutor,
-    QueueExecutorOptions,
-    DEFAULT_EXECUTOR_OPTIONS,
-
-    // Queue manager types
-    TaskQueueManagerOptions,
-    DEFAULT_QUEUE_MANAGER_OPTIONS,
-    QueueStats,
-    PauseReason,
-
-    // Registry types
-    RegistryStats,
-
-    // Priority helpers
-    PRIORITY_VALUES,
-    comparePriority,
-
-    // Utilities
-    generateTaskId,
-
-    // Queue process ID helpers
-    QUEUE_PROCESS_PREFIX,
-    toQueueProcessId,
-    toTaskId,
-    isQueueProcessId,
-    ensureQueueProcessId,
-
-    // Task Queue Manager
-    TaskQueueManager,
-    createTaskQueueManager,
-
-    // Queue Executor
-    QueueExecutor,
-    createQueueExecutor,
-    SimpleTaskExecutor,
-    createSimpleTaskExecutor,
-
-    // Repo Queue Registry
-    RepoQueueRegistry,
-
-    // Pause Marker types
-    PauseMarker,
-    QueueItem,
-
-    // Follow-Prompt utilities
-    FollowPromptPayload,
-    isFollowPromptPayload,
-    buildFollowPromptText,
-} from './queue';
+export * from './queue';
 
 // ============================================================================
 // Tasks
 // ============================================================================
 
-export {
-    // Types
-    Task, TaskDocument, TaskDocumentGroup, TaskSortBy, TaskStatus,
-    TaskFolder, TasksViewerSettings, DiscoverySettings, DiscoveryDefaultScope,
-    RelatedItemCategory, RelatedItemType, RelatedItem, RelatedItemsConfig,
-    TaskCreationMode, TaskGenerationDepth,
-    AITaskCreateOptions, AITaskFromFeatureOptions, AITaskCreationOptions,
-    AITaskDialogResult, FeatureContext,
-    ReviewStatus, ReviewStatusRecord, ReviewStatusStore,
-    // Parser utilities
-    VALID_TASK_STATUSES, COMMON_DOC_TYPES,
-    parseTaskStatus, updateTaskStatus, parseFileName, sanitizeFileName,
-    // Related-items-loader
-    RELATED_ITEMS_FILENAME,
-    loadRelatedItems,
-    saveRelatedItems,
-    hasRelatedItems,
-    deleteRelatedItems,
-    removeRelatedItem,
-    mergeRelatedItems,
-    getRelatedItemsPath,
-    categorizeItem,
-    // Task scanning and grouping
-    ARCHIVE_UNDO_FILE,
-    scanTasksRecursively,
-    scanDocumentsRecursively,
-    scanFoldersRecursively,
-    groupTaskDocuments,
-    buildTaskFolderHierarchy,
-    // Task CRUD operations
-    createTask,
-    createFeature,
-    createSubfolder,
-    renameTask,
-    renameFolder,
-    renameDocumentGroup,
-    renameDocument,
-    deleteTask,
-    deleteFolder,
-    archiveTask,
-    unarchiveTask,
-    archiveDocument,
-    unarchiveDocument,
-    archiveDocumentGroup,
-    unarchiveDocumentGroup,
-    moveTask,
-    moveFolder,
-    moveTaskGroup,
-    importTask,
-    moveExternalTask,
-    taskExistsInFolder,
-    taskExists,
-    // Composite helpers (replacements for TaskManager facade)
-    resolveTaskPaths,
-    ensureTaskFolders,
-    getAllTasks,
-    getAllDocuments,
-    getAllDocumentGroups,
-    getFullTaskHierarchy,
-    getFeatureFolders,
-    // TaskManager facade (deprecated)
-    TaskManager,
-    TaskManagerOptions,
-    // Task prompt builders
-    AUTO_FOLDER_SENTINEL,
-    AutoFolderContext,
-    buildAutoFolderLocationBlock,
-    buildCreateTaskPrompt,
-    buildCreateTaskPromptWithName,
-    buildCreateFromFeaturePrompt,
-    applyDeepModePrefix,
-    buildDeepModePrompt,
-    buildPlanGenerationSystemPrompt,
-    PlanSystemPromptOptions,
-    gatherFeatureContext,
-    parseCreatedFilePath,
-    cleanAIResponse,
-    FeatureContextInput,
-    SelectedContext,
-    TaskGenerationOptions,
-    // Discovery prompt builders
-    buildDiscoveryPrompt,
-    parseDiscoveryResponse,
-    DiscoveryPromptInput,
-    DiscoveryScope,
-    DiscoveredItem,
-} from './tasks';
+export * from './tasks';
 
 // ============================================================================
 // Discovery
 // ============================================================================
 
-export {
-    // Types
-    PromptFileInfo,
-    SkillInfo,
-    InstructionFileSet,
-    // Prompt file discovery
-    findPromptFiles,
-    // Skill discovery
-    findSkills,
-    // Instruction file discovery
-    findInstructionFiles,
-    loadInstructions,
-    MAX_INSTRUCTION_SIZE,
-    INSTRUCTION_DIR,
-} from './discovery';
-export type { InstructionMode } from './discovery';
+export * from './discovery';
 
 // ============================================================================
 // Git
 // ============================================================================
 
-export {
-    GitChangeStatus,
-    GitChangeStage,
-    GitChange,
-    GitChangeCounts,
-    GitCommit,
-    CommitLoadOptions,
-    CommitLoadResult,
-    GitCommitFile,
-    GitCommentCounts,
-    GitCommitRange,
-    GitCommitRangeFile,
-    GitRangeConfig,
-    BranchStatus,
-    GitBranch,
-    BranchListOptions,
-    PaginatedBranchResult,
-    GitOperationResult,
-    STATUS_SHORT,
-    STAGE_PREFIX,
-    STAGE_LABEL,
-    ExecGitOptions,
-    execGit,
-    execGitAsync,
-    getRemoteUrl,
-    normalizeRemoteUrl,
-    computeRemoteHash,
-    detectRemoteUrl,
-    GitLogService,
-    GitRangeService,
-    BranchService,
-    WorkingTreeService,
-    parsePorcelain,
-    GitOpsStore,
-    GitOpJob,
-    GitOpType,
-    GitOpStatus,
-    GitOpsStoreOptions,
-} from './git';
+export * from './git';
 
 // ============================================================================
 // Editor Abstractions
@@ -997,8 +560,7 @@ export {
     CommentsConfig,
     DEFAULT_COMMENTS_SETTINGS,
     DEFAULT_COMMENTS_CONFIG,
-    // Message protocol
-    // (PromptFileInfo is already exported from ./discovery)
+    // Message protocol (PromptFileInfo is exported from ./discovery)
     SkillInfo as EditorSkillInfo,
     SerializedPredefinedComment,
     WebviewSettings,
@@ -1021,7 +583,7 @@ export {
     // State Store
     StateStore,
     FileStateStore,
-    // Rendering – comment state
+    // Rendering - comment state
     filterCommentsByStatus,
     sortCommentsByLine,
     sortCommentsByColumnDescending,
@@ -1036,13 +598,13 @@ export {
     deleteComment,
     resolveAllComments,
     getSelectionCoverageForLine,
-    // Rendering – selection utilities
+    // Rendering - selection utilities
     SelectionPositionWithText,
     calculateColumnIndices,
     getHighlightColumnsForLine,
     createPlainToHtmlMapping,
     applyCommentHighlightToRange,
-    // Rendering – markdown renderer
+    // Rendering - markdown renderer
     MarkdownLineResult,
     escapeHtml,
     applySourceModeHighlighting,
@@ -1051,7 +613,7 @@ export {
     applyMarkdownHighlighting,
     resolveImagePath,
     generateAnchorId,
-    // Rendering – heading parser
+    // Rendering - heading parser
     HeadingInfo,
     parseHeadings,
     findSectionEndLine,
@@ -1059,7 +621,7 @@ export {
     getHeadingLevel,
     getHeadingAnchorId,
     generateHeadingAnchorId,
-    // Rendering – cursor management
+    // Rendering - cursor management
     CursorPosition,
     MockNode,
     NODE_TYPES,
@@ -1075,7 +637,7 @@ export {
     compareCursorPositions,
     isCursorInRange,
     restoreCursorAfterContentChange,
-    // Rendering – content extraction
+    // Rendering - content extraction
     ContentExtractionResult,
     ExtractionContext,
     DEFAULT_SKIP_CLASSES,
@@ -1099,7 +661,7 @@ export {
     getTotalCharacterCount,
     positionToOffset,
     offsetToPosition,
-    // Parsing – markdown structural parser
+    // Parsing - markdown structural parser
     CodeBlock,
     MarkdownHighlightResult,
     MarkdownLineType,
@@ -1129,7 +691,7 @@ export {
     parseTable,
     parseTables,
     getLanguageDisplayName,
-    // Parsing – block renderers
+    // Parsing - block renderers
     TableRenderOptions,
     CodeBlockRenderOptions,
     renderTable,
@@ -1156,99 +718,26 @@ export {
 // Memory
 // ============================================================================
 
-export type {
-    RawObservation,
-    RawObservationMetadata,
-    ConsolidatedMemory,
-    MemoryIndex,
-    RepoInfo,
-    MemoryLevel,
-    MemoryConfig,
-    MemoryStoreOptions,
-    MemoryStats,
-    MemoryStore,
-} from './memory';
-
-export { FileMemoryStore, computeRepoHash } from './memory';
-export { MemoryRetriever } from './memory';
-export { createWriteMemoryTool } from './memory';
-export type { WriteMemoryToolOptions, WriteMemoryArgs } from './memory';
-export { MemoryAggregator, MEMORY_CONSOLIDATION_INSTRUCTIONS } from './memory';
-export type { AggregatorOptions } from './memory';
-export { withMemory } from './memory';
-export type { WithMemoryOptions } from './memory';
-export { FileToolCallCacheStore, ToolCallCacheAggregator, TOOL_CALL_CACHE_CONSOLIDATION_INSTRUCTIONS, resolveToolCallCacheOptions } from './memory';
-export { ToolCallCapture } from './memory';
-export type { ToolCallCaptureOptions } from './memory';
-export { TASK_FILTER, ALL_TOOLS_FILTER, createToolNameFilter } from './memory';
-export type {
-    ToolCallFilter,
-    ToolCallQAEntry,
-    ToolCallCacheIndex,
-    ConsolidatedToolCallEntry,
-    ToolCallCacheConfig,
-    ToolCallCacheLevel,
-    ToolCallCacheStoreOptions,
-    ToolCallCacheStats,
-    ToolCallCacheStore,
-} from './memory';
+export * from './memory';
 
 // ============================================================================
 // Skills
 // ============================================================================
 
-export {
-    SkillSourceType,
-    DEFAULT_SKILLS_SETTINGS,
-    detectSource,
-    scanForSkills,
-    installSkills,
-    getBundledSkillsPath,
-    getBundledSkills,
-    installBundledSkills,
-} from './skills';
-
-export type {
-    DiscoveredSkill,
-    ParsedSource,
-    ScanResult,
-    InstallResult,
-    InstallDetail,
-    SkillsSettings,
-    BundledSkill,
-} from './skills';
-
-export { SourceDetectionErrors, isClawHubUrl, parseClawHubUrl, resolveClawHubToGitHub } from './skills';
+export * from './skills';
 
 // ============================================================================
 // ADO (Azure DevOps)
 // ============================================================================
 
-export {
-    AdoConnectionResult,
-    AdoClientOptions,
-    AdoConnectionFactory,
-    getAdoConnectionFactory,
-    resetAdoConnectionFactory,
-    getOrResolveAdoUserId,
-    resolveAdoUserIdFromConnectionData,
-} from './ado';
+export * from './ado';
+export { createAdoPullRequestsAdapter } from './ado/create-ado-adapter';
 
 // ============================================================================
 // Templates
 // ============================================================================
 
-export {
-    Template,
-    CommitTemplate,
-    ReplicateOptions,
-    FileChange,
-    ReplicateResult,
-    buildReplicatePrompt,
-    parseReplicateResponse,
-    replicateCommit,
-    ReplicateProgressCallback,
-} from './templates';
+export * from './templates';
 
 // ============================================================================
 // Workflow Engine
@@ -1378,11 +867,11 @@ export type {
     IWorkItemsService,
 } from './providers';
 
-export { AdoPullRequestsAdapter } from './ado/ado-pull-requests-adapter';
-export { AdoWorkItemsAdapter } from './ado/ado-work-items-adapter';
-export { createAdoPullRequestsAdapter } from './ado/create-ado-adapter';
+// ============================================================================
+// GitHub
+// ============================================================================
 
-export { GitHubPullRequestsAdapter, GitHubIssuesAdapter, createGitHubPullRequestsAdapter } from './github';
+export * from './github';
 
 // ============================================================================
 // Path Utilities

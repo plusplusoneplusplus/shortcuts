@@ -99,13 +99,6 @@ export {
     getFeatureFolders,
 } from './task-operations';
 
-/**
- * @deprecated Use standalone functions (`resolveTaskPaths`, `getAllTasks`,
- * `getFullTaskHierarchy`, etc.) from `@plusplusoneplusplus/forge` instead.
- * This class will be removed in a future version.
- */
-export { TaskManager, TaskManagerOptions } from './task-manager';
-
 export {
     // Task prompt builders (pure Node.js, no VS Code deps)
     AUTO_FOLDER_SENTINEL,

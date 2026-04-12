@@ -21,7 +21,9 @@ export {
     type JobProgress,
 } from './types';
 
-// Re-export everything from copilot-sdk-wrapper for backward compatibility
+// Explicit allow-list of copilot-sdk-wrapper symbols re-exported at the ai/ boundary.
+// Only the symbols listed here are part of the ai module's public surface.
+// Internal SDK implementation details stay inside copilot-sdk-wrapper/.
 export {
     // Model registry
     AIModel,
