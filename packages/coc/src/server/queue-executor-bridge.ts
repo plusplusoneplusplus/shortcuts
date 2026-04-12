@@ -26,7 +26,6 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
 export interface QueueExecutorBridge {
     executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
-    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void>;
     cancelProcess?(processId: string): Promise<void>;
     steerProcess?(processId: string, message: string): Promise<boolean>;
 }
@@ -160,6 +159,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     /**
      * Drain one pending message from the process store and requeue it.
      * Called by the lifecycle runner after a task completes.
+     *
+     * requeueForFollowUp is intentionally called only here (internal drain), never
+     * from the API route layer. The route layer always uses bridge.enqueue() for fresh tasks.
      */
     private async drainPendingMessages(processId: string, taskId: string): Promise<void> {
         const proc = await this.store.getProcess(processId);

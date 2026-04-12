@@ -117,7 +117,6 @@ export function createMockBridge(overrides?: Partial<QueueExecutorBridge>): Queu
         executeFollowUp: overrides?.executeFollowUp ?? vi.fn().mockResolvedValue(undefined),
         isSessionAlive: overrides?.isSessionAlive ?? vi.fn().mockResolvedValue(true),
         enqueue: overrides?.enqueue ?? vi.fn().mockResolvedValue('mock-task-id'),
-        requeueForFollowUp: overrides?.requeueForFollowUp ?? vi.fn().mockResolvedValue(undefined),
         cancelProcess: overrides?.cancelProcess ?? vi.fn().mockResolvedValue(undefined),
         steerProcess: overrides?.steerProcess ?? vi.fn().mockResolvedValue(true),
         getTask: overrides?.getTask ?? vi.fn().mockReturnValue(undefined),

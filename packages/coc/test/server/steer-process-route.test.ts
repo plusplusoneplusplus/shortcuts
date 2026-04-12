@@ -90,7 +90,6 @@ describe('POST /api/processes/:id/message — steer running task', () => {
             isSessionAlive: vi.fn(async () => true),
             enqueue: enqueueMock,
             findTaskByProcessId: findTaskMock,
-            requeueForFollowUp: vi.fn(async () => {}),
             cancelProcess: vi.fn(async () => {}),
             steerProcess: steerProcessMock,
         };
@@ -197,7 +196,7 @@ describe('POST /api/processes/:id/message — steer running task', () => {
         expect(proc?.pendingMessages![0].content).toBe('no parent');
     });
 
-    it('requeues completed tasks normally (unchanged behavior)', async () => {
+    it('enqueues a fresh task for completed processes', async () => {
         findTaskMock.mockReturnValue({ id: 'task-2', type: 'chat', status: 'completed' });
 
         const resp = await request(`${baseUrl}/api/processes/proc-completed/message`, {
@@ -207,7 +206,7 @@ describe('POST /api/processes/:id/message — steer running task', () => {
 
         expect(resp.status).toBe(202);
         expect(steerProcessMock).not.toHaveBeenCalled();
-        expect(bridge.requeueForFollowUp).toHaveBeenCalledOnce();
+        expect(enqueueMock).toHaveBeenCalledOnce();
     });
 
     it('emits message-queued SSE event after successful steer', async () => {

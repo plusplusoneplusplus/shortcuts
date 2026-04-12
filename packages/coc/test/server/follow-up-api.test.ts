@@ -212,15 +212,12 @@ describe('POST /api/processes/:id/message', () => {
             expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
         });
 
-        it('should reuse the parent task when a matching chat task exists', async () => {
-            const requeueSpy = vi.fn().mockResolvedValue(undefined);
-            const bridgeWithRequeue = createMockBridge();
-            (bridgeWithRequeue as any).requeueForFollowUp = requeueSpy;
-            (bridgeWithRequeue as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-task-1', type: 'chat', status: 'completed' });
+        it('should call bridge.enqueue (fresh task) when a completed parent task exists', async () => {
+            const bridgeWithFind = createMockBridge();
+            (bridgeWithFind as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-task-1', type: 'chat', status: 'completed' });
 
-            // Create a fresh server with the augmented bridge
             const freshRoutes: Route[] = [];
-            registerApiRoutes(freshRoutes, store, bridgeWithRequeue);
+            registerApiRoutes(freshRoutes, store, bridgeWithFind);
             const freshSpaHtml = generateDashboardHtml();
             const freshHandler = createRequestHandler({ routes: freshRoutes, spaHtml: freshSpaHtml, store });
             const freshServer = http.createServer(freshHandler);
@@ -232,24 +229,28 @@ describe('POST /api/processes/:id/message', () => {
             const freshUrl = `http://localhost:${freshAddr.port}`;
 
             const proc: AIProcess = {
-                id: 'proc-no-requeue',
+                id: 'proc-completed-parent',
                 type: 'clarification',
                 promptPreview: 'test',
                 fullPrompt: 'test prompt',
                 status: 'completed',
                 startTime: new Date(),
-                sdkSessionId: 'sess-no-requeue',
+                sdkSessionId: 'sess-completed-parent',
                 conversationTurns: [],
             };
             await store.addProcess(proc);
 
-            const res = await postJSON(`${freshUrl}/api/processes/proc-no-requeue/message`, {
-                content: 'Follow-up that should not re-execute parent',
+            const res = await postJSON(`${freshUrl}/api/processes/proc-completed-parent/message`, {
+                content: 'Follow-up for completed process',
             });
 
             expect(res.status).toBe(202);
-            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined, undefined, 'enqueue', undefined, undefined);
-            expect((bridgeWithRequeue.enqueue as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+            const enqueueFn = bridgeWithFind.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledOnce();
+            const call = enqueueFn.mock.calls[0][0];
+            expect(call.type).toBe('chat');
+            expect(call.payload.prompt).toBe('Follow-up for completed process');
+            expect(call.payload.processId).toBe('proc-completed-parent');
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
         });
@@ -462,14 +463,12 @@ describe('POST /api/processes/:id/message', () => {
             expect(enqueueFn.mock.calls[0][0].payload.mode).toBe('plan');
         });
 
-        it('should pass mode to requeueForFollowUp when parent task exists', async () => {
-            const requeueSpy = vi.fn().mockResolvedValue(undefined);
-            const bridgeWithRequeue = createMockBridge();
-            (bridgeWithRequeue as any).requeueForFollowUp = requeueSpy;
-            (bridgeWithRequeue as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-mode-1', type: 'chat', status: 'completed' });
+        it('should forward mode in enqueue payload when completed parent task exists', async () => {
+            const bridgeWithFind = createMockBridge();
+            (bridgeWithFind as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-mode-1', type: 'chat', status: 'completed' });
 
             const freshRoutes: Route[] = [];
-            registerApiRoutes(freshRoutes, store, bridgeWithRequeue);
+            registerApiRoutes(freshRoutes, store, bridgeWithFind);
             const freshSpaHtml = generateDashboardHtml();
             const freshHandler = createRequestHandler({ routes: freshRoutes, spaHtml: freshSpaHtml, store });
             const freshServer = http.createServer(freshHandler);
@@ -481,24 +480,26 @@ describe('POST /api/processes/:id/message', () => {
             const freshUrl = `http://localhost:${freshAddr.port}`;
 
             const proc: AIProcess = {
-                id: 'proc-mode-requeue',
+                id: 'proc-mode-completed',
                 type: 'clarification',
                 promptPreview: 'test',
                 fullPrompt: 'test prompt',
                 status: 'completed',
                 startTime: new Date(),
-                sdkSessionId: 'sess-mode-requeue',
+                sdkSessionId: 'sess-mode-completed',
                 conversationTurns: [],
             };
             await store.addProcess(proc);
 
-            const res = await postJSON(`${freshUrl}/api/processes/proc-mode-requeue/message`, {
+            const res = await postJSON(`${freshUrl}/api/processes/proc-mode-completed/message`, {
                 content: 'plan this',
                 mode: 'plan',
             });
 
             expect(res.status).toBe(202);
-            expect(requeueSpy).toHaveBeenCalledWith('parent-mode-1', 'plan this', undefined, undefined, 'plan', 'enqueue', undefined, undefined);
+            const enqueueFn = bridgeWithFind.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledOnce();
+            expect(enqueueFn.mock.calls[0][0].payload.mode).toBe('plan');
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
         });
@@ -1260,42 +1261,6 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
 
     describe('enqueue failure rollback', () => {
-        it('should return 500 and rollback status when requeueForFollowUp throws', async () => {
-            const proc: AIProcess = {
-                id: 'proc-enq-fail',
-                type: 'clarification',
-                promptPreview: 'test',
-                fullPrompt: 'test',
-                status: 'completed',
-                startTime: new Date(),
-                sdkSessionId: 'sess-enq-fail',
-                conversationTurns: [
-                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
-                    { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
-                ],
-            };
-            await store.addProcess(proc);
-
-            // Make requeueForFollowUp throw (simulates task evicted from history)
-            (mockBridge.requeueForFollowUp as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-                new Error('Task not found in history'),
-            );
-            // findTaskByProcessId returns a completed parent so the requeue path is taken
-            (mockBridge as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-1', type: 'chat', status: 'completed' });
-
-            const res = await postJSON(`${baseUrl}/api/processes/proc-enq-fail/message`, {
-                content: 'Follow-up after cancel',
-            });
-
-            expect(res.status).toBe(500);
-            const body = JSON.parse(res.body);
-            expect(body.code).toBe('ENQUEUE_FAILED');
-
-            // Status must be rolled back to original 'completed' (not stuck at 'running')
-            const updated = await store.getProcess('proc-enq-fail');
-            expect(updated?.status).toBe('completed');
-        });
-
         it('should return 500 and rollback status when enqueue throws', async () => {
             const proc: AIProcess = {
                 id: 'proc-enq-fail2',

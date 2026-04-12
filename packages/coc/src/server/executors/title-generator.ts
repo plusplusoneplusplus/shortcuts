@@ -31,9 +31,8 @@ export function generateTitleIfNeeded(
             const existing = await store.getProcess(processId);
             if (existing?.title) {
                 // Re-sync the persisted AI title back to the task's displayName.
-                // requeueForFollowUp (and the api-handler fallback path) both overwrite
-                // displayName with the follow-up message text, so we restore it here
-                // on every turn to keep the two in sync.
+                // The enqueue follow-up path overwrites displayName with the follow-up message text,
+                // so we restore it here on every turn to keep the two in sync.
                 if (isQueueProcessId(processId) && queueManager) {
                     const taskId = toTaskId(processId);
                     queueManager.updateTask(taskId, { displayName: existing.title });

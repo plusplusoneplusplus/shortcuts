@@ -510,9 +510,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 if (bridge.enqueue) {
                     const displayName = truncateDisplayName(messageContent.trim());
                     const parentTask = bridge.findTaskByProcessId?.(id);
-                    if (parentTask && parentTask.status === 'completed' && bridge.requeueForFollowUp) {
-                        await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages, selectedSkillNames);
-                    } else if (parentTask && parentTask.status === 'running' && deliveryMode === 'immediate' && bridge.steerProcess) {
+                    if (parentTask && parentTask.status === 'running' && deliveryMode === 'immediate' && bridge.steerProcess) {
                         const steered = await bridge.steerProcess(id, messageContent);
                         if (!steered) {
                             // Steering failed (no active SDK session); buffer for server-side drain
