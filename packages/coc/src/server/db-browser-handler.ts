@@ -259,4 +259,66 @@ export function registerDbBrowserRoutes(routes: Route[], store: ProcessStore): v
             }
         },
     });
+
+    // ── POST /api/admin/db/tables/:name/rows/delete-bulk ────────────────
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/admin\/db\/tables\/([a-zA-Z_][a-zA-Z0-9_]*)\/rows\/delete-bulk$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            try {
+                if (!(store instanceof SqliteProcessStore)) {
+                    sendJSON(res, 501, { error: 'Database browser is only available with the SQLite store backend.' });
+                    return;
+                }
+
+                const tableName = decodeURIComponent(match![1]);
+                const db = store.getDatabase();
+                const { pkColumnNames } = validateTableAndGetMeta(db, tableName);
+
+                let body: any;
+                try {
+                    body = await parseBody(req);
+                } catch {
+                    throw badRequest('Invalid JSON body');
+                }
+
+                const { rows } = body || {};
+
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    throw badRequest('Missing or invalid rows: must be a non-empty array');
+                }
+                if (rows.length > 1000) {
+                    throw badRequest(`Too many rows: ${rows.length} exceeds maximum of 1000`);
+                }
+
+                // Validate every row before executing any deletes
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (!row || typeof row !== 'object' || Array.isArray(row) || Object.keys(row).length === 0) {
+                        throw badRequest(`Invalid row at index ${i}: must be a non-empty object`);
+                    }
+                    validatePkColumns(pkColumnNames, row);
+                }
+
+                // Execute all deletes in a transaction
+                const whereClauses = [...pkColumnNames].map(col => `"${col}" = ?`).join(' AND ');
+                const deleteStmt = db.prepare(`DELETE FROM "${tableName}" WHERE ${whereClauses}`);
+                const pkCols = [...pkColumnNames];
+
+                let totalDeleted = 0;
+                const runTransaction = db.transaction(() => {
+                    for (const row of rows) {
+                        const params = pkCols.map(col => row[col]);
+                        const result = deleteStmt.run(...params);
+                        totalDeleted += result.changes;
+                    }
+                });
+                runTransaction();
+
+                sendJSON(res, 200, { deleted: totalDeleted, requested: rows.length });
+            } catch (err) {
+                handleAPIError(res, err);
+            }
+        },
+    });
 }

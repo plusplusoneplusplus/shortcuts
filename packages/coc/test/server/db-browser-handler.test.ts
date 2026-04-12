@@ -758,4 +758,237 @@ describe('DB Browser Handler', () => {
             }
         });
     });
+
+    // ── POST /api/admin/db/tables/:name/rows/delete-bulk ────────────────
+
+    describe('POST /api/admin/db/tables/:name/rows/delete-bulk', () => {
+        function seedTestTable(store: SqliteProcessStore): void {
+            const db = store.getDatabase();
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS test_items (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    status TEXT DEFAULT 'draft',
+                    score INTEGER DEFAULT 0
+                )
+            `);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(1, 'Alpha', 'active', 10);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(2, 'Bravo', 'draft', 20);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(3, 'Charlie', 'active', 30);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(4, 'Delta', 'draft', 40);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(5, 'Echo', 'active', 50);
+        }
+
+        function bulkDelete(url: string, tableName: string, body: object) {
+            return request(`${url}/api/admin/db/tables/${tableName}/rows/delete-bulk`, {
+                method: 'POST',
+                body: JSON.stringify(body),
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
+        it('should bulk-delete multiple rows and return correct counts', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: [{ id: 1 }, { id: 3 }, { id: 5 }],
+            });
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.deleted).toBe(3);
+            expect(body.requested).toBe(3);
+
+            // Verify remaining rows
+            const tableRes = await request(`${srv.url}/api/admin/db/tables/test_items`);
+            const tableBody = JSON.parse(tableRes.body);
+            const ids = tableBody.rows.map((r: any) => r.id);
+            expect(ids).toEqual(expect.arrayContaining([2, 4]));
+            expect(ids).not.toContain(1);
+            expect(ids).not.toContain(3);
+            expect(ids).not.toContain(5);
+        });
+
+        it('should return correct deleted vs requested when some rows do not exist', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: [{ id: 1 }, { id: 999 }, { id: 2 }],
+            });
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.deleted).toBe(2);
+            expect(body.requested).toBe(3);
+        });
+
+        it('should validate all rows before executing (all-or-nothing validation)', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            // Second row has an invalid PK column
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: [{ id: 1 }, { name: 'Alpha' }],
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/not a primary key/i);
+
+            // Verify NO rows were deleted (validation failed before execution)
+            const tableRes = await request(`${srv.url}/api/admin/db/tables/test_items`);
+            const tableBody = JSON.parse(tableRes.body);
+            expect(tableBody.total).toBe(5);
+        });
+
+        it('should return 400 for empty rows array', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: [],
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/non-empty array/i);
+        });
+
+        it('should return 400 when rows is not an array', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: { id: 1 },
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/non-empty array/i);
+        });
+
+        it('should return 400 for rows exceeding max limit (1000)', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const tooMany = Array.from({ length: 1001 }, (_, i) => ({ id: i }));
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: tooMany,
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/exceeds maximum/i);
+        });
+
+        it('should return 400 when row PK columns are invalid', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: [{ status: 'active' }],
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/not a primary key/i);
+        });
+
+        it('should return 400 when a row is an empty object', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: [{}],
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/non-empty object/i);
+        });
+
+        it('should return 400 for invalid table name', async () => {
+            const srv = await startSqliteServer();
+
+            // Route regex rejects names with invalid chars → 404 from router
+            const res = await bulkDelete(srv.url, 'DROP%20TABLE', {
+                rows: [{ id: 1 }],
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 400 for non-existent table', async () => {
+            const srv = await startSqliteServer();
+
+            const res = await bulkDelete(srv.url, 'totally_fake_table', {
+                rows: [{ id: 1 }],
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/not found/i);
+        });
+
+        it('should return 501 for non-SQLite store', async () => {
+            const srv = await startFileServer();
+
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: [{ id: 1 }],
+            });
+            expect(res.status).toBe(501);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('SQLite');
+        });
+
+        it('should handle composite primary keys', async () => {
+            const srv = await startSqliteServer();
+            const db = sqliteStore!.getDatabase();
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS composite_pk_bulk (
+                    org TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    role TEXT DEFAULT 'member',
+                    PRIMARY KEY (org, user_id)
+                )
+            `);
+            db.prepare('INSERT INTO composite_pk_bulk (org, user_id, role) VALUES (?, ?, ?)').run('acme', 'u1', 'member');
+            db.prepare('INSERT INTO composite_pk_bulk (org, user_id, role) VALUES (?, ?, ?)').run('acme', 'u2', 'admin');
+            db.prepare('INSERT INTO composite_pk_bulk (org, user_id, role) VALUES (?, ?, ?)').run('acme', 'u3', 'member');
+
+            const res = await bulkDelete(srv.url, 'composite_pk_bulk', {
+                rows: [
+                    { org: 'acme', user_id: 'u1' },
+                    { org: 'acme', user_id: 'u3' },
+                ],
+            });
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.deleted).toBe(2);
+            expect(body.requested).toBe(2);
+
+            // Verify only u2 remains
+            const tableRes = await request(`${srv.url}/api/admin/db/tables/composite_pk_bulk`);
+            const tableBody = JSON.parse(tableRes.body);
+            expect(tableBody.rows.length).toBe(1);
+            expect(tableBody.rows[0].user_id).toBe('u2');
+        });
+
+        it('should delete a single row via bulk endpoint', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await bulkDelete(srv.url, 'test_items', {
+                rows: [{ id: 2 }],
+            });
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.deleted).toBe(1);
+            expect(body.requested).toBe(1);
+        });
+    });
 });
