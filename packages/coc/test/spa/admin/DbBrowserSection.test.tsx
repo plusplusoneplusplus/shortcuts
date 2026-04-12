@@ -548,6 +548,76 @@ describe('DbBrowserSection — single row delete', () => {
     });
 });
 
+describe('DbBrowserSection — UI enhancements', () => {
+    it('renders row numbers starting from 1', async () => {
+        renderSection();
+        await waitFor(() => {
+            expect(screen.getByTestId('db-row-num-0').textContent).toBe('1');
+            expect(screen.getByTestId('db-row-num-1').textContent).toBe('2');
+        });
+    });
+
+    it('renders column type badges in header', async () => {
+        renderSection();
+        await waitFor(() => {
+            expect(screen.getByTestId('db-col-type-id').textContent).toBe('INTEGER');
+            expect(screen.getByTestId('db-col-type-name').textContent).toBe('TEXT');
+        });
+    });
+
+    it('renders table filter input', async () => {
+        renderSection();
+        await waitFor(() => {
+            expect(screen.getByTestId('db-table-search')).toBeDefined();
+        });
+    });
+
+    it('filters table list when typing in search', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-table-search'));
+
+        fireEvent.change(screen.getByTestId('db-table-search'), { target: { value: 'log' } });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('db-table-users')).toBeNull();
+            expect(screen.getByTestId('db-table-logs')).toBeDefined();
+        });
+    });
+
+    it('shows "No matching tables" when filter matches nothing', async () => {
+        renderSection();
+        await waitFor(() => screen.getByTestId('db-table-search'));
+
+        fireEvent.change(screen.getByTestId('db-table-search'), { target: { value: 'zzzzz' } });
+
+        await waitFor(() => {
+            expect(screen.getByText('No matching tables')).toBeDefined();
+        });
+    });
+
+    it('renders page size selector', async () => {
+        renderSection();
+        await waitFor(() => {
+            expect(screen.getByTestId('db-page-size')).toBeDefined();
+        });
+    });
+
+    it('renders refresh button', async () => {
+        renderSection();
+        await waitFor(() => {
+            expect(screen.getByTestId('db-refresh')).toBeDefined();
+        });
+    });
+
+    it('renders row and column count badges', async () => {
+        renderSection();
+        await waitFor(() => {
+            expect(screen.getAllByText('2 rows').length).toBeGreaterThanOrEqual(1);
+            expect(screen.getByText('3 cols')).toBeDefined();
+        });
+    });
+});
+
 describe('DbBrowserSection — bulk delete', () => {
     it('Delete Selected button shows confirmation with correct count', async () => {
         renderSection();

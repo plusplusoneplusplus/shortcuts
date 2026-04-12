@@ -4,7 +4,7 @@
  * inline row editing via the PUT endpoint, and row deletion (single + bulk).
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, Dialog, Spinner, useToast, ToastContainer } from '../shared';
 import { getApiBase } from '../utils/config';
 import { useApp } from '../context/AppContext';
@@ -33,6 +33,12 @@ interface TableData {
 }
 
 const MAX_CELL_LENGTH = 120;
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200] as const;
+
+function isJsonLike(str: string): boolean {
+    const trimmed = str.trimStart();
+    return (trimmed.startsWith('{') || trimmed.startsWith('[')) && str.length > 40;
+}
 
 function CellValue({ value }: { value: unknown }) {
     const [expanded, setExpanded] = useState(false);
@@ -41,34 +47,87 @@ function CellValue({ value }: { value: unknown }) {
     const needsTruncation = str.length > MAX_CELL_LENGTH && !expanded;
 
     if (isNull) {
-        return <span className="text-[var(--text-tertiary)] italic">NULL</span>;
+        return <span className="text-[var(--text-tertiary)] italic text-[10px]">NULL</span>;
     }
 
     if (needsTruncation) {
+        const jsonLike = isJsonLike(str);
         return (
             <span
-                className="cursor-pointer hover:text-[var(--accent)]"
+                className="cursor-pointer hover:text-[var(--accent)] transition-colors"
                 title="Click to expand"
                 onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
             >
-                {str.slice(0, MAX_CELL_LENGTH)}…
+                {jsonLike ? (
+                    <code className="text-[10px] bg-[var(--bg-secondary)] px-1 py-0.5 rounded break-all">{str.slice(0, MAX_CELL_LENGTH)}…</code>
+                ) : (
+                    <>{str.slice(0, MAX_CELL_LENGTH)}…</>
+                )}
             </span>
         );
     }
 
     if (expanded && str.length > MAX_CELL_LENGTH) {
+        const jsonLike = isJsonLike(str);
+        let displayStr = str;
+        if (jsonLike) {
+            try { displayStr = JSON.stringify(JSON.parse(str), null, 2); } catch { /* keep original */ }
+        }
         return (
             <span
-                className="cursor-pointer hover:text-[var(--accent)]"
+                className="cursor-pointer hover:text-[var(--accent)] transition-colors"
                 title="Click to collapse"
                 onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
             >
-                {str}
+                {jsonLike ? (
+                    <pre className="text-[10px] bg-[var(--bg-secondary)] p-1.5 rounded whitespace-pre-wrap break-all max-h-60 overflow-auto border border-[var(--border)]">{displayStr}</pre>
+                ) : (
+                    <span className="break-all">{str}</span>
+                )}
             </span>
         );
     }
 
     return <span>{str}</span>;
+}
+
+function ColumnTypeBadge({ col }: { col: ColumnInfo }) {
+    const typeColors: Record<string, string> = {
+        INTEGER: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
+        TEXT: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
+        REAL: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
+        BLOB: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
+    };
+    const colorClass = typeColors[col.type.toUpperCase()] || 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
+    return (
+        <span className={`inline-block ml-1.5 px-1 py-0 text-[9px] font-medium rounded ${colorClass}`} data-testid={`db-col-type-${col.name}`}>
+            {col.type}
+        </span>
+    );
+}
+
+function TableSearchInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    return (
+        <div className="relative">
+            <input
+                type="text"
+                placeholder="Filter tables…"
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                className="w-full px-2 py-1 text-xs bg-[var(--bg-primary)] border border-[var(--border)] rounded text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:ring-1 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-colors"
+                data-testid="db-table-search"
+            />
+            {value && (
+                <button
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-xs"
+                    onClick={() => onChange('')}
+                    title="Clear filter"
+                >
+                    ×
+                </button>
+            )}
+        </div>
+    );
 }
 
 function EditableCell({ value, column, isEditing, onChange }: {
@@ -114,6 +173,7 @@ export function DbBrowserSection() {
     const [selectedTable, setSelectedTable] = useState<string | null>(state.adminDbTable);
     const [tableData, setTableData] = useState<TableData | null>(null);
     const [page, setPage] = useState(state.adminDbPage);
+    const [pageSize, setPageSize] = useState(50);
     const [sortColumn, setSortColumn] = useState<string | null>(state.adminDbSort);
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(state.adminDbOrder);
     const [loading, setLoading] = useState(true);
@@ -128,9 +188,15 @@ export function DbBrowserSection() {
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<'single' | 'bulk'>('single');
     const [singleDeleteRow, setSingleDeleteRow] = useState<Record<string, unknown> | null>(null);
+    const [tableFilter, setTableFilter] = useState('');
     const { toasts, addToast, removeToast } = useToast();
-    // Track whether the initial deep-link table has been consumed
     const deepLinkConsumed = useRef(false);
+
+    const filteredTables = useMemo(() => {
+        if (!tableFilter) return tables;
+        const lower = tableFilter.toLowerCase();
+        return tables.filter(t => t.name.toLowerCase().includes(lower));
+    }, [tables, tableFilter]);
 
     // Fetch table list
     const fetchTables = useCallback(async () => {
@@ -144,7 +210,6 @@ export function DbBrowserSection() {
             }
             const data = await res.json();
             setTables(data.tables);
-            // If a deep-link table was provided and exists, keep it; otherwise auto-select first
             if (!deepLinkConsumed.current && state.adminDbTable) {
                 deepLinkConsumed.current = true;
                 const exists = data.tables.some((t: TableInfo) => t.name === state.adminDbTable);
@@ -168,7 +233,7 @@ export function DbBrowserSection() {
         setDataLoading(true);
         setError(null);
         try {
-            const params = new URLSearchParams({ page: String(p), pageSize: '50' });
+            const params = new URLSearchParams({ page: String(p), pageSize: String(pageSize) });
             if (sort && order) {
                 params.set('sort', sort);
                 params.set('order', order);
@@ -185,7 +250,7 @@ export function DbBrowserSection() {
         } finally {
             setDataLoading(false);
         }
-    }, []);
+    }, [pageSize]);
 
     useEffect(() => { fetchTables(); }, [fetchTables]);
 
@@ -201,8 +266,15 @@ export function DbBrowserSection() {
         setSortColumn(null);
         setSortOrder(null);
         clearSelection();
-        // Table selection = navigation — creates a history entry
         location.hash = buildDbBrowserHash(name, 1, null, null);
+    };
+
+    const handlePageSizeChange = (newSize: number) => {
+        setPageSize(newSize);
+        setPage(1);
+        if (selectedTable) {
+            history.replaceState(null, '', '#' + buildDbBrowserHash(selectedTable, 1, sortColumn, sortOrder));
+        }
     };
 
     const handleSort = (colName: string) => {
@@ -386,6 +458,8 @@ export function DbBrowserSection() {
 
     const deleteCount = deleteTarget === 'single' ? 1 : selectedRows.size;
 
+    const rowOffset = tableData ? (tableData.page - 1) * tableData.pageSize : 0;
+
     if (loading) {
         return <div className="flex items-center justify-center p-8"><Spinner size="sm" /></div>;
     }
@@ -399,61 +473,88 @@ export function DbBrowserSection() {
     }
 
     return (
-        <div className="flex gap-4 min-h-[400px]">
+        <div className="flex gap-0 min-h-[500px]">
             {/* ── Table list sidebar ── */}
-            <div className="w-48 shrink-0 border-r border-[var(--border)] pr-3">
-                <h3 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wide mb-2">Tables</h3>
-                <ul className="space-y-0.5">
-                    {tables.map(t => (
+            <div className="w-52 shrink-0 border-r border-[var(--border)] pr-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">Tables</h3>
+                    <span className="text-[10px] text-[var(--text-tertiary)]">{tables.length}</span>
+                </div>
+                <TableSearchInput value={tableFilter} onChange={setTableFilter} />
+                <ul className="space-y-0.5 overflow-y-auto flex-1 -mr-1 pr-1" data-testid="db-table-list">
+                    {filteredTables.map(t => (
                         <li key={t.name}>
                             <button
-                                className={`w-full text-left px-2 py-1.5 rounded text-sm transition-colors ${
+                                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors group ${
                                     selectedTable === t.name
                                         ? 'bg-[var(--accent)] text-white'
                                         : 'hover:bg-[var(--bg-secondary)] text-[var(--text-primary)]'
                                 }`}
                                 onClick={() => handleTableSelect(t.name)}
                                 data-testid={`db-table-${t.name}`}
+                                title={t.name}
                             >
-                                <span className="font-medium">{t.name}</span>
-                                <span className={`ml-1 text-xs ${selectedTable === t.name ? 'text-white/70' : 'text-[var(--text-tertiary)]'}`}>
-                                    ({t.rowCount.toLocaleString()})
-                                </span>
+                                <div className="flex items-center justify-between gap-1">
+                                    <span className="font-medium truncate">{t.name}</span>
+                                    <span className={`shrink-0 text-[10px] tabular-nums ${selectedTable === t.name ? 'text-white/70' : 'text-[var(--text-tertiary)]'}`}>
+                                        {t.rowCount.toLocaleString()}
+                                    </span>
+                                </div>
                             </button>
                         </li>
                     ))}
+                    {filteredTables.length === 0 && tableFilter && (
+                        <li className="px-2 py-3 text-xs text-[var(--text-tertiary)] text-center">No matching tables</li>
+                    )}
                 </ul>
             </div>
 
             {/* ── Table data panel ── */}
-            <div className="flex-1 min-w-0">
-                {dataLoading && (
-                    <div className="flex items-center justify-center p-8"><Spinner size="sm" /></div>
-                )}
-
+            <div className="flex-1 min-w-0 pl-4 flex flex-col">
                 {error && (
-                    <div className="p-2 text-sm text-red-500 mb-2">{error}</div>
+                    <div className="p-2 text-sm text-red-500 mb-2 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">{error}</div>
                 )}
 
                 {editError && (
-                    <div className="p-2 text-sm text-red-500 mb-2" data-testid="db-edit-error">{editError}</div>
+                    <div className="p-2 text-sm text-red-500 mb-2 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800" data-testid="db-edit-error">{editError}</div>
+                )}
+
+                {dataLoading && (
+                    <div className="flex items-center justify-center p-8 flex-1"><Spinner size="sm" /></div>
                 )}
 
                 {!dataLoading && tableData && (
                     <>
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                                {tableData.table}
-                                <span className="ml-2 font-normal text-[var(--text-tertiary)]">
-                                    ({tableData.total.toLocaleString()} rows)
+                        {/* ── Table header bar ── */}
+                        <div className="flex items-center justify-between mb-2 gap-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                                    {tableData.table}
+                                </h3>
+                                <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-secondary)] text-[var(--text-tertiary)] tabular-nums border border-[var(--border)]">
+                                    {tableData.total.toLocaleString()} rows
                                 </span>
-                            </h3>
+                                <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-secondary)] text-[var(--text-tertiary)] tabular-nums border border-[var(--border)]">
+                                    {tableData.columns.length} cols
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => fetchTableData(tableData.table, page, sortColumn, sortOrder)}
+                                    title="Refresh data"
+                                    data-testid="db-refresh"
+                                >
+                                    ↻
+                                </Button>
+                            </div>
                         </div>
 
                         {/* ── Bulk action bar ── */}
                         {selectedRows.size > 0 && (
-                            <div className="flex items-center gap-3 px-3 py-2 mb-2 rounded bg-[var(--bg-secondary)] border border-[var(--border)]" data-testid="db-bulk-bar">
-                                <span className="text-xs text-[var(--text-secondary)]" data-testid="db-bulk-count">
+                            <div className="flex items-center gap-3 px-3 py-1.5 mb-2 rounded-lg bg-[var(--accent)]/5 border border-[var(--accent)]/20" data-testid="db-bulk-bar">
+                                <span className="text-xs font-medium text-[var(--accent)]" data-testid="db-bulk-count">
                                     {selectedRows.size} row{selectedRows.size !== 1 ? 's' : ''} selected
                                 </span>
                                 <Button
@@ -470,16 +571,17 @@ export function DbBrowserSection() {
                                     onClick={clearSelection}
                                     data-testid="db-bulk-clear"
                                 >
-                                    Clear Selection
+                                    Clear
                                 </Button>
                             </div>
                         )}
 
-                        <div className="overflow-x-auto border border-[var(--border)] rounded">
-                            <table className="w-full text-xs">
-                                <thead>
-                                    <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
-                                        <th className="px-2 py-1.5 w-8">
+                        {/* ── Data grid ── */}
+                        <div className="overflow-x-auto border border-[var(--border)] rounded-lg flex-1 relative">
+                            <table className="w-full text-xs border-collapse">
+                                <thead className="sticky top-0 z-10">
+                                    <tr className="bg-[var(--bg-secondary)] border-b-2 border-[var(--border)]">
+                                        <th className="px-2 py-2 w-8 text-center sticky left-0 bg-[var(--bg-secondary)]">
                                             <input
                                                 type="checkbox"
                                                 checked={tableData.rows.length > 0 && tableData.rows.every(r => selectedRows.has(serializeRowKey(r, tableData.columns)))}
@@ -488,22 +590,28 @@ export function DbBrowserSection() {
                                                 className="cursor-pointer"
                                             />
                                         </th>
+                                        <th className="px-2 py-2 text-center text-[10px] font-medium text-[var(--text-tertiary)] w-10" title="Row number">
+                                            #
+                                        </th>
                                         {tableData.columns.map(col => (
                                             <th
                                                 key={col.name}
-                                                className="px-2 py-1.5 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap cursor-pointer select-none hover:text-[var(--text-primary)] transition-colors"
+                                                className="px-2 py-2 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap cursor-pointer select-none hover:text-[var(--text-primary)] hover:bg-[var(--bg-primary)]/50 transition-colors"
                                                 title={`${col.type}${col.pk ? ' (PK)' : ''}${col.notnull ? ' NOT NULL' : ''} — Click to sort`}
                                                 onClick={() => handleSort(col.name)}
                                                 data-testid={`db-sort-${col.name}`}
                                             >
-                                                {col.name}
-                                                {col.pk && <span className="ml-1 text-[var(--accent)]">🔑</span>}
-                                                {sortColumn === col.name && (
-                                                    <span className="ml-1 text-[var(--accent)]">{sortOrder === 'asc' ? '▲' : '▼'}</span>
-                                                )}
+                                                <div className="flex items-center gap-0.5">
+                                                    <span>{col.name}</span>
+                                                    {col.pk && <span className="text-[var(--accent)] text-[10px]" title="Primary Key">PK</span>}
+                                                    <ColumnTypeBadge col={col} />
+                                                    {sortColumn === col.name && (
+                                                        <span className="ml-0.5 text-[var(--accent)] text-[10px]">{sortOrder === 'asc' ? '▲' : '▼'}</span>
+                                                    )}
+                                                </div>
                                             </th>
                                         ))}
-                                        <th className="px-2 py-1.5 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap w-28">
+                                        <th className="px-2 py-2 text-center font-semibold text-[var(--text-secondary)] whitespace-nowrap w-20 sticky right-0 bg-[var(--bg-secondary)]">
                                             Actions
                                         </th>
                                     </tr>
@@ -511,7 +619,7 @@ export function DbBrowserSection() {
                                 <tbody>
                                     {tableData.rows.length === 0 ? (
                                         <tr>
-                                            <td colSpan={tableData.columns.length + 2} className="px-2 py-4 text-center text-[var(--text-tertiary)]">
+                                            <td colSpan={tableData.columns.length + 3} className="px-2 py-8 text-center text-[var(--text-tertiary)]">
                                                 No rows
                                             </td>
                                         </tr>
@@ -520,9 +628,19 @@ export function DbBrowserSection() {
                                             const editing = isEditingThisRow(row);
                                             const rowKey = serializeRowKey(row, tableData.columns);
                                             const isSelected = selectedRows.has(rowKey);
+                                            const rowNum = rowOffset + idx + 1;
                                             return (
-                                                <tr key={idx} className={`border-b border-[var(--border)] ${editing ? 'bg-[var(--accent)]/5' : isSelected ? 'bg-[var(--accent)]/10' : 'hover:bg-[var(--bg-secondary)]/50'}`}>
-                                                    <td className="px-2 py-1 w-8 align-top">
+                                                <tr
+                                                    key={idx}
+                                                    className={`border-b border-[var(--border)] transition-colors ${
+                                                        editing
+                                                            ? 'bg-[var(--accent)]/5'
+                                                            : isSelected
+                                                                ? 'bg-[var(--accent)]/10'
+                                                                : 'hover:bg-[var(--bg-secondary)]/50'
+                                                    }`}
+                                                >
+                                                    <td className="px-2 py-1.5 w-8 align-top text-center sticky left-0 bg-inherit">
                                                         <input
                                                             type="checkbox"
                                                             checked={isSelected}
@@ -531,8 +649,11 @@ export function DbBrowserSection() {
                                                             className="cursor-pointer"
                                                         />
                                                     </td>
+                                                    <td className="px-2 py-1.5 text-center text-[10px] text-[var(--text-tertiary)] tabular-nums w-10 align-top" data-testid={`db-row-num-${idx}`}>
+                                                        {rowNum}
+                                                    </td>
                                                     {tableData.columns.map(col => (
-                                                        <td key={col.name} className="px-2 py-1 max-w-xs align-top">
+                                                        <td key={col.name} className="px-2 py-1.5 max-w-xs align-top">
                                                             <EditableCell
                                                                 value={editing ? (col.name in editValues ? editValues[col.name] : row[col.name]) : row[col.name]}
                                                                 column={col}
@@ -541,9 +662,9 @@ export function DbBrowserSection() {
                                                             />
                                                         </td>
                                                     ))}
-                                                    <td className="px-2 py-1 whitespace-nowrap align-top">
+                                                    <td className="px-2 py-1.5 whitespace-nowrap align-top text-center sticky right-0 bg-inherit">
                                                         {editing ? (
-                                                            <span className="flex gap-1">
+                                                            <span className="flex gap-1 justify-center">
                                                                 <Button
                                                                     variant="primary"
                                                                     size="sm"
@@ -564,27 +685,25 @@ export function DbBrowserSection() {
                                                                 </Button>
                                                             </span>
                                                         ) : (
-                                                            <span className="flex gap-1">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
+                                                            <span className="flex gap-0.5 justify-center">
+                                                                <button
+                                                                    className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                                                                     onClick={() => handleEditStart(row)}
                                                                     data-testid={`db-edit-row-${idx}`}
                                                                     title="Edit row"
                                                                     disabled={!!editingRow}
                                                                 >
-                                                                    ✏️
-                                                                </Button>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
+                                                                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z"/></svg>
+                                                                </button>
+                                                                <button
+                                                                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-[var(--text-tertiary)] hover:text-red-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                                                                     onClick={() => handleDeleteSingle(row)}
                                                                     data-testid={`db-delete-row-${idx}`}
                                                                     title="Delete row"
                                                                     disabled={!!editingRow}
                                                                 >
-                                                                    🗑️
-                                                                </Button>
+                                                                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4m2 0v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/></svg>
+                                                                </button>
                                                             </span>
                                                         )}
                                                     </td>
@@ -597,8 +716,20 @@ export function DbBrowserSection() {
                         </div>
 
                         {/* ── Pagination ── */}
-                        {tableData.totalPages > 1 && (
-                            <div className="flex items-center justify-between pt-2">
+                        <div className="flex items-center justify-between pt-2 gap-2 flex-wrap">
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={page <= 1}
+                                    onClick={() => {
+                                        setPage(1);
+                                        history.replaceState(null, '', '#' + buildDbBrowserHash(selectedTable, 1, sortColumn, sortOrder));
+                                    }}
+                                    title="First page"
+                                >
+                                    ⟪
+                                </Button>
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -609,11 +740,31 @@ export function DbBrowserSection() {
                                         history.replaceState(null, '', '#' + buildDbBrowserHash(selectedTable, newPage, sortColumn, sortOrder));
                                     }}
                                 >
-                                    ← Previous
+                                    ← Prev
                                 </Button>
-                                <span className="text-xs text-[var(--text-tertiary)]">
-                                    Page {tableData.page} of {tableData.totalPages} ({tableData.total.toLocaleString()} total)
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-[var(--text-tertiary)] tabular-nums">
+                                    Page {tableData.page} of {tableData.totalPages}
                                 </span>
+                                <span className="text-[var(--border)]">·</span>
+                                <span className="text-[10px] text-[var(--text-tertiary)] tabular-nums">
+                                    {tableData.total.toLocaleString()} rows
+                                </span>
+                                <span className="text-[var(--border)]">·</span>
+                                <select
+                                    className="text-[10px] bg-[var(--bg-primary)] border border-[var(--border)] rounded px-1 py-0.5 text-[var(--text-secondary)] cursor-pointer"
+                                    value={pageSize}
+                                    onChange={e => handlePageSizeChange(Number(e.target.value))}
+                                    data-testid="db-page-size"
+                                    title="Rows per page"
+                                >
+                                    {PAGE_SIZE_OPTIONS.map(s => (
+                                        <option key={s} value={s}>{s} / page</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-1">
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -626,13 +777,25 @@ export function DbBrowserSection() {
                                 >
                                     Next →
                                 </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={page >= tableData.totalPages}
+                                    onClick={() => {
+                                        setPage(tableData.totalPages);
+                                        history.replaceState(null, '', '#' + buildDbBrowserHash(selectedTable, tableData.totalPages, sortColumn, sortOrder));
+                                    }}
+                                    title="Last page"
+                                >
+                                    ⟫
+                                </Button>
                             </div>
-                        )}
+                        </div>
                     </>
                 )}
 
                 {!dataLoading && !tableData && !error && (
-                    <div className="flex items-center justify-center p-8 text-[var(--text-tertiary)]">
+                    <div className="flex items-center justify-center p-8 text-[var(--text-tertiary)] flex-1">
                         Select a table to browse its contents
                     </div>
                 )}
