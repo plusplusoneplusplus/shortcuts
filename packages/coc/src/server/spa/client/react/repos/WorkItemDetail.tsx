@@ -50,7 +50,7 @@ interface WorkItemDetailProps {
 }
 
 interface WorkItemFull {
-    id: string; title: string; description: string; status: string;
+    id: string; workItemNumber?: number; title: string; description: string; status: string;
     priority?: string; source: string; sourceId?: string;
     createdAt: string; updatedAt: string; completedAt?: string;
     plan?: { version: number; content: string; updatedAt: string; resolvedBy?: string };
@@ -351,7 +351,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </button>
                 )}
                 <div className="flex-1 min-w-0">
-                    <h2 className="text-sm font-semibold truncate" title={item.title}>{item.title}</h2>
+                    <div className="flex items-center gap-1.5">
+                        {item.workItemNumber != null && (
+                            <span className="text-xs text-[#848484] dark:text-[#999] font-mono shrink-0" data-testid="work-item-detail-number">WI-{item.workItemNumber}</span>
+                        )}
+                        <h2 className="text-sm font-semibold truncate" title={item.title}>{item.title}</h2>
+                    </div>
                     <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-[#848484] dark:text-[#999] mt-1">
                         {/* Status dropdown */}
                         <select

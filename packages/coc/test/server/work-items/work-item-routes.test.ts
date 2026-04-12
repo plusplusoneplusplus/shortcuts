@@ -382,4 +382,43 @@ describe('Work Item Routes', () => {
             expect(res.status).toBe(404);
         });
     });
+
+    describe('workItemNumber', () => {
+        it('assigns sequential workItemNumber on create', async () => {
+            const res1 = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'First' });
+            const res2 = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Second' });
+
+            expect(res1.status).toBe(201);
+            expect(res1.body.workItemNumber).toBe(1);
+            expect(res2.status).toBe(201);
+            expect(res2.body.workItemNumber).toBe(2);
+        });
+
+        it('includes workItemNumber in list response', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Listed' });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            expect(res.status).toBe(200);
+            expect(res.body[0].workItemNumber).toBe(1);
+        });
+
+        it('includes workItemNumber in detail response', async () => {
+            const created = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Detail' });
+            const id = created.body.id;
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${id}`);
+            expect(res.status).toBe(200);
+            expect(res.body.workItemNumber).toBe(1);
+        });
+
+        it('does not reuse numbers after deletion', async () => {
+            const res1 = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'A' });
+            const res2 = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'B' });
+            await request('DELETE', `/api/workspaces/${REPO_ID}/work-items/${res2.body.id}`);
+
+            const res3 = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'C' });
+            expect(res1.body.workItemNumber).toBe(1);
+            expect(res3.body.workItemNumber).toBe(3);
+        });
+    });
 });
