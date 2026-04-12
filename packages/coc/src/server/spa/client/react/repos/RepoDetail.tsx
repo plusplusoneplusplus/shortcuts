@@ -284,27 +284,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 isMobile ? 'flex flex-col' : 'flex flex-row items-center'
             )}>
                 {isMobile ? (
-                    // Mobile: title + buttons in one row
-                    <div className="flex gap-3 items-center py-1">
-                        {/* Title row */}
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <span
-                                className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
-                                style={{ background: color }}
-                            />
-                            <button
-                                className="flex items-center gap-1.5 min-w-0 flex-1 text-left group"
-                                onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = ''; }}
-                                aria-label="Back to repos"
-                                data-testid="repo-name-back"
-                            >
-                                <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate group-active:opacity-70">{ws.name}</h1>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 flex-shrink-0 text-[#999999] dark:text-[#666666]">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                                </svg>
-                            </button>
-                        </div>
-                        {/* Action buttons */}
+                    // Mobile: action buttons only (repo name shown in TopBar)
+                    <div className="flex items-center justify-end py-1">
                         <div className="flex items-center gap-2 flex-shrink-0">
                             {(activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused && (
                                 <Button
@@ -346,14 +327,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     </div>
                 ) : (
                     <>
-                        {/* Title */}
-                        <div className="flex items-center gap-3 min-w-0 max-w-[180px] flex-shrink-0">
-                            <span
-                                className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
-                                style={{ background: color }}
-                            />
-                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
-                        </div>
                         {/* Sub-tab bar */}
                         <div className="relative flex-1 min-w-0" data-testid="repo-sub-tab-strip-container">
                             {/* Left scroll fade */}
