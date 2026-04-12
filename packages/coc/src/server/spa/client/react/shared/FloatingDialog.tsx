@@ -68,6 +68,8 @@ export interface FloatingDialogProps {
     renderHeader?: (dragProps: { onMouseDown: (e: React.MouseEvent) => void }) => ReactNode;
     /** When true, the dialog fills the entire viewport and resize handles are hidden. */
     isMaximized?: boolean;
+    /** When true, the dialog remains mounted but is visually hidden and inert. */
+    hidden?: boolean;
 }
 
 /**
@@ -96,6 +98,7 @@ export function FloatingDialog({
     closeButtonId,
     renderHeader,
     isMaximized = false,
+    hidden,
 }: FloatingDialogProps) {
     const panelRef = useRef<HTMLDivElement>(null);
     const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
@@ -115,13 +118,13 @@ export function FloatingDialog({
 
     // ESC key handling
     useEffect(() => {
-        if (!open) return;
+        if (!open || hidden) return;
         const handler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [open, onClose]);
+    }, [open, hidden, onClose]);
 
     // Reset position and size when dialog opens
     useEffect(() => {
@@ -233,7 +236,8 @@ export function FloatingDialog({
             id={id}
             data-testid="floating-dialog-panel"
             className={panelClass}
-            style={panelStyle}
+            style={hidden ? { ...panelStyle, display: 'none' } : panelStyle}
+            aria-hidden={hidden || undefined}
         >
             {/* 8-direction resize handles — rendered only when resizable=true and not maximized */}
             {resizable && !isMaximized && RESIZE_HANDLES.map(({ dir, style }) => (

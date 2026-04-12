@@ -1518,10 +1518,12 @@ describe('GenerateTaskDialog', () => {
         expect(document.querySelector('[data-testid="minimized-pill-generate-task"]')).toBeNull();
     });
 
-    it('renders minimized pill instead of full dialog when minimized is true', async () => {
+    it('renders minimized pill and hides full dialog when minimized is true', async () => {
         await act(async () => { renderDialog({ minimized: true, onMinimize: vi.fn(), onRestore: vi.fn() }); });
 
-        expect(document.getElementById('generate-task-overlay')).toBeNull();
+        const overlay = document.getElementById('generate-task-overlay');
+        expect(overlay).not.toBeNull();
+        expect(overlay!.closest('[aria-hidden="true"]')).not.toBeNull();
         const pill = document.querySelector('[data-testid="minimized-pill-generate-task"]');
         expect(pill).not.toBeNull();
         expect(pill!.textContent).toContain('📋');
@@ -1619,6 +1621,30 @@ describe('GenerateTaskDialog', () => {
         fireEvent.keyDown(document, { key: 'Escape' });
         expect(onClose).toHaveBeenCalledOnce();
         expect(onMinimize).not.toHaveBeenCalled();
+    });
+
+    it('Escape key does not fire onClose while dialog is minimized (hidden)', async () => {
+        const onClose = vi.fn();
+        await act(async () => { renderDialog({ minimized: true, onMinimize: vi.fn(), onRestore: vi.fn(), onClose }); });
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('dialog overlay has aria-hidden=true when minimized', async () => {
+        await act(async () => { renderDialog({ minimized: true, onMinimize: vi.fn(), onRestore: vi.fn() }); });
+
+        const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
+        expect(panel).not.toBeNull();
+        expect(panel!.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    it('dialog overlay has display:none when minimized', async () => {
+        await act(async () => { renderDialog({ minimized: true, onMinimize: vi.fn(), onRestore: vi.fn() }); });
+
+        const panel = document.querySelector('[data-testid="floating-dialog-panel"]') as HTMLElement;
+        expect(panel).not.toBeNull();
+        expect(panel.style.display).toBe('none');
     });
 
     it('GenerateTaskDialogProps includes minimized, onMinimize, onRestore', async () => {

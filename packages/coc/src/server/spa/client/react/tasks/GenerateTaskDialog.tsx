@@ -247,8 +247,6 @@ export function GenerateTaskDialog({
     }, [minimized, pillPreview, onRestore]);
     useMinimizedDialog(minimizedEntry);
 
-    if (minimized) return null;
-
     // ── full dialog ─────────────────────────────────────────────────────────
     const dialogContent = (
         <div className="flex flex-col gap-4">
@@ -514,6 +512,7 @@ export function GenerateTaskDialog({
                 className="max-w-[600px]"
                 footer={footer}
                 resizable
+                hidden={minimized}
             >
                 {dialogContent}
             </FloatingDialog>
@@ -530,6 +529,7 @@ export function GenerateTaskDialog({
             title="📋 Generate Plan"
             className="max-w-[600px]"
             footer={footer}
+            hidden={minimized}
         >
             {dialogContent}
         </Dialog>

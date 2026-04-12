@@ -1483,8 +1483,9 @@ describe('EnqueueDialog minimize behavior', () => {
         const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
         await act(async () => { fireEvent.click(minimizeBtn); });
 
-        // Dialog content should be gone
-        expect(screen.queryByText('Enqueue AI Task')).toBeNull();
+        // Dialog content should be hidden (still in DOM but display:none)
+        const overlay = document.querySelector('[data-testid="floating-dialog-panel"][aria-hidden="true"]');
+        expect(overlay).not.toBeNull();
         // Pill should appear
         const pill = document.querySelector('[data-testid="minimized-pill-enqueue-task"]');
         expect(pill).not.toBeNull();

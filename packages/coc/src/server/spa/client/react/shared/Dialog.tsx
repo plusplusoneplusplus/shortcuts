@@ -22,19 +22,21 @@ export interface DialogProps {
      * on the header.
      */
     renderHeader?: () => ReactNode;
+    /** When true, the dialog remains mounted but is visually hidden and inert. */
+    hidden?: boolean;
 }
 
-export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader }: DialogProps) {
+export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader, hidden }: DialogProps) {
     const { isMobile } = useBreakpoint();
 
     useEffect(() => {
-        if (!open) return;
+        if (!open || hidden) return;
         const handler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [open, onClose]);
+    }, [open, hidden, onClose]);
 
     if (!open) return null;
 
@@ -63,6 +65,8 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
             data-testid="dialog-overlay"
             className={overlayClass}
             onClick={isMobile ? undefined : (onMinimize ?? onClose)}
+            style={hidden ? { display: 'none' } : undefined}
+            aria-hidden={hidden || undefined}
         >
             <div
                 className={isMobile ? panelClass : panelClass}

@@ -54,8 +54,6 @@ function FloatingChatItem({ entry }: FloatingChatItemProps) {
 
     useMinimizedDialog(minimizedEntry);
 
-    if (minimized) return null;
-
     return (
         <FloatingDialog
             open={true}
@@ -68,6 +66,7 @@ function FloatingChatItem({ entry }: FloatingChatItemProps) {
             className="h-[60vh] max-h-[80vh]"
             noPadding
             id={`floating-chat-${entry.taskId}`}
+            hidden={minimized}
         >
             <ChatPreferencesProvider workspaceId={entry.workspaceId ?? ''}>
                 <FloatingChatContent taskId={entry.taskId} workspaceId={entry.workspaceId} />

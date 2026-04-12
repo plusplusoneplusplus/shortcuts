@@ -54,8 +54,9 @@ describe('RunScriptDialog minimize-to-tray', () => {
         expect(RUN_SCRIPT_SOURCE).toContain('setMinimized');
     });
 
-    it('returns null when minimized', () => {
-        expect(RUN_SCRIPT_SOURCE).toContain('if (minimized) return null');
+    it('hides dialog with CSS when minimized instead of unmounting', () => {
+        expect(RUN_SCRIPT_SOURCE).not.toContain('if (minimized) return null');
+        expect(RUN_SCRIPT_SOURCE).toContain('hidden={minimized}');
     });
 
     it('calls useMinimizedDialog with minimizedEntry', () => {

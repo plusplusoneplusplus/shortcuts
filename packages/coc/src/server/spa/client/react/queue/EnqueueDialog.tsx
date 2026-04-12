@@ -480,8 +480,6 @@ export function EnqueueDialog() {
     }, [minimized, queueState.showDialog, pillPreview, handleRestore, handleClose]);
     useMinimizedDialog(minimizedEntry);
 
-    if (minimized) return null;
-
     const dialogContent = (
         <div className="flex flex-col gap-3">
             {/* Context files chips (document-context mode) */}
@@ -771,6 +769,7 @@ export function EnqueueDialog() {
                 title={dialogTitle}
                 footer={footer}
                 resizable
+                hidden={minimized}
             >
                 {dialogContent}
             </FloatingDialog>
@@ -784,6 +783,7 @@ export function EnqueueDialog() {
             onMinimize={submitting ? undefined : handleMinimize}
             title={dialogTitle}
             footer={footer}
+            hidden={minimized}
         >
             {dialogContent}
         </Dialog>

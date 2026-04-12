@@ -159,7 +159,6 @@ export function RunScriptDialog() {
     }, []);
 
     if (!open) return null;
-    if (minimized) return null;
 
     const dialogContent = (
         <div className="flex flex-col gap-3" data-testid="run-script-dialog" onKeyDown={handleKeyDown}>
@@ -328,6 +327,7 @@ export function RunScriptDialog() {
                 resizable
                 minWidth={520}
                 minHeight={420}
+                hidden={minimized}
             >
                 {dialogContent}
             </FloatingDialog>
@@ -335,7 +335,7 @@ export function RunScriptDialog() {
     }
 
     return (
-        <Dialog open={true} onClose={close} onMinimize={handleMinimize} title="🛠️ Run Script" footer={footer}>
+        <Dialog open={true} onClose={close} onMinimize={handleMinimize} title="🛠️ Run Script" footer={footer} hidden={minimized}>
             {dialogContent}
         </Dialog>
     );
