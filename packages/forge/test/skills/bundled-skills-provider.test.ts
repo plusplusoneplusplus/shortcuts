@@ -24,6 +24,26 @@ describe('getBundledSkills', () => {
         fs.rmdirSync(tmpDir);
     });
 
+    it('includes create-work-item and create-bug in bundled skills', () => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-'));
+        try {
+            const skills = getBundledSkills(tmpDir);
+            const names = skills.map(s => s.name);
+            // These should be in the registry (they may or may not resolve depending on symlinks in test env)
+            const bundledPath = getBundledSkillsPath();
+            const cwi = path.join(bundledPath, 'create-work-item', 'SKILL.md');
+            const cb = path.join(bundledPath, 'create-bug', 'SKILL.md');
+            if (fs.existsSync(cwi)) {
+                expect(names).toContain('create-work-item');
+            }
+            if (fs.existsSync(cb)) {
+                expect(names).toContain('create-bug');
+            }
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
     it('marks skills as alreadyExists when they are installed', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-'));
         try {

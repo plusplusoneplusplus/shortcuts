@@ -68,14 +68,15 @@ describe('groupSkillsByFolder', () => {
         expect(groups[0].repoId).toBeUndefined();
     });
 
-    it('places groups in order: global, repo, extras', () => {
+    it('places groups in order: global, repo, bundled, extras', () => {
         const skills: Skill[] = [
             { name: 'extra', source: 'extra-folder', folderPath: '/custom/path' },
             { name: 'local', source: 'repo', folderPath: '/repo/.github/skills' },
             { name: 'global-one', source: 'global', folderPath: '/data/skills' },
+            { name: 'builtin', source: 'bundled', folderPath: '/bundled/path' },
         ];
         const groups = groupSkillsByFolder(skills, emptyRepos);
-        expect(groups.map(g => g.source)).toEqual(['global', 'repo', 'extra-folder']);
+        expect(groups.map(g => g.source)).toEqual(['global', 'repo', 'bundled', 'extra-folder']);
     });
 
     it('skills with no source are grouped into repo group', () => {
@@ -107,5 +108,29 @@ describe('groupSkillsByFolder', () => {
         const groups = groupSkillsByFolder(skills, emptyRepos);
         expect(groups).toHaveLength(1);
         expect(groups[0].skills).toHaveLength(2);
+    });
+
+    it('groups bundled skills into "bundled" group with 📦 Built-in label', () => {
+        const skills: Skill[] = [
+            { name: 'create-work-item', source: 'bundled', folderPath: '/bundled/skills' },
+            { name: 'create-bug', source: 'bundled', folderPath: '/bundled/skills' },
+        ];
+        const groups = groupSkillsByFolder(skills, emptyRepos);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].key).toBe('bundled');
+        expect(groups[0].label).toBe('📦 Built-in');
+        expect(groups[0].source).toBe('bundled');
+        expect(groups[0].skills).toHaveLength(2);
+        expect(groups[0].isRemovable).toBe(false);
+    });
+
+    it('bundled group appears between repo and extra groups', () => {
+        const skills: Skill[] = [
+            { name: 'local', source: 'repo', folderPath: '/repo/.github/skills' },
+            { name: 'builtin', source: 'bundled', folderPath: '/bundled/path' },
+            { name: 'extra', source: 'extra-folder', folderPath: '/custom/path' },
+        ];
+        const groups = groupSkillsByFolder(skills, emptyRepos);
+        expect(groups.map(g => g.source)).toEqual(['repo', 'bundled', 'extra-folder']);
     });
 });

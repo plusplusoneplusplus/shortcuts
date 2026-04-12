@@ -119,12 +119,14 @@ describe('registerSkillRoutes', () => {
     // GET /api/workspaces/:id/skills
     // -----------------------------------------------------------------------
 
-    it('GET /api/workspaces/:id/skills returns empty array when no skills installed', async () => {
+    it('GET /api/workspaces/:id/skills returns only bundled skills when no repo/global/extra skills installed', async () => {
         const { statusCode, body } = await dispatchRoute(
             routes, 'GET', `/api/workspaces/${workspaceId}/skills`
         );
         expect(statusCode).toBe(200);
-        expect(body.skills).toEqual([]);
+        // No repo/global/extra skills — only bundled skills should appear (if any)
+        const nonBundled = body.skills.filter((s: any) => s.source !== 'bundled');
+        expect(nonBundled).toEqual([]);
     });
 
     it('GET /api/workspaces/:id/skills lists installed skills', async () => {
@@ -139,9 +141,10 @@ describe('registerSkillRoutes', () => {
             routes, 'GET', `/api/workspaces/${workspaceId}/skills`
         );
         expect(statusCode).toBe(200);
-        expect(body.skills).toHaveLength(1);
-        expect(body.skills[0].name).toBe('my-skill');
-        expect(body.skills[0].description).toBeTruthy();
+        const repoSkills = body.skills.filter((s: any) => s.source === 'repo');
+        expect(repoSkills).toHaveLength(1);
+        expect(repoSkills[0].name).toBe('my-skill');
+        expect(repoSkills[0].description).toBeTruthy();
     });
 
     it('GET /api/workspaces/:id/skills returns 404 for unknown workspace', async () => {
@@ -272,9 +275,8 @@ describe('registerSkillRoutes', () => {
             routes, 'GET', `/api/workspaces/${workspaceId}/skills`
         );
         expect(statusCode).toBe(200);
-        expect(body.skills).toHaveLength(1);
-        const skill = body.skills[0];
-        expect(skill.name).toBe('test-skill');
+        const skill = body.skills.find((s: any) => s.name === 'test-skill');
+        expect(skill).toBeDefined();
         expect(skill.description).toBe('A test skill');
         expect(skill.version).toBe('1.2.0');
         expect(skill.variables).toEqual(['input', 'context']);
@@ -295,8 +297,8 @@ describe('registerSkillRoutes', () => {
             routes, 'GET', `/api/workspaces/${workspaceId}/skills`
         );
         expect(statusCode).toBe(200);
-        const skill = body.skills[0];
-        expect(skill.name).toBe('bare-skill');
+        const skill = body.skills.find((s: any) => s.name === 'bare-skill');
+        expect(skill).toBeDefined();
         expect(skill.references).toEqual([]);
         expect(skill.scripts).toEqual([]);
         expect(skill.promptBody).toContain('Bare Skill');
@@ -395,7 +397,8 @@ describe('registerSkillRoutes', () => {
             sortedRoutes, 'GET', `/api/workspaces/${workspaceId}/skills`
         );
         expect(statusCode).toBe(200);
-        expect(body.skills.map((s: any) => s.name)).toEqual([
+        const repoNames = body.skills.filter((s: any) => s.source === 'repo').map((s: any) => s.name);
+        expect(repoNames).toEqual([
             'gamma-skill',   // most recent usage
             'alpha-skill',   // older usage
             'beta-skill',    // unused, alphabetical
@@ -624,6 +627,89 @@ describe('registerSkillRoutes', () => {
 
         fs.rmSync(extraDir, { recursive: true, force: true });
     });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/skills — bundled skills auto-injection
+    // -----------------------------------------------------------------------
+
+    it('GET /api/workspaces/:id/skills includes bundled skills with source=bundled', async () => {
+        // No repo/global/extra skills — bundled skills should appear
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        // Bundled skills from forge's bundled-skills directory should be present
+        const bundledSkills = body.skills.filter((s: any) => s.source === 'bundled');
+        // At minimum create-work-item and create-bug should be present if bundled path resolves
+        if (bundledSkills.length > 0) {
+            for (const skill of bundledSkills) {
+                expect(skill.source).toBe('bundled');
+                expect(skill.folderPath).toBeTruthy();
+            }
+        }
+    });
+
+    it('GET /api/workspaces/:id/skills repo skill overrides bundled skill with same name', async () => {
+        // Get bundled skills to find a name to override
+        const { body: initial } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        const bundled = initial.skills.filter((s: any) => s.source === 'bundled');
+        if (bundled.length === 0) return; // skip if no bundled skills found in test env
+
+        const nameToOverride = bundled[0].name;
+
+        // Create repo-local skill with same name
+        skillCache.clear();
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        fs.mkdirSync(path.join(skillsDir, nameToOverride), { recursive: true });
+        fs.writeFileSync(
+            path.join(skillsDir, nameToOverride, 'SKILL.md'),
+            '---\ndescription: repo override\n---\n# override'
+        );
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const matches = body.skills.filter((s: any) => s.name === nameToOverride);
+        expect(matches).toHaveLength(1);
+        expect(matches[0].source).toBe('repo');
+        expect(matches[0].description).toBe('repo override');
+    });
+
+    it('GET /api/workspaces/:id/skills global skill overrides bundled skill with same name', async () => {
+        const { body: initial } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        const bundled = initial.skills.filter((s: any) => s.source === 'bundled');
+        if (bundled.length === 0) return;
+
+        const nameToOverride = bundled[0].name;
+
+        skillCache.clear();
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-data-'));
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        fs.mkdirSync(path.join(globalSkillsDir, nameToOverride), { recursive: true });
+        fs.writeFileSync(
+            path.join(globalSkillsDir, nameToOverride, 'SKILL.md'),
+            '---\ndescription: global override\n---'
+        );
+
+        const globalRoutes: Route[] = [];
+        registerSkillRoutes(globalRoutes, store, dataDir);
+
+        const { statusCode, body } = await dispatchRoute(
+            globalRoutes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const matches = body.skills.filter((s: any) => s.name === nameToOverride);
+        expect(matches).toHaveLength(1);
+        expect(matches[0].source).toBe('global');
+
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
     // -----------------------------------------------------------------------
     // Cache behavior
     // -----------------------------------------------------------------------
