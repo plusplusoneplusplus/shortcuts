@@ -1,18 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import Link from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
-import Highlight from '@tiptap/extension-highlight';
-import { ResizableImage } from './extensions/resizableImage';
-import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
 import type { CommentThread } from '../notesApi';
 import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToRelative } from './noteMarkdown';
 import type { NoteEditorIO } from './NoteEditorIO';
@@ -20,6 +7,7 @@ import { defaultNoteEditorIO, rewriteHtmlImageSrc } from './NoteEditorIO';
 import type { NoteEditorCommentBackend } from './NoteEditorCommentBackend';
 import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
+import { RichEditorCore } from './RichEditorCore';
 import { SourceEditor } from '../../shared/SourceEditor';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
@@ -93,98 +81,64 @@ export function NoteEditor({
         onViewModeChange?.(mode);
     }, [onViewModeChange]);
 
-    // ── Tiptap editor ───────────────────────────────────────────────────────
+    // ── Tiptap editor (via RichEditorCore) ─────────────────────────────────
 
-    // Stable callback refs for extension config (avoids editor recreation)
-    const onCommentActivatedRef = useRef(onCommentActivated);
-    onCommentActivatedRef.current = onCommentActivated;
     const onCommentCreateRef = useRef(onCommentCreate);
     onCommentCreateRef.current = onCommentCreate;
 
-    const editor = useEditor({
-        extensions: [
-            StarterKit.configure({
-                heading: { levels: [1, 2, 3] },
-            }),
-            TaskList,
-            TaskItem.configure({ nested: true }),
-            Link.configure({
-                openOnClick: false,
-                HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
-            }),
-            Placeholder.configure({
-                placeholder: 'Start writing…',
-            }),
-            Table.configure({ resizable: false }),
-            TableRow,
-            TableCell,
-            TableHeader,
-            Highlight.configure({ multicolor: true }),
-            ResizableImage.configure({ inline: false, allowBase64: false }),
-            ...(commentsEnabled
-                ? [
-                    CommentExtension.configure({
-                        onCommentActivated: (commentId: string | null) => {
-                            onCommentActivatedRef.current?.(commentId);
-                        },
-                    }),
-                ]
-                : []),
-        ],
-        editorProps: {
-            handlePaste: (view, event) => {
-                const items = event.clipboardData?.items;
-                if (!items) return false;
+    const [editor, setEditor] = useState<Editor | null>(null);
 
-                for (let i = 0; i < items.length; i++) {
-                    const item = items[i];
-                    if (item.type.startsWith('image/')) {
-                        event.preventDefault();
-                        const file = item.getAsFile();
-                        if (!file) continue;
+    const handleEditorReady = useCallback((ed: Editor) => {
+        setEditor(ed);
+        onEditorReady?.(ed);
+    }, [onEditorReady]);
 
-                        const reader = new FileReader();
-                        reader.onload = async (e) => {
-                            const dataUrl = e.target?.result as string;
-                            if (!dataUrl || !notePathRef.current) return;
+    const handleEditorChange = useCallback((ed: Editor) => {
+        setDirty(true);
+        scheduleSave(ed);
+    }, []);
 
-                            setUploadingImage(true);
-                            try {
-                                const result = await ioRef.current.uploadImage(
-                                    workspaceIdRef.current,
-                                    file.name || 'pasted-image',
-                                    dataUrl,
-                                );
-                                const apiUrl = ioRef.current.imageApiUrl(workspaceIdRef.current, result.path);
-                                view.dispatch(
-                                    view.state.tr.replaceSelectionWith(
-                                        view.state.schema.nodes.image.create({ src: apiUrl, alt: file.name || '' }),
-                                    ),
-                                );
-                            } catch (err) {
-                                console.error('Failed to upload pasted image:', err);
-                            } finally {
-                                setUploadingImage(false);
-                            }
-                        };
-                        reader.readAsDataURL(file);
-                        return true;
+    const handlePaste = useCallback((view: any, event: ClipboardEvent) => {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type.startsWith('image/')) {
+                event.preventDefault();
+                const file = item.getAsFile();
+                if (!file) continue;
+
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const dataUrl = e.target?.result as string;
+                    if (!dataUrl || !notePathRef.current) return;
+
+                    setUploadingImage(true);
+                    try {
+                        const result = await ioRef.current.uploadImage(
+                            workspaceIdRef.current,
+                            file.name || 'pasted-image',
+                            dataUrl,
+                        );
+                        const apiUrl = ioRef.current.imageApiUrl(workspaceIdRef.current, result.path);
+                        view.dispatch(
+                            view.state.tr.replaceSelectionWith(
+                                view.state.schema.nodes.image.create({ src: apiUrl, alt: file.name || '' }),
+                            ),
+                        );
+                    } catch (err) {
+                        console.error('Failed to upload pasted image:', err);
+                    } finally {
+                        setUploadingImage(false);
                     }
-                }
-                return false;
-            },
-        },
-        onUpdate: ({ editor: ed }) => {
-            setDirty(true);
-            scheduleSave(ed);
-        },
-    });
-
-    // ── Expose editor to parent ────────────────────────────────────────────
-
-    useEffect(() => {
-        if (editor) onEditorReady?.(editor);
-    }, [editor, onEditorReady]);
+                };
+                reader.readAsDataURL(file);
+                return true;
+            }
+        }
+        return false;
+    }, []);
 
     // ── Autosave ────────────────────────────────────────────────────────────
 
@@ -581,7 +535,13 @@ export function NoteEditor({
                         }
                     }}
                 >
-                    <EditorContent editor={editor} />
+                    <RichEditorCore
+                        commentsEnabled={commentsEnabled}
+                        onCommentActivated={onCommentActivated}
+                        onChange={handleEditorChange}
+                        onEditorReady={handleEditorReady}
+                        handlePaste={handlePaste}
+                    />
                 </div>
             )}
 

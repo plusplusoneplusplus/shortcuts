@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
+import { useEffect } from 'react';
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -44,7 +45,7 @@ vi.mock(
 const mockSetContent = vi.fn();
 const mockClearContent = vi.fn();
 const mockGetHTML = vi.fn(() => '<p>content</p>');
-let capturedOnUpdate: ((...args: unknown[]) => void) | null = null;
+let capturedOnChange: ((editor: unknown) => void) | null = null;
 
 const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
@@ -69,20 +70,18 @@ const mockEditor = {
     }),
 };
 
-vi.mock('@tiptap/react', () => ({
-    useEditor: (config: { onUpdate?: (...args: unknown[]) => void }) => {
-        if (config?.onUpdate) capturedOnUpdate = config.onUpdate;
-        return mockEditor;
+// Mock RichEditorCore — replaces the real Tiptap shell.
+// Captures the onChange callback and calls onEditorReady with mockEditor.
+vi.mock('../../../../src/server/spa/client/react/repos/notes/RichEditorCore', () => ({
+    RichEditorCore: (props: { onChange?: (editor: unknown) => void; onEditorReady?: (editor: unknown) => void }) => {
+        if (props.onChange) capturedOnChange = props.onChange;
+        // Notify parent of editor readiness via useEffect
+        useEffect(() => {
+            props.onEditorReady?.(mockEditor);
+        }, []);
+        return <div data-testid="editor-content" />;
     },
-    EditorContent: ({ editor }: { editor: unknown }) =>
-        editor ? <div data-testid="editor-content" /> : null,
 }));
-
-vi.mock('@tiptap/starter-kit', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-task-list', () => ({ default: {} }));
-vi.mock('@tiptap/extension-task-item', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-link', () => ({ default: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-placeholder', () => ({ default: { configure: () => ({}) } }));
 
 import { NoteEditor } from '../../../../src/server/spa/client/react/repos/notes/NoteEditor';
 
@@ -101,7 +100,7 @@ describe('NoteEditor', () => {
         mockSetContent.mockReset();
         mockClearContent.mockReset();
         mockGetHTML.mockReturnValue('<p>content</p>');
-        capturedOnUpdate = null;
+        capturedOnChange = null;
     });
 
     afterEach(() => {
@@ -167,7 +166,7 @@ describe('NoteEditor', () => {
         // Switch to fake timers after async load completes
         vi.useFakeTimers();
 
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
         expect(mockIOSaveContent).not.toHaveBeenCalled();
 
         await act(async () => { vi.advanceTimersByTime(1600); });
@@ -188,9 +187,9 @@ describe('NoteEditor', () => {
 
         vi.useFakeTimers();
 
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
         vi.advanceTimersByTime(500);
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
 
         await act(async () => { vi.advanceTimersByTime(1600); });
 
@@ -211,7 +210,7 @@ describe('NoteEditor', () => {
 
         vi.useFakeTimers();
 
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
         await act(async () => { vi.advanceTimersByTime(1600); });
 
         expect(screen.getByText('Saving…')).toBeDefined();
@@ -232,7 +231,7 @@ describe('NoteEditor', () => {
 
         vi.useFakeTimers();
 
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
         await act(async () => { vi.advanceTimersByTime(1600); });
         // Flush the save promise
         await act(async () => { await Promise.resolve(); });
@@ -256,7 +255,7 @@ describe('NoteEditor', () => {
 
         vi.useFakeTimers();
 
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
         await act(async () => { vi.advanceTimersByTime(1600); });
         // Flush the rejected promise
         await act(async () => {
@@ -299,7 +298,7 @@ describe('NoteEditor', () => {
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
         // Make content dirty so flushSave has something to persist
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
 
         const event = new KeyboardEvent('keydown', {
             key: 's',
@@ -324,7 +323,7 @@ describe('NoteEditor', () => {
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
 
         const event = new KeyboardEvent('keydown', {
             key: 's',
@@ -368,7 +367,7 @@ describe('NoteEditor', () => {
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
 
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
 
         expect(addSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function));
         addSpy.mockRestore();
@@ -420,7 +419,7 @@ describe('NoteEditor', () => {
         expect(mockGetContent).not.toHaveBeenCalled();
 
         vi.useFakeTimers();
-        act(() => { capturedOnUpdate?.({ editor: mockEditor }); });
+        act(() => { capturedOnChange?.(mockEditor); });
         await act(async () => { vi.advanceTimersByTime(1600); });
 
         expect(customIo.saveContent).toHaveBeenCalledWith('ws1', 'c.md', 'content');
