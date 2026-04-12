@@ -214,19 +214,57 @@ export function useChatSSE({
         });
 
         es.onerror = () => {
-            if (finished) return; // finish() already handled completion
-            finished = true;
-            closeSSE();
-            // Unblock any sendFollowUp awaiting completion so sending/Stop-button resets.
-            onSendComplete();
-            // Refresh task status from queue so task.status doesn't remain 'running'.
-            fetch(`${getApiBase()}/queue/${encodeURIComponent(taskId)}`)
-                .then(r => r.ok ? r.json() : null)
-                .then((data: any) => {
-                    if (data?.task) setTask((prev: any) => prev ? { ...prev, ...data.task } : data.task);
-                })
-                .catch(() => {});
-            void refreshConversation(processId);
+            // Defer to let the browser drain any buffered SSE events (e.g. 'done',
+            // 'status') that arrived before the connection closed.  Without this,
+            // es.close() inside the guard below would discard those events, causing
+            // task.status to remain 'running' permanently.
+            setTimeout(() => {
+                if (finished) return; // finish() already handled completion
+                finished = true;
+                closeSSE();
+                setBackgroundTasks(null);
+                // Optimistically mark the task as completed so the Stop button
+                // transitions to Send immediately instead of waiting for the
+                // async fetch below.
+                setTask(prev => prev && prev.status === 'running' ? { ...prev, status: 'completed' } : prev);
+                if (queueDispatch && workspaceId) {
+                    queueDispatch({ type: 'REPO_TASK_COMPLETED_OPTIMISTIC', repoId: workspaceId, taskId, status: 'completed' });
+                }
+                setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
+                // Unblock any sendFollowUp awaiting completion so sending/Stop-button resets.
+                onSendComplete();
+                // Fetch authoritative task status from queue with retry to handle
+                // the window where the server hasn't updated the process record yet.
+                const fetchTaskStatus = (attempt: number) => {
+                    fetch(`${getApiBase()}/queue/${encodeURIComponent(taskId)}`)
+                        .then(r => r.ok ? r.json() : null)
+                        .then((data: any) => {
+                            if (data?.task) {
+                                const serverStatus = data.task.status;
+                                if (serverStatus === 'running' && attempt < 3) {
+                                    // Server hasn't updated yet — retry with exponential backoff
+                                    setTimeout(() => fetchTaskStatus(attempt + 1), 500 * Math.pow(2, attempt));
+                                } else {
+                                    setTask((prev: any) => prev ? { ...prev, ...data.task } : data.task);
+                                    // Update queue context with authoritative status if terminal
+                                    if (queueDispatch && workspaceId && serverStatus && !['running', 'queued'].includes(serverStatus)) {
+                                        const mapped: 'completed' | 'failed' | 'cancelled' =
+                                            serverStatus === 'failed' ? 'failed' :
+                                            serverStatus === 'cancelled' ? 'cancelled' : 'completed';
+                                        queueDispatch({ type: 'REPO_TASK_COMPLETED_OPTIMISTIC', repoId: workspaceId, taskId, status: mapped });
+                                    }
+                                }
+                            }
+                        })
+                        .catch(() => {
+                            if (attempt < 3) {
+                                setTimeout(() => fetchTaskStatus(attempt + 1), 500 * Math.pow(2, attempt));
+                            }
+                        });
+                };
+                fetchTaskStatus(0);
+                void refreshConversation(processId);
+            }, 0);
         };
 
         es.addEventListener('suggestions', (event: Event) => {
