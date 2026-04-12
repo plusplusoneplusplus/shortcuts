@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { notesApi, type CommentThread, type TextAnchor, type Comment } from '../notesApi';
+import { notesApi, type CommentThread, type Comment } from '../notesApi';
+import type { TextAnchor } from './textAnchor';
 
 export type CommentFilter = 'all' | 'open' | 'resolved';
 

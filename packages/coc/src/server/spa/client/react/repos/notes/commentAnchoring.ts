@@ -1,6 +1,6 @@
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import type { TextAnchor } from '../notesApi';
+import type { TextAnchor } from './textAnchor';
 
 /**
  * Walk the ProseMirror doc to convert a plain-text character offset

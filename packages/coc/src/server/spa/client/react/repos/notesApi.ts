@@ -30,11 +30,8 @@ export interface NoteSearchResponse {
 
 // ── Comment types (mirrors notes-comments-types.ts) ────────────────────────
 
-export interface TextAnchor {
-    quotedText: string;
-    prefix: string;
-    suffix: string;
-}
+// Canonical definition lives in notes/textAnchor.ts; re-export for compatibility.
+export type { TextAnchor } from './notes/textAnchor';
 
 export interface Comment {
     id: string;
