@@ -4,12 +4,13 @@
  * enqueue button, and collapsible history in a single scrollable section.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { Card, Badge, Button, cn } from '../shared';
 import { RenameDialog } from '../shared/RenameDialog';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
+import { useLongPress } from '../hooks/useLongPress';
 import { fetchApi } from '../hooks/useApi';
 import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '../utils/format';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
@@ -70,7 +71,19 @@ export function ProcessesSidebar() {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; processId: string } | null>(null);
     const [renameTarget, setRenameTarget] = useState<{ id: string; title: string } | null>(null);
 
-    const navigateToRepo = useCallback((e: React.MouseEvent, workspaceId: string) => {
+    // Long-press support for legacy process cards (mobile context menu)
+    const processLongPressIdRef = useRef<string>('');
+    const processLongPress = useLongPress(
+        (x: number, y: number) => {
+            const processId = processLongPressIdRef.current;
+            const p = state.processes.find((proc: any) => proc.id === processId);
+            if (p && ['completed', 'failed', 'cancelled'].includes(p.status)) {
+                setContextMenu({ x, y, processId });
+            }
+        },
+    );
+
+    const navigateToRepo= useCallback((e: React.MouseEvent, workspaceId: string) => {
         e.stopPropagation();
         location.hash = '#repos/' + encodeURIComponent(workspaceId);
     }, []);
@@ -291,6 +304,7 @@ export function ProcessesSidebar() {
                             <Card
                                 key={p.id}
                                 onClick={() => {
+                                    if (processLongPress.didLongPress()) return;
                                     const nextHash = '#process/' + encodeURIComponent(p.id);
                                     if (location.hash !== nextHash) {
                                         location.hash = nextHash;
@@ -305,6 +319,9 @@ export function ProcessesSidebar() {
                                         setContextMenu({ x: e.clientX, y: e.clientY, processId: p.id });
                                     }
                                 }}
+                                onTouchStart={(e: React.TouchEvent) => { processLongPressIdRef.current = p.id; processLongPress.onTouchStart(e); }}
+                                onTouchEnd={processLongPress.onTouchEnd}
+                                onTouchMove={processLongPress.onTouchMove}
                                 className={cn(
                                     'p-2.5 process-item',
                                     isActive && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]'

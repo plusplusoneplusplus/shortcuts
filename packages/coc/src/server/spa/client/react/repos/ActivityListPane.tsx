@@ -392,47 +392,19 @@ export function ActivityListPane({
     const activeDropTargetIndex = dropTargetIndex ?? touchDrag.dropTargetIndex;
     const activeDropPosition = dropPosition || touchDrag.dropPosition;
 
-    // ── History/archived long-press (shared refs — only one touch at a time) ──
-    const historyLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const historyLongPressFired = useRef(false);
-    const historyTouchStartPos = useRef({ x: 0, y: 0 });
+    // ── History/archived long-press via shared useLongPress hook ──
+    const historyLongPressTaskRef = useRef<string>('');
 
-    const cancelHistoryLongPress = useCallback(() => {
-        if (historyLongPressTimer.current !== null) {
-            clearTimeout(historyLongPressTimer.current);
-            historyLongPressTimer.current = null;
-        }
-    }, []);
-
-    const handleHistoryTouchStart = useCallback((e: React.TouchEvent, taskId: string) => {
-        historyLongPressFired.current = false;
-        if (e.touches.length !== 1) return;
-        const touch = e.touches[0];
-        historyTouchStartPos.current = { x: touch.clientX, y: touch.clientY };
-        const x = touch.clientX;
-        const y = touch.clientY;
-        cancelHistoryLongPress();
-        historyLongPressTimer.current = setTimeout(() => {
-            historyLongPressFired.current = true;
-            historyLongPressTimer.current = null;
+    const historyLongPress = useLongPress(
+        (x: number, y: number) => {
+            const taskId = historyLongPressTaskRef.current;
             const bulkIds =
                 selectedHistoryIds.size >= 2 && selectedHistoryIds.has(taskId)
                     ? Array.from(selectedHistoryIds)
                     : undefined;
             setContextMenu({ x, y, taskId, taskStatus: 'completed', bulkIds });
-        }, 500);
-    }, [cancelHistoryLongPress, selectedHistoryIds]);
-
-    const handleHistoryTouchMove = useCallback((e: React.TouchEvent) => {
-        if (historyLongPressTimer.current === null) return;
-        const touch = e.touches[0];
-        if (!touch) { cancelHistoryLongPress(); return; }
-        const dx = touch.clientX - historyTouchStartPos.current.x;
-        const dy = touch.clientY - historyTouchStartPos.current.y;
-        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-            cancelHistoryLongPress();
-        }
-    }, [cancelHistoryLongPress]);
+        },
+    );
 
     // Clean up stale selection when the filtered list changes
     useEffect(() => {
@@ -952,13 +924,13 @@ export function ActivityListPane({
                                                 selectedHistoryIds.size > 0 && "select-none"
                                             )}
                                             onClick={e => {
-                                                if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
+                                                if (historyLongPress.didLongPress()) return;
                                                 handleHistoryItemClick(e, task, filteredPinned);
                                             }}
                                             onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
-                                            onTouchStart={e => handleHistoryTouchStart(e, task.id)}
-                                            onTouchEnd={cancelHistoryLongPress}
-                                            onTouchMove={handleHistoryTouchMove}
+                                            onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                                            onTouchEnd={historyLongPress.onTouchEnd}
+                                            onTouchMove={historyLongPress.onTouchMove}
                                             data-task-id={task.id}
                                             data-pinned="true"
                                             data-unseen={isUnseen || undefined}
@@ -1043,13 +1015,13 @@ export function ActivityListPane({
                                                 selectedHistoryIds.size > 0 && "select-none"
                                             )}
                                             onClick={e => {
-                                                if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
+                                                if (historyLongPress.didLongPress()) return;
                                                 handleHistoryItemClick(e, task, filteredUnpinned);
                                             }}
                                             onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
-                                            onTouchStart={e => handleHistoryTouchStart(e, task.id)}
-                                            onTouchEnd={cancelHistoryLongPress}
-                                            onTouchMove={handleHistoryTouchMove}
+                                            onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                                            onTouchEnd={historyLongPress.onTouchEnd}
+                                            onTouchMove={historyLongPress.onTouchMove}
                                             data-task-id={task.id}
                                             data-unseen={isUnseen || undefined}
                                             data-selected={isHistorySelected || undefined}
@@ -1122,13 +1094,13 @@ export function ActivityListPane({
                                             isSelected(task.id) && "ring-2 ring-[#0078d4]"
                                         )}
                                         onClick={() => {
-                                            if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
+                                            if (historyLongPress.didLongPress()) return;
                                             onSelectTask(task.id, task);
                                         }}
                                         onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
-                                        onTouchStart={e => handleHistoryTouchStart(e, task.id)}
-                                        onTouchEnd={cancelHistoryLongPress}
-                                        onTouchMove={handleHistoryTouchMove}
+                                        onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                                        onTouchEnd={historyLongPress.onTouchEnd}
+                                        onTouchMove={historyLongPress.onTouchMove}
                                         data-task-id={task.id}
                                         data-archived="true"
                                     >

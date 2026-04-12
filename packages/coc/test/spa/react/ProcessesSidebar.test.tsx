@@ -32,6 +32,24 @@ vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
+// Mock useLongPress — captures callbacks for test assertions
+let _longPressCallback: ((x: number, y: number) => void) | null = null;
+let _longPressFired = false;
+vi.mock('../../../src/server/spa/client/react/hooks/useLongPress', () => ({
+    useLongPress: (cb: (x: number, y: number) => void) => {
+        _longPressCallback = cb;
+        return {
+            onTouchStart: vi.fn(),
+            onTouchEnd: vi.fn(),
+            onTouchMove: vi.fn(),
+            didLongPress: () => {
+                if (_longPressFired) { _longPressFired = false; return true; }
+                return false;
+            },
+        };
+    },
+}));
+
 // Stub workspace utils
 vi.mock('../../../src/server/spa/client/react/utils/workspace', () => ({
     resolveWorkspaceName: (id: string) => id,
@@ -647,5 +665,93 @@ describe('ProcessesSidebar — rename via context menu', () => {
             const body = JSON.parse(patchCall![1].body);
             expect(body.title).toBe('New Name');
         });
+    });
+});
+
+describe('ProcessesSidebar — long-press opens context menu', () => {
+    beforeEach(() => {
+        _longPressCallback = null;
+        _longPressFired = false;
+    });
+
+    it('opens context menu after long-press on completed process card', async () => {
+        const process = {
+            id: 'proc-lp-1',
+            status: 'completed',
+            title: 'Completed Task',
+            promptPreview: 'prompt',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Completed Task')).toBeDefined();
+        });
+        const card = screen.getByText('Completed Task').closest('.process-item') as HTMLElement;
+
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+
+        // touchStart triggers the React handler which sets processLongPressIdRef
+        fireEvent.touchStart(card!);
+        // Simulate the long-press callback firing (would normally fire after 500ms)
+        act(() => { _longPressCallback?.(100, 200); });
+
+        expect(screen.getByTestId('context-menu')).toBeDefined();
+        expect(screen.getByText(/Rename/)).toBeDefined();
+    });
+
+    it('does NOT open context menu on long-press for running process', async () => {
+        const process = {
+            id: 'proc-lp-2',
+            status: 'running',
+            title: 'Running Task',
+            promptPreview: 'prompt',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Running Task')).toBeDefined();
+        });
+        const card = screen.getByText('Running Task').closest('.process-item') as HTMLElement;
+
+        // touchStart sets the ref to 'proc-lp-2' (running)
+        fireEvent.touchStart(card!);
+        // Callback checks status and skips because it's 'running'
+        act(() => { _longPressCallback?.(100, 200); });
+
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
+    it('suppresses click navigation after long-press fires', async () => {
+        const process = {
+            id: 'proc-lp-4',
+            status: 'completed',
+            title: 'Click Suppress',
+            promptPreview: 'prompt',
+        };
+        const originalHash = location.hash;
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Click Suppress')).toBeDefined();
+        });
+        const card = screen.getByText('Click Suppress').closest('.process-item') as HTMLElement;
+
+        // Simulate that long-press has fired
+        _longPressFired = true;
+
+        // Click should be suppressed (didLongPress returns true)
+        act(() => { fireEvent.click(card!); });
+
+        // Hash should NOT have changed
+        expect(location.hash).toBe(originalHash);
     });
 });
