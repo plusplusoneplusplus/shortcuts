@@ -122,8 +122,8 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         fetchQueue();
     }, [workspaceId, fetchQueue]);
 
-    // Track running task IDs to detect departures (task completion/failure/cancel)
-    const prevRunningIdsRef = useRef<string[]>([]);
+    // Track active (running + queued) task IDs to detect departures and arrivals
+    const prevActiveIdsRef = useRef<string[]>([]);
 
     // Apply per-repo WS updates
     useEffect(() => {
@@ -132,14 +132,17 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         setQueued(repoQueue.queued);
 
         // Detect task departures or arrivals and refetch history.
-        // Departure: a previously-running ID disappeared (task completed/failed).
-        // Arrival: a new running ID exists in our local history (follow-up re-queue).
-        const currIds = repoQueue.running.map((t: any) => t.id);
-        const prevIds = prevRunningIdsRef.current;
+        // Departure: a previously-active ID disappeared (task completed/failed).
+        // Arrival: a new active ID exists in our local history (follow-up re-queue).
+        const currIds = [
+            ...repoQueue.running.map((t: any) => t.id),
+            ...repoQueue.queued.map((t: any) => t.id),
+        ];
+        const prevIds = prevActiveIdsRef.current;
         const hasDeparture = prevIds.some(id => !currIds.includes(id));
         const historyIds = new Set(history.map((t: any) => t.id));
         const hasArrivalFromHistory = currIds.some(id => !prevIds.includes(id) && historyIds.has(id));
-        prevRunningIdsRef.current = currIds;
+        prevActiveIdsRef.current = currIds;
 
         if (hasDeparture || hasArrivalFromHistory) {
             fetchHistory();
