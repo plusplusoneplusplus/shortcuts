@@ -1,7 +1,7 @@
 /**
  * DB Browser Handler Tests
  *
- * Tests for the read-only database browser admin API endpoints.
+ * Tests for the database browser admin API endpoints (read + edit).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -222,6 +222,236 @@ describe('DB Browser Handler', () => {
             // Server may auto-register a global workspace, so check our workspace exists somewhere
             const wsIds = body.rows.map((r: any) => r.id);
             expect(wsIds).toContain('ws-test');
+        });
+    });
+
+    // ── PUT /api/admin/db/tables/:name/rows ────────────────────────────
+
+    describe('PUT /api/admin/db/tables/:name/rows', () => {
+        /** Create a test table with known schema and seed data. */
+        function seedTestTable(store: SqliteProcessStore): void {
+            const db = store.getDatabase();
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS test_items (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    status TEXT DEFAULT 'draft',
+                    score INTEGER DEFAULT 0
+                )
+            `);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(1, 'Alpha', 'active', 10);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(2, 'Bravo', 'draft', 20);
+            db.prepare('INSERT OR IGNORE INTO test_items (id, name, status, score) VALUES (?, ?, ?, ?)').run(3, 'Charlie', 'active', 30);
+        }
+
+        function putRows(url: string, tableName: string, body: object) {
+            return request(`${url}/api/admin/db/tables/${tableName}/rows`, {
+                method: 'PUT',
+                body: JSON.stringify(body),
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
+        it('should update a row by PK and return the updated row', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+                updates: { name: 'Alpha Updated', status: 'archived' },
+            });
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.changes).toBe(1);
+            expect(body.row).toBeDefined();
+            expect(body.row.id).toBe(1);
+            expect(body.row.name).toBe('Alpha Updated');
+            expect(body.row.status).toBe('archived');
+            expect(body.row.score).toBe(10); // unchanged
+        });
+
+        it('should return 404 when PK values do not match any row', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: { id: 999 },
+                updates: { name: 'Ghost' },
+            });
+            expect(res.status).toBe(404);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/not found/i);
+        });
+
+        it('should return 400 when pkColumns references a non-PK column', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: { name: 'Alpha' },
+                updates: { score: 99 },
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/not a primary key/i);
+        });
+
+        it('should return 400 when updates references a non-existent column', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+                updates: { nonexistent_col: 'value' },
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/does not exist/i);
+        });
+
+        it('should return 400 when attempting to update a PK column', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+                updates: { id: 100 },
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/primary key/i);
+        });
+
+        it('should return 400 when body is missing pkColumns', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                updates: { name: 'Missing PK' },
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/pkColumns/i);
+        });
+
+        it('should return 400 when body is missing updates', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/updates/i);
+        });
+
+        it('should return 400 for invalid table name', async () => {
+            const srv = await startSqliteServer();
+
+            // Route regex rejects names with invalid chars → 404 from router
+            const res = await putRows(srv.url, 'DROP%20TABLE', {
+                pkColumns: { id: 1 },
+                updates: { name: 'Hacked' },
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 501 for non-SQLite store', async () => {
+            const srv = await startFileServer();
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+                updates: { name: 'No SQLite' },
+            });
+            expect(res.status).toBe(501);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('SQLite');
+        });
+
+        it('should return 400 for non-existent table', async () => {
+            const srv = await startSqliteServer();
+
+            const res = await putRows(srv.url, 'totally_fake_table', {
+                pkColumns: { id: 1 },
+                updates: { name: 'Nope' },
+            });
+            expect(res.status).toBe(400);
+
+            const body = JSON.parse(res.body);
+            expect(body.error).toMatch(/not found/i);
+        });
+
+        it('should prevent SQL injection via column name validation', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+                updates: { 'name; DROP TABLE test_items; --': 'hacked' },
+            });
+            expect(res.status).toBe(400);
+
+            // Table should still be accessible
+            const check = await request(`${srv.url}/api/admin/db/tables/test_items`);
+            expect(check.status).toBe(200);
+        });
+
+        it('should handle composite primary keys', async () => {
+            const srv = await startSqliteServer();
+            const db = sqliteStore!.getDatabase();
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS composite_pk (
+                    org TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    role TEXT DEFAULT 'member',
+                    PRIMARY KEY (org, user_id)
+                )
+            `);
+            db.prepare('INSERT INTO composite_pk (org, user_id, role) VALUES (?, ?, ?)').run('acme', 'u1', 'member');
+            db.prepare('INSERT INTO composite_pk (org, user_id, role) VALUES (?, ?, ?)').run('acme', 'u2', 'admin');
+
+            const res = await putRows(srv.url, 'composite_pk', {
+                pkColumns: { org: 'acme', user_id: 'u1' },
+                updates: { role: 'admin' },
+            });
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.changes).toBe(1);
+            expect(body.row.org).toBe('acme');
+            expect(body.row.user_id).toBe('u1');
+            expect(body.row.role).toBe('admin');
+        });
+
+        it('should return 400 when pkColumns is an empty object', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: {},
+                updates: { name: 'Empty PK' },
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 400 when updates is an empty object', async () => {
+            const srv = await startSqliteServer();
+            seedTestTable(sqliteStore!);
+
+            const res = await putRows(srv.url, 'test_items', {
+                pkColumns: { id: 1 },
+                updates: {},
+            });
+            expect(res.status).toBe(400);
         });
     });
 
