@@ -9,11 +9,18 @@ import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { RichEditorCore } from './RichEditorCore';
 import { SourceEditor } from '../../shared/SourceEditor';
+import { ModeToggleToolbar } from '../../shared/ModeToggleToolbar';
+import type { ModeOption } from '../../shared/ModeToggleToolbar';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import './noteEditor.css';
 
 export type NoteViewMode = 'rich' | 'source';
+
+const NOTE_MODE_OPTIONS: readonly ModeOption<NoteViewMode>[] = [
+    { value: 'rich', label: 'Rich', testId: 'note-mode-rich' },
+    { value: 'source', label: 'Source', testId: 'note-mode-source' },
+] as const;
 
 export interface NoteEditorProps {
     workspaceId: string;
@@ -487,27 +494,15 @@ export function NoteEditor({
 
     return (
         <div className="note-editor flex-1 flex flex-col min-h-0 relative" data-testid="note-editor">
-            {/* Mode toggle bar */}
-            <div className="mode-toggle" data-testid="note-mode-toggle">
-                <button
-                    className={`mode-btn${viewMode === 'rich' ? ' active' : ''}`}
-                    onClick={() => { if (viewMode !== 'rich') switchToRich(); }}
-                    data-testid="note-mode-rich"
-                >Rich</button>
-                <button
-                    className={`mode-btn${viewMode === 'source' ? ' active' : ''}`}
-                    onClick={() => { if (viewMode !== 'source') switchToSource(); }}
-                    aria-label={sourceDirty ? 'Source (modified)' : undefined}
-                    data-testid="note-mode-source"
-                >{sourceDirty ? 'Source ●' : 'Source'}</button>
-                {viewMode === 'source' && sourceDirty && (
-                    <button
-                        className="save-btn"
-                        onClick={() => flushSourceSave()}
-                        data-testid="note-source-save-btn"
-                    >Save</button>
-                )}
-            </div>
+            <ModeToggleToolbar<NoteViewMode>
+                modes={NOTE_MODE_OPTIONS}
+                activeMode={viewMode}
+                onModeChange={(mode) => { mode === 'source' ? switchToSource() : switchToRich(); }}
+                dirty={sourceDirty}
+                showSave={viewMode === 'source'}
+                onSave={flushSourceSave}
+                testId="note-mode-toggle"
+            />
 
             <NoteEditorToolbar
                 editor={editor}

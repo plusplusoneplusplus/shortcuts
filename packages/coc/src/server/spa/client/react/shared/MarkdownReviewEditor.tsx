@@ -12,6 +12,8 @@ import type { RenderCommentInfo } from '../../markdown-renderer';
 import { useTaskComments } from '../hooks/useTaskComments';
 import { Spinner } from './Spinner';
 import { SourceEditor } from './SourceEditor';
+import { ModeToggleToolbar } from './ModeToggleToolbar';
+import type { ModeOption } from './ModeToggleToolbar';
 import { Button } from './Button';
 import { UpdateDocumentDialog } from './UpdateDocumentDialog';
 import { ResolveContextDialog, shouldSkipResolveDialog } from './ResolveContextDialog';
@@ -38,6 +40,13 @@ import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { isAbsolutePath } from '../utils/path-resolution';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
+
+type ReviewViewMode = 'review' | 'source';
+
+const REVIEW_MODE_OPTIONS: readonly ModeOption<ReviewViewMode>[] = [
+    { value: 'review', label: 'Preview' },
+    { value: 'source', label: 'Source' },
+] as const;
 
 const TASK_STATUS_OPTIONS = [
     { value: 'pending', label: '⏳ Pending' },
@@ -729,76 +738,71 @@ export function MarkdownReviewEditor({
             <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e]">
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                     {/* ── Mode toggle toolbar ── */}
-                    <div className="mode-toggle">
-                        <button
-                            className={`mode-btn${viewMode === 'review' ? ' active' : ''}`}
-                            onClick={handleSwitchToReview}
-                        >Preview</button>
-                        <button
-                            className={`mode-btn${viewMode === 'source' ? ' active' : ''}`}
-                            onClick={() => setViewMode('source')}
-                            aria-label={isDirty ? 'Source (modified)' : undefined}
-                        >{isDirty ? 'Source ●' : 'Source'}</button>
-                        {viewMode === 'source' && isDirty && (
-                            <button className="save-btn" onClick={saveContent} disabled={saving}>
-                                {saving ? 'Saving…' : 'Save'}
-                            </button>
-                        )}
-                        <button
-                            className="refresh-btn"
-                            onClick={handleRefresh}
-                            disabled={loading}
-                            data-testid="markdown-review-refresh-btn"
-                            aria-label="Refresh"
-                            title="Refresh (Ctrl+Shift+R)"
-                        >{loading ? '⏳' : '↻'}</button>
-                        {(filePath.endsWith('.md') || filePath.endsWith('.markdown')) && (
-                            <select
-                                value={taskStatus ?? ''}
-                                onChange={e => handleStatusChange(e.target.value)}
-                                className="task-status-select"
-                                aria-label="Task status"
-                                data-testid="task-status-select"
-                            >
-                                <option value="" disabled>— Status —</option>
-                                {TASK_STATUS_OPTIONS.map(o => (
-                                    <option key={o.value} value={o.value}>{o.label}</option>
-                                ))}
-                            </select>
-                        )}
-                        {(showAiButtons || toolbarRight) && (
-                            <div className="ml-auto flex items-center">
-                                {showAiButtons && (
-                                    <>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            data-testid="task-preview-follow-prompt"
-                                            title="Run Skill"
-                                            onClick={() => {
-                                                const absPath = resolveAbsolutePath(filePath);
-                                                queueDispatch({
-                                                    type: 'OPEN_DIALOG',
-                                                    workspaceId: wsId,
-                                                    contextFiles: [absPath],
-                                                    contextTaskName: taskName,
-                                                });
-                                            }}
-                                        >⚡</Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            data-testid="task-preview-update-document"
-                                            title="Update Document"
-                                            onClick={() => setAiDialogType('update-document')}
-                                        >✏️</Button>
-                                        <span className="w-px h-4 bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center" aria-hidden="true" />
-                                    </>
-                                )}
-                                {toolbarRight}
-                            </div>
-                        )}
-                    </div>
+                    <ModeToggleToolbar<ReviewViewMode>
+                        modes={REVIEW_MODE_OPTIONS}
+                        activeMode={viewMode}
+                        onModeChange={(mode) => { mode === 'review' ? handleSwitchToReview() : setViewMode('source'); }}
+                        dirty={isDirty}
+                        showSave={viewMode === 'source'}
+                        onSave={saveContent}
+                        saving={saving}
+                        right={<>
+                            <button
+                                className="refresh-btn"
+                                onClick={handleRefresh}
+                                disabled={loading}
+                                data-testid="markdown-review-refresh-btn"
+                                aria-label="Refresh"
+                                title="Refresh (Ctrl+Shift+R)"
+                            >{loading ? '⏳' : '↻'}</button>
+                            {(filePath.endsWith('.md') || filePath.endsWith('.markdown')) && (
+                                <select
+                                    value={taskStatus ?? ''}
+                                    onChange={e => handleStatusChange(e.target.value)}
+                                    className="task-status-select"
+                                    aria-label="Task status"
+                                    data-testid="task-status-select"
+                                >
+                                    <option value="" disabled>— Status —</option>
+                                    {TASK_STATUS_OPTIONS.map(o => (
+                                        <option key={o.value} value={o.value}>{o.label}</option>
+                                    ))}
+                                </select>
+                            )}
+                            {(showAiButtons || toolbarRight) && (
+                                <div className="ml-auto flex items-center">
+                                    {showAiButtons && (
+                                        <>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                data-testid="task-preview-follow-prompt"
+                                                title="Run Skill"
+                                                onClick={() => {
+                                                    const absPath = resolveAbsolutePath(filePath);
+                                                    queueDispatch({
+                                                        type: 'OPEN_DIALOG',
+                                                        workspaceId: wsId,
+                                                        contextFiles: [absPath],
+                                                        contextTaskName: taskName,
+                                                    });
+                                                }}
+                                            >⚡</Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                data-testid="task-preview-update-document"
+                                                title="Update Document"
+                                                onClick={() => setAiDialogType('update-document')}
+                                            >✏️</Button>
+                                            <span className="w-px h-4 bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center" aria-hidden="true" />
+                                        </>
+                                    )}
+                                    {toolbarRight}
+                                </div>
+                            )}
+                        </>}
+                    />
 
                     {viewMode === 'source' ? (
                         <div className="flex-1 overflow-y-auto min-h-0 min-w-0">
