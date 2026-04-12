@@ -441,6 +441,17 @@ describe('ActivityChatDetail', () => {
         it('fetches full task data for pending tasks', () => {
             expect(source).toContain('Fetch full task data for pending tasks');
         });
+
+        it('skips PendingTaskInfoPanel for chat tasks (shows conversation instead)', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('isChatTask');
+            expect(CONVERSATION_AREA_SOURCE).toContain('showPendingPanel');
+            // showPendingPanel is only true for non-chat tasks
+            expect(CONVERSATION_AREA_SOURCE).toContain('isPending && !isChatTask');
+        });
+
+        it('shows streaming placeholder for pending chat tasks', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('isPending && isChatTask');
+        });
     });
 
     describe('conversation caching', () => {
@@ -651,6 +662,15 @@ describe('ActivityChatDetail', () => {
                 source.indexOf('const inputDisabled') + 200,
             );
             expect(expr).toContain('loading');
+        });
+
+        it('inputDisabled does not include cancelled so input stays enabled after stop', () => {
+            const expr = source.substring(
+                source.indexOf('const inputDisabled'),
+                source.indexOf('const inputDisabled') + 200,
+            );
+            expect(expr).not.toContain("'cancelled'");
+            expect(expr).not.toContain("'cancelling'");
         });
 
         it('imports DeliveryMode from pipeline-core', () => {
