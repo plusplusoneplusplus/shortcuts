@@ -249,6 +249,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         toPayload,
         lastFailedMessageRef,
         setTask,
+        workspaceId,
     });
 
     const { stopStreaming } = useChatSSE({
@@ -277,7 +278,10 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     // In addition to updating status, mirror what useChatSSE.finish() does:
     // refresh conversation data and unblock waitForSendCompletion so the UI
     // doesn't hang on 'Agent is thinking...' for 90 seconds.
+    // Skip when `sending` — a follow-up POST is in flight and the stale
+    // optimistic history entry would incorrectly revert the status.
     useEffect(() => {
+        if (sending) return;
         if (!workspaceId || !taskId || task?.status !== 'running') return;
         const repo = queueState.repoQueueMap[workspaceId];
         if (!repo) return;
@@ -292,7 +296,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 onSendComplete();
             }
         }
-    }, [workspaceId, taskId, task?.status, queueState.repoQueueMap, processId, refreshConversation, onSendComplete]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [sending, workspaceId, taskId, task?.status, queueState.repoQueueMap, processId, refreshConversation, onSendComplete]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
 

@@ -1225,6 +1225,30 @@ describe('ActivityChatDetail', () => {
             expect(safetyNetBlock).toContain('refreshConversation');
             expect(safetyNetBlock).toContain('onSendComplete');
         });
+
+        it('safety-net effect skips when sending is true', () => {
+            // The safety-net must early-return when `sending` is true to avoid
+            // reverting task.status from 'running' back to 'completed' during
+            // a follow-up POST (stale optimistic history race condition).
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            const sendingGuardIdx = safetyNetBlock.indexOf('if (sending) return');
+            // sending guard must exist
+            expect(sendingGuardIdx).toBeGreaterThan(-1);
+            // sending guard should appear before the history find logic
+            const historyFindIdx = safetyNetBlock.indexOf('repo.history?.find');
+            expect(sendingGuardIdx).toBeLessThan(historyFindIdx);
+        });
+
+        it('safety-net effect includes sending in deps', () => {
+            const startIdx = source.indexOf('Safety net: sync task.status');
+            const safetyNetBlock = source.substring(startIdx, startIdx + 1500);
+            // The dependency array follows the closing }, [ pattern
+            const depsLineIdx = safetyNetBlock.indexOf('}, [');
+            expect(depsLineIdx).toBeGreaterThan(-1);
+            const depsSection = safetyNetBlock.substring(depsLineIdx);
+            expect(depsSection).toContain('sending');
+        });
     });
 
     describe('useChatSSE finish() defers setTask after refreshConversation', () => {
@@ -1263,6 +1287,34 @@ describe('ActivityChatDetail', () => {
                 finallyIdx + 1200,
             );
             expect(finallyBlock).toContain('refreshConversation(processId)');
+        });
+    });
+
+    describe('useSendMessage dispatches REPO_TASK_REQUEUED on follow-up', () => {
+        it('dispatches REPO_TASK_REQUEUED after setTask({status: running})', () => {
+            // After setTask sets status to 'running', useSendMessage must dispatch
+            // REPO_TASK_REQUEUED to remove the stale optimistic history entry.
+            // Search within the sendFollowUp function body (not the type definition)
+            const sendFollowUpIdx = USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp = useCallback');
+            const sendFollowUpBlock = USE_SEND_MESSAGE_SOURCE.substring(sendFollowUpIdx);
+            const setTaskRunningIdx = sendFollowUpBlock.indexOf("setTask((prev: any) => prev ? { ...prev, status: 'running' }");
+            const requeueIdx = sendFollowUpBlock.indexOf("REPO_TASK_REQUEUED");
+            expect(setTaskRunningIdx).toBeGreaterThan(-1);
+            expect(requeueIdx).toBeGreaterThan(-1);
+            expect(requeueIdx).toBeGreaterThan(setTaskRunningIdx);
+        });
+
+        it('guards REPO_TASK_REQUEUED dispatch with workspaceId check', () => {
+            // Find the dispatch in sendFollowUp (not the type definition)
+            const sendFollowUpIdx = USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp = useCallback');
+            const sendFollowUpBlock = USE_SEND_MESSAGE_SOURCE.substring(sendFollowUpIdx);
+            const requeueIdx = sendFollowUpBlock.indexOf("REPO_TASK_REQUEUED");
+            const requeueBlock = sendFollowUpBlock.substring(requeueIdx - 200, requeueIdx + 200);
+            expect(requeueBlock).toContain('if (workspaceId)');
+        });
+
+        it('accepts workspaceId in UseSendMessageOptions', () => {
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('workspaceId?: string');
         });
     });
 });
