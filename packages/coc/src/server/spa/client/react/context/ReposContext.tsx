@@ -53,8 +53,29 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const processThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const gitInfoAbortRef = useRef<AbortController | null>(null);
 
-    // Per-repo unseen counts, fetched from the server.
-    const [unseenCounts, setUnseenCounts] = useState<Record<string, number>>({});
+    // Bump this counter whenever the user marks tasks as read/unread so the
+    // useMemo below re-evaluates (localStorage changes don't update queueState).
+    const [seenVersion, setSeenVersion] = useState(0);
+    useEffect(() => {
+        const handler = () => setSeenVersion(v => v + 1);
+        window.addEventListener('coc-seen-updated', handler);
+        return () => window.removeEventListener('coc-seen-updated', handler);
+    }, []);
+
+    // Compute per-repo unseen counts for the tab strip badge.
+    const unseenCounts = useMemo(() => {
+        const counts: Record<string, number> = {};
+        for (const [repoId, repoQueue] of Object.entries(queueState.repoQueueMap)) {
+            const count = computeUnseenCount(
+                repoId,
+                repoQueue.history ?? [],
+                repoQueue.queued ?? [],
+                repoQueue.running ?? [],
+            );
+            if (count > 0) counts[repoId] = count;
+        }
+        return counts;
+    }, [queueState.repoQueueMap, seenVersion]);
 
     // Seed repoQueueMap from /api/queue/repos (single call for all repos)
     const seedRepoQueueStats = useCallback(async (enriched: RepoData[]) => {

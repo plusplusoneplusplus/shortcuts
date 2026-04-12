@@ -30,8 +30,7 @@ import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
 import { useGitInfo } from '../hooks/useGitInfo';
-import { useTerminalEnabled } from '../hooks/useTerminalEnabled';
-import { useNotesEnabled } from '../hooks/useNotesEnabled';
+import { computeUnseenCount } from '../hooks/useUnseenActivity';
 import { MobileTabBar } from '../layout/MobileTabBar';
 import { SHOW_WIKI_TAB } from '../layout/TopBar';
 import type { RepoData } from './repoGrouping';
@@ -135,6 +134,21 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         }
         prevNotesEnabled.current = notesEnabled;
     }, [activeSubTab, notesEnabled, dispatch]);
+
+    // Compute state-change-based unseen counts for MobileTabBar badges.
+    // Listen for coc-seen-updated events so we recompute when the user marks items read.
+    const [mobileSeenVersion, setMobileSeenVersion] = useState(0);
+    useEffect(() => {
+        const handler = () => setMobileSeenVersion(v => v + 1);
+        window.addEventListener('coc-seen-updated', handler);
+        return () => window.removeEventListener('coc-seen-updated', handler);
+    }, []);
+    const mobileUnseenCount = useMemo(() => {
+        const entry = queueState.repoQueueMap[ws.id];
+        if (!entry) return 0;
+        return computeUnseenCount(ws.id, entry.history ?? [], entry.queued ?? [], entry.running ?? []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [queueState.repoQueueMap[ws.id], ws.id, mobileSeenVersion]);
 
     // Work items: load for this repo if not yet in context (for badge)
     const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
@@ -386,7 +400,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     onTabChange={switchSubTab}
                     tabs={VISIBLE_SUB_TABS}
                     taskCount={tasksRunning + tasksQueued}
-                    activityCount={chatsRunning + chatsQueued + tasksRunning + tasksQueued}
+                    activityCount={mobileUnseenCount}
                     actions={[
                         { label: 'Run Script', icon: '⚡', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
                         ...((activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused

@@ -252,8 +252,11 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         }
     }, [selectedTaskId]);
 
-    // Track unseen activity for completed tasks
-    const { unseenProcessIds, markSeen: rawMarkSeen, markAllSeen: rawMarkAllSeen, markTasksSeen: rawMarkTasksSeen, markUnseen: rawMarkUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
+    // Track unseen activity across all state changes (queued→running→completed etc.)
+    const { unseenTaskIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(
+        workspaceId, history, selectedTaskId, queued, running,
+        { isViewingChats: activeTab === 'chats' },
+    );
     const { markReadByProcessId } = useNotifications();
 
     // Wrap seen-state mutations to refresh badge counts after debounced API flush
