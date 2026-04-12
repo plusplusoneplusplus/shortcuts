@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * Read the current schema version from the database.
@@ -163,6 +163,39 @@ export function initializeDatabase(db: Database.Database): void {
             )
         `);
 
+        // ── FTS5 full-text search index on conversation_turns ────────
+        db.exec(`
+            CREATE VIRTUAL TABLE IF NOT EXISTS conversation_search
+            USING fts5(
+                content,
+                tokenize='unicode61 remove_diacritics 2'
+            )
+        `);
+
+        db.exec(`
+            CREATE TRIGGER IF NOT EXISTS conversation_search_ai
+            AFTER INSERT ON conversation_turns BEGIN
+                INSERT INTO conversation_search(rowid, content)
+                VALUES (new.id, new.content);
+            END
+        `);
+
+        db.exec(`
+            CREATE TRIGGER IF NOT EXISTS conversation_search_ad
+            AFTER DELETE ON conversation_turns BEGIN
+                DELETE FROM conversation_search WHERE rowid = old.id;
+            END
+        `);
+
+        db.exec(`
+            CREATE TRIGGER IF NOT EXISTS conversation_search_au
+            AFTER UPDATE OF content ON conversation_turns BEGIN
+                DELETE FROM conversation_search WHERE rowid = old.id;
+                INSERT INTO conversation_search(rowid, content)
+                VALUES (new.id, new.content);
+            END
+        `);
+
         // ── indexes ──────────────────────────────────────────────────
         db.exec(`
             CREATE INDEX IF NOT EXISTS idx_processes_workspace_id
@@ -236,6 +269,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore >= 1 && versionBefore < 4) {
             migrateV3toV4(db);
         }
+        if (versionBefore >= 1 && versionBefore < 5) {
+            migrateV4toV5(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -271,4 +307,19 @@ function migrateV3toV4(db: Database.Database): void {
     if (!cols.some(c => c.name === 'last_event_at')) {
         db.exec('ALTER TABLE processes ADD COLUMN last_event_at TEXT');
     }
+}
+
+/**
+ * V4 → V5: add FTS5 `conversation_search` index with triggers.
+ * The CREATE VIRTUAL TABLE + triggers use IF NOT EXISTS above,
+ * so this migration only needs to backfill existing data.
+ */
+function migrateV4toV5(db: Database.Database): void {
+    const turnsCount = (db.prepare('SELECT COUNT(*) as cnt FROM conversation_turns').get() as any).cnt;
+    if (turnsCount === 0) return;
+
+    const ftsCount = (db.prepare('SELECT COUNT(*) as cnt FROM conversation_search').get() as any).cnt;
+    if (ftsCount > 0) return;
+
+    db.exec('INSERT INTO conversation_search(rowid, content) SELECT id, content FROM conversation_turns');
 }

@@ -91,7 +91,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(4);
+        expect(SCHEMA_VERSION).toBe(5);
     });
 
     it('is idempotent — calling initializeDatabase twice does not throw', () => {
@@ -250,17 +250,96 @@ describe('sqlite-schema', () => {
         });
     });
 
-    describe('V3 → V4 migration (last_event_at column)', () => {
-        it('fresh DB includes last_event_at column', () => {
+    describe('V4 → V5 migration (FTS5 conversation_search)', () => {
+        /** Helper to insert a process + turn */
+        function insertTurn(turnDb: Database.Database, processId: string, turnIndex: number, content: string): void {
+            turnDb.prepare(`
+                INSERT OR IGNORE INTO processes (id, workspace_id, status, start_time)
+                VALUES (?, 'ws1', 'running', '2024-01-01T00:00:00Z')
+            `).run(processId);
+            turnDb.prepare(`
+                INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp)
+                VALUES (?, ?, 'user', ?, '2024-01-01T00:00:00Z')
+            `).run(processId, turnIndex, content);
+        }
+
+        it('fresh DB has conversation_search FTS5 table', () => {
             initializeDatabase(db);
 
-            const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
-            const colNames = cols.map(c => c.name);
-            expect(colNames).toContain('last_event_at');
+            const tables = db
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+                .all()
+                .map((r: any) => r.name);
+
+            expect(tables).toContain('conversation_search');
         });
 
-        it('migrates a V3 database by adding last_event_at column', () => {
-            // Simulate a V3 database by creating the table WITHOUT last_event_at
+        it('fresh DB has all three FTS triggers', () => {
+            initializeDatabase(db);
+
+            const triggers = db
+                .prepare("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
+                .all()
+                .map((r: any) => r.name);
+
+            expect(triggers).toContain('conversation_search_ai');
+            expect(triggers).toContain('conversation_search_ad');
+            expect(triggers).toContain('conversation_search_au');
+        });
+
+        it('INSERT trigger indexes new turns', () => {
+            initializeDatabase(db);
+            insertTurn(db, 'p1', 0, 'hello world');
+
+            const results = db.prepare("SELECT rowid, content FROM conversation_search WHERE conversation_search MATCH 'hello'").all() as any[];
+            expect(results).toHaveLength(1);
+            expect(results[0].content).toBe('hello world');
+        });
+
+        it('DELETE trigger removes turns from the index', () => {
+            initializeDatabase(db);
+            insertTurn(db, 'p1', 0, 'goodbye world');
+
+            // Verify it's in the index
+            let results = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'goodbye'").all();
+            expect(results).toHaveLength(1);
+
+            // Delete the turn
+            db.prepare('DELETE FROM conversation_turns WHERE process_id = ? AND turn_index = ?').run('p1', 0);
+
+            results = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'goodbye'").all();
+            expect(results).toHaveLength(0);
+        });
+
+        it('UPDATE trigger re-indexes content changes', () => {
+            initializeDatabase(db);
+            insertTurn(db, 'p1', 0, 'original text');
+
+            // Update the content
+            db.prepare('UPDATE conversation_turns SET content = ? WHERE process_id = ? AND turn_index = ?')
+                .run('modified text', 'p1', 0);
+
+            // Old content should not match
+            const oldResults = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'original'").all();
+            expect(oldResults).toHaveLength(0);
+
+            // New content should match
+            const newResults = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'modified'").all();
+            expect(newResults).toHaveLength(1);
+        });
+
+        it('CASCADE delete removes FTS entries when process is deleted', () => {
+            initializeDatabase(db);
+            insertTurn(db, 'p1', 0, 'cascade test');
+
+            db.prepare('DELETE FROM processes WHERE id = ?').run('p1');
+
+            const results = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'cascade'").all();
+            expect(results).toHaveLength(0);
+        });
+
+        it('migrates a V4 database by backfilling existing turns', () => {
+            // Simulate a V4 database with conversation_turns but no FTS
             db.pragma('journal_mode = WAL');
             db.pragma('foreign_keys = ON');
             db.exec(`
@@ -291,7 +370,8 @@ describe('sqlite-schema', () => {
                     stale                 INTEGER DEFAULT 0,
                     data_file_path        TEXT,
                     archived              INTEGER DEFAULT 0,
-                    seen_at               TEXT
+                    seen_at               TEXT,
+                    last_event_at         TEXT
                 )
             `);
             db.exec(`
@@ -322,33 +402,31 @@ describe('sqlite-schema', () => {
                     PRIMARY KEY (workspace_id, commit_hash)
                 )
             `);
-            db.pragma('user_version = 3');
+            db.pragma('user_version = 4');
 
-            // Insert a row before migration
-            db.prepare(`
-                INSERT INTO processes (id, workspace_id, status, start_time)
-                VALUES (?, ?, ?, ?)
-            `).run('p1', 'ws1', 'running', '2024-06-01T10:00:00Z');
+            // Insert existing data before migration
+            db.prepare(`INSERT INTO processes (id, workspace_id, status, start_time) VALUES (?, ?, ?, ?)`)
+                .run('p1', 'ws1', 'completed', '2024-01-01T00:00:00Z');
+            db.prepare(`INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp) VALUES (?, ?, ?, ?, ?)`)
+                .run('p1', 0, 'user', 'searchable content alpha', '2024-01-01T00:00:00Z');
+            db.prepare(`INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp) VALUES (?, ?, ?, ?, ?)`)
+                .run('p1', 1, 'assistant', 'searchable content beta', '2024-01-01T00:00:01Z');
 
-            // Run initialization (should migrate V3 → V4)
+            // Run migration
             initializeDatabase(db);
 
-            // Version should be current
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
 
-            // last_event_at column should exist
-            const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
-            expect(cols.map(c => c.name)).toContain('last_event_at');
+            // Backfilled data should be searchable
+            const alphaResults = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'alpha'").all();
+            expect(alphaResults).toHaveLength(1);
 
-            // Existing data should be preserved with last_event_at = NULL
-            const row = db.prepare('SELECT id, status, last_event_at FROM processes WHERE id = ?').get('p1') as any;
-            expect(row.id).toBe('p1');
-            expect(row.status).toBe('running');
-            expect(row.last_event_at).toBeNull();
+            const betaResults = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'beta'").all();
+            expect(betaResults).toHaveLength(1);
         });
 
-        it('V1 database migrates through all versions to V4', () => {
-            // Simulate a V1 database (no seen_at, no last_event_at)
+        it('V1 database migrates through all versions to V5', () => {
+            // Simulate a V1 database
             db.pragma('journal_mode = WAL');
             db.pragma('foreign_keys = ON');
             db.exec(`
@@ -386,10 +464,37 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+
+            // All migration artifacts should exist
             const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
             const colNames = cols.map(c => c.name);
             expect(colNames).toContain('seen_at');
             expect(colNames).toContain('last_event_at');
+
+            const tables = db
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+                .all()
+                .map((r: any) => r.name);
+            expect(tables).toContain('conversation_search');
+
+            const triggers = db
+                .prepare("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
+                .all()
+                .map((r: any) => r.name);
+            expect(triggers).toContain('conversation_search_ai');
+            expect(triggers).toContain('conversation_search_ad');
+            expect(triggers).toContain('conversation_search_au');
+        });
+
+        it('idempotent — calling initializeDatabase twice does not duplicate FTS data', () => {
+            initializeDatabase(db);
+            insertTurn(db, 'p1', 0, 'unique content');
+
+            // Call again
+            initializeDatabase(db);
+
+            const results = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'unique'").all();
+            expect(results).toHaveLength(1);
         });
     });
 });
