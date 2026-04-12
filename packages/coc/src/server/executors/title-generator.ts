@@ -31,8 +31,6 @@ export function generateTitleIfNeeded(
                 // requeueForFollowUp (and the api-handler fallback path) both overwrite
                 // displayName with the follow-up message text, so we restore it here
                 // on every turn to keep the two in sync.
-                // displayName with the follow-up message text, so we restore it here
-                // on every turn to keep the two in sync.
                 if (processId.startsWith('queue_') && queueManager) {
                     const taskId = processId.replace('queue_', '');
                     queueManager.updateTask(taskId, { displayName: existing.title });

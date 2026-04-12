@@ -152,6 +152,9 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                             data-testid={`work-item-card-${item.id}`}
                                         >
                                             <div className="flex items-center gap-1 min-w-0 text-xs">
+                                                {(item as any).workItemNumber != null && (
+                                                    <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999] font-mono" data-testid={`work-item-number-${item.id}`}>WI-{(item as any).workItemNumber}</span>
+                                                )}
                                                 {(item as any).type === 'bug' && (
                                                     <span className="shrink-0 text-[10px]" title="Bug">🐛</span>
                                                 )}

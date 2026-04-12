@@ -438,4 +438,100 @@ describe('FileWorkItemStore', () => {
             expect(vAfter).toBeUndefined();
         });
     });
+
+    describe('workItemNumber', () => {
+        it('assigns sequential workItemNumber on create', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'wi-num-1' }));
+            await store.addWorkItem(makeWorkItem({ id: 'wi-num-2' }));
+            await store.addWorkItem(makeWorkItem({ id: 'wi-num-3' }));
+
+            const item1 = await store.getWorkItem('wi-num-1', 'test-repo');
+            const item2 = await store.getWorkItem('wi-num-2', 'test-repo');
+            const item3 = await store.getWorkItem('wi-num-3', 'test-repo');
+
+            expect(item1!.workItemNumber).toBe(1);
+            expect(item2!.workItemNumber).toBe(2);
+            expect(item3!.workItemNumber).toBe(3);
+        });
+
+        it('includes workItemNumber in index entries', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'wi-idx-num' }));
+
+            const entries = await store.listWorkItems({ repoId: 'test-repo' });
+            const entry = entries.find(e => e.id === 'wi-idx-num');
+            expect(entry).toBeDefined();
+            expect(entry!.workItemNumber).toBe(1);
+        });
+
+        it('never reuses numbers after deletion', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'wi-del-1' }));
+            await store.addWorkItem(makeWorkItem({ id: 'wi-del-2' }));
+            await store.removeWorkItem('wi-del-2');
+
+            await store.addWorkItem(makeWorkItem({ id: 'wi-del-3' }));
+            const item3 = await store.getWorkItem('wi-del-3', 'test-repo');
+            expect(item3!.workItemNumber).toBe(3);
+        });
+
+        it('migrates existing items without numbers on first create', async () => {
+            // Manually write items without workItemNumber to simulate legacy data
+            const dir = path.join(tmpDir, 'repos', 'test-repo', 'work-items');
+            await fs.mkdir(dir, { recursive: true });
+
+            const legacyItem1: any = {
+                id: 'legacy-1', repoId: 'test-repo', title: 'Legacy 1',
+                description: '', status: 'created', source: 'manual',
+                createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+            };
+            const legacyItem2: any = {
+                id: 'legacy-2', repoId: 'test-repo', title: 'Legacy 2',
+                description: '', status: 'created', source: 'manual',
+                createdAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z',
+            };
+
+            await fs.writeFile(path.join(dir, 'legacy-1.json'), JSON.stringify(legacyItem1));
+            await fs.writeFile(path.join(dir, 'legacy-2.json'), JSON.stringify(legacyItem2));
+            await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify([
+                { id: 'legacy-1', repoId: 'test-repo', title: 'Legacy 1', status: 'created', source: 'manual', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+                { id: 'legacy-2', repoId: 'test-repo', title: 'Legacy 2', status: 'created', source: 'manual', createdAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' },
+            ]));
+
+            // Now add a new item — this should trigger migration
+            await store.addWorkItem(makeWorkItem({ id: 'wi-new-after-legacy' }));
+
+            // Legacy items should be backfilled (ordered by createdAt)
+            const legacy1 = await store.getWorkItem('legacy-1', 'test-repo');
+            const legacy2 = await store.getWorkItem('legacy-2', 'test-repo');
+            const newItem = await store.getWorkItem('wi-new-after-legacy', 'test-repo');
+
+            expect(legacy1!.workItemNumber).toBe(1);
+            expect(legacy2!.workItemNumber).toBe(2);
+            expect(newItem!.workItemNumber).toBe(3);
+        });
+
+        it('assigns independent numbers per repo', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'wi-r1', repoId: 'repo-a' }));
+            await store.addWorkItem(makeWorkItem({ id: 'wi-r2', repoId: 'repo-b' }));
+            await store.addWorkItem(makeWorkItem({ id: 'wi-r3', repoId: 'repo-a' }));
+
+            const r1 = await store.getWorkItem('wi-r1', 'repo-a');
+            const r2 = await store.getWorkItem('wi-r2', 'repo-b');
+            const r3 = await store.getWorkItem('wi-r3', 'repo-a');
+
+            expect(r1!.workItemNumber).toBe(1);
+            expect(r2!.workItemNumber).toBe(1); // independent counter
+            expect(r3!.workItemNumber).toBe(2);
+        });
+
+        it('handles concurrent creates with unique numbers', async () => {
+            const promises = Array.from({ length: 10 }, (_, i) =>
+                store.addWorkItem(makeWorkItem({ id: `wi-conc-num-${i}` }))
+            );
+            await Promise.all(promises);
+
+            const entries = await store.listWorkItems({ repoId: 'test-repo' });
+            const numbers = entries.map(e => e.workItemNumber).sort((a, b) => a! - b!);
+            expect(numbers).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        });
+    });
 });

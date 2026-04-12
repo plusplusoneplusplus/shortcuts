@@ -168,8 +168,11 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         }
     }, [selectedTaskId]);
 
-    // Track unseen activity for completed tasks
-    const { unseenTaskIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
+    // Track unseen activity across all state changes (queued→running→completed etc.)
+    const { unseenTaskIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(
+        workspaceId, history, selectedTaskId, queued, running,
+        { isViewingChats: activeTab === 'chats' },
+    );
     const { markReadByProcessId } = useNotifications();
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {

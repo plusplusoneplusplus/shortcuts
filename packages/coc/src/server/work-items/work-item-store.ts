@@ -66,6 +66,10 @@ export class FileWorkItemStore implements WorkItemStore {
         return path.join(this.planDir(repoId, id), `v${version}.md`);
     }
 
+    private counterPath(repoId: string): string {
+        return path.join(this.workItemsDir(repoId), 'counter.json');
+    }
+
     private sanitize(id: string): string {
         return id.replace(/[^a-zA-Z0-9_-]/g, '_');
     }
@@ -111,6 +115,70 @@ export class FileWorkItemStore implements WorkItemStore {
         await this.atomicWrite(this.itemPath(repoId, item.id), JSON.stringify(item, null, 2));
     }
 
+    private async readCounter(repoId: string): Promise<number> {
+        const data = await this.readJSON<{ next: number }>(this.counterPath(repoId), { next: 0 });
+        return data.next;
+    }
+
+    private async writeCounter(repoId: string, next: number): Promise<void> {
+        await this.atomicWrite(this.counterPath(repoId), JSON.stringify({ next }, null, 2));
+    }
+
+    /**
+     * Assign workItemNumber to all existing items that lack one (ordered by createdAt),
+     * then initialize the counter. Called once per repo when the counter file is missing.
+     */
+    private async migrateWorkItemNumbers(repoId: string): Promise<void> {
+        const index = await this.readIndex(repoId);
+        // Collect items that already have numbers to find the max
+        let maxNumber = 0;
+        const needsMigration: WorkItemIndexEntry[] = [];
+        for (const entry of index) {
+            if (entry.workItemNumber != null) {
+                maxNumber = Math.max(maxNumber, entry.workItemNumber);
+            } else {
+                needsMigration.push(entry);
+            }
+        }
+
+        // Sort by createdAt ascending so earlier items get lower numbers
+        needsMigration.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+        let nextNumber = maxNumber + 1;
+        for (const entry of needsMigration) {
+            const item = await this.readItem(repoId, entry.id);
+            if (item && item.workItemNumber == null) {
+                item.workItemNumber = nextNumber;
+                await this.writeItem(repoId, item);
+            }
+            entry.workItemNumber = nextNumber;
+            nextNumber++;
+        }
+
+        if (needsMigration.length > 0) {
+            await this.writeIndex(repoId, index);
+        }
+        await this.writeCounter(repoId, nextNumber);
+    }
+
+    /**
+     * Get the next work item number for a repo, initializing/migrating if needed.
+     * Must be called inside enqueueWrite to ensure atomicity.
+     */
+    private async nextWorkItemNumber(repoId: string): Promise<number> {
+        const counterFile = this.counterPath(repoId);
+        try {
+            await fs.access(counterFile);
+        } catch {
+            // Counter file doesn't exist — run migration
+            await this.migrateWorkItemNumbers(repoId);
+        }
+        const current = await this.readCounter(repoId);
+        const next = current === 0 ? 1 : current;
+        await this.writeCounter(repoId, next + 1);
+        return next;
+    }
+
     // ── CRUD ────────────────────────────────────────────────────
 
     async addWorkItem(item: WorkItem): Promise<void> {
@@ -118,6 +186,10 @@ export class FileWorkItemStore implements WorkItemStore {
             const index = await this.readIndex(item.repoId);
             if (index.some(e => e.id === item.id)) {
                 throw new Error(`Work item already exists: ${item.id}`);
+            }
+            // Assign sequential work item number
+            if (item.workItemNumber == null) {
+                item.workItemNumber = await this.nextWorkItemNumber(item.repoId);
             }
             await this.writeItem(item.repoId, item);
             // Save initial plan version if present

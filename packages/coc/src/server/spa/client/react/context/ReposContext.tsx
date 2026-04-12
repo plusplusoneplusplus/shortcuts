@@ -65,7 +65,12 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const unseenCounts = useMemo(() => {
         const counts: Record<string, number> = {};
         for (const [repoId, repoQueue] of Object.entries(queueState.repoQueueMap)) {
-            const count = computeUnseenCount(repoId, repoQueue.history ?? []);
+            const count = computeUnseenCount(
+                repoId,
+                repoQueue.history ?? [],
+                repoQueue.queued ?? [],
+                repoQueue.running ?? [],
+            );
             if (count > 0) counts[repoId] = count;
         }
         return counts;
