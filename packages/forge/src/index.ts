@@ -432,7 +432,9 @@ export {
     ProcessFilter,
     ProcessChangeCallback,
     ProcessStore,
-    StorageStats
+    StorageStats,
+    ConversationSearchResult,
+    SearchFilter,
 } from './process-store';
 
 export {

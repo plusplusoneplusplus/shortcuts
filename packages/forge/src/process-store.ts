@@ -12,6 +12,38 @@ import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } 
 import type { TokenUsage } from './copilot-sdk-wrapper/types';
 
 /**
+ * A single FTS5 search hit within a conversation turn,
+ * enriched with process-level metadata for display.
+ */
+export interface ConversationSearchResult {
+    processId: string;
+    turnIndex: number;
+    role: string;
+    /** FTS5 snippet() output with match highlights */
+    snippet: string;
+    /** BM25 relevance score (lower is more relevant) */
+    rank: number;
+    processTitle?: string;
+    promptPreview: string;
+    processStatus: string;
+    processType: string;
+    workspaceId: string;
+    startTime: string;
+}
+
+/**
+ * Filter criteria for FTS5 conversation search.
+ */
+export interface SearchFilter {
+    workspaceId?: string;
+    status?: AIProcessStatus | AIProcessStatus[];
+    type?: AIProcessType;
+    since?: Date;
+    limit?: number;
+    offset?: number;
+}
+
+/**
  * Output event emitted during process execution.
  * Used by SSE streaming to push real-time output to clients.
  */
@@ -346,4 +378,13 @@ export interface ProcessStore {
         turnIndex: number,
         content: string,
     ): Promise<void>;
+
+    /**
+     * Full-text search across conversation turns using FTS5 MATCH with BM25 ranking.
+     * Optional — only SQLite-backed stores support this.
+     */
+    searchConversations?(
+        query: string,
+        filter?: SearchFilter
+    ): Promise<{ results: ConversationSearchResult[]; total: number }>;
 }

@@ -921,3 +921,234 @@ describe('SqliteProcessStore — lastEventAt', () => {
         expect(result!.lastEventAt!.toISOString()).toBe(ts.toISOString());
     });
 });
+
+// ============================================================================
+// searchConversations (FTS5)
+// ============================================================================
+
+describe('SqliteProcessStore — searchConversations', () => {
+    async function seedProcess(
+        id: string,
+        turns: Array<{ role: string; content: string }>,
+        overrides?: Partial<AIProcess>
+    ) {
+        await store.addProcess(makeProcess(id, overrides));
+        for (let i = 0; i < turns.length; i++) {
+            await store.appendConversationTurn(id, (idx) => makeTurn(idx, {
+                role: turns[i].role,
+                content: turns[i].content,
+            }));
+        }
+    }
+
+    it('returns matching turns with correct processId, snippet, and rank', async () => {
+        await seedProcess('p-search-1', [
+            { role: 'user', content: 'How do I configure webpack?' },
+            { role: 'assistant', content: 'You can create a webpack.config.js file.' },
+        ]);
+
+        const { results, total } = await store.searchConversations('webpack');
+        expect(total).toBe(2);
+        expect(results).toHaveLength(2);
+        expect(results[0].processId).toBe('p-search-1');
+        expect(results[0].snippet).toContain('<mark>');
+        expect(typeof results[0].rank).toBe('number');
+    });
+
+    it('results include process-level metadata', async () => {
+        await seedProcess('p-meta-1', [
+            { role: 'user', content: 'alpha beta gamma' },
+        ], { type: 'code-review', status: 'completed', startTime: new Date('2026-02-01T12:00:00Z') });
+
+        const { results } = await store.searchConversations('alpha');
+        expect(results).toHaveLength(1);
+        const r = results[0];
+        expect(r.processId).toBe('p-meta-1');
+        expect(r.processStatus).toBe('completed');
+        expect(r.processType).toBe('code-review');
+        expect(r.workspaceId).toBe('ws-test');
+        expect(r.promptPreview).toBe('test prompt');
+        expect(r.startTime).toBe('2026-02-01T12:00:00.000Z');
+    });
+
+    it('workspace filter returns only results from the specified workspace', async () => {
+        await seedProcess('p-ws-a', [
+            { role: 'user', content: 'shared keyword pancake' },
+        ], { metadata: { type: 'ai', workspaceId: 'ws-alpha' } });
+        await seedProcess('p-ws-b', [
+            { role: 'user', content: 'shared keyword pancake' },
+        ], { metadata: { type: 'ai', workspaceId: 'ws-beta' } });
+
+        const { results, total } = await store.searchConversations('pancake', { workspaceId: 'ws-alpha' });
+        expect(total).toBe(1);
+        expect(results).toHaveLength(1);
+        expect(results[0].processId).toBe('p-ws-a');
+    });
+
+    it('status filter filters by process status', async () => {
+        await seedProcess('p-stat-run', [
+            { role: 'user', content: 'unique-status-term' },
+        ], { status: 'running' });
+        await seedProcess('p-stat-done', [
+            { role: 'user', content: 'unique-status-term' },
+        ], { status: 'completed' });
+        await seedProcess('p-stat-fail', [
+            { role: 'user', content: 'unique-status-term' },
+        ], { status: 'failed' });
+
+        const { results, total } = await store.searchConversations('unique-status-term', {
+            status: ['completed', 'failed'],
+        });
+        expect(total).toBe(2);
+        const ids = results.map(r => r.processId).sort();
+        expect(ids).toEqual(['p-stat-done', 'p-stat-fail']);
+    });
+
+    it('combined filters work correctly', async () => {
+        await seedProcess('p-combo-1', [
+            { role: 'user', content: 'combo-term zeta' },
+        ], { status: 'completed', type: 'code-review', metadata: { type: 'code-review', workspaceId: 'ws-combo' } });
+        await seedProcess('p-combo-2', [
+            { role: 'user', content: 'combo-term zeta' },
+        ], { status: 'running', type: 'code-review', metadata: { type: 'code-review', workspaceId: 'ws-combo' } });
+        await seedProcess('p-combo-3', [
+            { role: 'user', content: 'combo-term zeta' },
+        ], { status: 'completed', type: 'ai', metadata: { type: 'ai', workspaceId: 'ws-other' } });
+
+        const { results, total } = await store.searchConversations('combo-term', {
+            workspaceId: 'ws-combo',
+            status: 'completed',
+            type: 'code-review',
+        });
+        expect(total).toBe(1);
+        expect(results[0].processId).toBe('p-combo-1');
+    });
+
+    it('pagination: limit/offset respected, total count is pre-pagination', async () => {
+        await seedProcess('p-page', [
+            { role: 'user', content: 'paginateword alpha' },
+            { role: 'assistant', content: 'paginateword bravo' },
+            { role: 'user', content: 'paginateword charlie' },
+        ]);
+
+        const page1 = await store.searchConversations('paginateword', { limit: 2, offset: 0 });
+        expect(page1.total).toBe(3);
+        expect(page1.results).toHaveLength(2);
+
+        const page2 = await store.searchConversations('paginateword', { limit: 2, offset: 2 });
+        expect(page2.total).toBe(3);
+        expect(page2.results).toHaveLength(1);
+    });
+
+    it('empty query returns empty results without error', async () => {
+        await seedProcess('p-empty-q', [
+            { role: 'user', content: 'some content here' },
+        ]);
+
+        const { results, total } = await store.searchConversations('');
+        expect(total).toBe(0);
+        expect(results).toEqual([]);
+    });
+
+    it('whitespace-only query returns empty results', async () => {
+        const { results, total } = await store.searchConversations('   ');
+        expect(total).toBe(0);
+        expect(results).toEqual([]);
+    });
+
+    it('malformed FTS5 query does not throw (graceful degradation)', async () => {
+        await seedProcess('p-malformed', [
+            { role: 'user', content: 'test content' },
+        ]);
+
+        // These should not throw; sanitizer strips special chars
+        const r1 = await store.searchConversations('test*^:');
+        // After sanitization this becomes just "test"
+        expect(r1.total).toBeGreaterThanOrEqual(1);
+
+        const r2 = await store.searchConversations('"unclosed phrase');
+        expect(r2.total).toBeGreaterThanOrEqual(0);
+    });
+
+    it('BM25 ranking: more relevant results appear first', async () => {
+        // p-rank-a mentions "typescript" once
+        await seedProcess('p-rank-a', [
+            { role: 'user', content: 'I like typescript' },
+        ]);
+        // p-rank-b mentions "typescript" many times — should be more relevant
+        await seedProcess('p-rank-b', [
+            { role: 'user', content: 'typescript typescript typescript compiler typescript config typescript tips' },
+        ]);
+
+        const { results } = await store.searchConversations('typescript');
+        expect(results.length).toBeGreaterThanOrEqual(2);
+        // The turn with more occurrences should have a better (lower) rank
+        const rankA = results.find(r => r.processId === 'p-rank-a')!.rank;
+        const rankB = results.find(r => r.processId === 'p-rank-b')!.rank;
+        expect(rankB).toBeLessThan(rankA);
+    });
+
+    it('matches across multiple turns in the same process return multiple results', async () => {
+        await seedProcess('p-multi-turn', [
+            { role: 'user', content: 'pineapple question' },
+            { role: 'assistant', content: 'pineapple answer' },
+            { role: 'user', content: 'no match here' },
+        ]);
+
+        const { results, total } = await store.searchConversations('pineapple');
+        expect(total).toBe(2);
+        expect(results).toHaveLength(2);
+        const turnIndices = results.map(r => r.turnIndex).sort();
+        expect(turnIndices).toEqual([0, 1]);
+    });
+
+    it('no results for non-matching queries', async () => {
+        await seedProcess('p-no-match', [
+            { role: 'user', content: 'the quick brown fox' },
+        ]);
+
+        const { results, total } = await store.searchConversations('xylophone');
+        expect(total).toBe(0);
+        expect(results).toEqual([]);
+    });
+
+    it('since filter restricts to processes started after the given date', async () => {
+        await seedProcess('p-old', [
+            { role: 'user', content: 'temporal-keyword' },
+        ], { startTime: new Date('2025-01-01T00:00:00Z') });
+        await seedProcess('p-recent', [
+            { role: 'user', content: 'temporal-keyword' },
+        ], { startTime: new Date('2026-06-01T00:00:00Z') });
+
+        const { results, total } = await store.searchConversations('temporal-keyword', {
+            since: new Date('2026-01-01T00:00:00Z'),
+        });
+        expect(total).toBe(1);
+        expect(results[0].processId).toBe('p-recent');
+    });
+
+    it('does not return results from archived processes', async () => {
+        await store.addProcess(makeProcess('p-archived', {
+            status: 'completed',
+        }));
+        await store.appendConversationTurn('p-archived', (idx) => makeTurn(idx, {
+            role: 'user', content: 'archived-unique-term',
+        }));
+        // Archive the process directly via DB (archived is an internal column, not on AIProcess)
+        store.getDatabase().prepare('UPDATE processes SET archived = 1 WHERE id = ?').run('p-archived');
+
+        const { results, total } = await store.searchConversations('archived-unique-term');
+        expect(total).toBe(0);
+        expect(results).toEqual([]);
+    });
+
+    it('processTitle is included when the process has a title', async () => {
+        await seedProcess('p-titled', [
+            { role: 'user', content: 'titled-search-term' },
+        ], { title: 'My Custom Title' });
+
+        const { results } = await store.searchConversations('titled-search-term');
+        expect(results).toHaveLength(1);
+        expect(results[0].processTitle).toBe('My Custom Title');
+    });
+});
