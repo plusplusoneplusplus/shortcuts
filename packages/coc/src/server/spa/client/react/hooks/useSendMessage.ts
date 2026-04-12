@@ -37,10 +37,8 @@ export interface UseSendMessageOptions {
     toPayload?: () => Array<{ name: string; mimeType: string; size: number; dataUrl: string }>;
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
-    /** Returns the currently attached context items. */
-    getAttachedContext?: () => AttachedContextItem[];
-    /** Clears attached context after send. */
-    clearAttachedContext?: () => void;
+    /** Workspace/repo ID for dispatching REPO_TASK_REQUEUED to clear stale optimistic history. */
+    workspaceId?: string;
 }
 
 export function useSendMessage({
@@ -66,8 +64,7 @@ export function useSendMessage({
     toPayload,
     lastFailedMessageRef,
     setTask,
-    getAttachedContext,
-    clearAttachedContext,
+    workspaceId,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     closeFollowUpStream: () => void;
@@ -223,6 +220,9 @@ export function useSendMessage({
 
             lastFailedMessageRef.current = '';
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
+            if (workspaceId) {
+                queueDispatch({ type: 'REPO_TASK_REQUEUED', repoId: workspaceId, taskId });
+            }
             clearImages();
             clearPaste();
             clearAttachedContext?.();
@@ -244,7 +244,7 @@ export function useSendMessage({
             }
             setTimeout(() => { flushQueueRef.current?.(); }, 0);
         }
-    }, [processId, taskId, inputDisabled, sending, selectedMode, images, toPayload, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, selectedMode, images, toPayload, archivedChatIds, unarchiveChat, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

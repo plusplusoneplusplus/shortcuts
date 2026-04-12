@@ -146,7 +146,8 @@ export type QueueAction =
     | { type: 'SET_DIALOG_MODE'; mode: 'task' | 'ask' | 'resolve' }
     | { type: 'OPEN_SCRIPT_DIALOG'; workspaceId?: string | null }
     | { type: 'CLOSE_SCRIPT_DIALOG' }
-    | { type: 'REPO_TASK_COMPLETED_OPTIMISTIC'; repoId: string; taskId: string; status: 'completed' | 'failed' | 'cancelled' };
+    | { type: 'REPO_TASK_COMPLETED_OPTIMISTIC'; repoId: string; taskId: string; status: 'completed' | 'failed' | 'cancelled' }
+    | { type: 'REPO_TASK_REQUEUED'; repoId: string; taskId: string };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -161,7 +162,7 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
                 ...state,
                 queued: action.queue.queued || [],
                 running: action.queue.running || [],
-                history: action.queue.history?.length ? action.queue.history : state.history,
+                history: action.queue.history != null ? action.queue.history : state.history,
                 stats: newStats,
                 showHistory: autoShowHistory,
                 queueInitialized: true,
@@ -172,7 +173,7 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             const repoData = {
                 queued: action.queue.queued ?? existingRepo?.queued ?? [],
                 running: action.queue.running ?? existingRepo?.running ?? [],
-                history: action.queue.history?.length ? action.queue.history : (existingRepo?.history ?? []),
+                history: action.queue.history != null ? action.queue.history : (existingRepo?.history ?? []),
                 stats: mergeQueueStats(action.queue.stats, existingRepo?.stats),
             };
             return {
@@ -269,6 +270,19 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
                             cancelled: (existingRepo.stats.cancelled || 0) + (action.status === 'cancelled' ? 1 : 0),
                         },
                     },
+                },
+            };
+        }
+        case 'REPO_TASK_REQUEUED': {
+            const existingRepo = state.repoQueueMap[action.repoId];
+            if (!existingRepo) return state;
+            const filtered = existingRepo.history.filter((t: any) => t.id !== action.taskId);
+            if (filtered.length === existingRepo.history.length) return state;
+            return {
+                ...state,
+                repoQueueMap: {
+                    ...state.repoQueueMap,
+                    [action.repoId]: { ...existingRepo, history: filtered },
                 },
             };
         }
