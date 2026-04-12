@@ -312,7 +312,11 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
 
     // Safety net: sync task.status from queue context when it reports a terminal
-    // status but the local task still shows 'running' (e.g. SSE onerror race).
+    // status but the local task still shows 'running' (e.g. SSE onerror race,
+    // or WebSocket queue-updated arriving before SSE done).
+    // In addition to updating status, mirror what useChatSSE.finish() does:
+    // refresh conversation data and unblock waitForSendCompletion so the UI
+    // doesn't hang on 'Agent is thinking...' for 90 seconds.
     useEffect(() => {
         if (!workspaceId || !taskId || task?.status !== 'running') return;
         const repo = queueState.repoQueueMap[workspaceId];
@@ -320,8 +324,15 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         const match = repo.history?.find((t: any) => t.id === taskId);
         if (match && ['completed', 'failed', 'cancelled'].includes(match.status)) {
             setTask((prev: any) => prev ? { ...prev, status: match.status } : prev);
+            if (processId) {
+                refreshConversation(processId).finally(() => {
+                    onSendComplete();
+                });
+            } else {
+                onSendComplete();
+            }
         }
-    }, [workspaceId, taskId, task?.status, queueState.repoQueueMap]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [workspaceId, taskId, task?.status, queueState.repoQueueMap, processId, refreshConversation, onSendComplete]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
 

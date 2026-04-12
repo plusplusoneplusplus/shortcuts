@@ -269,10 +269,11 @@ describe('useSendMessage', () => {
         expect(refreshConversation).toHaveBeenCalledWith('pid-1');
     });
 
-    it('does not call refreshConversation in finally block (deduplication)', async () => {
-        // refreshConversation is intentionally NOT called from the finally block
-        // to avoid racing with useChatSSE.finish() which already triggers a refresh.
-        // In this test (no EventSource), the only call comes from waitForSendCompletion fallback.
+    it('calls refreshConversation in finally block as fallback safety net', async () => {
+        // refreshConversation IS called from the finally block as a safety fallback
+        // for cases where neither finish() nor the safety-net effect triggered a refresh
+        // (e.g. 90s timeout path). The monotonic version counter in refreshConversation
+        // safely deduplicates concurrent calls.
         fetchMock.mockRejectedValue(new Error('network'));
         const refreshConversation = vi.fn().mockResolvedValue(undefined);
         const opts = makeOptions({ refreshConversation });
@@ -280,9 +281,9 @@ describe('useSendMessage', () => {
 
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp(); });
-        // fetch throws before waitForSendCompletion is reached, so refreshConversation
-        // should NOT be called (the finally block no longer calls it)
-        expect(refreshConversation).not.toHaveBeenCalled();
+        // fetch throws before waitForSendCompletion is reached, but the finally
+        // block still calls refreshConversation as a fallback
+        expect(refreshConversation).toHaveBeenCalledWith('pid-1');
     });
 
     // ── Paste content composition tests ─────────────────────────────────
