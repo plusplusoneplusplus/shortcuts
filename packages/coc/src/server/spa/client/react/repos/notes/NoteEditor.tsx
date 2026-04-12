@@ -13,11 +13,12 @@ import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
 import { ResizableImage } from './extensions/resizableImage';
 import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
-import { notesApi } from '../notesApi';
 import type { CommentThread } from '../notesApi';
 import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToRelative } from './noteMarkdown';
 import type { NoteEditorIO } from './NoteEditorIO';
 import { defaultNoteEditorIO, rewriteHtmlImageSrc } from './NoteEditorIO';
+import type { NoteEditorCommentBackend } from './NoteEditorCommentBackend';
+import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { SourceEditor } from '../../shared/SourceEditor';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
@@ -31,6 +32,8 @@ export interface NoteEditorProps {
     notePath: string | null;
     /** Injectable content I/O adapter. Defaults to the notes-backed implementation. */
     io?: NoteEditorIO;
+    /** Injectable comment-thread backend. Defaults to the notes-backed implementation. */
+    commentBackend?: NoteEditorCommentBackend;
     onCommentActivated?: (commentId: string | null) => void;
     onEditorReady?: (editor: Editor) => void;
     onCommentCreate?: () => void;
@@ -47,6 +50,7 @@ export function NoteEditor({
     workspaceId,
     notePath,
     io = defaultNoteEditorIO,
+    commentBackend = defaultCommentBackend,
     onCommentActivated,
     onEditorReady,
     onCommentCreate,
@@ -75,11 +79,13 @@ export function NoteEditor({
     const notePathRef = useRef(notePath);
     const workspaceIdRef = useRef(workspaceId);
     const ioRef = useRef(io);
+    const commentBackendRef = useRef(commentBackend);
 
     // Keep refs in sync
     notePathRef.current = notePath;
     workspaceIdRef.current = workspaceId;
     ioRef.current = io;
+    commentBackendRef.current = commentBackend;
 
     // View mode setter that also notifies parent
     const setViewMode = useCallback((mode: NoteViewMode) => {
@@ -208,7 +214,7 @@ export function NoteEditor({
                     if (thread.status === 'resolved') continue;
                     const freshAnchor = buildAnchorFromMark(editor, thread.id);
                     if (freshAnchor && freshAnchor.quotedText !== thread.anchor.quotedText) {
-                        notesApi.updateThread(workspaceIdRef.current, path, thread.id, thread.status)
+                        commentBackendRef.current.updateThreadAnchor(workspaceIdRef.current, path, thread.id, thread.status)
                             .catch(() => { /* non-fatal */ });
                         thread.anchor = freshAnchor;
                     }
@@ -412,9 +418,8 @@ export function NoteEditor({
 
                 // Apply comment marks from persisted threads
                 if (commentsEnabled && editor) {
-                    notesApi.getComments(workspaceId, notePath).then((sidecar) => {
+                    commentBackendRef.current.loadThreads(workspaceId, notePath).then((threads) => {
                         if (cancelled) return;
-                        const threads = Object.values(sidecar.threads);
                         loadedThreadsRef.current = threads;
                         for (const thread of threads) {
                             if (thread.status === 'resolved') continue;
