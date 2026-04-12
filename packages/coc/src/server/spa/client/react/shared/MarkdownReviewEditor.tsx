@@ -38,13 +38,22 @@ import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { isAbsolutePath } from '../utils/path-resolution';
+import { RichEditorCore } from '../repos/notes/RichEditorCore';
+import { markdownToHtml, htmlToMarkdown } from '../repos/notes/noteMarkdown';
+import type { Editor } from '@tiptap/core';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
-type ReviewViewMode = 'review' | 'source';
+type ReviewViewMode = 'review' | 'rich' | 'source';
 
 const REVIEW_MODE_OPTIONS: readonly ModeOption<ReviewViewMode>[] = [
     { value: 'review', label: 'Preview' },
+    { value: 'source', label: 'Source' },
+] as const;
+
+const RICH_MODE_OPTIONS: readonly ModeOption<ReviewViewMode>[] = [
+    { value: 'review', label: 'Preview' },
+    { value: 'rich', label: 'Rich', testId: 'review-mode-rich' },
     { value: 'source', label: 'Source' },
 ] as const;
 
@@ -76,6 +85,8 @@ export interface MarkdownReviewEditorProps {
     onViewModeChange?: (mode: 'review' | 'source') => void;
     /** When true, renders Run Skill + Update Document AI buttons in the toolbar. */
     showAiButtons?: boolean;
+    /** When true, adds a Rich mode button (Tiptap WYSIWYG) between Preview and Source. */
+    showRichMode?: boolean;
     /** Scroll position to restore after content loads (used for minimize/restore). */
     initialScrollTop?: number;
     /** Called whenever the preview scroll position changes. */
@@ -109,6 +120,7 @@ export function MarkdownReviewEditor({
     initialViewMode = 'review',
     onViewModeChange,
     showAiButtons = false,
+    showRichMode = false,
     initialScrollTop,
     onScrollTopChange,
 }: MarkdownReviewEditorProps) {
@@ -132,7 +144,7 @@ export function MarkdownReviewEditor({
     const [error, setError] = useState<string | null>(null);
     const previewRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
-    const [viewMode, setViewModeRaw] = useState<'review' | 'source'>(initialViewMode);
+    const [viewMode, setViewModeRaw] = useState<ReviewViewMode>(initialViewMode);
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
@@ -146,12 +158,26 @@ export function MarkdownReviewEditor({
     const [taskStatus, setTaskStatus] = useState<string | undefined>(undefined);
     const taskName = filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? filePath;
 
-    const setViewMode = useCallback((mode: 'review' | 'source') => {
+    // Rich-mode state
+    const [richEditor, setRichEditor] = useState<Editor | null>(null);
+    const [richDirty, setRichDirty] = useState(false);
+    const richContentRef = useRef<string>('');
+
+    const handleRichEditorReady = useCallback((ed: Editor) => { setRichEditor(ed); }, []);
+    const handleRichChange = useCallback((ed: Editor) => {
+        richContentRef.current = ed.getHTML();
+        setRichDirty(true);
+    }, []);
+
+    const modeOptions = showRichMode ? RICH_MODE_OPTIONS : REVIEW_MODE_OPTIONS;
+
+    const setViewMode = useCallback((mode: ReviewViewMode) => {
         setViewModeRaw(mode);
-        onViewModeChange?.(mode);
+        if (mode !== 'rich') onViewModeChange?.(mode as 'review' | 'source');
     }, [onViewModeChange]);
 
-    const isDirty = viewMode === 'source' && editedContent !== rawContent;
+    const isDirty = (viewMode === 'source' && editedContent !== rawContent) ||
+        (viewMode === 'rich' && richDirty);
 
     // Ref mirror so the content-fetch useEffect can read dirty state without depending on it
     const isDirtyRef = useRef(false);
@@ -318,35 +344,49 @@ export function MarkdownReviewEditor({
         }
     }, [viewMode, rawContent]);
 
+    // Load content into rich editor when switching to rich mode or when rawContent changes
+    useEffect(() => {
+        if (viewMode === 'rich' && richEditor && rawContent) {
+            const html = markdownToHtml(rawContent);
+            richEditor.commands.setContent(html);
+            setRichDirty(false);
+        }
+    }, [viewMode, richEditor, rawContent]);
+
     const saveContent = useCallback(async () => {
         if (!isDirty || saving) return;
         setSaving(true);
         try {
+            const contentToSave = viewMode === 'rich'
+                ? htmlToMarkdown(richContentRef.current)
+                : editedContent;
             const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/content`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: filePath, content: editedContent }),
+                body: JSON.stringify({ path: filePath, content: contentToSave }),
             });
             if (!res.ok) {
                 const errBody = await res.text();
                 throw new Error(errBody || `Save failed (${res.status})`);
             }
-            setRawContent(editedContent);
+            setRawContent(contentToSave);
+            if (viewMode === 'rich') setRichDirty(false);
             window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId } }));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to save');
         } finally {
             setSaving(false);
         }
-    }, [isDirty, saving, wsId, filePath, editedContent]);
+    }, [isDirty, saving, wsId, filePath, editedContent, viewMode]);
 
     const handleRefresh = useCallback(() => {
         if (isDirty) {
             if (!window.confirm('You have unsaved changes. Discard and refresh?')) return;
-            setEditedContent(rawContent);
+            if (viewMode === 'source') setEditedContent(rawContent);
+            if (viewMode === 'rich') setRichDirty(false);
         }
         setRefreshCounter(c => c + 1);
-    }, [isDirty, rawContent]);
+    }, [isDirty, rawContent, viewMode]);
 
     // Ctrl/Cmd+Shift+R keyboard shortcut for refresh
     useEffect(() => {
@@ -360,9 +400,9 @@ export function MarkdownReviewEditor({
         return () => document.removeEventListener('keydown', handler);
     }, [handleRefresh]);
 
-    // Ctrl/Cmd+S keyboard shortcut for saving in source mode
+    // Ctrl/Cmd+S keyboard shortcut for saving in source or rich mode
     useEffect(() => {
-        if (viewMode !== 'source' || !isDirty) return;
+        if ((viewMode !== 'source' && viewMode !== 'rich') || !isDirty) return;
         const handler = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
@@ -435,7 +475,7 @@ export function MarkdownReviewEditor({
     }, [viewMode, rawContent]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
-        if (viewMode === 'source') return;
+        if (viewMode === 'source' || viewMode === 'rich') return;
         if (e.shiftKey) return;
         e.preventDefault();
         setContextMenuPos({ x: e.clientX, y: e.clientY });
@@ -679,10 +719,27 @@ export function MarkdownReviewEditor({
     const handleSwitchToReview = useCallback(() => {
         if (isDirty) {
             if (!window.confirm('You have unsaved changes. Discard and switch to Preview?')) return;
-            setEditedContent(rawContent);
+            if (viewMode === 'source') setEditedContent(rawContent);
+            if (viewMode === 'rich') setRichDirty(false);
         }
         setViewMode('review');
-    }, [isDirty, rawContent, setViewMode]);
+    }, [isDirty, rawContent, setViewMode, viewMode]);
+
+    const handleSwitchToRich = useCallback(() => {
+        if (viewMode === 'source' && isDirty) {
+            if (!window.confirm('You have unsaved changes. Discard and switch to Rich?')) return;
+            setEditedContent(rawContent);
+        }
+        setViewMode('rich');
+    }, [viewMode, isDirty, rawContent, setViewMode]);
+
+    const handleSwitchToSource = useCallback(() => {
+        if (viewMode === 'rich' && richDirty) {
+            if (!window.confirm('You have unsaved changes. Discard and switch to Source?')) return;
+            setRichDirty(false);
+        }
+        setViewMode('source');
+    }, [viewMode, richDirty, setViewMode]);
 
     // Event delegation for build-time highlight click
     const handleHighlightClick = useCallback((e: React.MouseEvent) => {
@@ -739,11 +796,15 @@ export function MarkdownReviewEditor({
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                     {/* ── Mode toggle toolbar ── */}
                     <ModeToggleToolbar<ReviewViewMode>
-                        modes={REVIEW_MODE_OPTIONS}
+                        modes={modeOptions}
                         activeMode={viewMode}
-                        onModeChange={(mode) => { mode === 'review' ? handleSwitchToReview() : setViewMode('source'); }}
+                        onModeChange={(mode) => {
+                            if (mode === 'review') handleSwitchToReview();
+                            else if (mode === 'rich') handleSwitchToRich();
+                            else handleSwitchToSource();
+                        }}
                         dirty={isDirty}
-                        showSave={viewMode === 'source'}
+                        showSave={viewMode === 'source' || viewMode === 'rich'}
                         onSave={saveContent}
                         saving={saving}
                         right={<>
@@ -809,6 +870,13 @@ export function MarkdownReviewEditor({
                             <SourceEditor
                                 content={editedContent}
                                 onChange={setEditedContent}
+                            />
+                        </div>
+                    ) : viewMode === 'rich' ? (
+                        <div className="flex-1 overflow-y-auto min-h-0 min-w-0 p-4" data-testid="rich-editor-wrapper">
+                            <RichEditorCore
+                                onEditorReady={handleRichEditorReady}
+                                onChange={handleRichChange}
                             />
                         </div>
                     ) : (

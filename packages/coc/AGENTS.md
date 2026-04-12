@@ -183,10 +183,11 @@ src/
 
 ## Markdown Review & Preview
 
-**MarkdownReviewEditor** (`src/server/spa/client/react/shared/MarkdownReviewEditor.tsx`) — shared React component used in task preview and process conversation dialogs. Props: `wsId`, `filePath`, `fetchMode` (`'tasks'|'auto'`), `showAiButtons`, `initialViewMode` (`'review'|'source'`).
+**MarkdownReviewEditor** (`src/server/spa/client/react/shared/MarkdownReviewEditor.tsx`) — shared React component used in task preview and process conversation dialogs. Props: `wsId`, `filePath`, `fetchMode` (`'tasks'|'auto'`), `showAiButtons`, `showRichMode`, `initialViewMode` (`'review'|'source'`).
 
 - **Review mode**: `renderMarkdownToHtml()` → highlight.js + Mermaid diagrams + code-block actions (via `useMarkdownPreview` hook)
 - **Source mode**: `renderSourceModeToHtml()` with `SourceEditor` (Ctrl+S save, dirty-state `●` indicator)
+- **Rich mode** (opt-in via `showRichMode`): Tiptap WYSIWYG via `RichEditorCore`, markdown↔html round-trip through `noteMarkdown.ts` helpers, Ctrl+S save, dirty-state tracking. Comments disabled in first pass.
 - Non-markdown files auto-wrapped in fenced code blocks before rendering
 - Inline comment system: `useCommentAnchors` + `useCommentInteractions` for text-selection-based annotations
 
