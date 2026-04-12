@@ -14,12 +14,15 @@ export interface BottomSheetProps {
     children: ReactNode;
     /** Height as percentage of viewport. Default: 60 */
     height?: number;
+    /** Custom z-index for the backdrop (panel uses backdrop + 1). Default: 9500 */
+    zIndex?: number;
 }
 
-const BACKDROP_Z = 9500;
+const DEFAULT_BACKDROP_Z = 9500;
 const DISMISS_THRESHOLD = 100;
 
-export function BottomSheet({ isOpen, onClose, title, children, height = 60 }: BottomSheetProps) {
+export function BottomSheet({ isOpen, onClose, title, children, height = 60, zIndex }: BottomSheetProps) {
+    const BACKDROP_Z = zIndex ?? DEFAULT_BACKDROP_Z;
     const sheetRef = useRef<HTMLDivElement>(null);
     const dragState = useRef<{ startY: number; currentDelta: number } | null>(null);
 

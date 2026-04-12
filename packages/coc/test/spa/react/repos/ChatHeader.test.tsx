@@ -40,6 +40,13 @@ vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () 
         const total = (planPath ? 1 : 0) + (files?.length ?? 0);
         return total > 0 ? <span data-testid="references-dropdown">Refs ({total})</span> : null;
     },
+    ReferenceList: ({ planPath, files }: any) => {
+        const total = (planPath ? 1 : 0) + (files?.length ?? 0);
+        return total > 0 ? <span data-testid="reference-list">RefList ({total})</span> : null;
+    },
+}));
+vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+    BottomSheet: ({ isOpen, children }: any) => isOpen ? <div data-testid="refs-bottomsheet">{children}</div> : null,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({

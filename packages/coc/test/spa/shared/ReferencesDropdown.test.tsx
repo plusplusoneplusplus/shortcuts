@@ -17,6 +17,10 @@ describe('ReferencesDropdown component', () => {
         expect(SOURCE).toContain('export function ReferencesDropdown');
     });
 
+    it('exports ReferenceList for reuse', () => {
+        expect(SOURCE).toContain('export function ReferenceList');
+    });
+
     it('accepts planPath and files props', () => {
         expect(SOURCE).toContain('planPath?: string');
         expect(SOURCE).toContain('files?: { filePath: string }[]');
@@ -77,11 +81,37 @@ describe('ChatHeader uses ReferencesDropdown', () => {
         expect(CHAT_HEADER_SOURCE).not.toContain('<FilePathValue label="📄"');
     });
 
-    it('renders a single ReferencesDropdown with planPath and files', () => {
-        expect(CHAT_HEADER_SOURCE).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} />');
+    it('renders a single ReferencesDropdown with planPath and files in wide mode', () => {
+        expect(CHAT_HEADER_SOURCE).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />');
     });
 
     it('still keeps pinnedFile in props interface', () => {
         expect(CHAT_HEADER_SOURCE).toContain('pinnedFile');
+    });
+
+    it('imports ReferenceList from ReferencesDropdown', () => {
+        expect(CHAT_HEADER_SOURCE).toContain('ReferenceList');
+    });
+
+    it('imports BottomSheet for standalone mobile refs sheet', () => {
+        expect(CHAT_HEADER_SOURCE).toContain("import { BottomSheet }");
+    });
+
+    it('has refsSheetOpen state for mobile refs BottomSheet', () => {
+        expect(CHAT_HEADER_SOURCE).toContain('refsSheetOpen');
+        expect(CHAT_HEADER_SOURCE).toContain('setRefsSheetOpen');
+    });
+
+    it('closes refs sheet on coc-open-markdown-review event', () => {
+        expect(CHAT_HEADER_SOURCE).toContain("window.addEventListener('coc-open-markdown-review'");
+    });
+
+    it('renders standalone BottomSheet with ReferenceList on mobile', () => {
+        expect(CHAT_HEADER_SOURCE).toContain('<BottomSheet');
+        expect(CHAT_HEADER_SOURCE).toContain('<ReferenceList planPath={planPath} files={createdFiles} />');
+    });
+
+    it('uses onClick (not render) for references overflow item on mobile', () => {
+        expect(CHAT_HEADER_SOURCE).toContain('props.isMobile && props.onOpenRefs');
     });
 });

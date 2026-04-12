@@ -84,6 +84,18 @@ describe('BottomSheet', () => {
         expect(backdrop.style.zIndex).toBe('9500');
     });
 
+    it('custom zIndex prop overrides default z-index', () => {
+        render(
+            <BottomSheet isOpen={true} onClose={vi.fn()} zIndex={11000}>
+                <div>Content</div>
+            </BottomSheet>
+        );
+        const backdrop = screen.getByTestId('bottomsheet-backdrop');
+        expect(backdrop.style.zIndex).toBe('11000');
+        const panel = screen.getByTestId('bottomsheet-panel');
+        expect(panel.style.zIndex).toBe('11001');
+    });
+
     it('custom height prop applies as max-height style', () => {
         render(
             <BottomSheet isOpen={true} onClose={vi.fn()} height={80}>

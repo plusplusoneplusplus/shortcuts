@@ -19,7 +19,7 @@ function PlanFileIcon() {
     );
 }
 
-function ReferenceList({ planPath, files }: { planPath?: string; files?: { filePath: string }[] }) {
+export function ReferenceList({ planPath, files }: { planPath?: string; files?: { filePath: string }[] }) {
     return (
         <>
             {planPath && (

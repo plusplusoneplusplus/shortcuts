@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../shared';
 import { Button } from '../shared';
-import { ReferencesDropdown } from '../shared/ReferencesDropdown';
+import { ReferencesDropdown, ReferenceList } from '../shared/ReferencesDropdown';
+import { BottomSheet } from '../shared/BottomSheet';
 import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration, statusIcon, statusLabel } from '../utils/format';
@@ -69,6 +70,7 @@ function buildOverflowItems(
         onPopOut: () => void;
         onCopyHtml: () => void;
         copiedHtml: boolean;
+        onOpenRefs?: () => void;
     },
 ): OverflowMenuItem[] {
     if (tier === 'wide') return [];
@@ -99,14 +101,23 @@ function buildOverflowItems(
     // References
     const refTotal = (props.planPath ? 1 : 0) + (props.createdFiles?.length ?? 0);
     if (refTotal > 0) {
-        items.push({
-            key: 'references',
-            label: `References (${refTotal})`,
-            onClick: () => { /* handled via render */ },
-            render: () => (
-                <ReferencesDropdown planPath={props.planPath} files={props.createdFiles} wsId={props.wsId} />
-            ),
-        });
+        if (props.isMobile && props.onOpenRefs) {
+            // On mobile, open a standalone BottomSheet outside the overflow menu
+            items.push({
+                key: 'references',
+                label: `References (${refTotal})`,
+                onClick: props.onOpenRefs,
+            });
+        } else {
+            items.push({
+                key: 'references',
+                label: `References (${refTotal})`,
+                onClick: () => { /* handled via render */ },
+                render: () => (
+                    <ReferencesDropdown planPath={props.planPath} files={props.createdFiles} wsId={props.wsId} />
+                ),
+            });
+        }
     }
 
     // Resume CLI
@@ -196,8 +207,17 @@ export function ChatHeader({
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
     const [copiedHtml, setCopiedHtml] = useState(false);
+    const [refsSheetOpen, setRefsSheetOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const { tier } = useContainerWidth(containerRef);
+
+    // Close the standalone refs BottomSheet when a file link opens the markdown review dialog
+    useEffect(() => {
+        if (!refsSheetOpen) return;
+        const handler = () => setRefsSheetOpen(false);
+        window.addEventListener('coc-open-markdown-review', handler);
+        return () => window.removeEventListener('coc-open-markdown-review', handler);
+    }, [refsSheetOpen]);
 
     const handleCopyHtml = async () => {
         try {
@@ -238,6 +258,7 @@ export function ChatHeader({
         onPopOut,
         onCopyHtml: () => void handleCopyHtml(),
         copiedHtml,
+        onOpenRefs: () => setRefsSheetOpen(true),
     }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
@@ -375,6 +396,19 @@ export function ChatHeader({
                 {/* Overflow menu — shown at < 700px */}
                 {!isWide && <ChatHeaderOverflowMenu items={overflowItems} wsId={wsId} />}
             </div>
+
+            {/* Standalone References BottomSheet for mobile — rendered outside the overflow menu */}
+            {isMobile && (
+                <BottomSheet
+                    isOpen={refsSheetOpen}
+                    onClose={() => setRefsSheetOpen(false)}
+                    title={`References (${(planPath ? 1 : 0) + (createdFiles?.length ?? 0)})`}
+                >
+                    <div className="flex flex-col gap-1 p-2" {...(wsId ? { 'data-ws-id': wsId } : {})}>
+                        <ReferenceList planPath={planPath} files={createdFiles} />
+                    </div>
+                </BottomSheet>
+            )}
         </div>
     );
 }

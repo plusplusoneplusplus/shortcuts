@@ -87,6 +87,10 @@ vi.mock('../../../../src/server/spa/client/react/shared', () => ({
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
     ReferencesDropdown: () => null,
+    ReferenceList: () => null,
+}));
+vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+    BottomSheet: () => null,
 }));
 vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
     ConversationMetadataPopover: () => null,
