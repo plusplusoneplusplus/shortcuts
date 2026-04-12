@@ -128,7 +128,11 @@ function AppInner() {
                     appDispatch({ type: 'PROCESS_UPDATED', process: msg.process });
                     const terminalStatuses = ['completed', 'failed', 'cancelled'];
                     if (terminalStatuses.includes(msg.process.status)) {
-                        appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
+                        // Cache is keyed by taskId (e.g. "abc123") but process.id is the
+                        // full process ID (e.g. "queue_abc123"). Derive the taskId to
+                        // ensure invalidation actually clears the stale cache entry.
+                        const derivedTaskId = msg.process.id.startsWith('queue_') ? msg.process.id.slice(6) : msg.process.id;
+                        appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: derivedTaskId });
                         if (!seenProcessIdsRef.current.has(msg.process.id)) {
                             seenProcessIdsRef.current.add(msg.process.id);
                             // Resolve workspace for both display name and ID.
