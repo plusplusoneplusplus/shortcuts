@@ -139,6 +139,8 @@ export interface WorkItemChange {
 export interface WorkItem {
     /** Unique identifier (UUID). */
     id: string;
+    /** Sequential human-readable number (e.g. 1 → displayed as WI-1). Per-repo, never reused. */
+    workItemNumber?: number;
     /** Workspace/repo this work item belongs to. */
     repoId: string;
     /** Short title. */
@@ -216,6 +218,8 @@ export interface ReviewComment {
 /** Lightweight work item summary for index listing (avoids loading full data). */
 export interface WorkItemIndexEntry {
     id: string;
+    /** Sequential human-readable number (e.g. 1 → displayed as WI-1). */
+    workItemNumber?: number;
     repoId: string;
     title: string;
     status: WorkItemStatus;
@@ -320,6 +324,7 @@ export function getLastRunTime(executionHistory: WorkItemExecution[] | undefined
 export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
     return {
         id: item.id,
+        workItemNumber: item.workItemNumber,
         repoId: item.repoId,
         title: item.title,
         status: item.status,
