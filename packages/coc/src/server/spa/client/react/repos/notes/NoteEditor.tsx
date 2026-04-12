@@ -502,6 +502,7 @@ export function NoteEditor({
                 showSave={viewMode === 'source'}
                 onSave={flushSourceSave}
                 testId="note-mode-toggle"
+                saveTestId="note-source-save-btn"
             />
 
             <NoteEditorToolbar

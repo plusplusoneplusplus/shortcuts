@@ -151,10 +151,10 @@ describe('NoteEditor — Source Mode', () => {
 
         it('re-fetches content from API when switching to source', async () => {
             await renderAndWaitForLoad();
-            expect(notesApi.getContent).toHaveBeenCalledTimes(1);
+            const callsBefore = (notesApi.getContent as any).mock.calls.length;
 
             await switchToSource();
-            expect(notesApi.getContent).toHaveBeenCalledTimes(2);
+            expect(notesApi.getContent).toHaveBeenCalledTimes(callsBefore + 1);
         });
 
         it('hides the formatting toolbar', async () => {

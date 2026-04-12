@@ -25,6 +25,8 @@ export interface ModeToggleToolbarProps<M extends string> {
 
     /** data-testid for the outer container. */
     testId?: string;
+    /** data-testid for the save button. */
+    saveTestId?: string;
 }
 
 export function ModeToggleToolbar<M extends string>({
@@ -37,6 +39,7 @@ export function ModeToggleToolbar<M extends string>({
     saving = false,
     right,
     testId,
+    saveTestId,
 }: ModeToggleToolbarProps<M>) {
     return (
         <div className="mode-toggle" data-testid={testId}>
@@ -54,7 +57,7 @@ export function ModeToggleToolbar<M extends string>({
                 );
             })}
             {showSave && dirty && (
-                <button className="save-btn" onClick={onSave} disabled={saving}>
+                <button className="save-btn" onClick={onSave} disabled={saving} data-testid={saveTestId}>
                     {saving ? 'Saving…' : 'Save'}
                 </button>
             )}
