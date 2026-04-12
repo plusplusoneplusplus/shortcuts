@@ -34,9 +34,15 @@ if (Test-Path (Join-Path $PWD "packages\coc")) {
 }
 
 function Build-Coc {
-    Write-Host "`n=== Building coc packages ===" -ForegroundColor Cyan
+    Write-Host "`n=== Installing dependencies ===" -ForegroundColor Cyan
     Push-Location $repoRoot
     try {
+        npm install
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "npm install failed with exit code $LASTEXITCODE" -ForegroundColor Red
+            return $false
+        }
+        Write-Host "`n=== Building coc packages ===" -ForegroundColor Cyan
         npm run coc:link
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Build failed with exit code $LASTEXITCODE" -ForegroundColor Red

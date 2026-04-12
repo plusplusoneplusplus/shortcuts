@@ -53,8 +53,14 @@ fi
 
 build_coc() {
     echo ""
-    echo -e "\033[36m=== Building coc packages ===\033[0m"
+    echo -e "\033[36m=== Installing dependencies ===\033[0m"
     pushd "$REPO_ROOT" > /dev/null
+    if ! npm install; then
+        echo -e "\033[31mnpm install failed with exit code $?.\033[0m"
+        popd > /dev/null
+        return 1
+    fi
+    echo -e "\033[36m=== Building coc packages ===\033[0m"
     if npm run coc:link; then
         echo -e "\033[32mBuild succeeded.\033[0m"
         popd > /dev/null
