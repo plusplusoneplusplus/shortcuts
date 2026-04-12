@@ -2,7 +2,7 @@
  * TopBar — top navigation bar with tab switching and theme toggle.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRepos } from '../context/ReposContext';
 import { useTheme } from './ThemeProvider';
@@ -50,8 +50,11 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const isMobile = breakpoint === 'mobile';
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
-    const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
-    const brandTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
+    const fallbackLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
+    const fallbackTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
+    const selectedRepo = state.selectedRepoId ? repos.find(r => r.workspace.id === state.selectedRepoId) : undefined;
+    const brandLabel = selectedRepo ? selectedRepo.workspace.name : fallbackLabel;
+    const brandTooltip = selectedRepo ? selectedRepo.workspace.name : fallbackTooltip;
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -77,6 +80,13 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
 
     const isOnReposTab = state.activeTab === 'repos';
 
+    // Close popover whenever the selected repo changes (e.g. user picked a repo)
+    const prevSelectedRepoId = useRef(state.selectedRepoId);
+    if (prevSelectedRepoId.current !== state.selectedRepoId) {
+        prevSelectedRepoId.current = state.selectedRepoId;
+        if (popoverOpen) setPopoverOpen(false);
+    }
+
     return (
         <>
         <header
@@ -84,8 +94,9 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
             data-react
         >
             <div className="flex items-center gap-2 min-w-0 flex-1">
+                {/* Desktop hamburger */}
                 <button
-                    className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
+                    className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target hidden md:inline-flex items-center justify-center"
                     id="hamburger-btn"
                     aria-label={isOnReposTab ? 'Manage repositories' : 'Go to repositories'}
                     aria-pressed={isOnReposTab ? popoverOpen : false}
@@ -94,12 +105,24 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 >
                     &#9776;
                 </button>
-                <a
-                    href="#"
-                    data-tab-mobile="repos"
-                    className={`text-sm font-semibold whitespace-nowrap md:hidden flex-shrink-0 px-2 h-7 transition-colors inline-flex items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:underline'}`}
-                    onClick={e => { e.preventDefault(); switchTab('repos'); }}
-                >{ brandLabel }</a>
+                {/* Mobile hamburger */}
+                <button
+                    className="h-7 w-7 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none inline-flex items-center justify-center touch-target md:hidden"
+                    id="repo-picker-btn"
+                    aria-label="Select repository"
+                    aria-expanded={popoverOpen}
+                    onClick={() => setPopoverOpen(prev => !prev)}
+                >
+                    &#9776;
+                </button>
+                {/* Mobile brand / repo name */}
+                <span
+                    className="text-sm font-semibold whitespace-nowrap truncate max-w-[50vw] md:hidden"
+                    title={brandTooltip}
+                    data-testid="topbar-mobile-brand"
+                >
+                    {selectedRepo ? selectedRepo.workspace.name : 'CoC'}
+                </span>
                 <a
                     href="#"
                     data-tab="repos"
@@ -137,6 +160,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 )}
             </div>
             <div className="flex items-center gap-1">
+
                 <span
                     className="inline-flex items-center justify-center h-7 w-7 md:h-8 md:w-8"
                     title={wsStatusConfig[state.wsStatus ?? 'closed']?.label}
@@ -263,7 +287,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 </button>
             </div>
         </header>
-        {isOnReposTab && (
+        {(isOnReposTab || (isMobile && popoverOpen)) && (
             <RepoManagementPopover
                 open={popoverOpen}
                 onClose={() => setPopoverOpen(false)}

@@ -133,6 +133,17 @@ describe('useChatSSE', () => {
         expect(refreshConversation).toHaveBeenCalledWith('proc-1');
     });
 
+    it('does NOT call refreshConversation twice in the happy path (done event)', async () => {
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
+        await act(async () => {
+            MockEventSource.latest().emit('done', {});
+            await new Promise(r => setTimeout(r, 0));
+        });
+        // Only one call from finish() — no fetchTaskStatus path fires
+        expect(refreshConversation).toHaveBeenCalledTimes(1);
+    });
+
     it('closes EventSource and calls refreshConversation on error', async () => {
         const refreshConversation = vi.fn().mockResolvedValue(undefined);
         const setIsStreaming = vi.fn();
@@ -169,6 +180,45 @@ describe('useChatSSE', () => {
         const taskUpdater = setTask.mock.calls.find(call => typeof call[0] === 'function')?.[0];
         const prev = { id: 'task-1', status: 'running' };
         expect(taskUpdater?.(prev)).toMatchObject({ status: 'completed' });
+        vi.unstubAllGlobals();
+    });
+
+    it('re-fetches conversation after fetchTaskStatus confirms terminal status on SSE error', async () => {
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        const fetchedTask = { id: 'task-1', status: 'completed' };
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ task: fetchedTask }),
+        }));
+        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
+        act(() => { MockEventSource.latest().triggerError(); });
+        // Wait for deferred onerror
+        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+        // Wait for fetch to resolve
+        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+        // refreshConversation should be called twice: once immediately in onerror,
+        // and once more after fetchTaskStatus confirms terminal status
+        expect(refreshConversation).toHaveBeenCalledTimes(2);
+        expect(refreshConversation).toHaveBeenCalledWith('proc-1');
+        vi.unstubAllGlobals();
+    });
+
+    it('does NOT re-fetch conversation when fetchTaskStatus finds still-running status', async () => {
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        // Simulate server still reporting running
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ task: { id: 'task-1', status: 'running' } }),
+        }));
+        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
+        act(() => { MockEventSource.latest().triggerError(); });
+        // Wait for deferred onerror + first fetch attempt
+        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+        // Only the immediate refreshConversation from onerror — no extra call
+        // because fetchTaskStatus sees 'running' and schedules a retry instead
+        // of entering the terminal-status branch.
+        expect(refreshConversation).toHaveBeenCalledTimes(1);
         vi.unstubAllGlobals();
     });
 

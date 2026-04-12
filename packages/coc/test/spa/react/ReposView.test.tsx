@@ -650,12 +650,13 @@ describe('RepoDetail', () => {
         });
     });
 
-    it('renders header with repo name', () => {
+    it('no longer renders repo name in header (moved to TopBar)', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'My Project', rootPath: '/project', color: '#107c10' },
         });
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
-        expect(screen.getByText('My Project')).toBeDefined();
+        // Repo name is now shown in TopBar, not in RepoDetail header
+        expect(screen.queryByText('My Project')).toBeNull();
     });
 
     it('renders sub-tab bar with all tabs', () => {

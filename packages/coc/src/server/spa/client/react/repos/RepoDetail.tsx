@@ -8,7 +8,6 @@ import type { AppContextState } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { useWorkItems } from '../context/WorkItemContext';
 import { Button, cn } from '../shared';
-import { BottomSheet } from '../shared/BottomSheet';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { WorkflowsTab } from './WorkflowsTab';
@@ -78,14 +77,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { isMobile } = useBreakpoint();
     const [editOpen, setEditOpen] = useState(false);
-    const [moreMenuOpen, setMoreMenuOpen] = useState(false);
     const [generateDialog, setGenerateDialog] = useState<{
         open: boolean;
         minimized: boolean;
         targetFolder: string | undefined;
     }>({ open: false, minimized: false, targetFolder: undefined });
     const ws = repo.workspace;
-    const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
     const { chatsRunning, chatsQueued, tasksRunning, tasksQueued } = useRepoQueueStats(ws.id);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
@@ -118,7 +115,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isLaunchingCli, setIsLaunchingCli] = useState(false);
     const tabStripRef = useRef<HTMLDivElement>(null);
-    const moreMenuRef = useRef<HTMLDivElement>(null);
     const [tabScrollState, setTabScrollState] = useState<{ canScrollLeft: boolean; canScrollRight: boolean }>({ canScrollLeft: false, canScrollRight: false });
 
     // Track tab strip scroll state for gradient affordance
@@ -143,18 +139,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             ro?.disconnect();
         };
     }, [updateTabScrollState]);
-
-    // Close more-menu when clicking outside
-    useEffect(() => {
-        if (!moreMenuOpen || isMobile) return;
-        const handler = (e: MouseEvent) => {
-            if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-                setMoreMenuOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [moreMenuOpen]);
 
     // Auto-scroll active tab into view when sub-tab changes
     useEffect(() => {
@@ -229,84 +213,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
 
     return (
         <div id="repo-detail-content" className={cn("flex flex-col h-full min-h-0 min-w-0")}>
-            {/* Header */}
-            <div className={cn(
-                'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-                isMobile ? 'flex flex-col' : 'flex flex-row items-center'
-            )}>
-                {isMobile ? (
-                    // Mobile: title + buttons in one row
-                    <div className="flex gap-3 items-center py-1">
-                        {/* Title row */}
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <button
-                                className="text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] flex-shrink-0 p-0.5 -ml-1"
-                                onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = ''; }}
-                                aria-label="Back to repos"
-                                data-testid="repo-back-btn"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-                                </svg>
-                            </button>
-                            <span
-                                className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
-                                style={{ background: color }}
-                            />
-                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
-                        </div>
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                            {(activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused && (
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    disabled={isPauseResumeLoading}
-                                    onClick={handleResumeQueue}
-                                    data-testid="repo-header-resume-btn"
-                                >
-                                    ▶ Resume Queue
-                                </Button>
-                            )}
-                            <div className="relative" ref={moreMenuRef} data-testid="repo-more-menu-container">
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => setMoreMenuOpen(prev => !prev)}
-                                    data-testid="repo-more-menu-btn"
-                                    title="More actions"
-                                >
-                                    ⋯
-                                </Button>
-                                {moreMenuOpen && (
-                                    <BottomSheet isOpen onClose={() => setMoreMenuOpen(false)} title="Actions">
-                                        <div className="flex flex-col" data-testid="repo-more-menu-items">
-                                            <button
-                                                className="w-full text-left px-4 min-h-[44px] flex items-center text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                                data-testid="repo-more-run-script"
-                                                onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
-                                            >
-                                                ⚡ Run Script
-                                            </button>
-
-                                        </div>
-                                    </BottomSheet>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        {/* Title */}
-                        <div className="flex items-center gap-3 min-w-0 max-w-[180px] flex-shrink-0">
-                            <span
-                                className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
-                                style={{ background: color }}
-                            />
-                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
-                        </div>
-                        {/* Sub-tab bar */}
-                        <div className="relative flex-1 min-w-0" data-testid="repo-sub-tab-strip-container">
+            {/* Header (desktop only — repo name shown in TopBar on mobile) */}
+            {!isMobile && (
+            <div className="repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-row items-center">
+                {/* Sub-tab bar */}
+                <div className="relative flex-1 min-w-0" data-testid="repo-sub-tab-strip-container">
                             {/* Left scroll fade */}
                             {tabScrollState.canScrollLeft && (
                                 <div
@@ -416,9 +327,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             </Button>
 
                         </div>
-                    </>
-                )}
             </div>
+            )}
 
             {/* Mobile tab bar */}
             {isMobile && (
@@ -428,6 +338,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     tabs={VISIBLE_SUB_TABS}
                     taskCount={tasksRunning + tasksQueued}
                     activityCount={chatsRunning + chatsQueued + tasksRunning + tasksQueued}
+                    actions={[
+                        { label: 'Run Script', icon: '⚡', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
+                        ...((activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused
+                            ? [{ label: 'Resume Queue', icon: '▶', onClick: handleResumeQueue }]
+                            : []),
+                    ]}
                 />
             )}
 

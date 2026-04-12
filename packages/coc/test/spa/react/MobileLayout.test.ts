@@ -189,7 +189,7 @@ describe('RepoActivityTab loading skeleton', () => {
 // RepoDetail — BottomSheet more menu items meet 44px touch target
 // ---------------------------------------------------------------------------
 describe('RepoDetail more menu touch targets', () => {
-    const src = read('repos/RepoDetail.tsx');
+    const src = read('layout/MobileTabBar.tsx');
 
     it('BottomSheet action buttons use min-h-[44px]', () => {
         expect(src).toContain('min-h-[44px]');

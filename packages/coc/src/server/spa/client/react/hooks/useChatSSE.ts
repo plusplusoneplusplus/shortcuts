@@ -253,6 +253,12 @@ export function useChatSSE({
                                             serverStatus === 'cancelled' ? 'cancelled' : 'completed';
                                         queueDispatch({ type: 'REPO_TASK_COMPLETED_OPTIMISTIC', repoId: workspaceId, taskId, status: mapped });
                                     }
+                                    // Re-fetch conversation when terminal — the earlier
+                                    // refreshConversation may have returned partial data
+                                    // if the agent was still running at that point.
+                                    if (serverStatus && !['running', 'queued'].includes(serverStatus)) {
+                                        void refreshConversation(processId);
+                                    }
                                 }
                             }
                         })
