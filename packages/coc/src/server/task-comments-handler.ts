@@ -18,7 +18,7 @@ import { parseBodyOrReject } from './shared/handler-utils';
 import { isValidWorkspaceId } from './base-comments-manager';
 import type { Route } from './types';
 import type { ProcessWebSocketServer } from './websocket';
-import { type CreateTaskInput } from '@plusplusoneplusplus/forge';
+import { type CreateTaskInput, type SessionCategory } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { resolveTaskRoot } from './task-root-resolver';
@@ -123,6 +123,9 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
         bridge.getOrCreateBridge(wsRootPath);
         const queueManager = bridge.registry.getQueueForRepo(wsRootPath);
+        const sessionCategory: SessionCategory = taskPath.startsWith('__wi-plan__/')
+            ? 'resolve-plan-comments'
+            : 'resolve-commit-comments';
         const input: CreateTaskInput = {
             type: 'chat',
             priority: 'normal',
@@ -132,6 +135,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 prompt,
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
+                sessionCategory,
                 context: {
                     files: [path.resolve(wsRootPath, taskPath)],
                     resolveComments: {

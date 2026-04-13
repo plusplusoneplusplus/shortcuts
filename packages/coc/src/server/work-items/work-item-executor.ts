@@ -10,6 +10,8 @@ import * as crypto from 'crypto';
 import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange } from './types';
 import { isValidTransition } from './types';
 
+import type { SessionCategory } from '@plusplusoneplusplus/forge';
+
 export interface ExecuteWorkItemOptions {
     /** Model override for the AI task. */
     model?: string;
@@ -90,6 +92,7 @@ export async function executeWorkItem(
             mode,
             prompt,
             workspaceId: item.repoId,
+            sessionCategory: 'generating-code' satisfies SessionCategory,
             // Link back to work item for status tracking
             workItemId: item.id,
         },
@@ -104,6 +107,7 @@ export async function executeWorkItem(
         taskId,
         startedAt: new Date().toISOString(),
         status: 'running',
+        sessionCategory: 'generating-code',
         ...(options?.autoReExecuted ? { autoReExecuted: true } : {}),
     };
     await store.addExecution(workItemId, execution);

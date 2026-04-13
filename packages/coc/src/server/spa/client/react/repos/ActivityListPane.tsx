@@ -38,8 +38,23 @@ const CHAT_MODE_LABELS: Record<string, string> = {
     'autopilot': 'Autopilot',
 };
 
+/** Session category labels for display and filtering. */
+export const SESSION_CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
+    'generating-code': { label: 'Generating Code', icon: '⚙️', color: 'text-blue-600 dark:text-blue-400' },
+    'resolve-plan-comments': { label: 'Resolve Plan', icon: '📝', color: 'text-purple-600 dark:text-purple-400' },
+    'resolve-commit-comments': { label: 'Resolve Commit', icon: '🔧', color: 'text-amber-600 dark:text-amber-400' },
+};
+
+/** Extract session category from a task's payload. */
+export function getSessionCategory(task: any): string | undefined {
+    return task.payload?.sessionCategory as string | undefined;
+}
+
 export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolean {
     if (excludedTypes.size === 0) return true;
+    // Session category exclusion
+    const cat = getSessionCategory(task);
+    if (cat && excludedTypes.has(`cat:${cat}`)) return false;
     // Parent 'chat' exclusion hides all chat tasks (including those with modes)
     if (task.type === 'chat') {
         if (excludedTypes.has('chat')) return false;
@@ -210,6 +225,16 @@ export function ActivityListPane({
                 opts.push({ value: type, label, ...(children.length > 0 && { children }) });
             } else {
                 opts.push({ value: type, label });
+            }
+        }
+        // Add session category filter group when categories are present
+        const categories = new Set(allTasks.map(getSessionCategory).filter(Boolean));
+        if (categories.size > 0) {
+            const catChildren = Object.entries(SESSION_CATEGORY_LABELS)
+                .filter(([cat]) => categories.has(cat))
+                .map(([cat, { label, icon }]) => ({ value: `cat:${cat}`, label: `${icon} ${label}` }));
+            if (catChildren.length > 0) {
+                opts.push({ value: 'session-category', label: 'Session Category', children: catChildren });
             }
         }
         return opts;
@@ -958,6 +983,7 @@ export function ActivityListPane({
                                                         {task.displayName || task.type || 'Task'}
                                                     </span>
                                                     {hasPinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                                                    {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                                 </span>
                                                 <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
@@ -1046,6 +1072,7 @@ export function ActivityListPane({
                                                         {task.displayName || task.type || 'Task'}
                                                     </span>
                                                     {hasUnpinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                                                    {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                                 </span>
                                                 <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
@@ -1102,6 +1129,7 @@ export function ActivityListPane({
                                                 <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
                                                     {task.displayName || task.type || 'Task'}
                                                 </span>
+                                                {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                             </span>
                                             <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                                                 {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
@@ -1146,6 +1174,7 @@ export function ActivityListPane({
                                                     {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
                                                     <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
                                                     {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft">✏️</span>}
+                                                    {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                                 </span>
                                                 <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                                                     {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />Thinking</span> : task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
@@ -1183,6 +1212,7 @@ export function ActivityListPane({
                                                 {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
                                                 <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
                                                 {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft">✏️</span>}
+                                                {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                             </span>
                                             <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                                                 {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />Thinking</span> : task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
@@ -1222,6 +1252,7 @@ export function ActivityListPane({
                                             <div className="flex items-center justify-between gap-1.5 text-xs">
                                                 <span className="flex items-center gap-1 min-w-0 truncate">
                                                     <span className="truncate" title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                    {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                                 </span>
                                                 <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
@@ -1358,6 +1389,11 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
                         </span>
                     )}
                     {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                    {(() => {
+                        const cat = getSessionCategory(task);
+                        const meta = cat ? SESSION_CATEGORY_LABELS[cat] : undefined;
+                        return meta ? <span className={cn("shrink-0 text-[10px] font-medium", meta.color)} data-testid="session-category-badge">{meta.icon} {meta.label}</span> : null;
+                    })()}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                     {elapsed && (
