@@ -463,3 +463,100 @@ describe('ProcessLifecycleRunner — pending messages drain', () => {
         expect(result.success).toBe(true);
     });
 });
+
+// ============================================================================
+// metadata.workspaceId fallback to task.repoId
+// ============================================================================
+
+describe('ProcessLifecycleRunner — metadata.workspaceId from task.repoId', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('uses payload.workspaceId when present (chat task)', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Hello',
+                workspaceId: 'ws-from-payload',
+            } as any,
+            repoId: 'ws-from-repo',
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.workspaceId).toBe('ws-from-payload');
+    });
+
+    it('falls back to task.repoId for run-script payload (no workspaceId)', async () => {
+        const task = makeTask({
+            type: 'run-script',
+            payload: {
+                kind: 'run-script',
+                script: 'echo hello',
+            } as any,
+            repoId: 'ws-scripts',
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.workspaceId).toBe('ws-scripts');
+    });
+
+    it('falls back to task.repoId for run-workflow payload without workspaceId', async () => {
+        const task = makeTask({
+            type: 'run-workflow',
+            payload: {
+                kind: 'run-workflow',
+                workflowPath: '/wf.yaml',
+                workingDirectory: '/tmp',
+            } as any,
+            repoId: 'ws-workflows',
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.workspaceId).toBe('ws-workflows');
+    });
+
+    it('falls back to task.repoId for memory-aggregate payload', async () => {
+        const task = makeTask({
+            type: 'memory-aggregate',
+            payload: {
+                kind: 'memory-aggregate',
+                repoId: 'ws-mem',
+                sources: ['notes'],
+            } as any,
+            repoId: 'ws-mem',
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.workspaceId).toBe('ws-mem');
+    });
+
+    it('stores undefined when both payload.workspaceId and task.repoId are absent', async () => {
+        const task = makeTask({
+            type: 'run-script',
+            payload: {
+                kind: 'run-script',
+                script: 'echo hello',
+            } as any,
+        });
+        delete (task as any).repoId;
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.workspaceId).toBeUndefined();
+    });
+});

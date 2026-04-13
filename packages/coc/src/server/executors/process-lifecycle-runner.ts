@@ -190,7 +190,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 priority: task.priority,
                 model: task.config.model,
                 mode: (task.payload as any)?.mode,
-                workspaceId: (task.payload as any)?.workspaceId,
+                workspaceId: (task.payload as any)?.workspaceId || task.repoId,
                 workflowName: isRunWorkflowPayload(task.payload)
                     ? path.basename(task.payload.workflowPath)
                     : undefined,
