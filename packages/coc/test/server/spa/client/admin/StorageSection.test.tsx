@@ -85,7 +85,7 @@ describe('StorageSection — status display', () => {
         render(<StorageSection />);
 
         await waitFor(() => {
-            expect(screen.getByText(/SQLite/)).toBeTruthy();
+            expect(screen.getByText(/^Current: SQLite/)).toBeTruthy();
         });
         expect(screen.getByText(/100 processes/)).toBeTruthy();
         expect(screen.getByText(/\/data\/processes\.db/)).toBeTruthy();

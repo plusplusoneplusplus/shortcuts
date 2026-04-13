@@ -168,7 +168,10 @@ describe('NoteEditor — Source Mode', () => {
             await renderAndWaitForLoad();
             await switchToSource();
 
-            expect(screen.queryByTestId('tiptap-editor-content')).toBeNull();
+            const wysiwyg = screen.getByTestId('tiptap-editor-content');
+            const hiddenAncestor = wysiwyg.closest<HTMLElement>('[style*="display"]');
+            expect(hiddenAncestor).not.toBeNull();
+            expect(hiddenAncestor!.style.display).toBe('none');
             expect(screen.getByTestId('note-source-container')).toBeTruthy();
         });
     });
