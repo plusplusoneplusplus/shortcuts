@@ -24,6 +24,7 @@ import { WorkflowDetailView } from '../processes/dag';
 import { TerminalView } from './TerminalView';
 import { NotesView } from './NotesView';
 import { AddRepoDialog } from './AddRepoDialog';
+import { ErrorBoundary } from '../shared/ErrorBoundary';
 
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
@@ -480,13 +481,15 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}
 
             {/* Edit dialog */}
-            <AddRepoDialog
-                open={editOpen}
-                onClose={() => setEditOpen(false)}
-                editId={ws.id}
-                repos={repos}
-                onSuccess={() => { setEditOpen(false); onRefresh(); }}
-            />
+            <ErrorBoundary label="Dialog error" inline>
+                <AddRepoDialog
+                    open={editOpen}
+                    onClose={() => setEditOpen(false)}
+                    editId={ws.id}
+                    repos={repos}
+                    onSuccess={() => { setEditOpen(false); onRefresh(); }}
+                />
+            </ErrorBoundary>
         </div>
     );
 }

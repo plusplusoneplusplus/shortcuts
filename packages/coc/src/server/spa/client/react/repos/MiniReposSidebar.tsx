@@ -7,6 +7,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { cn } from '../shared';
+import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { groupReposByRemote } from './repoGrouping';
 import { AddRepoDialog } from './AddRepoDialog';
 import { ReposEmptyState } from './ReposEmptyState';
@@ -180,12 +181,14 @@ export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHov
             </div>
 
             {/* Add dialog */}
-            <AddRepoDialog
-                open={addOpen}
-                onClose={() => setAddOpen(false)}
-                repos={repos}
-                onSuccess={() => { setAddOpen(false); onRefresh(); }}
-            />
+            <ErrorBoundary label="Dialog error" inline>
+                <AddRepoDialog
+                    open={addOpen}
+                    onClose={() => setAddOpen(false)}
+                    repos={repos}
+                    onSuccess={() => { setAddOpen(false); onRefresh(); }}
+                />
+            </ErrorBoundary>
         </nav>
     );
 }
