@@ -564,7 +564,7 @@ describe('AddFolderDialog', () => {
             await waitFor(() => screen.getByTestId('adding-done'));
 
             const postCalls = mockFetch.mock.calls.filter(
-                (c: any[]) => c[1]?.method === 'POST'
+                (c: any[]) => c[1]?.method === 'POST' && typeof c[0] === 'string' && c[0].endsWith('/workspaces')
             );
             expect(postCalls).toHaveLength(2);
 
