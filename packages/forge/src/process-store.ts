@@ -267,6 +267,12 @@ export interface ProcessStore {
      */
     getProcessSummaries?(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }>;
 
+    /**
+     * Return all process IDs matching the given filter.
+     * Lightest possible query — only reads the id column.
+     */
+    getProcessIds(filter?: ProcessFilter): Promise<string[]>;
+
     /** Return all known workspaces. */
     getWorkspaces(): Promise<WorkspaceInfo[]>;
     /** Register (or update) a workspace identity. */

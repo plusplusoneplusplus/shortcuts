@@ -245,6 +245,12 @@ export class FileProcessStore implements ProcessStore {
         return { entries: allIndexEntries, total };
     }
 
+    async getProcessIds(filter?: ProcessFilter): Promise<string[]> {
+        const filterWithoutPagination = filter ? { ...filter, limit: undefined, offset: undefined } : undefined;
+        const { entries } = await this.getProcessSummaries(filterWithoutPagination);
+        return entries.map(e => e.id);
+    }
+
     private applyIndexFilters(
         indexEntries: ProcessIndexEntry[],
         filter?: ProcessFilter

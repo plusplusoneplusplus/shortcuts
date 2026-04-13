@@ -14,12 +14,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { StoredProcessEntry, ProcessChangeCallback } from '@plusplusoneplusplus/forge';
 
 async function getAllProcessIds(store: ProcessStore): Promise<Set<string>> {
-    if (store.getProcessSummaries) {
-        const { entries } = await store.getProcessSummaries();
-        return new Set(entries.map(e => e.id));
-    }
-    const all = await store.getAllProcesses({ exclude: ['conversation'] });
-    return new Set(all.map(p => p.id));
+    return new Set(await store.getProcessIds());
 }
 
 export class OutputPruner {

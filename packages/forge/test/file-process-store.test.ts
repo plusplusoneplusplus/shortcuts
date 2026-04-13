@@ -381,4 +381,64 @@ describe('FileProcessStore — per-workspace layout', () => {
         const all = await store.getAllProcesses();
         expect(count).toBe(all.length);
     });
+
+    // ========================================================================
+    // getProcessIds
+    // ========================================================================
+
+    it('getProcessIds returns empty array for empty store', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        expect(await store.getProcessIds()).toEqual([]);
+    });
+
+    it('getProcessIds returns all IDs without filter', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('p2', { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+
+        const ids = await store.getProcessIds();
+        expect(ids).toHaveLength(2);
+        expect(new Set(ids)).toEqual(new Set(['p1', 'p2']));
+    });
+
+    it('getProcessIds filters by workspaceId', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('a1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('a2', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('b1', { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+
+        const ids = await store.getProcessIds({ workspaceId: 'ws-a' });
+        expect(ids).toHaveLength(2);
+        expect(new Set(ids)).toEqual(new Set(['a1', 'a2']));
+    });
+
+    it('getProcessIds filters by status', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { status: 'running', metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('p2', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('p3', { status: 'failed', metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+
+        const ids = await store.getProcessIds({ status: 'completed' });
+        expect(ids).toEqual(['p2']);
+    });
+
+    it('getProcessIds ignores pagination from filter', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('p2', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('p3', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+
+        const ids = await store.getProcessIds({ limit: 1, offset: 0 });
+        expect(ids).toHaveLength(3);
+    });
+
+    it('getProcessIds agrees with getProcessSummaries on IDs', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('a1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('b1', { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+
+        const ids = await store.getProcessIds();
+        const { entries } = await store.getProcessSummaries();
+        expect(new Set(ids)).toEqual(new Set(entries.map(e => e.id)));
+    });
 });

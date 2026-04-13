@@ -263,22 +263,20 @@ describe('OutputPruner', () => {
     });
 
     // ========================================================================
-    // getAllProcessIds fallback (no getProcessSummaries)
+    // getProcessIds integration
     // ========================================================================
 
-    describe('getAllProcessIds fallback', () => {
-        it('should use getAllProcesses with exclude:conversation when getProcessSummaries is absent', async () => {
-            const getAllProcesses = vi.fn().mockResolvedValue([
-                makeProcess('fb-1'),
-                makeProcess('fb-2'),
-            ]);
+    describe('getProcessIds integration', () => {
+        it('should use getProcessIds to determine which output files to keep', async () => {
+            const getProcessIds = vi.fn().mockResolvedValue(['fb-1', 'fb-2']);
             const fallbackStore: ProcessStore = {
                 addProcess: vi.fn(),
                 updateProcess: vi.fn(),
                 getProcess: vi.fn(),
-                getAllProcesses,
+                getAllProcesses: vi.fn(),
                 removeProcess: vi.fn(),
                 clearProcesses: vi.fn(),
+                getProcessIds,
                 getWorkspaces: vi.fn(),
                 registerWorkspace: vi.fn(),
                 removeWorkspace: vi.fn(),
@@ -300,9 +298,6 @@ describe('OutputPruner', () => {
                 updateTurnContent: vi.fn(),
             } as unknown as ProcessStore;
 
-            // Delete getProcessSummaries so the fallback path is taken
-            delete (fallbackStore as any).getProcessSummaries;
-
             await OutputFileManager.saveOutput('fb-1', 'content', tmpDir, TEST_WORKSPACE);
             await OutputFileManager.saveOutput('orphan', 'content', tmpDir, TEST_WORKSPACE);
 
@@ -310,7 +305,7 @@ describe('OutputPruner', () => {
             const deleted = await fallbackPruner.cleanupOrphans();
 
             expect(deleted).toBe(1);
-            expect(getAllProcesses).toHaveBeenCalledWith({ exclude: ['conversation'] });
+            expect(getProcessIds).toHaveBeenCalled();
         });
     });
 

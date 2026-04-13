@@ -726,6 +726,13 @@ export class SqliteProcessStore implements ProcessStore {
         return { entries, total };
     }
 
+    async getProcessIds(filter?: ProcessFilter): Promise<string[]> {
+        const { sql, params } = this.buildProcessWhereClause(filter);
+        const query = `SELECT id FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC`;
+        const rows = this.db.prepare(query).all(...params) as Array<{ id: string }>;
+        return rows.map(row => row.id);
+    }
+
     async updateProcess(id: string, updates: Partial<AIProcess>): Promise<void> {
         if ('conversationTurns' in updates) {
             throw new Error('Use appendConversationTurn/upsertStreamingTurn/updateTurnContent to modify conversationTurns');

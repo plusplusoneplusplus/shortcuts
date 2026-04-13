@@ -198,6 +198,7 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
                 total,
             };
         }),
+        getProcessIds: vi.fn(async () => Array.from(processes.keys())),
     } as MockProcessStore;
 }
 

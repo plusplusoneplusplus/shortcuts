@@ -1312,6 +1312,73 @@ describe('SqliteProcessStore — getProcessCount', () => {
 });
 
 // ============================================================================
+// getProcessIds
+// ============================================================================
+
+describe('SqliteProcessStore — getProcessIds', () => {
+    it('returns empty array for empty database', async () => {
+        const ids = await store.getProcessIds();
+        expect(ids).toEqual([]);
+    });
+
+    it('returns all process IDs without filter', async () => {
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+        await store.addProcess(makeProcess('p3'));
+
+        const ids = await store.getProcessIds();
+        expect(ids).toHaveLength(3);
+        expect(new Set(ids)).toEqual(new Set(['p1', 'p2', 'p3']));
+    });
+
+    it('filters by workspaceId', async () => {
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('p2', { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+        await store.addProcess(makeProcess('p3', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+
+        const ids = await store.getProcessIds({ workspaceId: 'ws-a' });
+        expect(ids).toHaveLength(2);
+        expect(new Set(ids)).toEqual(new Set(['p1', 'p3']));
+    });
+
+    it('filters by status', async () => {
+        await store.addProcess(makeProcess('p1', { status: 'running' }));
+        await store.addProcess(makeProcess('p2', { status: 'completed' }));
+        await store.addProcess(makeProcess('p3', { status: 'failed' }));
+
+        const ids = await store.getProcessIds({ status: 'completed' });
+        expect(ids).toEqual(['p2']);
+    });
+
+    it('filters by status array', async () => {
+        await store.addProcess(makeProcess('p1', { status: 'running' }));
+        await store.addProcess(makeProcess('p2', { status: 'completed' }));
+        await store.addProcess(makeProcess('p3', { status: 'failed' }));
+
+        const ids = await store.getProcessIds({ status: ['running', 'failed'] });
+        expect(ids).toHaveLength(2);
+        expect(new Set(ids)).toEqual(new Set(['p1', 'p3']));
+    });
+
+    it('returns only IDs — no heavy deserialization', async () => {
+        await store.addProcess(makeProcess('p1'));
+        const ids = await store.getProcessIds();
+        expect(ids).toEqual(['p1']);
+        expect(typeof ids[0]).toBe('string');
+    });
+
+    it('agrees with getProcessSummaries on IDs', async () => {
+        await store.addProcess(makeProcess('p1', { status: 'running' }));
+        await store.addProcess(makeProcess('p2', { status: 'completed' }));
+
+        const ids = await store.getProcessIds();
+        const { entries } = await store.getProcessSummaries();
+        const summaryIds = entries.map(e => e.id);
+        expect(new Set(ids)).toEqual(new Set(summaryIds));
+    });
+});
+
+// ============================================================================
 // getProcessBySdkSessionId
 // ============================================================================
 

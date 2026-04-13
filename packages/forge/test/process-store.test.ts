@@ -222,6 +222,10 @@ describe('ProcessStore (mock implementation)', () => {
             async registerWorkspace(workspace: WorkspaceInfo) {
                 workspaces.set(workspace.id, workspace);
             },
+            async getProcessIds(filter?: ProcessFilter) {
+                const all = await this.getAllProcesses(filter);
+                return all.map((p: AIProcess) => p.id);
+            },
         };
     }
 

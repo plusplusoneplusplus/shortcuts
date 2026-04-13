@@ -103,4 +103,39 @@ describe('createStubStore', () => {
             'processes-cleared',
         ]);
     });
+
+    it('getProcessIds returns empty array for empty store', async () => {
+        const store = createStubStore();
+        expect(await store.getProcessIds()).toEqual([]);
+    });
+
+    it('getProcessIds returns all process IDs', async () => {
+        const store = createStubStore();
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+        await store.addProcess(makeProcess('p3'));
+
+        const ids = await store.getProcessIds();
+        expect(ids).toHaveLength(3);
+        expect(new Set(ids)).toEqual(new Set(['p1', 'p2', 'p3']));
+    });
+
+    it('getProcessIds reflects removals', async () => {
+        const store = createStubStore();
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+        await store.removeProcess('p1');
+
+        const ids = await store.getProcessIds();
+        expect(ids).toEqual(['p2']);
+    });
+
+    it('getProcessIds returns empty array after clearProcesses', async () => {
+        const store = createStubStore();
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+        await store.clearProcesses();
+
+        expect(await store.getProcessIds()).toEqual([]);
+    });
 });
