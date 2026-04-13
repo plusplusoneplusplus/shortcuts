@@ -135,11 +135,9 @@ describe('MarkdownReviewEditor – task status dropdown', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByTestId('task-status-select')).toBeTruthy();
+            const select = screen.getByTestId('task-status-select') as HTMLSelectElement;
+            expect(select.value).toBe('pending');
         });
-
-        const select = screen.getByTestId('task-status-select') as HTMLSelectElement;
-        expect(select.value).toBe('pending');
     });
 
     it('renders status dropdown for .md files even when fetchMode is auto', async () => {
@@ -150,11 +148,9 @@ describe('MarkdownReviewEditor – task status dropdown', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByTestId('task-status-select')).toBeTruthy();
+            const select = screen.getByTestId('task-status-select') as HTMLSelectElement;
+            expect(select.value).toBe('pending');
         });
-
-        const select = screen.getByTestId('task-status-select') as HTMLSelectElement;
-        expect(select.value).toBe('pending');
     });
 
     it('shows placeholder when no status in frontmatter', async () => {
