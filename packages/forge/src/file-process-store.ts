@@ -92,7 +92,7 @@ export class FileProcessStore implements ProcessStore {
         return path.join(this.workspaceDirFor(workspaceId), 'index.json');
     }
 
-    public getProcessFilePath(workspaceId: string, processId: string): string {
+    private resolveFilePath(workspaceId: string, processId: string): string {
         return path.join(this.workspaceDirFor(workspaceId), this.sanitizeId(processId) + '.json');
     }
 
@@ -168,7 +168,7 @@ export class FileProcessStore implements ProcessStore {
             const entry = await this.readProcessFile(workspaceId, id);
             if (!entry) return undefined;
             const result = deserializeProcess(entry.process);
-            result.dataFilePath = this.getProcessFilePath(workspaceId, id);
+            result.dataFilePath = this.resolveFilePath(workspaceId, id);
             return result;
         }
         // Scan workspace index files to find owning workspace
@@ -177,7 +177,7 @@ export class FileProcessStore implements ProcessStore {
         const entry = await this.readProcessFile(wsId, id);
         if (!entry) return undefined;
         const result = deserializeProcess(entry.process);
-        result.dataFilePath = this.getProcessFilePath(wsId, id);
+        result.dataFilePath = this.resolveFilePath(wsId, id);
         return result;
     }
 
@@ -860,7 +860,7 @@ export class FileProcessStore implements ProcessStore {
 
     private async readProcessFile(workspaceId: string, id: string): Promise<StoredProcessEntry | undefined> {
         try {
-            const data = await fs.readFile(this.getProcessFilePath(workspaceId, id), 'utf-8');
+            const data = await fs.readFile(this.resolveFilePath(workspaceId, id), 'utf-8');
             return JSON.parse(data) as StoredProcessEntry;
         } catch {
             return undefined;
@@ -868,7 +868,7 @@ export class FileProcessStore implements ProcessStore {
     }
 
     private async writeProcessFile(workspaceId: string, id: string, entry: StoredProcessEntry): Promise<void> {
-        const filePath = this.getProcessFilePath(workspaceId, id);
+        const filePath = this.resolveFilePath(workspaceId, id);
         const tmpPath = filePath + '.tmp';
         await this.retryAtomicWrite(tmpPath, async () => {
             await fs.writeFile(tmpPath, JSON.stringify(entry, null, 2), 'utf-8');
@@ -877,7 +877,7 @@ export class FileProcessStore implements ProcessStore {
     }
 
     private async moveProcessToPruned(workspaceId: string, entry: ProcessIndexEntry): Promise<void> {
-        const src = this.getProcessFilePath(workspaceId, entry.id);
+        const src = this.resolveFilePath(workspaceId, entry.id);
         const destDir = this.prunedBucketFor(workspaceId, entry.startTime);
         await ensureDataDir(destDir);
         const dest = this.getPrunedProcessFilePath(workspaceId, entry.id, entry.startTime);
@@ -895,7 +895,7 @@ export class FileProcessStore implements ProcessStore {
 
     private async deleteProcessFile(workspaceId: string, id: string): Promise<void> {
         try {
-            await fs.unlink(this.getProcessFilePath(workspaceId, id));
+            await fs.unlink(this.resolveFilePath(workspaceId, id));
         } catch {
             // Ignore missing file
         }

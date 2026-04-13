@@ -324,8 +324,6 @@ export interface ProcessStore {
     /** Unregister a previously registered flush handler. */
     unregisterFlushHandler?(id: string): void;
 
-    /** Resolve a process ID to its on-disk file path. Optional — only file-backed stores support this. */
-    getProcessFilePath?(workspaceId: string, processId: string): string;
 
     /**
      * Atomically append a conversation turn inside the write queue, preventing race conditions

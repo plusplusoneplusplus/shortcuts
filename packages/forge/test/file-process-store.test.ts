@@ -113,7 +113,7 @@ describe('FileProcessStore — per-workspace layout', () => {
 
         const result = await store.getProcess('p1', 'ws-a');
         expect(result).toBeDefined();
-        expect(result!.dataFilePath).toBe(store.getProcessFilePath('ws-a', 'p1'));
+        expect(result!.dataFilePath).toBe(path.join(tmpDir, 'repos', 'ws-a', 'processes', 'p1.json'));
     });
 
     it('should set dataFilePath when retrieving via index scan (no workspaceId hint)', async () => {
@@ -122,7 +122,7 @@ describe('FileProcessStore — per-workspace layout', () => {
 
         const result = await store.getProcess('p1');
         expect(result).toBeDefined();
-        expect(result!.dataFilePath).toBe(store.getProcessFilePath('ws-a', 'p1'));
+        expect(result!.dataFilePath).toBe(path.join(tmpDir, 'repos', 'ws-a', 'processes', 'p1.json'));
     });
 
     // 8. getAllProcesses — no filter returns all workspaces
@@ -276,44 +276,6 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(stat.isDirectory()).toBe(true);
     });
 
-    // --- getProcessFilePath ---
-    describe('getProcessFilePath', () => {
-        it('should return the expected path for a normal workspace and process ID', () => {
-            const store = new FileProcessStore({ dataDir: tmpDir });
-            const result = store.getProcessFilePath('ws-a', 'proc-1');
-            const expected = path.join(tmpDir, 'repos', 'ws-a', 'processes', 'proc-1.json');
-            expect(result).toBe(expected);
-        });
-
-        it('should fall back to _default workspace when workspaceId is empty', () => {
-            const store = new FileProcessStore({ dataDir: tmpDir });
-            const result = store.getProcessFilePath('', 'proc-1');
-            expect(result).toContain(path.join('repos', '_default', 'processes'));
-            expect(result).toContain('proc-1.json');
-        });
-
-        it('should sanitize special characters in process ID', () => {
-            const store = new FileProcessStore({ dataDir: tmpDir });
-            const result = store.getProcessFilePath('ws-a', 'foo/bar:baz');
-            const expected = path.join(tmpDir, 'repos', 'ws-a', 'processes', 'foo_bar_baz.json');
-            expect(result).toBe(expected);
-        });
-
-        it('should conform to the ProcessStore interface', () => {
-            const store = new FileProcessStore({ dataDir: tmpDir });
-            expect(typeof store.getProcessFilePath).toBe('function');
-        });
-
-        it('should return path consistent with addProcess file location', async () => {
-            const store = new FileProcessStore({ dataDir: tmpDir });
-            const p = makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } });
-            await store.addProcess(p);
-            const expectedPath = store.getProcessFilePath('ws-a', 'p1');
-            const raw = await fs.readFile(expectedPath, 'utf-8');
-            const entry = JSON.parse(raw);
-            expect(entry.process.id).toBe('p1');
-        });
-    });
 
     // Regression: addProcess with duplicate ID should upsert, not duplicate
     it('addProcess called twice with same id replaces index entry (upsert)', async () => {
