@@ -651,6 +651,47 @@ describe('RepoDetail MobileTabBar Activity badge wiring', () => {
     });
 });
 
+describe('RepoDetail Work Items badge wiring', () => {
+    it('imports loadUnseenWorkItemIds from WorkItemContext', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('loadUnseenWorkItemIds');
+    });
+
+    it('computes unseenWorkItemCount from context unseenByRepo', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('unseenWorkItemCount');
+        expect(REPO_DETAIL_SOURCE).toContain('workItemState.unseenByRepo');
+    });
+
+    it('no longer filters by status === created for badge', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain("i.status === 'created'");
+    });
+
+    it('desktop badge uses unseenWorkItemCount', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('unseenWorkItemCount > 0');
+    });
+
+    it('desktop badge title says "Work items with updates"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('Work items with updates');
+    });
+
+    it('does not use old "New work items" title', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('New work items');
+    });
+
+    it('passes workItemCount to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('workItemCount={unseenWorkItemCount}');
+    });
+
+    it('dispatches MARK_WORK_ITEMS_SEEN when switching to work-items tab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("'MARK_WORK_ITEMS_SEEN'");
+        expect(REPO_DETAIL_SOURCE).toContain("tab === 'work-items'");
+    });
+
+    it('dispatches LOAD_UNSEEN_WORK_ITEMS after fetching work items', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("'LOAD_UNSEEN_WORK_ITEMS'");
+        expect(REPO_DETAIL_SOURCE).toContain('loadUnseenWorkItemIds');
+    });
+});
+
 describe('RepoDetail Git tab ahead/behind badge', () => {
     it('imports useGitInfo from hooks', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { useGitInfo } from '../hooks/useGitInfo'");
