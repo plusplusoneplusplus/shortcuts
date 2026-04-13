@@ -45,7 +45,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         storageKey: 'work-items-left-panel-width',
     });
 
-    // Fetch changed files when a commit is selected
+    // Fetch changed files when a commit is selected, auto-select the first file
     useEffect(() => {
         if (!selectedCommitHash) {
             setCommitFiles([]);
@@ -54,7 +54,11 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         setCommitFilesLoading(true);
         fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${selectedCommitHash}/files`)
             .then((data: { files?: { status: string; path: string }[] }) => {
-                setCommitFiles(data.files ?? []);
+                const files = data.files ?? [];
+                setCommitFiles(files);
+                if (files.length > 0) {
+                    setSelectedCommitFile(files[0].path);
+                }
             })
             .catch(() => setCommitFiles([]))
             .finally(() => setCommitFilesLoading(false));
