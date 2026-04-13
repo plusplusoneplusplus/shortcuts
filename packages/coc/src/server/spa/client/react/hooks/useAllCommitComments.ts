@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getWsPath } from '../utils/config';
+import { getWsUrl } from '../utils/config';
 import { fetchApi } from './useApi';
 import type { DiffComment } from '../../diff-comment-types';
 import { computeStorageKey, patchDiffComment, deleteDiffCommentById } from '../utils/diffCommentApi';
@@ -236,8 +236,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
 
     useEffect(() => {
         if (!wsId || !hash) return;
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        const ws = new WebSocket(getWsUrl());
         ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ type: 'subscribe-commit-diff', wsId, hash }));
         });

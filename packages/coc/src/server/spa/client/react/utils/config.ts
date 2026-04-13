@@ -27,6 +27,11 @@ export function getWsPath(): string {
     return getConfig().wsPath;
 }
 
+/** Full WebSocket base URL, e.g. `ws://localhost:4000/ws`. */
+export function getWsUrl(): string {
+    return `ws://${location.host}${getWsPath()}`;
+}
+
 export function getHostname(): string | undefined {
     return getConfig().hostname;
 }

@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getApiBase, getWsPath } from '../utils/config';
+import { getApiBase, getWsUrl } from '../utils/config';
 import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../diff-comment-types';
 import type { DiffLine } from '../repos/UnifiedDiffViewer';
 import { relocateDiffAnchor } from '../utils/relocateDiffAnchor';
@@ -515,8 +515,7 @@ export function useDiffComments(
 
     useEffect(() => {
         if (!context) return;
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        const ws = new WebSocket(getWsUrl());
         ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ type: 'subscribe-diff', context }));
         });

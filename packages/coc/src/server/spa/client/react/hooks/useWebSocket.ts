@@ -4,7 +4,7 @@
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { getWsPath } from '../utils/config';
+import { getWsUrl } from '../utils/config';
 
 export type WsStatus = 'connecting' | 'open' | 'closed';
 
@@ -48,8 +48,7 @@ export function useWebSocket({ onMessage, onConnect }: UseWebSocketOptions) {
             wsRef.current.close();
         }
 
-        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = protocol + '//' + location.host + getWsPath();
+        const wsUrl = getWsUrl();
         setStatus('connecting');
 
         const ws = new WebSocket(wsUrl);

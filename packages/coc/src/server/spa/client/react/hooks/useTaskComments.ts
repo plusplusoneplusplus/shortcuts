@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getApiBase, getWsPath } from '../utils/config';
+import { getApiBase, getWsUrl } from '../utils/config';
 import type {
     TaskComment,
     TaskCommentStatus,
@@ -268,8 +268,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     // Subscribe to file-scoped WebSocket events for instant comment-resolved updates
     useEffect(() => {
         if (!taskPath) return;
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        const ws = new WebSocket(getWsUrl());
         ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ type: 'subscribe-file', filePath: taskPath }));
         });
