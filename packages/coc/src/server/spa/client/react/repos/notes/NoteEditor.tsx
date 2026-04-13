@@ -98,8 +98,10 @@ export function NoteEditor({
     onCommentCreateRef.current = onCommentCreate;
 
     const [editor, setEditor] = useState<Editor | null>(null);
+    const editorRef = useRef<Editor | null>(null);
 
     const handleEditorReady = useCallback((ed: Editor) => {
+        editorRef.current = ed;
         setEditor(ed);
         onEditorReady?.(ed);
     }, [onEditorReady]);
@@ -366,10 +368,17 @@ export function NoteEditor({
     }, [threadsProp, editor, notePath, commentsEnabled]);
 
     // ── Load content on path change ─────────────────────────────────────────
+    //
+    // The editor is kept mounted (hidden behind a loading overlay) so the
+    // TipTap instance is never destroyed during note switches.  This means
+    // editorRef.current is always a live editor once it has been created,
+    // and we can safely call setContent on it from the fetch callback.
+
+    const flushSaveRef = useRef(flushSave);
+    flushSaveRef.current = flushSave;
 
     useEffect(() => {
-        // Flush pending save for previous page
-        flushSave();
+        flushSaveRef.current();
 
         // Reset to rich mode when switching notes
         setViewModeRaw('rich');
@@ -378,14 +387,11 @@ export function NoteEditor({
         contentLoadedRef.current = false;
 
         if (!notePath) {
-            editor?.commands.clearContent();
+            editorRef.current?.commands.clearContent();
             setLoadError(null);
             setLoading(false);
             return;
         }
-
-        // Wait for editor to be ready before loading content
-        if (!editor) return;
 
         let cancelled = false;
         setLoading(true);
@@ -398,39 +404,43 @@ export function NoteEditor({
                 if (cancelled) return;
                 let html = markdownToHtml(content);
                 html = rewriteHtmlImageSrc(html, ioRef.current, workspaceId);
-                editor.commands.setContent(html);
-                // Cancel any save triggered by setContent — loaded content should not be saved back
-                pendingContentRef.current = null;
-                if (saveTimerRef.current) {
-                    clearTimeout(saveTimerRef.current);
-                    saveTimerRef.current = null;
-                }
-                setDirty(false);
-                contentLoadedRef.current = true;
 
-                // Apply comment marks from persisted threads
-                if (commentsEnabled) {
-                    if (threadsProp) {
-                        loadedThreadsRef.current = threadsProp;
-                        for (const thread of threadsProp) {
-                            if (thread.status === 'resolved') continue;
-                            const result = findAnchorInDoc(editor.state.doc, thread.anchor);
-                            if (result) {
-                                applyCommentMark(editor, thread.id, result.from, result.to);
-                            }
-                        }
-                    } else {
-                        commentBackendRef.current.loadThreads(workspaceId, notePath).then((threads) => {
-                            if (cancelled) return;
-                            loadedThreadsRef.current = threads;
-                            for (const thread of threads) {
+                const ed = editorRef.current;
+                if (ed && !ed.isDestroyed) {
+                    ed.commands.setContent(html);
+                    pendingContentRef.current = null;
+                    if (saveTimerRef.current) {
+                        clearTimeout(saveTimerRef.current);
+                        saveTimerRef.current = null;
+                    }
+                    setDirty(false);
+                    contentLoadedRef.current = true;
+
+                    if (commentsEnabled) {
+                        if (threadsProp) {
+                            loadedThreadsRef.current = threadsProp;
+                            for (const thread of threadsProp) {
                                 if (thread.status === 'resolved') continue;
-                                const result = findAnchorInDoc(editor.state.doc, thread.anchor);
+                                const result = findAnchorInDoc(ed.state.doc, thread.anchor);
                                 if (result) {
-                                    applyCommentMark(editor, thread.id, result.from, result.to);
+                                    applyCommentMark(ed, thread.id, result.from, result.to);
                                 }
                             }
-                        }).catch(() => { /* non-fatal — comments just won't highlight */ });
+                        } else {
+                            commentBackendRef.current.loadThreads(workspaceId, notePath).then((threads) => {
+                                if (cancelled) return;
+                                const edInner = editorRef.current;
+                                if (!edInner || edInner.isDestroyed) return;
+                                loadedThreadsRef.current = threads;
+                                for (const thread of threads) {
+                                    if (thread.status === 'resolved') continue;
+                                    const result = findAnchorInDoc(edInner.state.doc, thread.anchor);
+                                    if (result) {
+                                        applyCommentMark(edInner, thread.id, result.from, result.to);
+                                    }
+                                }
+                            }).catch(() => { /* non-fatal — comments just won't highlight */ });
+                        }
                     }
                 }
             })
@@ -445,7 +455,8 @@ export function NoteEditor({
         return () => {
             cancelled = true;
         };
-    }, [notePath, workspaceId, editor, flushSave]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [notePath, workspaceId]);
 
     // ── Flush on unmount ────────────────────────────────────────────────────
 
@@ -490,72 +501,44 @@ export function NoteEditor({
         return () => window.removeEventListener('beforeunload', handler);
     }, [dirty]);
 
-    // ── Render: empty state ─────────────────────────────────────────────────
+    const isEmpty = notePath === null;
 
-    if (notePath === null) {
-        return (
-            <div
-                className="flex-1 flex flex-col items-center justify-center text-sm text-[#616161] dark:text-[#999] select-none gap-2"
-                data-testid="note-editor-empty"
-            >
-                <span className="text-3xl">📄</span>
-                <span className="italic">Select a page to start editing</span>
-            </div>
-        );
-    }
+    // ── Render ────────────────────────────────────────────────────────────────
+    //
+    // The RichEditorCore is always mounted so the TipTap instance survives
+    // across load cycles.  Loading/error states are rendered as overlays on
+    // top of the (hidden) editor.  This avoids destroying and re-creating
+    // the editor on every note switch, which previously caused infinite
+    // fetch loops and race conditions where content was lost.
 
-    // ── Render: loading ─────────────────────────────────────────────────────
-
-    if (loading) {
-        return (
-            <div
-                className="flex-1 flex items-center justify-center text-sm text-[#616161] dark:text-[#999]"
-                data-testid="note-editor-loading"
-            >
-                <span className="animate-spin mr-2">⏳</span> Loading…
-            </div>
-        );
-    }
-
-    // ── Render: load error ──────────────────────────────────────────────────
-
-    if (loadError) {
-        return (
-            <div
-                className="flex-1 flex items-center justify-center"
-                data-testid="note-editor-error"
-            >
-                <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded px-4 py-2">
-                    {loadError}
-                </div>
-            </div>
-        );
-    }
-
-    // ── Render: editor ──────────────────────────────────────────────────────
+    const editorHidden = isEmpty || loading || loadError;
 
     return (
-        <div className="note-editor flex-1 flex flex-col min-h-0 relative" data-testid="note-editor">
-            <ModeToggleToolbar<NoteViewMode>
-                modes={NOTE_MODE_OPTIONS}
-                activeMode={viewMode}
-                onModeChange={(mode) => { mode === 'source' ? switchToSource() : switchToRich(); }}
-                dirty={sourceDirty}
-                showSave={viewMode === 'source'}
-                onSave={flushSourceSave}
-                testId="note-mode-toggle"
-                saveTestId="note-source-save-btn"
-            />
+        <div className="note-editor flex-1 flex flex-col min-h-0 relative" data-testid={isEmpty ? 'note-editor-empty' : 'note-editor'}>
+            {!editorHidden && (
+                <>
+                    <ModeToggleToolbar<NoteViewMode>
+                        modes={NOTE_MODE_OPTIONS}
+                        activeMode={viewMode}
+                        onModeChange={(mode) => { mode === 'source' ? switchToSource() : switchToRich(); }}
+                        dirty={sourceDirty}
+                        showSave={viewMode === 'source'}
+                        onSave={flushSourceSave}
+                        testId="note-mode-toggle"
+                        saveTestId="note-source-save-btn"
+                    />
 
-            <NoteEditorToolbar
-                editor={editor}
-                hidden={viewMode === 'source'}
-                commentsPanelOpen={commentsPanelOpen}
-                onToggleCommentsPanel={onToggleCommentsPanel}
-                commentCount={commentCount}
-            />
+                    <NoteEditorToolbar
+                        editor={editor}
+                        hidden={viewMode === 'source'}
+                        commentsPanelOpen={commentsPanelOpen}
+                        onToggleCommentsPanel={onToggleCommentsPanel}
+                        commentCount={commentCount}
+                    />
+                </>
+            )}
 
-            {viewMode === 'source' ? (
+            {viewMode === 'source' && !editorHidden ? (
                 <div className="flex-1 overflow-y-auto" onPaste={handleSourcePaste} data-testid="note-source-container">
                     <SourceEditor
                         content={rawMarkdown}
@@ -565,21 +548,54 @@ export function NoteEditor({
                 </div>
             ) : (
                 <div
-                    className="flex-1 overflow-y-auto"
+                    className="flex-1 overflow-y-auto relative"
                     onContextMenu={(e) => {
-                        if (editor && !editor.state.selection.empty) {
+                        if (!editorHidden && editor && !editor.state.selection.empty) {
                             e.preventDefault();
                             setContextMenu({ x: e.clientX, y: e.clientY });
                         }
                     }}
                 >
-                    <RichEditorCore
-                        commentsEnabled={commentsEnabled}
-                        onCommentActivated={onCommentActivated}
-                        onChange={handleEditorChange}
-                        onEditorReady={handleEditorReady}
-                        handlePaste={handlePaste}
-                    />
+                    {/* Editor is always mounted but hidden during loading/error/empty
+                        so the TipTap instance survives across note switches. */}
+                    <div style={editorHidden ? { visibility: 'hidden', height: 0, overflow: 'hidden' } : undefined}>
+                        <RichEditorCore
+                            commentsEnabled={commentsEnabled}
+                            onCommentActivated={onCommentActivated}
+                            onChange={handleEditorChange}
+                            onEditorReady={handleEditorReady}
+                            handlePaste={handlePaste}
+                        />
+                    </div>
+
+                    {isEmpty && (
+                        <div
+                            className="flex-1 flex flex-col items-center justify-center text-sm text-[#616161] dark:text-[#999] select-none gap-2 absolute inset-0"
+                        >
+                            <span className="text-3xl">📄</span>
+                            <span className="italic">Select a page to start editing</span>
+                        </div>
+                    )}
+
+                    {loading && (
+                        <div
+                            className="flex-1 flex items-center justify-center text-sm text-[#616161] dark:text-[#999] absolute inset-0"
+                            data-testid="note-editor-loading"
+                        >
+                            <span className="animate-spin mr-2">⏳</span> Loading…
+                        </div>
+                    )}
+
+                    {loadError && (
+                        <div
+                            className="flex-1 flex items-center justify-center absolute inset-0"
+                            data-testid="note-editor-error"
+                        >
+                            <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded px-4 py-2">
+                                {loadError}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

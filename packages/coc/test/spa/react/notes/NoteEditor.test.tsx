@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, act, cleanup, within } from '@testing-library/react';
 import { useEffect } from 'react';
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
@@ -47,10 +47,14 @@ const mockClearContent = vi.fn();
 const mockGetHTML = vi.fn(() => '<p>content</p>');
 let capturedOnChange: ((editor: unknown) => void) | null = null;
 
+let richEditorMountCount = 0;
+
 const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
     getHTML: mockGetHTML,
     isActive: vi.fn(() => false),
+    isDestroyed: false,
+    state: { doc: {}, selection: { empty: true } },
     chain: () => ({
         focus: () => ({
             toggleBold: () => ({ run: vi.fn() }),
@@ -72,11 +76,12 @@ const mockEditor = {
 
 // Mock RichEditorCore — replaces the real Tiptap shell.
 // Captures the onChange callback and calls onEditorReady with mockEditor.
+// Tracks mount/unmount count for regression tests.
 vi.mock('../../../../src/server/spa/client/react/repos/notes/RichEditorCore', () => ({
     RichEditorCore: (props: { onChange?: (editor: unknown) => void; onEditorReady?: (editor: unknown) => void }) => {
         if (props.onChange) capturedOnChange = props.onChange;
-        // Notify parent of editor readiness via useEffect
         useEffect(() => {
+            richEditorMountCount++;
             props.onEditorReady?.(mockEditor);
         }, []);
         return <div data-testid="editor-content" />;
@@ -100,7 +105,9 @@ describe('NoteEditor', () => {
         mockSetContent.mockReset();
         mockClearContent.mockReset();
         mockGetHTML.mockReturnValue('<p>content</p>');
+        mockEditor.isDestroyed = false;
         capturedOnChange = null;
+        richEditorMountCount = 0;
     });
 
     afterEach(() => {
@@ -492,5 +499,215 @@ describe('NoteEditor', () => {
 
         expect(customIo.saveContent).toHaveBeenCalledWith('ws1', 'c.md', 'content');
         expect(mockSaveContent).not.toHaveBeenCalled();
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Regression: editor always-mounted (no infinite fetch / empty content)
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('editor always-mounted (regression)', () => {
+
+        it('RichEditorCore stays mounted during loading — never unmounted and remounted', async () => {
+            let resolveLoad!: (v: { content: string; path: string }) => void;
+            mockLoadContent.mockReturnValue(new Promise((r) => { resolveLoad = r; }));
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            // Loading state: editor-content should still be in the DOM (hidden)
+            expect(screen.getByTestId('note-editor-loading')).toBeDefined();
+            expect(screen.getByTestId('editor-content')).toBeDefined();
+
+            // Editor was mounted exactly once
+            expect(richEditorMountCount).toBe(1);
+
+            // Resolve the load
+            await act(async () => { resolveLoad({ content: '# Hello', path: 'page.md' }); });
+
+            // Loading gone, editor still there, still only mounted once
+            expect(screen.queryByTestId('note-editor-loading')).toBeNull();
+            expect(screen.getByTestId('editor-content')).toBeDefined();
+            expect(richEditorMountCount).toBe(1);
+        });
+
+        it('content is applied to editor even when fetch resolves during loading state', async () => {
+            let resolveLoad!: (v: { content: string; path: string }) => void;
+            mockLoadContent.mockReturnValue(new Promise((r) => { resolveLoad = r; }));
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            // Still loading
+            expect(screen.getByTestId('note-editor-loading')).toBeDefined();
+            expect(mockSetContent).not.toHaveBeenCalled();
+
+            // Resolve fetch — content should be applied to the (hidden but mounted) editor
+            await act(async () => { resolveLoad({ content: '# Hello', path: 'page.md' }); });
+
+            expect(mockSetContent).toHaveBeenCalledTimes(1);
+            expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>');
+        });
+
+        it('switching notes does not remount editor — only one mount total', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# First', path: 'a.md' });
+
+            const { rerender } = await act(async () => {
+                return render(<NoteEditor workspaceId="ws1" notePath="a.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># First</p>'));
+            expect(richEditorMountCount).toBe(1);
+
+            // Switch to a different note
+            mockLoadContent.mockResolvedValue({ content: '# Second', path: 'b.md' });
+            await act(async () => {
+                rerender(<NoteEditor workspaceId="ws1" notePath="b.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Second</p>'));
+
+            // Editor was still only mounted once — never unmounted/remounted
+            expect(richEditorMountCount).toBe(1);
+        });
+
+        it('switching notes fetches exactly once per note (no infinite loop)', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# First', path: 'a.md' });
+
+            const { rerender } = await act(async () => {
+                return render(<NoteEditor workspaceId="ws1" notePath="a.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledTimes(1));
+
+            mockLoadContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# Second', path: 'b.md' });
+
+            await act(async () => {
+                rerender(<NoteEditor workspaceId="ws1" notePath="b.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledTimes(1));
+
+            // Switch back
+            mockLoadContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# First again', path: 'a.md' });
+
+            await act(async () => {
+                rerender(<NoteEditor workspaceId="ws1" notePath="a.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledTimes(1));
+
+            // Each switch fetched exactly once — no double or infinite fetches
+            expect(mockSetContent).toHaveBeenCalledTimes(3);
+        });
+
+        it('rapid note switching cancels stale fetches — only last note content is applied', async () => {
+            let resolveFirst!: (v: { content: string; path: string }) => void;
+            let resolveSecond!: (v: { content: string; path: string }) => void;
+
+            mockLoadContent
+                .mockReturnValueOnce(new Promise((r) => { resolveFirst = r; }))
+                .mockReturnValueOnce(new Promise((r) => { resolveSecond = r; }));
+
+            const { rerender } = await act(async () => {
+                return render(<NoteEditor workspaceId="ws1" notePath="a.md" io={mockIo} />);
+            });
+
+            // Quickly switch to b.md before a.md finishes loading
+            await act(async () => {
+                rerender(<NoteEditor workspaceId="ws1" notePath="b.md" io={mockIo} />);
+            });
+
+            // Resolve first (stale) — should be ignored
+            await act(async () => { resolveFirst({ content: '# Stale', path: 'a.md' }); });
+            expect(mockSetContent).not.toHaveBeenCalledWith('<p># Stale</p>');
+
+            // Resolve second (current) — should be applied
+            await act(async () => { resolveSecond({ content: '# Current', path: 'b.md' }); });
+            expect(mockSetContent).toHaveBeenCalledWith('<p># Current</p>');
+        });
+
+        it('editor-content is in DOM but visually hidden during loading', async () => {
+            mockLoadContent.mockReturnValue(new Promise(() => {}));
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            const editorContent = screen.getByTestId('editor-content');
+            expect(editorContent).toBeDefined();
+
+            // The editor's parent div should have visibility:hidden
+            const hiddenWrapper = editorContent.closest('div[style]');
+            expect(hiddenWrapper).toBeDefined();
+            expect((hiddenWrapper as HTMLElement).style.visibility).toBe('hidden');
+        });
+
+        it('editor-content is in DOM but visually hidden in empty state', () => {
+            render(<NoteEditor workspaceId="ws1" notePath={null} io={mockIo} />);
+
+            const editorContent = screen.getByTestId('editor-content');
+            expect(editorContent).toBeDefined();
+
+            const hiddenWrapper = editorContent.closest('div[style]');
+            expect(hiddenWrapper).toBeDefined();
+            expect((hiddenWrapper as HTMLElement).style.visibility).toBe('hidden');
+        });
+
+        it('editor-content is in DOM but visually hidden on load error', async () => {
+            mockLoadContent.mockRejectedValue(new Error('fail'));
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            await waitFor(() => expect(screen.getByTestId('note-editor-error')).toBeDefined());
+
+            const editorContent = screen.getByTestId('editor-content');
+            expect(editorContent).toBeDefined();
+
+            const hiddenWrapper = editorContent.closest('div[style]');
+            expect(hiddenWrapper).toBeDefined();
+            expect((hiddenWrapper as HTMLElement).style.visibility).toBe('hidden');
+        });
+
+        it('transitioning from empty to selected note loads content without remount', async () => {
+            const { rerender } = render(
+                <NoteEditor workspaceId="ws1" notePath={null} io={mockIo} />,
+            );
+
+            expect(richEditorMountCount).toBe(1);
+            expect(mockLoadContent).not.toHaveBeenCalled();
+
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+            await act(async () => {
+                rerender(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            await waitFor(() => {
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>');
+            });
+
+            // Still only one mount — the editor instance survived the transition
+            expect(richEditorMountCount).toBe(1);
+        });
+
+        it('toolbar is hidden during loading and visible after', async () => {
+            let resolveLoad!: (v: { content: string; path: string }) => void;
+            mockLoadContent.mockReturnValue(new Promise((r) => { resolveLoad = r; }));
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+
+            // Toolbar should not be visible during loading
+            expect(screen.queryByTestId('note-editor-toolbar')).toBeNull();
+            expect(screen.queryByTestId('note-mode-toggle')).toBeNull();
+
+            await act(async () => { resolveLoad({ content: '# Hello', path: 'page.md' }); });
+
+            // Toolbar should be visible after loading
+            expect(screen.getByTestId('note-editor-toolbar')).toBeDefined();
+            expect(screen.getByTestId('note-mode-toggle')).toBeDefined();
+        });
     });
 });
