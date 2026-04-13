@@ -4,14 +4,28 @@
  * Tests for the generic registry that manages fs.FSWatcher instances with
  * debounced callbacks and per-key changed-file accumulation.
  *
- * Uses temporary directories for isolation.
- * Cross-platform compatible (Linux/Mac/Windows).
+ * The "debounce and file accumulation" / "shouldIgnore" / "multiple keys"
+ * groups mock `fs.watch` and use fake timers so tests are deterministic —
+ * no real filesystem events or wall-clock waits.
+ *
+ * The "API correctness" group still uses real temp dirs for the few tests
+ * that exercise watch-path validation (non-existent path, etc.).
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import * as fs from 'fs';
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import * as os from 'os';
 import * as path from 'path';
+import { EventEmitter } from 'events';
+
+vi.mock('fs', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('fs')>();
+    return {
+        ...actual,
+        watch: vi.fn(actual.watch),
+    };
+});
+
+import * as fs from 'fs';
 import { DebouncedWatcherRegistry } from '../../../src/server/shared/debounced-watcher-registry';
 
 // ============================================================================
@@ -22,8 +36,38 @@ function createTmpDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'debounced-watcher-'));
 }
 
-function wait(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+function createFakeWatcher() {
+    const emitter = new EventEmitter();
+    let changeListener: ((eventType: string, filename: string | null) => void) | undefined;
+
+    const fakeWatcher = Object.assign(emitter, {
+        close: vi.fn(),
+        ref: vi.fn().mockReturnThis(),
+        unref: vi.fn().mockReturnThis(),
+    }) as unknown as fs.FSWatcher;
+
+    return {
+        watcher: fakeWatcher,
+        captureListener(listener: (eventType: string, filename: string | null) => void) {
+            changeListener = listener;
+        },
+        emit(filename: string) {
+            changeListener?.('change', filename);
+        },
+    };
+}
+
+function mockFsWatch(fakeWatchers: ReturnType<typeof createFakeWatcher>[]) {
+    let callCount = 0;
+    (fs.watch as ReturnType<typeof vi.fn>).mockImplementation(
+        (_path: any, optionsOrListener: any, maybeListener?: any) => {
+            const listener = typeof optionsOrListener === 'function' ? optionsOrListener : maybeListener;
+            const fw = fakeWatchers[Math.min(callCount, fakeWatchers.length - 1)];
+            callCount++;
+            if (listener) fw.captureListener(listener);
+            return fw.watcher;
+        },
+    );
 }
 
 // ============================================================================
@@ -44,10 +88,14 @@ describe('DebouncedWatcherRegistry', () => {
     });
 
     // ------------------------------------------------------------------
-    // API correctness (no real fs.watch needed)
+    // API correctness (real fs.watch for path-validation tests)
     // ------------------------------------------------------------------
 
     describe('API correctness', () => {
+        beforeEach(() => {
+            vi.mocked(fs.watch).mockRestore();
+        });
+
         it('isWatching returns false before any watch call', () => {
             const reg = new DebouncedWatcherRegistry();
             registries.push(reg);
@@ -94,7 +142,7 @@ describe('DebouncedWatcherRegistry', () => {
             const cb = vi.fn();
 
             reg.watch('k', dir, cb);
-            reg.watch('k', dir, cb); // second call — should be ignored
+            reg.watch('k', dir, cb);
             expect(reg.isWatching('k')).toBe(true);
             expect(reg.getWatchedKeys()).toEqual(['k']);
         });
@@ -149,135 +197,204 @@ describe('DebouncedWatcherRegistry', () => {
     });
 
     // ------------------------------------------------------------------
-    // Debounce + file accumulation (real fs.watch)
+    // Debounce + file accumulation (mocked fs.watch + fake timers)
     // ------------------------------------------------------------------
 
     describe('debounce and file accumulation', () => {
-        it('fires onChange with accumulated changed files after debounce', async () => {
-            const dir = createTmpDir();
-            cleanupDirs.push(dir);
+        let fakeWatcherA: ReturnType<typeof createFakeWatcher>;
+
+        beforeEach(() => {
+            vi.useFakeTimers();
+            fakeWatcherA = createFakeWatcher();
+            mockFsWatch([fakeWatcherA]);
+        });
+
+        afterEach(() => {
+            vi.mocked(fs.watch).mockRestore();
+            vi.useRealTimers();
+        });
+
+        it('fires onChange with accumulated changed files after debounce', () => {
             const reg = new DebouncedWatcherRegistry(200);
             registries.push(reg);
             const onChange = vi.fn();
 
-            reg.watch('k', dir, onChange);
-            await wait(100);
+            reg.watch('k', '/fake/dir', onChange);
 
-            fs.writeFileSync(path.join(dir, 'a.txt'), 'hello');
+            fakeWatcherA.emit('a.txt');
+            expect(onChange).not.toHaveBeenCalled();
 
-            await wait(800);
-
-            expect(onChange).toHaveBeenCalled();
-            const [key, files] = onChange.mock.calls[0];
-            expect(key).toBe('k');
-            expect(Array.isArray(files)).toBe(true);
+            vi.advanceTimersByTime(200);
+            expect(onChange).toHaveBeenCalledOnce();
+            expect(onChange).toHaveBeenCalledWith('k', ['a.txt']);
         });
 
-        it('debounces rapid events into a single callback', async () => {
-            const dir = createTmpDir();
-            cleanupDirs.push(dir);
+        it('debounces rapid events into a single callback', () => {
             const reg = new DebouncedWatcherRegistry(300);
             registries.push(reg);
             const onChange = vi.fn();
 
-            reg.watch('k', dir, onChange);
-            await wait(100);
+            reg.watch('k', '/fake/dir', onChange);
 
             for (let i = 0; i < 5; i++) {
-                fs.writeFileSync(path.join(dir, `f${i}.txt`), `v${i}`);
+                fakeWatcherA.emit(`f${i}.txt`);
             }
 
-            await wait(1000);
-
+            vi.advanceTimersByTime(300);
             expect(onChange).toHaveBeenCalledTimes(1);
+            const [, files] = onChange.mock.calls[0];
+            expect(files).toHaveLength(5);
         });
 
-        it('does not fire after unwatch', async () => {
-            const dir = createTmpDir();
-            cleanupDirs.push(dir);
+        it('accumulates files across debounce resets', () => {
+            const reg = new DebouncedWatcherRegistry(300);
+            registries.push(reg);
+            const onChange = vi.fn();
+
+            reg.watch('k', '/fake/dir', onChange);
+
+            fakeWatcherA.emit('first.txt');
+            vi.advanceTimersByTime(200);
+            fakeWatcherA.emit('second.txt');
+            vi.advanceTimersByTime(300);
+
+            expect(onChange).toHaveBeenCalledOnce();
+            const [, files] = onChange.mock.calls[0];
+            expect(files).toEqual(expect.arrayContaining(['first.txt', 'second.txt']));
+        });
+
+        it('does not fire after unwatch', () => {
             const reg = new DebouncedWatcherRegistry(100);
             registries.push(reg);
             const onChange = vi.fn();
 
-            reg.watch('k', dir, onChange);
+            reg.watch('k', '/fake/dir', onChange);
+            fakeWatcherA.emit('file.txt');
             reg.unwatch('k');
 
-            fs.writeFileSync(path.join(dir, 'after.txt'), 'x');
-
-            await wait(400);
-
+            vi.advanceTimersByTime(200);
             expect(onChange).not.toHaveBeenCalled();
         });
 
-        it('does not fire after closeAll', async () => {
-            const dir = createTmpDir();
-            cleanupDirs.push(dir);
+        it('does not fire after closeAll', () => {
             const reg = new DebouncedWatcherRegistry(100);
             registries.push(reg);
             const onChange = vi.fn();
 
-            reg.watch('k', dir, onChange);
+            reg.watch('k', '/fake/dir', onChange);
+            fakeWatcherA.emit('file.txt');
             reg.closeAll();
 
-            fs.writeFileSync(path.join(dir, 'after.txt'), 'x');
-
-            await wait(400);
-
+            vi.advanceTimersByTime(200);
             expect(onChange).not.toHaveBeenCalled();
         });
     });
 
     // ------------------------------------------------------------------
-    // shouldIgnore
+    // shouldIgnore (mocked fs.watch + fake timers)
     // ------------------------------------------------------------------
 
     describe('shouldIgnore option', () => {
-        it('ignores files matching the predicate', async () => {
-            const dir = createTmpDir();
-            cleanupDirs.push(dir);
+        let fakeWatcherA: ReturnType<typeof createFakeWatcher>;
+
+        beforeEach(() => {
+            vi.useFakeTimers();
+            fakeWatcherA = createFakeWatcher();
+            mockFsWatch([fakeWatcherA]);
+        });
+
+        afterEach(() => {
+            vi.mocked(fs.watch).mockRestore();
+            vi.useRealTimers();
+        });
+
+        it('ignores files matching the predicate', () => {
             const reg = new DebouncedWatcherRegistry(200);
             registries.push(reg);
             const onChange = vi.fn();
 
-            reg.watch('k', dir, onChange, {
+            reg.watch('k', '/fake/dir', onChange, {
                 shouldIgnore: (f) => f.endsWith('.log'),
             });
-            await wait(100);
 
-            fs.writeFileSync(path.join(dir, 'app.log'), 'log content');
+            fakeWatcherA.emit('app.log');
 
-            await wait(600);
-
+            vi.advanceTimersByTime(500);
             expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it('passes through files not matching the predicate', () => {
+            const reg = new DebouncedWatcherRegistry(200);
+            registries.push(reg);
+            const onChange = vi.fn();
+
+            reg.watch('k', '/fake/dir', onChange, {
+                shouldIgnore: (f) => f.endsWith('.log'),
+            });
+
+            fakeWatcherA.emit('app.log');
+            fakeWatcherA.emit('data.json');
+
+            vi.advanceTimersByTime(200);
+            expect(onChange).toHaveBeenCalledOnce();
+            expect(onChange).toHaveBeenCalledWith('k', ['data.json']);
         });
     });
 
     // ------------------------------------------------------------------
-    // Multiple keys are independent
+    // Multiple keys are independent (mocked fs.watch + fake timers)
     // ------------------------------------------------------------------
 
     describe('multiple keys', () => {
-        it('keys do not interfere with each other', async () => {
-            const d1 = createTmpDir();
-            const d2 = createTmpDir();
-            cleanupDirs.push(d1, d2);
+        let fakeWatcherA: ReturnType<typeof createFakeWatcher>;
+        let fakeWatcherB: ReturnType<typeof createFakeWatcher>;
+
+        beforeEach(() => {
+            vi.useFakeTimers();
+            fakeWatcherA = createFakeWatcher();
+            fakeWatcherB = createFakeWatcher();
+            mockFsWatch([fakeWatcherA, fakeWatcherB]);
+        });
+
+        afterEach(() => {
+            vi.mocked(fs.watch).mockRestore();
+            vi.useRealTimers();
+        });
+
+        it('keys do not interfere with each other', () => {
             const reg = new DebouncedWatcherRegistry(200);
             registries.push(reg);
             const cb = vi.fn();
 
-            reg.watch('a', d1, cb);
-            reg.watch('b', d2, cb);
-            await wait(200);
-            cb.mockClear();
+            reg.watch('a', '/fake/dir-a', cb);
+            reg.watch('b', '/fake/dir-b', cb);
 
-            fs.writeFileSync(path.join(d1, 'only-a.txt'), 'a');
+            fakeWatcherA.emit('only-a.txt');
 
-            await wait(800);
+            vi.advanceTimersByTime(200);
 
             const aCalls = cb.mock.calls.filter(([k]) => k === 'a');
             const bCalls = cb.mock.calls.filter(([k]) => k === 'b');
-            expect(aCalls.length).toBeGreaterThan(0);
+            expect(aCalls.length).toBe(1);
             expect(bCalls).toHaveLength(0);
+        });
+
+        it('events on key b do not affect key a', () => {
+            const reg = new DebouncedWatcherRegistry(200);
+            registries.push(reg);
+            const cb = vi.fn();
+
+            reg.watch('a', '/fake/dir-a', cb);
+            reg.watch('b', '/fake/dir-b', cb);
+
+            fakeWatcherB.emit('only-b.txt');
+
+            vi.advanceTimersByTime(200);
+
+            const aCalls = cb.mock.calls.filter(([k]) => k === 'a');
+            const bCalls = cb.mock.calls.filter(([k]) => k === 'b');
+            expect(aCalls).toHaveLength(0);
+            expect(bCalls.length).toBe(1);
         });
     });
 
@@ -289,7 +406,6 @@ describe('DebouncedWatcherRegistry', () => {
         it('uses provided default debounce', () => {
             const reg = new DebouncedWatcherRegistry(500);
             registries.push(reg);
-            // Just verify it constructs without error
             expect(reg).toBeDefined();
         });
 

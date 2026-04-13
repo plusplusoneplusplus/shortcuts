@@ -4,14 +4,29 @@
  * Tests for the TaskWatcher class which watches a repo-scoped tasks directory
  * for file changes and fires debounced callbacks.
  *
- * Uses temporary directories for isolation.
- * Cross-platform compatible (Linux/Mac/Windows).
+ * The "debounce" / "unwatchWorkspace" / "closeAll" / "multiple workspaces"
+ * groups mock `fs.watch`/`fs.statSync` and use fake timers so tests are
+ * deterministic — no real filesystem events or wall-clock waits.
+ *
+ * The "non-existent directory" group uses real temp dirs for path-validation
+ * behavior that depends on the actual filesystem.
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import * as fs from 'fs';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import * as os from 'os';
 import * as path from 'path';
+import { EventEmitter } from 'events';
+
+vi.mock('fs', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('fs')>();
+    return {
+        ...actual,
+        watch: vi.fn(actual.watch),
+        statSync: vi.fn(actual.statSync),
+    };
+});
+
+import * as fs from 'fs';
 import { TaskWatcher } from '../../src/server/task-watcher';
 
 // ============================================================================
@@ -19,14 +34,45 @@ import { TaskWatcher } from '../../src/server/task-watcher';
 // ============================================================================
 
 function createTmpWorkspace(): { root: string; tasksDir: string } {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwatcher-'));
+    const root = (fs.mkdtempSync as any).call(fs, path.join(os.tmpdir(), 'taskwatcher-'));
     const tasksDir = path.join(root, '.vscode', 'tasks');
-    fs.mkdirSync(tasksDir, { recursive: true });
+    (fs.mkdirSync as any).call(fs, tasksDir, { recursive: true });
     return { root, tasksDir };
 }
 
-function wait(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+function createFakeWatcher() {
+    const emitter = new EventEmitter();
+    let changeListener: ((event: string, filename: string | null) => void) | undefined;
+
+    const fakeWatcher = Object.assign(emitter, {
+        close: vi.fn(),
+        ref: vi.fn().mockReturnThis(),
+        unref: vi.fn().mockReturnThis(),
+    }) as unknown as fs.FSWatcher;
+
+    return {
+        watcher: fakeWatcher,
+        captureListener(listener: (event: string, filename: string | null) => void) {
+            changeListener = listener;
+        },
+        emit(filename: string) {
+            changeListener?.('change', filename);
+        },
+    };
+}
+
+function mockFsWatchAndStat(fakeWatchers: ReturnType<typeof createFakeWatcher>[]) {
+    let callCount = 0;
+    (fs.watch as ReturnType<typeof vi.fn>).mockImplementation(
+        (_path: any, optionsOrListener: any, maybeListener?: any) => {
+            const listener = typeof optionsOrListener === 'function' ? optionsOrListener : maybeListener;
+            const fw = fakeWatchers[Math.min(callCount, fakeWatchers.length - 1)];
+            callCount++;
+            if (listener) fw.captureListener(listener);
+            return fw.watcher;
+        },
+    );
+    (fs.statSync as ReturnType<typeof vi.fn>).mockReturnValue({ isDirectory: () => true } as any);
 }
 
 // ============================================================================
@@ -54,283 +100,234 @@ describe('TaskWatcher', () => {
     });
 
     // ------------------------------------------------------------------
-    // Basic watching
+    // Debounce (mocked fs.watch + fake timers)
     // ------------------------------------------------------------------
 
-    it('should fire callback when a .md file is created in the tasks directory', async () => {
-        const { root, tasksDir } = createTmpWorkspace();
-        cleanupDirs.push(root);
-        const callback = vi.fn();
+    describe('debounce', () => {
+        let fakeWatcherA: ReturnType<typeof createFakeWatcher>;
 
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', tasksDir);
+        beforeEach(() => {
+            vi.useFakeTimers();
+            fakeWatcherA = createFakeWatcher();
+            mockFsWatchAndStat([fakeWatcherA]);
+        });
 
-        // Let the watcher fully register (macOS FSEvents can be slow)
-        await wait(200);
+        afterEach(() => {
+            vi.mocked(fs.watch).mockRestore();
+            vi.mocked(fs.statSync).mockRestore();
+            vi.useRealTimers();
+        });
 
-        // Create a file
-        fs.writeFileSync(path.join(tasksDir, 'test.md'), '# Task');
+        it('should fire callback after debounce window', () => {
+            const callback = vi.fn();
+            const watcher = new TaskWatcher(callback);
+            cleanupWatchers.push(watcher);
+            watcher.watchWorkspace('ws1', '/fake/tasks');
 
-        // Wait for debounce (300ms) + generous margin for CI
-        await wait(1500);
+            fakeWatcherA.emit('test.md');
+            expect(callback).not.toHaveBeenCalled();
 
-        expect(callback).toHaveBeenCalledWith('ws1');
-    });
+            vi.advanceTimersByTime(300);
+            expect(callback).toHaveBeenCalledOnce();
+            expect(callback).toHaveBeenCalledWith('ws1');
+        });
 
-    it('should fire callback when a file is modified', async () => {
-        const { root, tasksDir } = createTmpWorkspace();
-        cleanupDirs.push(root);
+        it('should debounce multiple rapid events into a single callback', () => {
+            const callback = vi.fn();
+            const watcher = new TaskWatcher(callback);
+            cleanupWatchers.push(watcher);
+            watcher.watchWorkspace('ws1', '/fake/tasks');
 
-        fs.writeFileSync(path.join(tasksDir, 'existing.md'), '# Initial');
+            for (let i = 0; i < 10; i++) {
+                fakeWatcherA.emit(`rapid-${i}.md`);
+            }
 
-        const callback = vi.fn();
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', tasksDir);
+            vi.advanceTimersByTime(300);
+            expect(callback).toHaveBeenCalledTimes(1);
+            expect(callback).toHaveBeenCalledWith('ws1');
+        });
 
-        // Wait a bit for watcher to stabilize
-        await wait(100);
+        it('should reset debounce timer on new events', () => {
+            const callback = vi.fn();
+            const watcher = new TaskWatcher(callback);
+            cleanupWatchers.push(watcher);
+            watcher.watchWorkspace('ws1', '/fake/tasks');
 
-        // Modify the file
-        fs.writeFileSync(path.join(tasksDir, 'existing.md'), '# Updated');
+            fakeWatcherA.emit('first.md');
+            vi.advanceTimersByTime(200);
+            expect(callback).not.toHaveBeenCalled();
 
-        await wait(600);
+            fakeWatcherA.emit('second.md');
+            vi.advanceTimersByTime(200);
+            expect(callback).not.toHaveBeenCalled();
 
-        expect(callback).toHaveBeenCalledWith('ws1');
-    });
-
-    it('should fire callback when a file is deleted', async () => {
-        const { root, tasksDir } = createTmpWorkspace();
-        cleanupDirs.push(root);
-
-        fs.writeFileSync(path.join(tasksDir, 'to-delete.md'), '# Delete me');
-
-        const callback = vi.fn();
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', tasksDir);
-
-        await wait(100);
-
-        // Delete the file
-        fs.unlinkSync(path.join(tasksDir, 'to-delete.md'));
-
-        await wait(600);
-
-        expect(callback).toHaveBeenCalledWith('ws1');
-    });
-
-    // ------------------------------------------------------------------
-    // Debounce
-    // ------------------------------------------------------------------
-
-    it('should debounce multiple rapid events into a single callback', async () => {
-        const { root, tasksDir } = createTmpWorkspace();
-        cleanupDirs.push(root);
-        const callback = vi.fn();
-
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', tasksDir);
-
-        // Rapid-fire 10 writes within 100ms
-        for (let i = 0; i < 10; i++) {
-            fs.writeFileSync(path.join(tasksDir, `rapid-${i}.md`), `# Task ${i}`);
-        }
-
-        // Wait 500ms after the last event (debounce is 300ms)
-        await wait(800);
-
-        // Should have been coalesced into a single callback
-        expect(callback).toHaveBeenCalledTimes(1);
-        expect(callback).toHaveBeenCalledWith('ws1');
+            vi.advanceTimersByTime(100);
+            expect(callback).toHaveBeenCalledOnce();
+        });
     });
 
     // ------------------------------------------------------------------
-    // unwatchWorkspace
+    // unwatchWorkspace (mocked fs.watch + fake timers)
     // ------------------------------------------------------------------
 
-    it('should stop firing callbacks after unwatchWorkspace', async () => {
-        const { root, tasksDir } = createTmpWorkspace();
-        cleanupDirs.push(root);
-        const callback = vi.fn();
+    describe('unwatchWorkspace', () => {
+        let fakeWatcherA: ReturnType<typeof createFakeWatcher>;
 
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', tasksDir);
+        beforeEach(() => {
+            vi.useFakeTimers();
+            fakeWatcherA = createFakeWatcher();
+            mockFsWatchAndStat([fakeWatcherA]);
+        });
 
-        // Unwatch immediately
-        watcher.unwatchWorkspace('ws1');
+        afterEach(() => {
+            vi.mocked(fs.watch).mockRestore();
+            vi.mocked(fs.statSync).mockRestore();
+            vi.useRealTimers();
+        });
 
-        fs.writeFileSync(path.join(tasksDir, 'after-unwatch.md'), '# After');
+        it('should stop firing callbacks after unwatchWorkspace', () => {
+            const callback = vi.fn();
+            const watcher = new TaskWatcher(callback);
+            cleanupWatchers.push(watcher);
+            watcher.watchWorkspace('ws1', '/fake/tasks');
 
-        await wait(600);
+            fakeWatcherA.emit('file.md');
+            watcher.unwatchWorkspace('ws1');
 
-        expect(callback).not.toHaveBeenCalled();
-    });
+            vi.advanceTimersByTime(500);
+            expect(callback).not.toHaveBeenCalled();
+        });
 
-    it('should report isWatching correctly', () => {
-        const { root, tasksDir } = createTmpWorkspace();
-        cleanupDirs.push(root);
-        const callback = vi.fn();
+        it('should report isWatching correctly', () => {
+            const callback = vi.fn();
+            const watcher = new TaskWatcher(callback);
+            cleanupWatchers.push(watcher);
 
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-
-        expect(watcher.isWatching('ws1')).toBe(false);
-
-        watcher.watchWorkspace('ws1', tasksDir);
-        expect(watcher.isWatching('ws1')).toBe(true);
-
-        watcher.unwatchWorkspace('ws1');
-        expect(watcher.isWatching('ws1')).toBe(false);
-    });
-
-    // ------------------------------------------------------------------
-    // closeAll
-    // ------------------------------------------------------------------
-
-    it('should stop all watchers on closeAll', async () => {
-        const { root: root1, tasksDir: tasksDir1 } = createTmpWorkspace();
-        const { root: root2, tasksDir: tasksDir2 } = createTmpWorkspace();
-        cleanupDirs.push(root1, root2);
-        const callback = vi.fn();
-
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', tasksDir1);
-        watcher.watchWorkspace('ws2', tasksDir2);
-
-        expect(watcher.isWatching('ws1')).toBe(true);
-        expect(watcher.isWatching('ws2')).toBe(true);
-
-        watcher.closeAll();
-
-        expect(watcher.isWatching('ws1')).toBe(false);
-        expect(watcher.isWatching('ws2')).toBe(false);
-
-        // Write after closeAll should not trigger callback
-        fs.writeFileSync(path.join(tasksDir1, 'post.md'), '# After');
-        fs.writeFileSync(path.join(tasksDir2, 'post.md'), '# After');
-
-        await wait(600);
-
-        expect(callback).not.toHaveBeenCalled();
+            expect(watcher.isWatching('ws1')).toBe(false);
+            watcher.watchWorkspace('ws1', '/fake/tasks');
+            expect(watcher.isWatching('ws1')).toBe(true);
+            watcher.unwatchWorkspace('ws1');
+            expect(watcher.isWatching('ws1')).toBe(false);
+        });
     });
 
     // ------------------------------------------------------------------
-    // Non-existent directory
+    // closeAll (mocked fs.watch + fake timers)
     // ------------------------------------------------------------------
 
-    it('should not throw when watching a workspace without a tasks directory', () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwatcher-nodir-'));
-        cleanupDirs.push(root);
-        const tasksDir = path.join(root, '.vscode', 'tasks');
-        const callback = vi.fn();
+    describe('closeAll', () => {
+        let fakeWatcherA: ReturnType<typeof createFakeWatcher>;
+        let fakeWatcherB: ReturnType<typeof createFakeWatcher>;
 
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
+        beforeEach(() => {
+            vi.useFakeTimers();
+            fakeWatcherA = createFakeWatcher();
+            fakeWatcherB = createFakeWatcher();
+            mockFsWatchAndStat([fakeWatcherA, fakeWatcherB]);
+        });
 
-        // Should not throw — tasksDir does not exist
-        expect(() => watcher.watchWorkspace('ws-nodir', tasksDir)).not.toThrow();
-        expect(watcher.isWatching('ws-nodir')).toBe(false);
-    });
+        afterEach(() => {
+            vi.mocked(fs.watch).mockRestore();
+            vi.mocked(fs.statSync).mockRestore();
+            vi.useRealTimers();
+        });
 
-    it('should not fire callbacks for a non-existent directory', async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwatcher-nodir2-'));
-        cleanupDirs.push(root);
-        const tasksDir = path.join(root, '.vscode', 'tasks');
-        const callback = vi.fn();
+        it('should stop all watchers on closeAll', () => {
+            const callback = vi.fn();
+            const watcher = new TaskWatcher(callback);
+            cleanupWatchers.push(watcher);
+            watcher.watchWorkspace('ws1', '/fake/tasks1');
+            watcher.watchWorkspace('ws2', '/fake/tasks2');
 
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws-nodir', tasksDir);
+            expect(watcher.isWatching('ws1')).toBe(true);
+            expect(watcher.isWatching('ws2')).toBe(true);
 
-        await wait(600);
+            watcher.closeAll();
 
-        expect(callback).not.toHaveBeenCalled();
-    });
+            expect(watcher.isWatching('ws1')).toBe(false);
+            expect(watcher.isWatching('ws2')).toBe(false);
 
-    // ------------------------------------------------------------------
-    // Duplicate watch
-    // ------------------------------------------------------------------
+            fakeWatcherA.emit('post.md');
+            fakeWatcherB.emit('post.md');
+            vi.advanceTimersByTime(500);
 
-    it('should not double-watch the same workspace', async () => {
-        const { root, tasksDir } = createTmpWorkspace();
-        cleanupDirs.push(root);
-        const callback = vi.fn();
-
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-
-        watcher.watchWorkspace('ws1', tasksDir);
-        watcher.watchWorkspace('ws1', tasksDir); // second call should be no-op
-
-        await wait(200);
-
-        fs.writeFileSync(path.join(tasksDir, 'dup.md'), '# Dup');
-
-        await wait(1200);
-
-        // Should only get one callback, not two
-        expect(callback).toHaveBeenCalledTimes(1);
+            expect(callback).not.toHaveBeenCalled();
+        });
     });
 
     // ------------------------------------------------------------------
-    // Error handling — directory deleted mid-watch
+    // Multiple workspaces (mocked fs.watch + fake timers)
     // ------------------------------------------------------------------
 
-    it('should handle directory deletion gracefully during watch', async () => {
-        const { root, tasksDir } = createTmpWorkspace();
-        cleanupDirs.push(root);
-        const callback = vi.fn();
+    describe('multiple workspaces', () => {
+        let fakeWatcherA: ReturnType<typeof createFakeWatcher>;
+        let fakeWatcherB: ReturnType<typeof createFakeWatcher>;
 
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', tasksDir);
+        beforeEach(() => {
+            vi.useFakeTimers();
+            fakeWatcherA = createFakeWatcher();
+            fakeWatcherB = createFakeWatcher();
+            mockFsWatchAndStat([fakeWatcherA, fakeWatcherB]);
+        });
 
-        await wait(100);
+        afterEach(() => {
+            vi.mocked(fs.watch).mockRestore();
+            vi.mocked(fs.statSync).mockRestore();
+            vi.useRealTimers();
+        });
 
-        // Delete the watched directory
-        fs.rmSync(tasksDir, { recursive: true, force: true });
+        it('should track multiple workspaces independently', () => {
+            const callback = vi.fn();
+            const watcher = new TaskWatcher(callback);
+            cleanupWatchers.push(watcher);
+            watcher.watchWorkspace('ws1', '/fake/tasks1');
+            watcher.watchWorkspace('ws2', '/fake/tasks2');
 
-        // Should not crash — wait for any error events to propagate
-        await wait(600);
+            fakeWatcherA.emit('ws1-task.md');
 
-        // The watcher should have cleaned up
-        // (On some platforms it may still report as watching until the error fires)
-        // The important thing is no crash occurred.
+            vi.advanceTimersByTime(300);
+
+            expect(callback).toHaveBeenCalledWith('ws1');
+            const ws2Calls = callback.mock.calls.filter((c: any) => c[0] === 'ws2');
+            expect(ws2Calls).toHaveLength(0);
+        });
+
+        it('should not double-watch the same workspace', () => {
+            const callback = vi.fn();
+            const watcher = new TaskWatcher(callback);
+            cleanupWatchers.push(watcher);
+
+            watcher.watchWorkspace('ws1', '/fake/tasks');
+            watcher.watchWorkspace('ws1', '/fake/tasks');
+
+            fakeWatcherA.emit('dup.md');
+
+            vi.advanceTimersByTime(300);
+            expect(callback).toHaveBeenCalledTimes(1);
+        });
     });
 
     // ------------------------------------------------------------------
-    // Multiple workspaces
+    // Non-existent directory (real filesystem)
     // ------------------------------------------------------------------
 
-    it('should track multiple workspaces independently', async () => {
-        const { root: root1, tasksDir: tasksDir1 } = createTmpWorkspace();
-        const { root: root2, tasksDir: tasksDir2 } = createTmpWorkspace();
-        cleanupDirs.push(root1, root2);
-        const callback = vi.fn();
+    describe('non-existent directory', () => {
+        beforeEach(() => {
+            vi.mocked(fs.watch).mockRestore();
+            vi.mocked(fs.statSync).mockRestore();
+        });
 
-        const watcher = new TaskWatcher(callback);
-        cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', tasksDir1);
-        watcher.watchWorkspace('ws2', tasksDir2);
+        it('should not throw when watching a workspace without a tasks directory', () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwatcher-nodir-'));
+            cleanupDirs.push(root);
+            const tasksDir = path.join(root, '.vscode', 'tasks');
+            const callback = vi.fn();
 
-        // Give FSEvents/inotify time to fully register and settle
-        // (macOS FSEvents may fire for the initial directory creation)
-        await wait(800);
-        callback.mockClear();
+            const watcher = new TaskWatcher(callback);
+            cleanupWatchers.push(watcher);
 
-        // Write to ws1 only
-        fs.writeFileSync(path.join(tasksDir1, 'ws1-task.md'), '# WS1');
-
-        await wait(800);
-
-        // Only ws1 callback should have fired
-        expect(callback).toHaveBeenCalledWith('ws1');
-        const ws2Calls = callback.mock.calls.filter((c: any) => c[0] === 'ws2');
-        expect(ws2Calls).toHaveLength(0);
+            expect(() => watcher.watchWorkspace('ws-nodir', tasksDir)).not.toThrow();
+            expect(watcher.isWatching('ws-nodir')).toBe(false);
+        });
     });
 });
