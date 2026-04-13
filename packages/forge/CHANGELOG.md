@@ -1,5 +1,11 @@
 # @plusplusoneplusplus/forge
 
+## 1.2.0
+
+### Minor Changes
+
+- Migrate the storage to SQLite
+
 ## 1.1.0
 
 ### Minor Changes

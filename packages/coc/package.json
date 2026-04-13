@@ -1,6 +1,6 @@
 {
   "name": "@plusplusoneplusplus/coc",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "CoC (Copilot of Copilot) - CLI and web dashboard for executing YAML-based AI workflows with queue, scheduling, wiki serving, and task management",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,7 +24,7 @@
     "@github/copilot-sdk": "^0.2.0",
     "@monaco-editor/react": "^4.7.0",
     "@octokit/rest": "^22.0.1",
-    "@plusplusoneplusplus/forge": "^1.1.0",
+    "@plusplusoneplusplus/forge": "^1.2.0",
     "@sereneinserenade/tiptap-comment-extension": "^0.2.0",
     "@tiptap/core": "^2.27.2",
     "@tiptap/extension-highlight": "^2.27.2",
