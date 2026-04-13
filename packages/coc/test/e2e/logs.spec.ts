@@ -11,7 +11,7 @@ import { request } from './fixtures/seed';
 
 // Import captureEntry from the compiled server module.
 // This is the same singleton used by the running test server.
-const { captureEntry, clearLogBuffer } = require('../../../dist/server/index');
+const { captureEntry, clearLogBuffer } = require('../../dist/server/index');
 
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
