@@ -111,6 +111,7 @@ src/
 │   ├── preferences-handler.ts    # User preference storage API (UI prefs only; pin/archive moved to processes table)
 │   ├── pin-archive-handler.ts    # Pin/archive REST API (PATCH /api/processes/:id/pin, /archive; POST /api/processes/archive, /unarchive; GET /api/workspaces/:id/pinned)
 │   ├── admin-handler.ts          # Admin/diagnostic endpoints
+│   ├── heap-monitor.ts          # Heap memory pressure monitoring (periodic V8 heap checks, GET /api/admin/heap)
 │   ├── output-file-manager.ts    # Manage output file storage
 │   ├── output-pruner.ts          # Prune old output files
 │   ├── data-exporter.ts          # Export stored data
@@ -225,6 +226,14 @@ serve:
   host: localhost
   dataDir: ~/.coc
   theme: auto
+
+# Heap monitoring (enabled by default)
+monitoring:
+  heapCheck:
+    enabled: true
+    intervalMs: 30000
+    warnThreshold: 70
+    criticalThreshold: 85
 ```
 
 **Configuration Precedence:** CLI flags > config file > defaults

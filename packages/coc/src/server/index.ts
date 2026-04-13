@@ -31,6 +31,7 @@ import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastruc
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
+import { HeapMonitor } from './heap-monitor';
 import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './in-memory-process-store';
@@ -46,6 +47,7 @@ import { migrateWorkspaceRegistryIfNeeded } from './startup-workspace-migration'
 interface CloseHandlerDeps {
     staleDetector: { dispose(): void };
     outputPruner: { stopListening(): void };
+    heapMonitor: { dispose(): void };
     taskWatcher: { closeAll(): void };
     pipelineWatcher: { closeAll(): void };
     templateWatcher: { closeAll(): void };
@@ -68,6 +70,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
 
         staleDetector.dispose();
         outputPruner.stopListening();
+        deps.heapMonitor.dispose();
         taskWatcher.closeAll();
         pipelineWatcher.closeAll();
         templateWatcher.closeAll();
@@ -137,6 +140,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
     const { outputPruner, staleDetector } = createCleanupInfrastructure(store, dataDir, queueFacade);
 
+    const heapMonitor = new HeapMonitor(resolvedConfig.monitoring.heapCheck);
+    heapMonitor.start();
+
     // Auto-migrate legacy workspace/wiki registries from JSON to SQLite
     await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
@@ -192,7 +198,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     return {
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
-            staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher,
+            staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher,
             wikiManager, scheduleManager, scheduleInfraDispose, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
@@ -299,6 +305,10 @@ export { captureEntry, clearLogBuffer } from './server-log-capture';
 
 // Paths
 export { getRepoDataPath } from './paths';
+
+// Heap monitoring
+export { HeapMonitor, getHeapSnapshot, registerHeapRoutes } from './heap-monitor';
+export type { HeapSnapshot, HeapMonitorConfig } from './heap-monitor';
 
 // ============================================================================
 // @internal — Infrastructure used by createExecutionServer; avoid in new code

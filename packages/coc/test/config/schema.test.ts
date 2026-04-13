@@ -442,3 +442,92 @@ describe('logging schema validation', () => {
         expect(() => CLIConfigSchema.parse({ logging: { stores: { 'ai-service': { level: 'verbose' } } } })).toThrow();
     });
 });
+
+// ============================================================================
+// monitoring.heapCheck schema
+// ============================================================================
+
+describe('monitoring.heapCheck schema validation', () => {
+    it('accepts empty monitoring section', () => {
+        const result = CLIConfigSchema.parse({ monitoring: {} });
+        expect(result.monitoring).toEqual({});
+    });
+
+    it('accepts empty heapCheck section', () => {
+        const result = CLIConfigSchema.parse({ monitoring: { heapCheck: {} } });
+        expect(result.monitoring?.heapCheck).toEqual({});
+    });
+
+    it('accepts full heapCheck config', () => {
+        const config = {
+            monitoring: {
+                heapCheck: {
+                    enabled: true,
+                    intervalMs: 30000,
+                    warnThreshold: 70,
+                    criticalThreshold: 85,
+                },
+            },
+        };
+        const result = CLIConfigSchema.parse(config);
+        expect(result.monitoring?.heapCheck?.enabled).toBe(true);
+        expect(result.monitoring?.heapCheck?.intervalMs).toBe(30000);
+        expect(result.monitoring?.heapCheck?.warnThreshold).toBe(70);
+        expect(result.monitoring?.heapCheck?.criticalThreshold).toBe(85);
+    });
+
+    it('accepts partial heapCheck config', () => {
+        const result = CLIConfigSchema.parse({ monitoring: { heapCheck: { enabled: false } } });
+        expect(result.monitoring?.heapCheck?.enabled).toBe(false);
+    });
+
+    it('rejects non-boolean enabled', () => {
+        expect(() => CLIConfigSchema.parse({ monitoring: { heapCheck: { enabled: 'yes' } } }))
+            .toThrow();
+    });
+
+    it('rejects non-positive intervalMs', () => {
+        expect(() => CLIConfigSchema.parse({ monitoring: { heapCheck: { intervalMs: 0 } } }))
+            .toThrow();
+    });
+
+    it('rejects negative intervalMs', () => {
+        expect(() => CLIConfigSchema.parse({ monitoring: { heapCheck: { intervalMs: -1000 } } }))
+            .toThrow();
+    });
+
+    it('rejects decimal intervalMs', () => {
+        expect(() => CLIConfigSchema.parse({ monitoring: { heapCheck: { intervalMs: 1.5 } } }))
+            .toThrow();
+    });
+
+    it('rejects warnThreshold above 100', () => {
+        expect(() => CLIConfigSchema.parse({ monitoring: { heapCheck: { warnThreshold: 101 } } }))
+            .toThrow();
+    });
+
+    it('rejects warnThreshold below 0', () => {
+        expect(() => CLIConfigSchema.parse({ monitoring: { heapCheck: { warnThreshold: -1 } } }))
+            .toThrow();
+    });
+
+    it('accepts warnThreshold at boundary (0 and 100)', () => {
+        expect(CLIConfigSchema.parse({ monitoring: { heapCheck: { warnThreshold: 0 } } }).monitoring?.heapCheck?.warnThreshold).toBe(0);
+        expect(CLIConfigSchema.parse({ monitoring: { heapCheck: { warnThreshold: 100 } } }).monitoring?.heapCheck?.warnThreshold).toBe(100);
+    });
+
+    it('rejects criticalThreshold above 100', () => {
+        expect(() => CLIConfigSchema.parse({ monitoring: { heapCheck: { criticalThreshold: 101 } } }))
+            .toThrow();
+    });
+
+    it('rejects unknown keys inside monitoring (strict mode)', () => {
+        expect(() => CLIConfigSchema.parse({ monitoring: { unknown: true } }))
+            .toThrow();
+    });
+
+    it('rejects unknown keys inside monitoring.heapCheck (strict mode)', () => {
+        expect(() => CLIConfigSchema.parse({ monitoring: { heapCheck: { unknown: true } } }))
+            .toThrow();
+    });
+});

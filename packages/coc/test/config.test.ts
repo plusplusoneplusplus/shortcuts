@@ -892,4 +892,69 @@ timeout: 300
             expect(resolved.logging?.level).toBe('error');
         });
     });
+
+    // ========================================================================
+    // monitoring.heapCheck config
+    // ========================================================================
+
+    describe('monitoring.heapCheck config', () => {
+        let tmpDir: string;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-config-monitoring-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('DEFAULT_CONFIG includes monitoring defaults', () => {
+            expect(DEFAULT_CONFIG.monitoring).toEqual({
+                heapCheck: {
+                    enabled: true,
+                    intervalMs: 30000,
+                    warnThreshold: 70,
+                    criticalThreshold: 85,
+                },
+            });
+        });
+
+        it('mergeConfig uses defaults when no override', () => {
+            const resolved = mergeConfig(DEFAULT_CONFIG, {});
+            expect(resolved.monitoring.heapCheck.enabled).toBe(true);
+            expect(resolved.monitoring.heapCheck.intervalMs).toBe(30000);
+        });
+
+        it('mergeConfig overrides individual heapCheck fields', () => {
+            const resolved = mergeConfig(DEFAULT_CONFIG, {
+                monitoring: { heapCheck: { enabled: false, intervalMs: 60000 } },
+            });
+            expect(resolved.monitoring.heapCheck.enabled).toBe(false);
+            expect(resolved.monitoring.heapCheck.intervalMs).toBe(60000);
+            // Non-overridden fields keep defaults
+            expect(resolved.monitoring.heapCheck.warnThreshold).toBe(70);
+            expect(resolved.monitoring.heapCheck.criticalThreshold).toBe(85);
+        });
+
+        it('mergeConfig overrides thresholds', () => {
+            const resolved = mergeConfig(DEFAULT_CONFIG, {
+                monitoring: { heapCheck: { warnThreshold: 50, criticalThreshold: 75 } },
+            });
+            expect(resolved.monitoring.heapCheck.warnThreshold).toBe(50);
+            expect(resolved.monitoring.heapCheck.criticalThreshold).toBe(75);
+        });
+
+        it('resolveConfig includes monitoring from file', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            fs.writeFileSync(configPath, [
+                'monitoring:',
+                '  heapCheck:',
+                '    enabled: false',
+                '    intervalMs: 60000',
+            ].join('\n'));
+            const resolved = resolveConfig(configPath);
+            expect(resolved.monitoring.heapCheck.enabled).toBe(false);
+            expect(resolved.monitoring.heapCheck.intervalMs).toBe(60000);
+        });
+    });
 });

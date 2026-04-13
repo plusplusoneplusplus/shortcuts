@@ -75,6 +75,14 @@ export const CLIConfigSchema = z.object({
     store: z.object({
         backend: z.enum(['file', 'sqlite']).optional(),
     }).strict().optional(),
+    monitoring: z.object({
+        heapCheck: z.object({
+            enabled: z.boolean().optional(),
+            intervalMs: z.number().int().positive().optional(),
+            warnThreshold: z.number().min(0).max(100).optional(),
+            criticalThreshold: z.number().min(0).max(100).optional(),
+        }).strict().optional(),
+    }).strict().optional(),
 }).strict();
 
 /**

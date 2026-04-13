@@ -42,6 +42,7 @@ import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
 import { registerDbBrowserRoutes } from '../db-browser-handler';
+import { registerHeapRoutes } from '../heap-monitor';
 import { registerSeenStateRoutes } from '../seen-state-handler';
 import { registerPinArchiveRoutes } from '../pin-archive-handler';
 import { registerProcessHistoryRoutes } from '../process-history-handler';
@@ -163,6 +164,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerInstructionRoutes(routes, store);
     registerStatsRoutes(routes, store);
     registerDbBrowserRoutes(routes, store);
+    registerHeapRoutes(routes);
 
     const wikiManager = registerWikiRoutes(routes, {
         wikis: wikiOptions?.wikis,

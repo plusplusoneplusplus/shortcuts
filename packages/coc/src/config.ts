@@ -84,6 +84,15 @@ export interface CLIConfig {
     store?: {
         backend?: 'file' | 'sqlite';
     };
+    /** Monitoring configuration */
+    monitoring?: {
+        heapCheck?: {
+            enabled?: boolean;
+            intervalMs?: number;
+            warnThreshold?: number;
+            criticalThreshold?: number;
+        };
+    };
 }
 
 // ============================================================================
@@ -173,6 +182,15 @@ export interface ResolvedCLIConfig {
     store: {
         backend: 'file' | 'sqlite';
     };
+    /** Monitoring configuration */
+    monitoring: {
+        heapCheck: {
+            enabled: boolean;
+            intervalMs: number;
+            warnThreshold: number;
+            criticalThreshold: number;
+        };
+    };
 }
 
 // ============================================================================
@@ -215,6 +233,14 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     store: {
         backend: 'sqlite',
+    },
+    monitoring: {
+        heapCheck: {
+            enabled: true,
+            intervalMs: 30000,
+            warnThreshold: 70,
+            criticalThreshold: 85,
+        },
     },
 };
 
@@ -375,6 +401,14 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         },
         store: {
             backend: override.store?.backend ?? base.store.backend,
+        },
+        monitoring: {
+            heapCheck: {
+                enabled: override.monitoring?.heapCheck?.enabled ?? base.monitoring?.heapCheck?.enabled ?? true,
+                intervalMs: override.monitoring?.heapCheck?.intervalMs ?? base.monitoring?.heapCheck?.intervalMs ?? 30000,
+                warnThreshold: override.monitoring?.heapCheck?.warnThreshold ?? base.monitoring?.heapCheck?.warnThreshold ?? 70,
+                criticalThreshold: override.monitoring?.heapCheck?.criticalThreshold ?? base.monitoring?.heapCheck?.criticalThreshold ?? 85,
+            },
         },
     };
 }
