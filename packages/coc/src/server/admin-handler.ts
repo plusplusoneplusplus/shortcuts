@@ -602,8 +602,10 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 const config = configFunctions?.loadConfigFile?.(resolvedConfigPath);
                 const backend = config?.store?.backend ?? 'sqlite';
 
-                const workspaces = await store.getWorkspaces();
-                const allProcesses = await store.getAllProcesses();
+                const [workspaces, processCount] = await Promise.all([
+                    store.getWorkspaces(),
+                    store.getProcessCount(),
+                ]);
 
                 const dbPath = path.join(dataDir, 'processes.db');
                 const dbExists = fs.existsSync(dbPath);
@@ -611,7 +613,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 const result: Record<string, unknown> = {
                     backend,
                     stats: {
-                        processes: allProcesses.length,
+                        processes: processCount,
                         workspaces: workspaces.length,
                     },
                 };

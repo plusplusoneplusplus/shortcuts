@@ -78,9 +78,7 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
             } : undefined,
         });
 
-        // Load process count for banner
-        const processes = await server.store.getAllProcesses();
-        const processCount = processes.length;
+        const processCount = await server.store.getProcessCount();
 
         // Print startup banner
         printBanner({

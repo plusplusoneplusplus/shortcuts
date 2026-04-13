@@ -126,11 +126,11 @@ export function createRequestHandler(
             method: 'GET',
             pattern: '/api/health',
             handler: async (_req, res) => {
-                const processes = await store.getAllProcesses();
+                const processCount = await store.getProcessCount();
                 sendJson(res, {
                     status: 'ok',
                     uptime: process.uptime(),
-                    processCount: processes.length,
+                    processCount,
                 });
             },
         },

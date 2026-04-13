@@ -58,6 +58,7 @@ export function createStubStore(): ProcessStore {
         updateWiki: async () => undefined,
         clearAllWorkspaces: async () => 0,
         clearAllWikis: async () => 0,
+        getProcessCount: async () => processes.size,
         getStorageStats: async () => ({ totalProcesses: 0, totalWorkspaces: 0, totalWikis: 0, storageSize: 0 }),
         onProcessOutput: (id, callback) => {
             const emitter = getOrCreateEmitter(id);

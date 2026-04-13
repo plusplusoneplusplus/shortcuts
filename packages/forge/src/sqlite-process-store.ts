@@ -630,6 +630,15 @@ export class SqliteProcessStore implements ProcessStore {
         return rowToProcess(row, turns);
     }
 
+    getProcessBySdkSessionId(sdkSessionId: string): AIProcess | undefined {
+        const row = this.db.prepare(
+            'SELECT * FROM processes WHERE sdk_session_id = ? LIMIT 1'
+        ).get(sdkSessionId) as ProcessRow | undefined;
+        if (!row) return undefined;
+        const turnRows = this.getTurnsStmt.all(row.id) as TurnRow[];
+        return rowToProcess(row, turnRows.map(rowToTurn));
+    }
+
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
         const { sql, params } = this.buildProcessWhereClause(filter);
         const query = `SELECT * FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
@@ -666,6 +675,12 @@ export class SqliteProcessStore implements ProcessStore {
             }
             return process;
         });
+    }
+
+    async getProcessCount(filter?: ProcessFilter): Promise<number> {
+        const { sql, params } = this.buildProcessWhereClause(filter);
+        const row = this.db.prepare(`SELECT COUNT(*) AS cnt FROM processes ${sql}`).get(...params) as CountRow;
+        return row.cnt;
     }
 
     async getProcessSummaries(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }> {

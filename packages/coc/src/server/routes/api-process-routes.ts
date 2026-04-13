@@ -85,8 +85,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const sdkSessionId = typeof parsed.query.sdkSessionId === 'string' ? parsed.query.sdkSessionId : '';
 
             if (sdkSessionId) {
-                const all = await store.getAllProcesses();
-                const match = all.find(p => p.sdkSessionId === sdkSessionId);
+                const match = 'getProcessBySdkSessionId' in store
+                    ? (store as any).getProcessBySdkSessionId(sdkSessionId) as AIProcess | undefined
+                    : (await store.getAllProcesses()).find(p => p.sdkSessionId === sdkSessionId);
                 if (!match) {
                     return handleAPIError(res, notFound('Process with sdkSessionId: ' + sdkSessionId));
                 }
@@ -100,7 +101,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             delete countFilter.offset;
             const total = store.getProcessSummaries
                 ? (await store.getProcessSummaries(countFilter)).total
-                : (await store.getAllProcesses(countFilter)).length;
+                : await store.getProcessCount(countFilter);
 
             const limit = filter.limit ?? 100;
             const offset = filter.offset ?? 0;

@@ -13,6 +13,15 @@ import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { StoredProcessEntry, ProcessChangeCallback } from '@plusplusoneplusplus/forge';
 
+async function getAllProcessIds(store: ProcessStore): Promise<Set<string>> {
+    if (store.getProcessSummaries) {
+        const { entries } = await store.getProcessSummaries();
+        return new Set(entries.map(e => e.id));
+    }
+    const all = await store.getAllProcesses({ exclude: ['conversation'] });
+    return new Set(all.map(p => p.id));
+}
+
 export class OutputPruner {
     private readonly store: ProcessStore;
     private readonly dataDir: string;
@@ -38,8 +47,7 @@ export class OutputPruner {
             return 0;
         }
 
-        const allProcesses = await this.store.getAllProcesses();
-        const processIds = new Set(allProcesses.map(p => p.id));
+        const processIds = await getAllProcessIds(this.store);
 
         let deleted = 0;
         for (const outputDir of repoDirs) {
@@ -121,8 +129,7 @@ export class OutputPruner {
             return 0;
         }
 
-        const allProcesses = await this.store.getAllProcesses();
-        const processIds = new Set(allProcesses.map(p => p.id));
+        const processIds = await getAllProcessIds(this.store);
 
         let removedCount = 0;
 

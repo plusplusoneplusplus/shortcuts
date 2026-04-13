@@ -34,7 +34,7 @@ export function registerStatsRoutes(routes: Route[], store: ProcessStore): void 
                 const rawDays = params.get('days');
                 const days = rawDays !== null && /^\d+$/.test(rawDays) ? Number(rawDays) : undefined;
 
-                const processes = await store.getAllProcesses();
+                const processes = await store.getAllProcesses({ exclude: ['conversation'] });
                 const serialized = processes.map(serializeProcess);
                 const result: TokenUsageStatsResponse = aggregateTokenUsageStats(
                     serialized,

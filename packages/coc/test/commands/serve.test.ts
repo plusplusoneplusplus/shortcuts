@@ -20,11 +20,13 @@ import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';
 
 const mockClose = vi.fn().mockResolvedValue({ drainOutcome: 'completed' });
 const mockGetAllProcesses = vi.fn().mockResolvedValue([{ id: '1' }, { id: '2' }]);
+const mockGetProcessCount = vi.fn().mockResolvedValue(2);
 const mockStore = {
     addProcess: vi.fn(),
     updateProcess: vi.fn(),
     getProcess: vi.fn(),
     getAllProcesses: mockGetAllProcesses,
+    getProcessCount: mockGetProcessCount,
     removeProcess: vi.fn(),
     clearProcesses: vi.fn(),
     getWorkspaces: vi.fn(),

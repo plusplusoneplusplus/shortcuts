@@ -292,6 +292,12 @@ export interface ProcessStore {
     clearAllWorkspaces(): Promise<number>;
     /** Remove all wikis. Returns count of removed items. */
     clearAllWikis(): Promise<number>;
+    /**
+     * Return the count of processes matching the given filter without loading data.
+     * Much cheaper than getAllProcesses().length for endpoints that only need a count.
+     */
+    getProcessCount(filter?: ProcessFilter): Promise<number>;
+
     /** Return aggregate storage statistics. */
     getStorageStats(): Promise<StorageStats>;
 

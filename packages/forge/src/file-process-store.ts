@@ -181,6 +181,17 @@ export class FileProcessStore implements ProcessStore {
         return result;
     }
 
+    async getProcessCount(filter?: ProcessFilter): Promise<number> {
+        if (filter?.workspaceId) {
+            let indexEntries = await this.readIndex(filter.workspaceId);
+            indexEntries = this.applyIndexFilters(indexEntries, filter);
+            return indexEntries.length;
+        }
+        let allIndexEntries = await this.aggregateAllIndices();
+        allIndexEntries = this.applyIndexFilters(allIndexEntries, filter);
+        return allIndexEntries.length;
+    }
+
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
         if (filter?.workspaceId) {
             let indexEntries = await this.readIndex(filter.workspaceId);
