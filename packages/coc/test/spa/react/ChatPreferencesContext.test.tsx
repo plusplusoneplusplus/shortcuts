@@ -103,6 +103,21 @@ describe('chatPrefsReducer', () => {
         expect(result).toBe(state);
     });
 
+    it('PIN removes taskId from archivedIds when archived', () => {
+        const state: ChatPrefsState = { ...initial, archivedIds: ['a', 'b'] };
+        const result = chatPrefsReducer(state, { type: 'PIN', taskId: 'a' });
+        expect(result.pinnedIds).toEqual(['a']);
+        expect(result.archivedIds).toEqual(['b']);
+    });
+
+    it('PIN does not touch archivedIds when taskId is not archived', () => {
+        const state: ChatPrefsState = { ...initial, archivedIds: ['x'] };
+        const result = chatPrefsReducer(state, { type: 'PIN', taskId: 'y' });
+        expect(result.pinnedIds).toEqual(['y']);
+        expect(result.archivedIds).toEqual(['x']);
+        expect(result.archivedIds).toBe(state.archivedIds); // same reference
+    });
+
     it('PIN slices to MAX_PINNED=50', () => {
         const fiftyIds = Array.from({ length: 50 }, (_, i) => `id${i}`);
         const state: ChatPrefsState = { ...initial, pinnedIds: fiftyIds };
@@ -326,6 +341,44 @@ describe('ChatPreferencesProvider', () => {
         act(() => { result.current.archiveChats(['a1', 'a2']); });
 
         expect(mockArchiveProcesses).toHaveBeenCalledWith(['a1', 'a2']);
+    });
+
+    it('11. pinChat on archived chat removes from archivedChatIds and no separate unarchive API call', () => {
+        const { result } = renderWithState('ws1', [], ['archivedTask']);
+
+        expect(result.current.archivedChatIds.has('archivedTask')).toBe(true);
+
+        act(() => { result.current.pinChat('archivedTask'); });
+
+        // Should be pinned
+        expect(result.current.pinnedChatIds.has('archivedTask')).toBe(true);
+        // Should no longer be archived
+        expect(result.current.archivedChatIds.has('archivedTask')).toBe(false);
+        // Only pinProcess should be called (server auto-unarchives)
+        expect(mockPinProcess).toHaveBeenCalledWith('archivedTask');
+        expect(mockUnarchiveProcess).not.toHaveBeenCalled();
+    });
+
+    it('11b. pinChat on non-archived chat does not touch archivedChatIds', () => {
+        const { result } = renderWithState('ws1', [], ['otherArchived']);
+
+        act(() => { result.current.pinChat('freshTask'); });
+
+        expect(result.current.pinnedChatIds.has('freshTask')).toBe(true);
+        expect(result.current.archivedChatIds.has('otherArchived')).toBe(true);
+        expect(result.current.archivedChatIds.size).toBe(1);
+    });
+
+    it('11c. unpinChat does NOT re-archive the chat', () => {
+        // Start with a pinned-and-not-archived chat
+        const { result } = renderWithState('ws1', ['t1'], []);
+
+        act(() => { result.current.unpinChat('t1'); });
+
+        expect(result.current.pinnedChatIds.has('t1')).toBe(false);
+        // Must NOT appear in archived
+        expect(result.current.archivedChatIds.has('t1')).toBe(false);
+        expect(mockArchiveProcess).not.toHaveBeenCalled();
     });
 
     it('10f. unarchiveProcesses called on unarchiveChats', () => {

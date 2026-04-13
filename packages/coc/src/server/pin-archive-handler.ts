@@ -46,7 +46,9 @@ export function registerPinArchiveRoutes(routes: Route[], store: PinArchiveStore
             } else {
                 const pinnedAt = new Date().toISOString();
                 store.pinProcess(processId, pinnedAt);
-                sendJSON(res, 200, { id: processId, pinnedAt });
+                // Auto-unarchive: a pinned chat should always be visible
+                store.unarchiveProcess(processId);
+                sendJSON(res, 200, { id: processId, pinnedAt, archived: false });
             }
         },
     });

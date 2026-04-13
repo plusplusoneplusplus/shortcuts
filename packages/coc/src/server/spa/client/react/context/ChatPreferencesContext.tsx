@@ -68,9 +68,19 @@ export function chatPrefsReducer(
                 loaded: true,
                 workspaceId: action.workspaceId,
             };
-        case 'PIN':
+        case 'PIN': {
             if (state.pinnedIds.includes(action.taskId)) return state;
-            return { ...state, pinnedIds: [action.taskId, ...state.pinnedIds].slice(0, MAX_PINNED) };
+            const nextPinned = [action.taskId, ...state.pinnedIds].slice(0, MAX_PINNED);
+            // Auto-unarchive: a pinned chat should always be visible
+            const wasArchived = state.archivedIds.includes(action.taskId);
+            return {
+                ...state,
+                pinnedIds: nextPinned,
+                archivedIds: wasArchived
+                    ? state.archivedIds.filter(id => id !== action.taskId)
+                    : state.archivedIds,
+            };
+        }
         case 'UNPIN':
             if (!state.pinnedIds.includes(action.taskId)) return state;
             return { ...state, pinnedIds: state.pinnedIds.filter(id => id !== action.taskId) };

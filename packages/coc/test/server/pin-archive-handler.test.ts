@@ -132,6 +132,23 @@ describe('Pin & Archive REST API', () => {
             expect(proc!.pinnedAt).toBeTruthy();
         });
 
+        it('auto-unarchives an archived process when pinning', async () => {
+            await addProcess('p-arch');
+            store.archiveProcess('p-arch');
+
+            const res = await patchJSON(`${baseUrl}/api/processes/p-arch/pin`, { pinned: true });
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.pinnedAt).toBeTruthy();
+            expect(body.archived).toBe(false);
+
+            // Verify in store: pinned and no longer archived
+            const proc = await store.getProcess('p-arch');
+            expect(proc!.pinnedAt).toBeTruthy();
+            expect(proc!.archived).toBeUndefined();
+        });
+
         it('unpins a process when pinned: false', async () => {
             await addProcess('p2');
             store.pinProcess('p2', new Date().toISOString());
