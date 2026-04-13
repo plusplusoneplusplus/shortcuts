@@ -27,6 +27,8 @@ import type { QueuePersistence, CLIConfig } from './export-import-types';
 import { sendSSE } from './wiki/ask-handler';
 import { StorageMigrationEngine } from './storage-migration';
 import type { MigrationProgress } from './storage-migration';
+import { DirectoryHistoryImporter } from './directory-history-importer';
+import type { ImportProgress } from './directory-history-importer';
 
 // ============================================================================
 // Token Management
@@ -85,6 +87,7 @@ class TokenManager {
 const wipeTokenManager = new TokenManager();
 const importTokenManager = new TokenManager();
 const migrateTokenManager = new TokenManager();
+const directoryImportTokenManager = new TokenManager();
 
 // Thin wrappers preserving the original exported API
 function generateWipeToken() { return wipeTokenManager.generate(); }
@@ -99,12 +102,15 @@ function generateMigrateToken() { return migrateTokenManager.generate(); }
 function validateMigrateToken(token: string) { return migrateTokenManager.validate(token); }
 function resetMigrateToken() { migrateTokenManager.reset(); }
 
+function resetDirectoryImportToken() { directoryImportTokenManager.reset(); }
+
 export {
     TokenManager, TOKEN_EXPIRY_MS,
     generateWipeToken, validateWipeToken, resetWipeToken,
     generateImportToken, validateImportToken, resetImportToken,
     generateMigrateToken, validateMigrateToken, resetMigrateToken,
-    wipeTokenManager, importTokenManager, migrateTokenManager,
+    resetDirectoryImportToken,
+    wipeTokenManager, importTokenManager, migrateTokenManager, directoryImportTokenManager,
 };
 
 // ============================================================================
@@ -155,6 +161,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
     const routeWipeTokenMgr = new TokenManager(options.tokenTtlMs);
     const routeImportTokenMgr = new TokenManager(options.tokenTtlMs);
     const routeMigrateTokenMgr = new TokenManager(options.tokenTtlMs);
+    const routeDirImportTokenMgr = new TokenManager(options.tokenTtlMs);
 
     // ------------------------------------------------------------------
     // GET /api/admin/data/wipe-token — Generate a wipe confirmation token
@@ -730,6 +737,167 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
             activeMigration.controller.abort();
             sendJSON(res, 200, { success: true });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // Directory History Import Endpoints
+    // ------------------------------------------------------------------
+
+    // ------------------------------------------------------------------
+    // POST /api/admin/storage/scan-directory — Scan a directory for importable history
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/admin/storage/scan-directory',
+        handler: async (req, res) => {
+            let body: Record<string, unknown>;
+            try {
+                const parsed = await parseBody(req);
+                if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                    return handleAPIError(res, badRequest('Request body must be a JSON object'));
+                }
+                body = parsed;
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            const dirPath = body.path;
+            if (typeof dirPath !== 'string' || dirPath.length === 0) {
+                return handleAPIError(res, badRequest('path must be a non-empty string'));
+            }
+
+            if (!path.isAbsolute(dirPath)) {
+                return handleAPIError(res, badRequest('path must be absolute'));
+            }
+
+            try {
+                const importer = new DirectoryHistoryImporter();
+                const scanResult = importer.scan(dirPath);
+                const workspaces = await store.getWorkspaces();
+                const matchResult = importer.matchWorkspaces(scanResult, workspaces);
+                sendJSON(res, 200, matchResult);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                return handleAPIError(res, badRequest(message));
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/admin/storage/import-directory-token — Generate a directory import token
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/admin/storage/import-directory-token',
+        handler: async (_req, res) => {
+            const dt = routeDirImportTokenMgr.generate();
+            sendJSON(res, 200, {
+                token: dt.token,
+                expiresIn: routeDirImportTokenMgr.ttl / 1000,
+            });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/admin/storage/import-directory?confirm=<token> — Run directory import (SSE)
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/admin/storage/import-directory',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const confirmToken = typeof parsed.query.confirm === 'string' ? parsed.query.confirm : '';
+
+            if (!confirmToken) {
+                return handleAPIError(res, badRequest('Missing confirmation token. GET /api/admin/storage/import-directory-token first.'));
+            }
+
+            if (!routeDirImportTokenMgr.validate(confirmToken)) {
+                return handleAPIError(res, forbidden('Invalid or expired confirmation token'));
+            }
+
+            let body: Record<string, unknown>;
+            try {
+                const bodyParsed = await parseBody(req);
+                if (typeof bodyParsed !== 'object' || bodyParsed === null || Array.isArray(bodyParsed)) {
+                    return handleAPIError(res, badRequest('Request body must be a JSON object'));
+                }
+                body = bodyParsed;
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            const dirPath = body.path;
+            if (typeof dirPath !== 'string' || dirPath.length === 0) {
+                return handleAPIError(res, badRequest('path must be a non-empty string'));
+            }
+
+            if (!path.isAbsolute(dirPath)) {
+                return handleAPIError(res, badRequest('path must be absolute'));
+            }
+
+            const dbPath = path.join(dataDir, 'processes.db');
+            if (!fs.existsSync(dbPath)) {
+                return handleAPIError(res, badRequest('SQLite database not found. Import requires an existing SQLite backend.'));
+            }
+
+            // SSE headers
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+            });
+
+            try {
+                const importer = new DirectoryHistoryImporter();
+                sendSSE(res, { type: 'progress', phase: 'scanning', message: 'Scanning directory…' });
+
+                const scanResult = importer.scan(dirPath);
+                sendSSE(res, { type: 'progress', phase: 'matching', message: `Found ${scanResult.workspaces.length} workspace directories` });
+
+                const workspaces = await store.getWorkspaces();
+                const matchResult = importer.matchWorkspaces(scanResult, workspaces);
+                sendSSE(res, {
+                    type: 'progress',
+                    phase: 'matching',
+                    message: `Matched ${matchResult.matched.length} workspaces (${matchResult.totalMatchedProcesses} processes)`,
+                });
+
+                if (matchResult.matched.length === 0) {
+                    sendSSE(res, { type: 'done', success: true, summary: { imported: 0, skipped: 0, failed: 0, perWorkspace: [] } });
+                    res.end();
+                    return;
+                }
+
+                const summary = importer.importProcesses(
+                    matchResult,
+                    scanResult.reposDir,
+                    dbPath,
+                    (event: ImportProgress) => {
+                        sendSSE(res, { type: 'progress', ...event });
+                    },
+                );
+
+                sendSSE(res, { type: 'done', success: true, summary });
+
+                // Broadcast import event to WebSocket clients
+                const wsServer = getWsServer?.();
+                if (wsServer) {
+                    wsServer.broadcastProcessEvent({
+                        type: 'data-imported',
+                        timestamp: Date.now(),
+                        mode: 'directory-import',
+                    } as any);
+                }
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                sendSSE(res, { type: 'error', message });
+                sendSSE(res, { type: 'done', success: false, error: message });
+            } finally {
+                res.end();
+            }
         },
     });
 }

@@ -1,6 +1,7 @@
 /**
  * StorageSection — displays current storage backend info and drives
  * the SQLite migration flow (confirm → stream progress → done/error).
+ * Also provides "Import History from Directory" for SQLite backends.
  *
  * Loaded lazily in AdminPanel via React.lazy.
  */
@@ -69,6 +70,298 @@ function phaseIcon(state: PhaseState): string {
         case 'skipped': return '⊘';
         default: return '○';
     }
+}
+
+// ---------------------------------------------------------------------------
+// Directory Import Types
+// ---------------------------------------------------------------------------
+
+type DirImportPhase = 'idle' | 'scanning' | 'preview' | 'importing' | 'done' | 'error';
+
+interface MatchedWorkspace {
+    workspaceId: string;
+    activeCount: number;
+    archivedCount: number;
+    archivedBuckets: string[];
+    registeredName: string;
+    registeredRootPath: string;
+}
+
+interface UnmatchedWorkspace {
+    workspaceId: string;
+    activeCount: number;
+    archivedCount: number;
+}
+
+interface DirMatchResult {
+    matched: MatchedWorkspace[];
+    unmatched: UnmatchedWorkspace[];
+    totalProcesses: number;
+    totalMatchedProcesses: number;
+}
+
+interface DirImportSummary {
+    imported: number;
+    skipped: number;
+    failed: number;
+    perWorkspace: { workspaceId: string; name: string; imported: number; skipped: number }[];
+}
+
+// ---------------------------------------------------------------------------
+// DirectoryImportSection
+// ---------------------------------------------------------------------------
+
+function DirectoryImportSection() {
+    const [phase, setPhase] = useState<DirImportPhase>('idle');
+    const [dirPath, setDirPath] = useState('');
+    const [scanning, setScanning] = useState(false);
+    const [matchResult, setMatchResult] = useState<DirMatchResult | null>(null);
+    const [summary, setSummary] = useState<DirImportSummary | null>(null);
+    const [logs, setLogs] = useState<string[]>([]);
+    const [error, setError] = useState<string | null>(null);
+    const logRef = useRef<HTMLPreElement>(null);
+
+    useEffect(() => {
+        if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+    }, [logs]);
+
+    const handleScan = async () => {
+        if (!dirPath.trim()) return;
+        setScanning(true);
+        setError(null);
+        try {
+            const data = await fetchApi('/admin/storage/scan-directory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: dirPath.trim() }),
+            });
+            setMatchResult(data);
+            setPhase('preview');
+        } catch (err: any) {
+            setError(err?.message ?? 'Scan failed');
+        } finally {
+            setScanning(false);
+        }
+    };
+
+    const handleImport = async () => {
+        setPhase('importing');
+        setLogs([]);
+        setSummary(null);
+        setError(null);
+
+        try {
+            const tokenData = await fetchApi('/admin/storage/import-directory-token');
+            const importUrl = getApiBase() + '/admin/storage/import-directory?confirm=' + encodeURIComponent(tokenData.token);
+
+            const res = await fetch(importUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: dirPath.trim() }),
+            });
+
+            if (!res.ok) {
+                const text = await res.text();
+                setError(text);
+                setPhase('error');
+                return;
+            }
+
+            const reader = res.body!.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.type === 'done') {
+                            if (data.success) {
+                                setSummary(data.summary);
+                                setPhase('done');
+                            } else {
+                                setError(data.error ?? 'Import failed');
+                                setPhase('error');
+                            }
+                        } else if (data.type === 'error') {
+                            setError(data.message ?? 'Import error');
+                            setPhase('error');
+                        } else if (data.message) {
+                            setLogs(prev => [...prev, data.message]);
+                        }
+                    } catch { /* ignore malformed */ }
+                }
+            }
+        } catch (err: any) {
+            setError(err?.message ?? 'Network error');
+            setPhase('error');
+        }
+    };
+
+    const handleReset = () => {
+        setPhase('idle');
+        setMatchResult(null);
+        setSummary(null);
+        setLogs([]);
+        setError(null);
+    };
+
+    return (
+        <div className="mt-4 pt-3 border-t border-[#e0e0e0] dark:border-[#333]">
+            <div className={sectionHeadClass}>Import History from Directory</div>
+            <p className={statusTextClass + ' mb-2'}>
+                Import file-based chat history from a previous CoC data directory into the current SQLite database.
+            </p>
+
+            {/* Phase: idle — input */}
+            {phase === 'idle' && (
+                <div className="flex flex-col gap-2">
+                    <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                            <label className="text-xs text-[#616161] dark:text-[#999] block mb-1">
+                                Directory path (repos/ folder or parent)
+                            </label>
+                            <input
+                                type="text"
+                                value={dirPath}
+                                onChange={(e) => setDirPath(e.target.value)}
+                                placeholder="e.g. ~/.coc/repos/ or /backup/coc-data/"
+                                className="w-full px-2 py-1 text-xs rounded border border-[#d0d0d0] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#ccc] font-mono"
+                            />
+                        </div>
+                        <Button variant="secondary" size="sm" loading={scanning} disabled={!dirPath.trim()} onClick={handleScan}>
+                            Scan
+                        </Button>
+                    </div>
+                    {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+                </div>
+            )}
+
+            {/* Phase: preview — scan results */}
+            {phase === 'preview' && matchResult && (
+                <div className="flex flex-col gap-2">
+                    {matchResult.matched.length > 0 && (
+                        <div>
+                            <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#ccc] mb-1">
+                                Matched workspaces ({matchResult.matched.length})
+                            </div>
+                            <div className="border border-[#e0e0e0] dark:border-[#444] rounded overflow-hidden">
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr className="bg-[#f5f5f5] dark:bg-[#2a2a2a]">
+                                            <th className="text-left px-2 py-1 font-medium">Workspace</th>
+                                            <th className="text-right px-2 py-1 font-medium">Active</th>
+                                            <th className="text-right px-2 py-1 font-medium">Archived</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {matchResult.matched.map(ws => (
+                                            <tr key={ws.workspaceId} className="border-t border-[#e0e0e0] dark:border-[#444]">
+                                                <td className="px-2 py-1">{ws.registeredName}</td>
+                                                <td className="text-right px-2 py-1">{ws.activeCount}</td>
+                                                <td className="text-right px-2 py-1">{ws.archivedCount}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {matchResult.unmatched.length > 0 && (
+                        <div>
+                            <div className="text-xs font-medium text-[#a0a0a0] mb-1">
+                                Unmatched directories ({matchResult.unmatched.length}) — no matching workspace registered
+                            </div>
+                            <div className="text-xs text-[#a0a0a0] space-y-0.5">
+                                {matchResult.unmatched.map(ws => (
+                                    <div key={ws.workspaceId} className="font-mono">{ws.workspaceId} ({ws.activeCount + ws.archivedCount} processes)</div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className={statusTextClass}>
+                        {matchResult.totalMatchedProcesses} processes from {matchResult.matched.length} workspaces ready to import.
+                        {' '}Duplicates will be skipped automatically.
+                    </div>
+
+                    <div className="flex gap-2">
+                        <Button variant="secondary" size="sm" onClick={handleReset}>Cancel</Button>
+                        <Button variant="primary" size="sm" disabled={matchResult.matched.length === 0} onClick={handleImport}>
+                            Import
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Phase: importing — progress */}
+            {phase === 'importing' && (
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-xs">
+                        <Spinner size="sm" />
+                        <span>Importing processes…</span>
+                    </div>
+                    {logs.length > 0 && (
+                        <pre ref={logRef} className={logPreClass}>
+                            {logs.join('\n')}
+                        </pre>
+                    )}
+                </div>
+            )}
+
+            {/* Phase: done — summary */}
+            {phase === 'done' && summary && (
+                <div className="flex flex-col gap-2">
+                    <div className="text-xs text-[#1e1e1e] dark:text-[#ccc]">
+                        <p>✅ Import complete</p>
+                        <ul className="list-disc pl-5 space-y-0.5 mt-1">
+                            <li>{summary.imported} processes imported</li>
+                            {summary.skipped > 0 && <li>{summary.skipped} duplicates skipped</li>}
+                            {summary.failed > 0 && <li>{summary.failed} files failed (corrupt/unreadable)</li>}
+                        </ul>
+                        {summary.perWorkspace.length > 0 && (
+                            <div className="mt-2">
+                                <div className="font-medium mb-1">Per workspace:</div>
+                                {summary.perWorkspace.map(ws => (
+                                    <div key={ws.workspaceId} className="text-[#848484]">
+                                        {ws.name}: {ws.imported} imported{ws.skipped > 0 ? `, ${ws.skipped} skipped` : ''}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    {logs.length > 0 && (
+                        <pre ref={logRef} className={logPreClass}>
+                            {logs.join('\n')}
+                        </pre>
+                    )}
+                    <Button variant="secondary" size="sm" onClick={handleReset}>Close</Button>
+                </div>
+            )}
+
+            {/* Phase: error */}
+            {phase === 'error' && (
+                <div className="flex flex-col gap-2">
+                    <p className="text-xs text-red-600 dark:text-red-400">❌ {error ?? 'Import failed'}</p>
+                    {logs.length > 0 && (
+                        <pre ref={logRef} className={logPreClass}>
+                            {logs.join('\n')}
+                        </pre>
+                    )}
+                    <Button variant="secondary" size="sm" onClick={handleReset}>Close</Button>
+                </div>
+            )}
+        </div>
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +632,7 @@ export default function StorageSection() {
                                 </Button>
                             </div>
                         )}
+                        {status.backend === 'sqlite' && <DirectoryImportSection />}
                     </div>
                 ) : (
                     <span className={statusTextClass}>Unable to load storage status</span>

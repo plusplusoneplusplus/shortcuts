@@ -71,7 +71,7 @@ export interface StorageMigrationOptions {
 // Helpers
 // ============================================================================
 
-function readJsonFile<T>(filePath: string): T | undefined {
+export function readJsonFile<T>(filePath: string): T | undefined {
     try {
         const raw = fs.readFileSync(filePath, 'utf-8');
         return JSON.parse(raw) as T;
@@ -80,7 +80,7 @@ function readJsonFile<T>(filePath: string): T | undefined {
     }
 }
 
-function jsonStringify(value: unknown): string | null {
+export function jsonStringify(value: unknown): string | null {
     if (value === undefined || value === null) return null;
     return JSON.stringify(value);
 }
@@ -89,7 +89,7 @@ function jsonStringify(value: unknown): string | null {
  * Build the metadata JSON envelope matching SqliteProcessStore's format.
  * Folds legacy metadata + pendingMessages into a single JSON blob.
  */
-function buildMetadataEnvelope(proc: SerializedAIProcess, workspaceId: string): string | null {
+export function buildMetadataEnvelope(proc: SerializedAIProcess, workspaceId: string): string | null {
     const envelope: Record<string, unknown> = { ...(proc.metadata ?? {}), workspaceId };
     if (proc.codeReviewMetadata) {
         envelope.__codeReviewMetadata = proc.codeReviewMetadata;
@@ -104,6 +104,62 @@ function buildMetadataEnvelope(proc: SerializedAIProcess, workspaceId: string): 
         envelope.__pendingMessages = proc.pendingMessages;
     }
     return JSON.stringify(envelope);
+}
+
+export function serializeProcessToRow(
+    proc: SerializedAIProcess,
+    workspaceId: string,
+    archived: boolean
+): Record<string, unknown> {
+    return {
+        id: proc.id,
+        workspace_id: workspaceId,
+        type: proc.type ?? null,
+        prompt_preview: proc.promptPreview ?? null,
+        full_prompt: proc.fullPrompt ?? null,
+        status: proc.status,
+        start_time: proc.startTime,
+        end_time: proc.endTime ?? null,
+        error: proc.error ?? null,
+        result: proc.result ?? null,
+        result_file_path: proc.resultFilePath ?? null,
+        raw_stdout_file_path: proc.rawStdoutFilePath ?? null,
+        metadata: buildMetadataEnvelope(proc, workspaceId),
+        group_metadata: jsonStringify(proc.groupMetadata),
+        structured_result: proc.structuredResult ?? null,
+        parent_process_id: proc.parentProcessId ?? null,
+        sdk_session_id: proc.sdkSessionId ?? null,
+        backend: proc.backend ?? null,
+        working_directory: proc.workingDirectory ?? null,
+        title: proc.title ?? null,
+        token_limit: proc.tokenLimit ?? null,
+        current_tokens: proc.currentTokens ?? null,
+        cumulative_token_usage: jsonStringify(proc.cumulativeTokenUsage),
+        stale: 0,
+        data_file_path: null,
+        archived: archived ? 1 : 0,
+    };
+}
+
+export function serializeTurnToRow(
+    turn: SerializedConversationTurn,
+    processId: string
+): Record<string, unknown> {
+    return {
+        process_id: processId,
+        turn_index: turn.turnIndex,
+        role: turn.role,
+        content: turn.content ?? null,
+        timestamp: turn.timestamp,
+        streaming: turn.streaming ? 1 : 0,
+        tool_calls: turn.toolCalls ? JSON.stringify(turn.toolCalls) : null,
+        timeline: JSON.stringify(turn.timeline ?? []),
+        images: turn.images ? JSON.stringify(turn.images) : null,
+        historical: turn.historical ? 1 : 0,
+        suggestions: turn.suggestions ? JSON.stringify(turn.suggestions) : null,
+        token_usage: jsonStringify(turn.tokenUsage),
+        paste_externalized: turn.pasteExternalized ? 1 : 0,
+    };
 }
 
 // ============================================================================
@@ -415,11 +471,11 @@ export class StorageMigrationEngine {
             const proc = stored.process;
 
             try {
-                insertProcess.run(this.serializeProcessToRow(proc, workspaceId, archived));
+                insertProcess.run(serializeProcessToRow(proc, workspaceId, archived));
 
                 const turns = proc.conversationTurns ?? [];
                 for (const turn of turns) {
-                    insertTurn.run(this.serializeTurnToRow(turn, proc.id));
+                    insertTurn.run(serializeTurnToRow(turn, proc.id));
                 }
                 count++;
             } catch (err) {
@@ -428,62 +484,6 @@ export class StorageMigrationEngine {
         }
 
         return count;
-    }
-
-    private serializeProcessToRow(
-        proc: SerializedAIProcess,
-        workspaceId: string,
-        archived: boolean
-    ): Record<string, unknown> {
-        return {
-            id: proc.id,
-            workspace_id: workspaceId,
-            type: proc.type ?? null,
-            prompt_preview: proc.promptPreview ?? null,
-            full_prompt: proc.fullPrompt ?? null,
-            status: proc.status,
-            start_time: proc.startTime,
-            end_time: proc.endTime ?? null,
-            error: proc.error ?? null,
-            result: proc.result ?? null,
-            result_file_path: proc.resultFilePath ?? null,
-            raw_stdout_file_path: proc.rawStdoutFilePath ?? null,
-            metadata: buildMetadataEnvelope(proc, workspaceId),
-            group_metadata: jsonStringify(proc.groupMetadata),
-            structured_result: proc.structuredResult ?? null,
-            parent_process_id: proc.parentProcessId ?? null,
-            sdk_session_id: proc.sdkSessionId ?? null,
-            backend: proc.backend ?? null,
-            working_directory: proc.workingDirectory ?? null,
-            title: proc.title ?? null,
-            token_limit: proc.tokenLimit ?? null,
-            current_tokens: proc.currentTokens ?? null,
-            cumulative_token_usage: jsonStringify(proc.cumulativeTokenUsage),
-            stale: 0,
-            data_file_path: null,
-            archived: archived ? 1 : 0,
-        };
-    }
-
-    private serializeTurnToRow(
-        turn: SerializedConversationTurn,
-        processId: string
-    ): Record<string, unknown> {
-        return {
-            process_id: processId,
-            turn_index: turn.turnIndex,
-            role: turn.role,
-            content: turn.content ?? null,
-            timestamp: turn.timestamp,
-            streaming: turn.streaming ? 1 : 0,
-            tool_calls: turn.toolCalls ? JSON.stringify(turn.toolCalls) : null,
-            timeline: JSON.stringify(turn.timeline ?? []),
-            images: turn.images ? JSON.stringify(turn.images) : null,
-            historical: turn.historical ? 1 : 0,
-            suggestions: turn.suggestions ? JSON.stringify(turn.suggestions) : null,
-            token_usage: jsonStringify(turn.tokenUsage),
-            paste_externalized: turn.pasteExternalized ? 1 : 0,
-        };
     }
 
     // ========================================================================

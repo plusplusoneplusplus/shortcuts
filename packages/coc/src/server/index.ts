@@ -255,9 +255,9 @@ export type { CoCExportPayload, ImportOptions } from './export-import-types';
 export { EXPORT_SCHEMA_VERSION, validateExportPayload } from './export-import-types';
 
 // Admin & tokens
-export { registerAdminRoutes, resetWipeToken, resetMigrateToken, getBuiltInPrompts } from './admin-handler';
+export { registerAdminRoutes, resetWipeToken, resetMigrateToken, resetDirectoryImportToken, getBuiltInPrompts } from './admin-handler';
 export type { AdminRouteOptions, BuiltInPrompt } from './admin-handler';
-export { generateImportToken, generateWipeToken, generateMigrateToken, importTokenManager, resetImportToken, wipeTokenManager, migrateTokenManager, validateImportToken, validateMigrateToken, validateWipeToken, TOKEN_EXPIRY_MS, TokenManager } from './admin-handler';
+export { generateImportToken, generateWipeToken, generateMigrateToken, importTokenManager, resetImportToken, wipeTokenManager, migrateTokenManager, directoryImportTokenManager, validateImportToken, validateMigrateToken, validateWipeToken, TOKEN_EXPIRY_MS, TokenManager } from './admin-handler';
 
 // Scheduling
 export { ScheduleYamlPersistence } from './schedule-yaml-persistence';
