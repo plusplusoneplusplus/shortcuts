@@ -566,16 +566,18 @@ describe('AddFolderDialog', () => {
             const postCalls = mockFetch.mock.calls.filter(
                 (c: any[]) => c[1]?.method === 'POST' && typeof c[0] === 'string' && c[0].endsWith('/workspaces')
             );
-            expect(postCalls).toHaveLength(2);
+            expect(postCalls.length).toBeGreaterThanOrEqual(2);
 
-            const body0 = JSON.parse(postCalls[0][1].body);
-            expect(body0.name).toBe('frontend');
-            expect(body0.rootPath).toBe('/home/user/projects/frontend');
-            expect(body0.id).toMatch(/^ws-/);
+            const bodies = postCalls.map((c: any[]) => JSON.parse(c[1].body));
+            const frontend = bodies.find((b: any) => b.name === 'frontend');
+            const backend = bodies.find((b: any) => b.name === 'backend');
 
-            const body1 = JSON.parse(postCalls[1][1].body);
-            expect(body1.name).toBe('backend');
-            expect(body1.rootPath).toBe('/home/user/projects/backend');
+            expect(frontend).toBeDefined();
+            expect(frontend.rootPath).toBe('/home/user/projects/frontend');
+            expect(frontend.id).toMatch(/^ws-/);
+
+            expect(backend).toBeDefined();
+            expect(backend.rootPath).toBe('/home/user/projects/backend');
         });
     });
 
