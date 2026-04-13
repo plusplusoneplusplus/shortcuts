@@ -29,6 +29,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 function makeStore(): ProcessStore {
     return {
         getAllProcesses: vi.fn().mockResolvedValue([]),
+        getProcessCount: vi.fn().mockResolvedValue(0),
     } as unknown as ProcessStore;
 }
 

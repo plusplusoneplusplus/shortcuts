@@ -96,6 +96,7 @@ function createMockStore(): ProcessStore {
         updateWiki: vi.fn(async () => undefined),
         clearAllWorkspaces: vi.fn(async () => 0),
         clearAllWikis: vi.fn(async () => 0),
+        getProcessCount: vi.fn(async () => 0),
         getStorageStats: vi.fn(async () => ({ totalProcesses: 0, totalWorkspaces: 0, totalWikis: 0, storageSize: 0 })),
         onProcessOutput: vi.fn(() => () => {}),
         emitProcessOutput: vi.fn(),

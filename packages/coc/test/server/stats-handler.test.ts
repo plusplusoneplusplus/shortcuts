@@ -193,7 +193,26 @@ describe('registerStatsRoutes — GET /api/stats/token-usage', () => {
         expect(body).toEqual({ error: 'disk failure' });
     });
 
-    it('4. empty process list → { entries: [], models: [], totalDays: 0 }', async () => {
+    it('4. getAllProcesses is called with exclude: ["conversation"]', async () => {
+        const getAllProcesses = vi.fn().mockResolvedValue([]);
+        const store = makeStore({ getAllProcesses });
+        aggregateTokenUsageStats.mockReturnValue({
+            entries: [],
+            models: [],
+            generatedAt: new Date().toISOString(),
+            totalDays: 0,
+        });
+
+        const routes: Route[] = [];
+        registerStatsRoutes(routes, store);
+
+        await invoke(routes, '/api/stats/token-usage');
+
+        expect(getAllProcesses).toHaveBeenCalledOnce();
+        expect(getAllProcesses).toHaveBeenCalledWith({ exclude: ['conversation'] });
+    });
+
+    it('5. empty process list → { entries: [], models: [], totalDays: 0 }', async () => {
         const store = makeStore({
             getAllProcesses: vi.fn().mockResolvedValue([]),
         });

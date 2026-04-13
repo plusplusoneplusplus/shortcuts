@@ -1255,3 +1255,98 @@ describe('SqliteProcessStore — Pin & Archive', () => {
         store.archiveProcesses([]);
     });
 });
+
+// ============================================================================
+// getProcessCount
+// ============================================================================
+
+describe('SqliteProcessStore — getProcessCount', () => {
+    it('returns 0 for empty database', async () => {
+        expect(await store.getProcessCount()).toBe(0);
+    });
+
+    it('returns total count without filter', async () => {
+        await store.addProcess(makeProcess('c1'));
+        await store.addProcess(makeProcess('c2'));
+        await store.addProcess(makeProcess('c3'));
+        expect(await store.getProcessCount()).toBe(3);
+    });
+
+    it('filters by workspaceId', async () => {
+        await store.addProcess(makeProcess('c1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('c2', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('c3', { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+
+        expect(await store.getProcessCount({ workspaceId: 'ws-a' })).toBe(2);
+        expect(await store.getProcessCount({ workspaceId: 'ws-b' })).toBe(1);
+        expect(await store.getProcessCount({ workspaceId: 'ws-none' })).toBe(0);
+    });
+
+    it('filters by status', async () => {
+        await store.addProcess(makeProcess('c1', { status: 'running' }));
+        await store.addProcess(makeProcess('c2', { status: 'completed' }));
+        await store.addProcess(makeProcess('c3', { status: 'failed' }));
+
+        expect(await store.getProcessCount({ status: 'running' })).toBe(1);
+        expect(await store.getProcessCount({ status: ['running', 'failed'] })).toBe(2);
+    });
+
+    it('supports combined filters', async () => {
+        await store.addProcess(makeProcess('c1', { status: 'running', metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('c2', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('c3', { status: 'running', metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+
+        expect(await store.getProcessCount({ workspaceId: 'ws-a', status: 'running' })).toBe(1);
+    });
+
+    it('agrees with getAllProcesses().length', async () => {
+        await store.addProcess(makeProcess('c1', { status: 'running', metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('c2', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('c3', { status: 'running', metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+
+        const filter = { workspaceId: 'ws-a' };
+        const count = await store.getProcessCount(filter);
+        const all = await store.getAllProcesses(filter);
+        expect(count).toBe(all.length);
+    });
+});
+
+// ============================================================================
+// getProcessBySdkSessionId
+// ============================================================================
+
+describe('SqliteProcessStore — getProcessBySdkSessionId', () => {
+    it('returns undefined when no process matches', () => {
+        const result = store.getProcessBySdkSessionId('nonexistent-session');
+        expect(result).toBeUndefined();
+    });
+
+    it('returns the matching process with conversation turns', async () => {
+        const p = makeProcess('sdk1', { sdkSessionId: 'session-abc' });
+        await store.addProcess(p);
+        await store.appendConversationTurn('sdk1', (idx) => makeTurn(idx, { content: 'hello' }));
+
+        const result = store.getProcessBySdkSessionId('session-abc');
+        expect(result).toBeDefined();
+        expect(result!.id).toBe('sdk1');
+        expect(result!.sdkSessionId).toBe('session-abc');
+        expect(result!.conversationTurns).toHaveLength(1);
+        expect(result!.conversationTurns![0].content).toBe('hello');
+    });
+
+    it('returns the first match when multiple processes exist', async () => {
+        await store.addProcess(makeProcess('sdk1', { sdkSessionId: 'session-xyz' }));
+        await store.addProcess(makeProcess('sdk2', { sdkSessionId: 'session-other' }));
+
+        const result = store.getProcessBySdkSessionId('session-xyz');
+        expect(result).toBeDefined();
+        expect(result!.id).toBe('sdk1');
+    });
+
+    it('does not match by process id', async () => {
+        await store.addProcess(makeProcess('sdk1', { sdkSessionId: 'real-session' }));
+
+        const result = store.getProcessBySdkSessionId('sdk1');
+        expect(result).toBeUndefined();
+    });
+});

@@ -36,6 +36,7 @@ function stubStore(): ProcessStore {
         getWorkspaces: async () => [],
         registerWorkspace: async () => {},
         processCount: async () => 0,
+        getProcessCount: async () => 0,
         getStats: async () => ({ queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false }),
         emitProcessComplete: () => {},
         getWikis: async () => [],

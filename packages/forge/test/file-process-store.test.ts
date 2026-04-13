@@ -323,4 +323,62 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(dupEntry).toBeDefined();
         expect(dupEntry!.status).toBe('running');
     });
+
+    // ========================================================================
+    // getProcessCount
+    // ========================================================================
+
+    it('getProcessCount returns 0 for empty store', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        expect(await store.getProcessCount()).toBe(0);
+    });
+
+    it('getProcessCount returns total count without filter', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        for (const id of ['c1', 'c2', 'c3']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        }
+        expect(await store.getProcessCount()).toBe(3);
+    });
+
+    it('getProcessCount filters by workspaceId', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('a1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('a2', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('b1', { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+
+        expect(await store.getProcessCount({ workspaceId: 'ws-a' })).toBe(2);
+        expect(await store.getProcessCount({ workspaceId: 'ws-b' })).toBe(1);
+        expect(await store.getProcessCount({ workspaceId: 'ws-none' })).toBe(0);
+    });
+
+    it('getProcessCount filters by status', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('r1', {
+            status: 'running' as AIProcessStatus,
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+        await store.addProcess(makeProcess('c1', {
+            status: 'completed' as AIProcessStatus,
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+        await store.addProcess(makeProcess('f1', {
+            status: 'failed' as AIProcessStatus,
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+
+        expect(await store.getProcessCount({ status: 'running' })).toBe(1);
+        expect(await store.getProcessCount({ status: ['running', 'failed'] })).toBe(2);
+    });
+
+    it('getProcessCount across workspaces agrees with getAllProcesses().length', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('a1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('a2', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        await store.addProcess(makeProcess('b1', { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+
+        const count = await store.getProcessCount();
+        const all = await store.getAllProcesses();
+        expect(count).toBe(all.length);
+    });
 });

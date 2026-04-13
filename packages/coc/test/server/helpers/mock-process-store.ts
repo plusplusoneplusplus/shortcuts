@@ -157,6 +157,17 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             const updatedTurns = turns.map((turn: ConversationTurn, i: number) => i === turnIndex ? { ...turn, content } : turn);
             processes.set(processId, { ...existing, conversationTurns: updatedTurns });
         }),
+        getProcessCount: vi.fn(async (filter?: { workspaceId?: string; status?: string | string[] }) => {
+            let result = Array.from(processes.values());
+            if (filter?.workspaceId) {
+                result = result.filter(p => p.metadata?.workspaceId === filter.workspaceId);
+            }
+            if (filter?.status) {
+                const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
+                result = result.filter(p => statuses.includes(p.status));
+            }
+            return result.length;
+        }),
         getProcessSummaries: vi.fn(async (filter?: { status?: string | string[]; limit?: number; offset?: number }) => {
             let result = Array.from(processes.values());
             if (filter?.status) {

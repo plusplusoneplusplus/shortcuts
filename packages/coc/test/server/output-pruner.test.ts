@@ -5,13 +5,13 @@
  * Uses OS temp directories for cross-platform compatibility.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
-import type { AIProcess, AIProcessStatus } from '@plusplusoneplusplus/forge';
+import type { AIProcess, AIProcessStatus, ProcessStore } from '@plusplusoneplusplus/forge';
 import { OutputPruner } from '../../src/server/output-pruner';
 import { OutputFileManager } from '../../src/server/output-file-manager';
 
@@ -259,6 +259,58 @@ describe('OutputPruner', () => {
                 );
                 expect(content).toBe(`content-${i}`);
             }
+        });
+    });
+
+    // ========================================================================
+    // getAllProcessIds fallback (no getProcessSummaries)
+    // ========================================================================
+
+    describe('getAllProcessIds fallback', () => {
+        it('should use getAllProcesses with exclude:conversation when getProcessSummaries is absent', async () => {
+            const getAllProcesses = vi.fn().mockResolvedValue([
+                makeProcess('fb-1'),
+                makeProcess('fb-2'),
+            ]);
+            const fallbackStore: ProcessStore = {
+                addProcess: vi.fn(),
+                updateProcess: vi.fn(),
+                getProcess: vi.fn(),
+                getAllProcesses,
+                removeProcess: vi.fn(),
+                clearProcesses: vi.fn(),
+                getWorkspaces: vi.fn(),
+                registerWorkspace: vi.fn(),
+                removeWorkspace: vi.fn(),
+                updateWorkspace: vi.fn(),
+                getWikis: vi.fn(),
+                registerWiki: vi.fn(),
+                removeWiki: vi.fn(),
+                updateWiki: vi.fn(),
+                clearAllWorkspaces: vi.fn(),
+                clearAllWikis: vi.fn(),
+                getProcessCount: vi.fn(),
+                getStorageStats: vi.fn(),
+                onProcessOutput: vi.fn(() => () => {}),
+                emitProcessOutput: vi.fn(),
+                emitProcessComplete: vi.fn(),
+                emitProcessEvent: vi.fn(),
+                appendConversationTurn: vi.fn(),
+                upsertStreamingTurn: vi.fn(),
+                updateTurnContent: vi.fn(),
+            } as unknown as ProcessStore;
+
+            // Delete getProcessSummaries so the fallback path is taken
+            delete (fallbackStore as any).getProcessSummaries;
+
+            await OutputFileManager.saveOutput('fb-1', 'content', tmpDir, TEST_WORKSPACE);
+            await OutputFileManager.saveOutput('orphan', 'content', tmpDir, TEST_WORKSPACE);
+
+            const fallbackPruner = new OutputPruner(fallbackStore, tmpDir);
+            const deleted = await fallbackPruner.cleanupOrphans();
+
+            expect(deleted).toBe(1);
+            expect(getAllProcesses).toHaveBeenCalledWith({ exclude: ['conversation'] });
         });
     });
 
