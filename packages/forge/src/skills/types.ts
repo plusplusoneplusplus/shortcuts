@@ -108,4 +108,6 @@ export interface BundledSkill {
     description: string;
     /** Relative path within the bundled-skills directory */
     relativePath: string;
+    /** Optional version string for tracking skill schema revisions */
+    version?: string;
 }

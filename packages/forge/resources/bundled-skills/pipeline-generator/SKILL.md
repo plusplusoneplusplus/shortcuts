@@ -1,6 +1,8 @@
 ---
 name: pipeline-generator
 description: Generate optimized YAML pipeline configurations from natural language requirements, or DAG workflow configurations for complex multi-stage processing with fan-out, fan-in, and scripting. Ask clarifying questions about task type, data source, and output format before creating pipelines. Use when users want to create, design, or build a pipeline or workflow for data processing, classification, research, or analysis tasks.
+metadata:
+  version: "0.0.1"
 ---
 
 # Pipeline Generator

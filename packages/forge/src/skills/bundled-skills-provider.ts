@@ -16,37 +16,44 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
     {
         name: 'pipeline-generator',
         description: 'Generate optimized YAML pipeline or DAG workflow configurations from natural language requirements',
-        relativePath: 'pipeline-generator'
+        relativePath: 'pipeline-generator',
+        version: '0.0.1'
     },
     {
         name: 'skill-for-skills',
         description: 'Create and update Agent Skills following the agentskills.io specification',
-        relativePath: 'skill-for-skills'
+        relativePath: 'skill-for-skills',
+        version: '0.0.1'
     },
     {
         name: 'go-deep',
         description: 'Advanced research and verification methodologies using multi-phase approaches and parallel sub-agents',
-        relativePath: 'go-deep'
+        relativePath: 'go-deep',
+        version: '0.0.1'
     },
     {
         name: 'coc-chat',
         description: 'Access, search, analyze, and submit CoC conversation process records via REST API to a running CoC server',
-        relativePath: 'coc-chat'
+        relativePath: 'coc-chat',
+        version: '0.0.1'
     },
     {
         name: 'rethink',
         description: 'Review a bug fix proposal and evaluate whether it is the cleanest solution, considering root cause alignment, simplicity, consistency, technical debt, side effects, and idiomatic alternatives',
-        relativePath: 'rethink'
+        relativePath: 'rethink',
+        version: '0.0.1'
     },
     {
         name: 'code-refactoring',
         description: 'Automated code refactoring suggestion that drafts a refactoring plan for critical, high-value technical debt issues',
-        relativePath: 'code-refactoring'
+        relativePath: 'code-refactoring',
+        version: '0.0.1'
     },
     {
         name: 'kb-refresh',
         description: 'Distill recent CoC chat histories into knowledge-base skill improvements, proposing additions, updates, and removals',
-        relativePath: 'kb-refresh'
+        relativePath: 'kb-refresh',
+        version: '0.0.1'
     }
 ];
 

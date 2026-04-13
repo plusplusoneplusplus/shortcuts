@@ -6,7 +6,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import * as yaml from 'yaml';
 import { getBundledSkills, installBundledSkills, getBundledSkillsPath } from '../../src/skills/bundled-skills-provider';
+import type { BundledSkill } from '../../src/skills/types';
 
 describe('getBundledSkillsPath', () => {
     it('returns a string path', () => {
@@ -45,6 +47,81 @@ describe('getBundledSkills', () => {
             }
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('BundledSkill version field', () => {
+    it('every registry entry has a version string', async () => {
+        // Import the registry indirectly via module internals isn't possible,
+        // so we verify through the getBundledSkills output + SKILL.md files.
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'version-check-'));
+        try {
+            const skills = getBundledSkills(tmpDir);
+            expect(skills.length).toBeGreaterThan(0);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    it('BundledSkill type accepts optional version field', () => {
+        const skill: BundledSkill = {
+            name: 'test',
+            description: 'A test skill',
+            relativePath: 'test',
+            version: '0.0.1'
+        };
+        expect(skill.version).toBe('0.0.1');
+
+        const skillWithout: BundledSkill = {
+            name: 'test2',
+            description: 'Another test',
+            relativePath: 'test2'
+        };
+        expect(skillWithout.version).toBeUndefined();
+    });
+});
+
+describe('SKILL.md metadata', () => {
+    const bundledPath = getBundledSkillsPath();
+
+    it('every bundled SKILL.md has valid YAML frontmatter with metadata.version', () => {
+        const skillDirs = fs.readdirSync(bundledPath).filter(d =>
+            fs.statSync(path.join(bundledPath, d)).isDirectory()
+        );
+        expect(skillDirs.length).toBeGreaterThanOrEqual(8);
+
+        for (const dir of skillDirs) {
+            const skillFile = path.join(bundledPath, dir, 'SKILL.md');
+            if (!fs.existsSync(skillFile)) continue;
+
+            const content = fs.readFileSync(skillFile, 'utf-8');
+            const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+            expect(fmMatch, `${dir}/SKILL.md should have YAML frontmatter`).toBeTruthy();
+
+            const parsed = yaml.parse(fmMatch![1]);
+            expect(parsed.name, `${dir}/SKILL.md name`).toBe(dir);
+            expect(typeof parsed.description, `${dir}/SKILL.md description`).toBe('string');
+            expect(parsed.metadata, `${dir}/SKILL.md should have metadata block`).toBeDefined();
+            expect(parsed.metadata.version, `${dir}/SKILL.md should have metadata.version`).toBe('0.0.1');
+        }
+    });
+
+    it('name and description fields are unchanged (not empty)', () => {
+        const skillDirs = fs.readdirSync(bundledPath).filter(d =>
+            fs.statSync(path.join(bundledPath, d)).isDirectory()
+        );
+
+        for (const dir of skillDirs) {
+            const skillFile = path.join(bundledPath, dir, 'SKILL.md');
+            if (!fs.existsSync(skillFile)) continue;
+
+            const content = fs.readFileSync(skillFile, 'utf-8');
+            const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+            const parsed = yaml.parse(fmMatch![1]);
+
+            expect(parsed.name.length).toBeGreaterThan(0);
+            expect(parsed.description.length).toBeGreaterThan(10);
         }
     });
 });

@@ -5,6 +5,8 @@ description: >-
   and conquer by aggregating results. Supports multi-stage pipelines where the output
   of one stage feeds the next. Only invoke when the user explicitly asks to use the
   divide-conquer skill or pattern by name. Do not auto-select for general tasks.
+metadata:
+  version: "0.0.1"
 ---
 
 # Divide & Conquer

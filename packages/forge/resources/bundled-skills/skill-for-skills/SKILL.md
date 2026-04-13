@@ -1,6 +1,8 @@
 ---
 name: skill-for-skills
 description: Create and update Agent Skills following the agentskills.io specification. Use when creating new skills, updating existing skills, or validating skill structure.
+metadata:
+  version: "0.0.1"
 ---
 
 # Skill for Skills

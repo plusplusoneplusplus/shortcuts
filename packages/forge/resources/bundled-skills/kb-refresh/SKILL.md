@@ -1,6 +1,8 @@
 ---
 name: kb-refresh
 description: Distill recent CoC chat histories into knowledge-base skill improvements. Scans new conversations since the last run, proposes additions/updates/removals, and patches skill files on confirmation. Use when you want to refresh or update a knowledge-base skill from past chats.
+metadata:
+  version: "0.0.1"
 ---
 
 # KB Refresh

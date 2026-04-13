@@ -1,6 +1,8 @@
 ---
 name: go-deep
 description: Advanced research and verification methodologies using multi-phase approaches and parallel sub-agents. Use for deep research on complex topics, multi-model verification of arguments, or decomposing features into atomic commit plans.
+metadata:
+  version: "0.0.1"
 ---
 
 # Go Deep

@@ -1,6 +1,8 @@
 ---
 name: code-refactoring
 description: Automated code refactoring suggestion. Use when reviewing a commit range or code area to propose critical, high-value, high-confidence refactorings that must be addressed immediately to avoid technical debt. This skill drafts a refactoring plan instead of making direct code changes.
+metadata:
+  version: "0.0.1"
 ---
 
 # Critical Code Refactoring Suggester

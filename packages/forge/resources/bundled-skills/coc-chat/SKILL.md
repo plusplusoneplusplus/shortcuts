@@ -1,6 +1,8 @@
 ---
 name: coc-chat
 description: Access, search, analyze, and submit CoC conversation process records via REST API to a running CoC server (chat, run-workflow, run-script, follow-up, stream, search, list, stats). Use when the user asks to find, read, search, summarize, analyze, submit, or send tasks to CoC.
+metadata:
+  version: "0.0.1"
 ---
 
 # CoC Chat
