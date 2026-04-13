@@ -35,6 +35,7 @@ import {
     withRepoInstructions,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
+    buildCreateWorkItemAddon,
 } from './prompt-builder';
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
@@ -75,6 +76,8 @@ export interface FollowUpExecutorOptions {
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<SkillConfig>;
     /** Fire-and-forget title generation callback (optional) */
     onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
+    /** Optional accessor for the WebSocket server (used to broadcast work-item events) */
+    getWsServer?: () => import('../websocket').ProcessWebSocketServer | undefined;
 }
 
 // ============================================================================
@@ -89,6 +92,7 @@ export class FollowUpExecutor extends BaseExecutor {
     private readonly _resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     private readonly _resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<SkillConfig>;
     private readonly onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
+    private readonly getWsServerFn?: () => import('../websocket').ProcessWebSocketServer | undefined;
 
     /** Follow-up messages are part of chat sessions — output goes to the `chat/` subfolder. */
     protected override readonly outputSubfolder: string = 'chat';
@@ -102,6 +106,7 @@ export class FollowUpExecutor extends BaseExecutor {
         this._resolveWorkspaceIdForPath = options.resolveWorkspaceIdForPath;
         this._resolveSkillConfig = options.resolveSkillConfig;
         this.onTitleNeeded = options.onTitleNeeded;
+        this.getWsServerFn = options.getWsServer;
     }
 
     /**
@@ -181,7 +186,15 @@ export class FollowUpExecutor extends BaseExecutor {
             // only needs to handle the AI call and assistant turn.
 
             const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
-            const followUpMessage = followUpSuffix ? `${message}${followUpSuffix}` : message;
+            const createWorkItem = buildCreateWorkItemAddon(
+                this.dataDir,
+                wsId,
+                this.getWsServerFn
+                    ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
+                    : undefined,
+            );
+            const allTools = [...suggestTools, ...createWorkItem.tools];
+            const followUpMessage = `${message}${followUpSuffix}${createWorkItem.suffix}`;
             const agentMode = toAgentMode(currentMode);
 
             const historySystemMessage: SystemMessageConfig | undefined = historyContext
@@ -200,7 +213,7 @@ export class FollowUpExecutor extends BaseExecutor {
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
-                tools: suggestTools.length > 0 ? suggestTools : undefined,
+                tools: allTools.length > 0 ? allTools : undefined,
                 skillDirectories,
                 disabledSkills,
                 onSessionCreated: (sessionId: string) => {
