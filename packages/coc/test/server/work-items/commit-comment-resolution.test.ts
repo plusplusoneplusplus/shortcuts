@@ -284,7 +284,7 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
     });
 
     it('Auto Resolve button shows per-change resolve count', () => {
-        expect(src).toContain('Auto Resolve (');
+        expect(src).toContain('Resolve with agent (');
     });
 
     it('does NOT render the top-level auto-resolve toggle', () => {
@@ -304,5 +304,27 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
         expect(src).toContain('commentTotals.get(c.sha)');
         expect(src).toContain('ct?.open');
         expect(src).toContain('ct?.resolved');
+    });
+
+    it('renders execution title alongside run number', () => {
+        expect(src).toContain('exec.title');
+    });
+
+    it('per-commit resolve button says "Resolve with agent"', () => {
+        expect(src).toContain('Resolve with agent');
+        expect(src).not.toContain("'🔧'} Resolve");
+    });
+
+    it('session-level resolve button says "Resolve with agent"', () => {
+        expect(src).toContain('Resolve with agent (');
+        expect(src).not.toContain('🤖 Auto Resolve');
+    });
+
+    it('per-commit resolve passes sourceRunIndex', () => {
+        expect(src).toContain('handlePerCommitResolve(c.sha, i + 1)');
+    });
+
+    it('auto-resolve passes sourceRunIndex in POST body', () => {
+        expect(src).toContain('sourceRunIndex');
     });
 });

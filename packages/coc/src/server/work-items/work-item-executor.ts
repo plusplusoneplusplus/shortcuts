@@ -83,6 +83,7 @@ export async function executeWorkItem(
 
     const prompt = buildExecutionPrompt(item);
     const mode = options?.mode ?? 'autopilot';
+    const runNumber = (item.executionHistory?.length ?? 0) + 1;
 
     const taskId = await enqueue({
         type: 'chat',
@@ -99,7 +100,7 @@ export async function executeWorkItem(
         config: {
             ...(options?.model ? { model: options.model } : {}),
         },
-        displayName: `WI: ${item.title}`,
+        displayName: `Run #${runNumber}: Code Implement`,
     });
 
     // Record the execution
@@ -108,6 +109,7 @@ export async function executeWorkItem(
         startedAt: new Date().toISOString(),
         status: 'running',
         sessionCategory: 'generating-code',
+        title: 'Code Implement',
         ...(options?.autoReExecuted ? { autoReExecuted: true } : {}),
     };
     await store.addExecution(workItemId, execution);

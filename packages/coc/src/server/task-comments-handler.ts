@@ -121,6 +121,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         skills?: string[],
         workItemId?: string,
         autoReExecute?: boolean,
+        sourceRunIndex?: number,
+        sourcePlanVersion?: number,
     ): Promise<string | undefined> {
         const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
         bridge.getOrCreateBridge(wsRootPath);
@@ -138,7 +140,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
                 sessionCategory,
-                ...(workItemId ? { workItemId, workItemResolveContext: { workItemId, wsId, autoReExecute: autoReExecute ?? false } } : {}),
+                ...(workItemId ? { workItemId, workItemResolveContext: { workItemId, wsId, autoReExecute: autoReExecute ?? false, ...(sourceRunIndex != null ? { sourceRunIndex } : {}), ...(sourcePlanVersion != null ? { sourcePlanVersion } : {}) } } : {}),
                 context: {
                     resolveComments: {
                         documentUri: taskPath,
@@ -396,6 +398,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
 
             const userContext: string | undefined = body.userContext;
             const skills: string[] | undefined = Array.isArray(body.skills) ? body.skills : undefined;
+            const sourceRunIndex: number | undefined = typeof body.sourceRunIndex === 'number' ? body.sourceRunIndex : undefined;
+            const sourcePlanVersion: number | undefined = typeof body.sourcePlanVersion === 'number' ? body.sourcePlanVersion : undefined;
 
             // Load and filter open comments
             const allComments = await manager.getComments(wsId, taskPath);
@@ -415,7 +419,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             const workItemId = taskPath.startsWith(planPrefix) ? taskPath.slice(planPrefix.length) : undefined;
 
             try {
-                const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent, skills, workItemId);
+                const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent, skills, workItemId, undefined, sourceRunIndex, sourcePlanVersion);
                 if (taskId) {
                     return sendJSON(res, 202, { taskId });
                 }

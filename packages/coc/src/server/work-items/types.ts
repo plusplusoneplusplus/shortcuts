@@ -92,6 +92,8 @@ export interface WorkItemExecution {
     autoReExecuted?: boolean;
     /** Session category (e.g. 'generating-code', 'resolve-plan-comments', 'resolve-commit-comments'). */
     sessionCategory?: string;
+    /** Descriptive title for this execution (e.g. 'Code Implement', 'Resolve comments for Run #2'). */
+    title?: string;
 }
 
 // ============================================================================
