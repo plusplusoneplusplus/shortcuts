@@ -201,3 +201,28 @@ describe('handleWorkItemTaskComplete', () => {
         expect(updated!.completedAt).toBeUndefined();
     });
 });
+
+describe('executeWorkItem sessionCategory', () => {
+    it('sets sessionCategory to generating-code in the task payload', async () => {
+        const item = makeWorkItem({ id: 'wi-cat-payload', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-cat-1');
+        await executeWorkItem('wi-cat-payload', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.sessionCategory).toBe('generating-code');
+    });
+
+    it('sets sessionCategory to generating-code in the execution history record', async () => {
+        const item = makeWorkItem({ id: 'wi-cat-exec', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-cat-2');
+        await executeWorkItem('wi-cat-exec', store, enqueue);
+
+        const updated = await store.getWorkItem('wi-cat-exec', 'test-repo');
+        expect(updated!.executionHistory).toHaveLength(1);
+        expect(updated!.executionHistory![0].sessionCategory).toBe('generating-code');
+    });
+});

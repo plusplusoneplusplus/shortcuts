@@ -464,6 +464,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         canEdit={canEditPlan}
                         onUpdated={fetchItem}
                         onError={setError}
+                        onNavigateToTasksTab={onNavigateToTasksTab}
                     />
                 </section>
 

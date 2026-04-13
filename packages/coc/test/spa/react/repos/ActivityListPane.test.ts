@@ -918,7 +918,7 @@ describe('ActivityListPane: filter dropdown rework', () => {
         it('uses !excludedTypes.has to include/exclude', () => {
             const fn = source.substring(
                 source.indexOf('export function taskMatchesFilter'),
-                source.indexOf('export function taskMatchesFilter') + 500,
+                source.indexOf('export function taskMatchesFilter') + 700,
             );
             expect(fn).toContain('!excludedTypes.has');
         });
@@ -1294,5 +1294,75 @@ describe('NewChatArea: chat-only UI', () => {
     it('still renders the send input', () => {
         expect(source).toContain('data-testid="new-chat-input"');
         expect(source).toContain('data-testid="new-chat-send-btn"');
+    });
+});
+
+// ── Session category helpers ──────────────────────────────────────────────────
+
+import {
+    getSessionCategory,
+    SESSION_CATEGORY_LABELS,
+} from '../../../../src/server/spa/client/react/repos/ActivityListPane';
+
+describe('getSessionCategory', () => {
+    it('returns undefined for tasks without sessionCategory', () => {
+        expect(getSessionCategory({ payload: {} })).toBeUndefined();
+        expect(getSessionCategory({ payload: { mode: 'ask' } })).toBeUndefined();
+        expect(getSessionCategory({})).toBeUndefined();
+    });
+
+    it('returns the category from payload', () => {
+        expect(getSessionCategory({ payload: { sessionCategory: 'generating-code' } })).toBe('generating-code');
+        expect(getSessionCategory({ payload: { sessionCategory: 'resolve-plan-comments' } })).toBe('resolve-plan-comments');
+        expect(getSessionCategory({ payload: { sessionCategory: 'resolve-commit-comments' } })).toBe('resolve-commit-comments');
+    });
+});
+
+describe('SESSION_CATEGORY_LABELS', () => {
+    it('has entries for all three categories', () => {
+        expect(SESSION_CATEGORY_LABELS['generating-code']).toBeDefined();
+        expect(SESSION_CATEGORY_LABELS['resolve-plan-comments']).toBeDefined();
+        expect(SESSION_CATEGORY_LABELS['resolve-commit-comments']).toBeDefined();
+    });
+
+    it('each entry has label, icon, and color', () => {
+        for (const key of ['generating-code', 'resolve-plan-comments', 'resolve-commit-comments']) {
+            const entry = SESSION_CATEGORY_LABELS[key];
+            expect(entry.label).toBeTruthy();
+            expect(entry.icon).toBeTruthy();
+            expect(entry.color).toBeTruthy();
+        }
+    });
+});
+
+describe('taskMatchesFilter: session category exclusion', () => {
+    it('excludes tasks when their cat:<category> is in excludedTypes', () => {
+        const task = { type: 'chat', payload: { mode: 'autopilot', sessionCategory: 'generating-code' } };
+        const excluded = new Set(['cat:generating-code']);
+        expect(taskMatchesFilter(task, excluded)).toBe(false);
+    });
+
+    it('includes tasks when cat:<category> is not in excludedTypes', () => {
+        const task = { type: 'chat', payload: { mode: 'autopilot', sessionCategory: 'generating-code' } };
+        const excluded = new Set(['cat:resolve-plan-comments']);
+        expect(taskMatchesFilter(task, excluded)).toBe(true);
+    });
+
+    it('excludes resolve-plan-comments category', () => {
+        const task = { type: 'chat', payload: { mode: 'autopilot', sessionCategory: 'resolve-plan-comments' } };
+        const excluded = new Set(['cat:resolve-plan-comments']);
+        expect(taskMatchesFilter(task, excluded)).toBe(false);
+    });
+
+    it('excludes resolve-commit-comments category', () => {
+        const task = { type: 'chat', payload: { mode: 'autopilot', sessionCategory: 'resolve-commit-comments' } };
+        const excluded = new Set(['cat:resolve-commit-comments']);
+        expect(taskMatchesFilter(task, excluded)).toBe(false);
+    });
+
+    it('tasks without sessionCategory are not affected by cat: exclusion', () => {
+        const task = { type: 'chat', payload: { mode: 'autopilot' } };
+        const excluded = new Set(['cat:generating-code']);
+        expect(taskMatchesFilter(task, excluded)).toBe(true);
     });
 });

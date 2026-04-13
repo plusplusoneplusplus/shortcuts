@@ -17,7 +17,7 @@
 import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 import type { ProcessWebSocketServer } from './websocket';
-import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, CreateTaskInput, SessionCategory } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { isValidWorkspaceId } from './base-comments-manager';
 import { DiffCommentsManager, isValidStorageKey, isValidContext } from './diff-comments-manager';
@@ -125,6 +125,7 @@ export function registerDiffCommentsRoutes(
                 prompt,
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
+                sessionCategory: 'resolve-commit-comments' satisfies SessionCategory,
                 ...(workItemId ? { workItemResolveContext: { workItemId, wsId, autoReExecute: autoReExecute ?? false } } : {}),
                 context: {
                     resolveDiffCommentsMulti: {

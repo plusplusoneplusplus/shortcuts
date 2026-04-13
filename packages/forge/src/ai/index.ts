@@ -133,6 +133,7 @@ export {
     AIToolType,
     AIProcessStatus,
     AIProcessType,
+    SessionCategory,
     GenericProcessMetadata,
     GenericGroupMetadata,
     TypedProcessOptions,

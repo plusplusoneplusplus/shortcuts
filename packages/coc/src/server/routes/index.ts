@@ -192,15 +192,57 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const MAX_AUTO_REEXECUTE_CYCLES = 3;
     const diffCommentsManager = new DiffCommentsManager(dataDir);
 
+    // Track resolve session enqueue in work item execution history.
+    bridge.on('queueChange', (event: { type: string; task?: any }) => {
+        if (event.type !== 'added' || !event.task) return;
+        const task = event.task;
+        const resolveCtx = task.payload?.workItemResolveContext as { workItemId: string; wsId: string; autoReExecute?: boolean } | undefined;
+        if (!resolveCtx) return;
+        const { workItemId } = resolveCtx;
+        const sessionCategory = task.payload?.sessionCategory as string | undefined;
+        (async () => {
+            try {
+                const item = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
+                if (!item) return;
+                await workItemStore.addExecution(workItemId, {
+                    taskId: task.id,
+                    startedAt: new Date().toISOString(),
+                    status: 'running',
+                    ...(sessionCategory ? { sessionCategory } : {}),
+                });
+                getWsServer?.()?.broadcastProcessEvent({
+                    type: 'work-item-updated',
+                    workspaceId: item.repoId,
+                    item: await workItemStore.getWorkItem(workItemId) ?? item,
+                });
+            } catch { /* non-fatal */ }
+        })();
+    });
+
     bridge.on('queueChange', (event: { type: string; task?: any }) => {
         if (event.type !== 'updated' || !event.task) return;
         const task = event.task;
-        if (task.status !== 'completed') return;
+        if (task.status !== 'completed' && task.status !== 'failed' && task.status !== 'cancelled') return;
 
         const resolveCtx = task.payload?.workItemResolveContext as { workItemId: string; wsId: string; autoReExecute?: boolean } | undefined;
         if (!resolveCtx) return;
 
         const { workItemId, wsId } = resolveCtx;
+
+        // Update the resolve execution entry in work item history
+        (async () => {
+            try {
+                await workItemStore.updateExecution(workItemId, task.id, {
+                    status: task.status as 'completed' | 'failed' | 'cancelled',
+                    completedAt: new Date().toISOString(),
+                    processId: task.processId,
+                    ...(task.error ? { error: task.error } : {}),
+                });
+            } catch { /* non-fatal */ }
+        })();
+
+        // Auto re-execute only on successful completion
+        if (task.status !== 'completed') return;
 
         // Async: check if all comments are resolved and trigger re-execute
         (async () => {
