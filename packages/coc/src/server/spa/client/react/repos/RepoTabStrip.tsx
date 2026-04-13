@@ -642,7 +642,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
                             role="menuitem"
                             onClick={() => {
-                                setGenerateDialog({ open: true, minimized: false, wsId: ws.id, targetFolder: ws.rootPath });
+                                setGenerateDialog({ open: true, minimized: false, wsId: ws.id, targetFolder: undefined });
                                 setContextMenu(null);
                             }}
                         >

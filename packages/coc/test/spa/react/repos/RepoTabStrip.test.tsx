@@ -704,6 +704,8 @@ describe('RepoTabStrip', () => {
             const dialog = screen.getByTestId('generate-task-dialog');
             expect(dialog).toBeDefined();
             expect(dialog.getAttribute('data-ws-id')).toBe('r1');
+            // targetFolder must be undefined so the dialog defaults to AUTO_FOLDER_SENTINEL
+            expect(dialog.getAttribute('data-folder')).toBe('');
         });
 
         it('actions target the right-clicked repo, not the selected one', () => {

@@ -61,7 +61,7 @@ export function useFolderDialogHandlers({ folderActions, fileActions, refresh, a
             if (actionKey === 'create-task') setFolderDialog({ action: 'create-task', folder, submitting: false });
             if (actionKey === 'delete') setFolderDialog({ action: 'delete', folder, submitting: false });
             if (actionKey === 'generate-task-ai') {
-                onOpenGenerateDialog?.(folder.relativePath || folder.name);
+                onOpenGenerateDialog?.();
             }
             if (actionKey === 'move') {
                 setMoveSourceFolder(folder);

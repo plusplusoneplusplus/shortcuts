@@ -528,8 +528,8 @@ describe('Folder context menu', () => {
         // Context menu should close
         expect(screen.queryByTestId('context-menu')).toBeNull();
 
-        // onOpenGenerateDialog should have been called with the folder path
-        expect(mockOpenGenerate).toHaveBeenCalledWith('feature1');
+        // onOpenGenerateDialog should have been called without arguments (auto-folder mode)
+        expect(mockOpenGenerate).toHaveBeenCalledWith();
     });
 
     it('"Queue All Tasks" has a submenu with Run Skill', async () => {
