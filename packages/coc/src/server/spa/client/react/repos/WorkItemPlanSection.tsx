@@ -53,6 +53,8 @@ interface WorkItemPlanSectionProps {
     /** Called after any plan mutation so the parent can refresh. */
     onUpdated: () => void;
     onError: (msg: string) => void;
+    /** Called when a batch-resolve task is enqueued so the parent can navigate. */
+    onNavigateToTasksTab?: (taskId: string) => void;
 }
 
 /** Minimum characters selected to activate the comment toolbar. */
@@ -79,7 +81,7 @@ function buildPlanAnchor(
 }
 
 export function WorkItemPlanSection({
-    workspaceId, workItemId, plan, canEdit, onUpdated, onError,
+    workspaceId, workItemId, plan, canEdit, onUpdated, onError, onNavigateToTasksTab,
 }: WorkItemPlanSectionProps) {
     const basePath = `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/plan`;
 
@@ -92,6 +94,7 @@ export function WorkItemPlanSection({
     const [planDraft, setPlanDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const [resolving, setResolving] = useState(false);
+    const [batchResolving, setBatchResolving] = useState(false);
     const [resolvePreview, setResolvePreview] = useState<string | null>(null);
     const [accepting, setAccepting] = useState(false);
 
@@ -231,6 +234,31 @@ export function WorkItemPlanSection({
         await loadVersions();
         setAccepting(false);
     };
+
+    // Enqueue a batch-resolve task through the queue (creates a categorized session)
+    const handleBatchResolve = useCallback(async () => {
+        const open = planComments.filter(c => c.status === 'open');
+        if (open.length === 0) return;
+        setBatchResolving(true);
+        try {
+            const taskPath = planCommentPath(workItemId);
+            const result = await fetchApi(
+                `/comments/${encodeURIComponent(workspaceId)}/${encodeURIComponent(taskPath)}/batch-resolve`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ documentContent: plan?.content ?? '' }),
+                },
+            );
+            if (result?.taskId && onNavigateToTasksTab) {
+                onNavigateToTasksTab(result.taskId);
+            }
+        } catch (err: any) {
+            onError(err.message || 'Failed to enqueue plan comment resolve task');
+        } finally {
+            setBatchResolving(false);
+        }
+    }, [planComments, workspaceId, workItemId, plan?.content, onNavigateToTasksTab, onError]);
 
     // ── Inline selection handling ──────────────────────────────────────────
 
@@ -483,6 +511,17 @@ export function WorkItemPlanSection({
                                     data-testid="work-item-plan-resolve-all-btn"
                                 >
                                     🤖 Resolve {openCommentCount} comment{openCommentCount !== 1 ? 's' : ''} with AI
+                                </Button>
+                            )}
+                            {openCommentCount > 0 && (
+                                <Button
+                                    variant="ghost" size="sm"
+                                    onClick={handleBatchResolve}
+                                    disabled={batchResolving}
+                                    loading={batchResolving}
+                                    data-testid="work-item-plan-batch-resolve-btn"
+                                >
+                                    🔧 Resolve via task
                                 </Button>
                             )}
                         </div>

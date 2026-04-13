@@ -90,6 +90,8 @@ export interface WorkItemExecution {
     error?: string;
     /** Whether this execution was triggered automatically after comment resolution. */
     autoReExecuted?: boolean;
+    /** Session category (e.g. 'generating-code', 'resolve-plan-comments', 'resolve-commit-comments'). */
+    sessionCategory?: string;
 }
 
 // ============================================================================
