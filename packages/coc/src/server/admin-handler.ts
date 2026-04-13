@@ -549,6 +549,27 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
     });
 
     // ------------------------------------------------------------------
+    // GET /api/admin/version — Return build version and commit hash
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/admin/version',
+        handler: async (_req, res) => {
+            let commit = 'dev';
+            let version = 'dev';
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                const info = require('./build-info');
+                commit = info.BUILD_COMMIT ?? 'dev';
+                version = info.BUILD_VERSION ?? 'dev';
+            } catch {
+                // build-info.ts not generated yet (dev mode) — fall back gracefully
+            }
+            sendJSON(res, 200, { version, commit });
+        },
+    });
+
+    // ------------------------------------------------------------------
     // POST /api/admin/restart — Rebuild & restart the server
     // ------------------------------------------------------------------
     routes.push({

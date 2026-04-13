@@ -100,6 +100,9 @@ export function AdminPanel() {
     const [restarting, setRestarting] = useState(false);
     const [restartStatus, setRestartStatus] = useState<string>('');
 
+    // Version info
+    const [versionInfo, setVersionInfo] = useState<{ version: string; commit: string } | null>(null);
+
     // Relaunch welcome
     const [relaunchingWelcome, setRelaunchingWelcome] = useState(false);
 
@@ -154,6 +157,10 @@ export function AdminPanel() {
     useEffect(() => {
         loadStats();
         loadConfig();
+        fetch(getApiBase() + '/admin/version')
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data) setVersionInfo(data); })
+            .catch(() => {});
     }, [loadStats, loadConfig]);
 
     const handleSaveSettings = useCallback(async () => {
@@ -1037,6 +1044,12 @@ export function AdminPanel() {
                                 <span className="font-mono">{resolved.serve?.host ?? '0.0.0.0'}:{resolved.serve?.port ?? '4000'}</span>
                                 {resolved.serve?.dataDir && <span className="ml-2 font-mono">{resolved.serve.dataDir}</span>}
                             </div>
+                            {versionInfo && (
+                                <div>
+                                    Version: <code className="bg-black/5 dark:bg-white/5 px-1 rounded">{versionInfo.version}</code>
+                                    {' · '}Commit: <code className="bg-black/5 dark:bg-white/5 px-1 rounded" title={versionInfo.commit}>{versionInfo.commit.slice(0, 7)}</code>
+                                </div>
+                            )}
                         </div>
 
                         <hr className={dividerClass} />

@@ -1673,4 +1673,31 @@ describe('Admin Handler', () => {
             expect(statuses).toContain(403);
         });
     });
+
+    // ========================================================================
+    // GET /api/admin/version
+    // ========================================================================
+
+    describe('GET /api/admin/version', () => {
+        it('should return version and commit as non-empty strings', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/version`);
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(typeof body.version).toBe('string');
+            expect(body.version.length).toBeGreaterThan(0);
+            expect(typeof body.commit).toBe('string');
+            expect(body.commit.length).toBeGreaterThan(0);
+        });
+
+        it('should include version and commit keys in the response', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/version`);
+
+            const body = JSON.parse(res.body);
+            expect(body).toHaveProperty('version');
+            expect(body).toHaveProperty('commit');
+        });
+    });
 });

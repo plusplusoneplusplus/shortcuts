@@ -130,6 +130,9 @@ dist/
 
 # SPA client build output (esbuild)
 **/spa/client/dist/
+
+# Build-time generated version info
+packages/coc/src/server/build-info.ts
 # Playwright
 playwright-report/
 test-results/
