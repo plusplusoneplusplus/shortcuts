@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { fetchApi } from '../hooks/useApi';
 import { Button, cn } from '../shared';
+import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { RepoCard } from './RepoCard';
 import { AddRepoDialog } from './AddRepoDialog';
 import { AddFolderDialog } from './AddFolderDialog';
@@ -348,17 +349,19 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
             )}
 
             {/* Add dialogs */}
-            <AddRepoDialog
-                open={addOpen}
-                onClose={() => setAddOpen(false)}
-                repos={repos}
-                onSuccess={() => { setAddOpen(false); onRefresh(); }}
-            />
-            <AddFolderDialog
-                open={addFolderOpen}
-                onClose={() => setAddFolderOpen(false)}
-                onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
-            />
+            <ErrorBoundary label="Dialog error" inline>
+                <AddRepoDialog
+                    open={addOpen}
+                    onClose={() => setAddOpen(false)}
+                    repos={repos}
+                    onSuccess={() => { setAddOpen(false); onRefresh(); }}
+                />
+                <AddFolderDialog
+                    open={addFolderOpen}
+                    onClose={() => setAddFolderOpen(false)}
+                    onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
+                />
+            </ErrorBoundary>
         </div>
     );
 }
