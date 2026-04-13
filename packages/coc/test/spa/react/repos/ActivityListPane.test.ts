@@ -6,6 +6,8 @@
  * - The pinned section renders separately from completed tasks
  * - Context menu includes Pin/Unpin items for completed tasks
  * - Pinned tasks are excluded from the completed tasks section
+ * - isChatTask correctly classifies resolve tasks with workItemId
+ * - Session category badges are rendered
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -1364,5 +1366,80 @@ describe('taskMatchesFilter: session category exclusion', () => {
         const task = { type: 'chat', payload: { mode: 'autopilot' } };
         const excluded = new Set(['cat:generating-code']);
         expect(taskMatchesFilter(task, excluded)).toBe(true);
+    });
+});
+
+describe('isChatTask: resolve tasks with workItemId', () => {
+    it('returns true for a plain chat task without workItemId', () => {
+        const task = { type: 'chat', payload: { kind: 'chat', mode: 'autopilot' } };
+        expect(isChatTask(task)).toBe(true);
+    });
+
+    it('returns false when payload.workItemId is set', () => {
+        const task = { type: 'chat', payload: { kind: 'chat', mode: 'autopilot', workItemId: 'wi-123' } };
+        expect(isChatTask(task)).toBe(false);
+    });
+
+    it('returns false for resolve-commit-comments task with workItemId', () => {
+        const task = {
+            type: 'chat',
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                sessionCategory: 'resolve-commit-comments',
+                workItemId: 'wi-456',
+                workItemResolveContext: { workItemId: 'wi-456', wsId: 'ws-1', autoReExecute: false },
+            },
+        };
+        expect(isChatTask(task)).toBe(false);
+    });
+
+    it('returns false for resolve-plan-comments task with workItemId', () => {
+        const task = {
+            type: 'chat',
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                sessionCategory: 'resolve-plan-comments',
+                workItemId: 'wi-789',
+                workItemResolveContext: { workItemId: 'wi-789', wsId: 'ws-1', autoReExecute: false },
+            },
+        };
+        expect(isChatTask(task)).toBe(false);
+    });
+
+    it('returns true for resolve task without workItemId (standalone resolve)', () => {
+        const task = {
+            type: 'chat',
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                sessionCategory: 'resolve-commit-comments',
+            },
+        };
+        expect(isChatTask(task)).toBe(true);
+    });
+
+    it('returns false for non-chat task types', () => {
+        const task = { type: 'run-workflow', payload: { kind: 'run-workflow' } };
+        expect(isChatTask(task)).toBe(false);
+    });
+});
+
+describe('session category badge rendering', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(ACTIVITY_LIST_PATH, 'utf-8');
+    });
+
+    it('renders session-category-badge data-testid in task cards', () => {
+        expect(source).toContain('data-testid="session-category-badge"');
+    });
+
+    it('looks up SESSION_CATEGORY_LABELS for badge rendering', () => {
+        const badgeInstances = source.match(/SESSION_CATEGORY_LABELS\[cat\]/g);
+        expect(badgeInstances).not.toBeNull();
+        expect(badgeInstances!.length).toBeGreaterThanOrEqual(1);
     });
 });

@@ -81,6 +81,15 @@ describe('diff-comments-handler sessionCategory', () => {
     it('imports SessionCategory type', () => {
         expect(source).toContain('SessionCategory');
     });
+
+    it('sets workItemId directly on payload when available', () => {
+        const fnStart = source.indexOf('async function enqueueDiffResolveMultiTask');
+        const fnBlock = source.substring(fnStart, fnStart + 1200);
+        const payloadStart = fnBlock.indexOf('payload:');
+        const payloadBlock = fnBlock.substring(payloadStart, payloadStart + 500);
+        expect(payloadBlock).toContain('workItemId,');
+        expect(payloadBlock).toContain('workItemResolveContext');
+    });
 });
 
 describe('task-comments-handler sessionCategory', () => {
@@ -124,5 +133,28 @@ describe('task-comments-handler sessionCategory', () => {
 
     it('imports SessionCategory type', () => {
         expect(source).toContain('SessionCategory');
+    });
+
+    it('accepts workItemId parameter', () => {
+        const fnStart = source.indexOf('async function enqueueResolveTask');
+        const fnBlock = source.substring(fnStart, fnStart + 400);
+        expect(fnBlock).toContain('workItemId?: string');
+    });
+
+    it('sets workItemId and workItemResolveContext on payload when workItemId is provided', () => {
+        const fnStart = source.indexOf('async function enqueueResolveTask');
+        const fnBlock = source.substring(fnStart, fnStart + 1200);
+        const payloadStart = fnBlock.indexOf('payload:');
+        const payloadBlock = fnBlock.substring(payloadStart, payloadStart + 500);
+        expect(payloadBlock).toContain('workItemId,');
+        expect(payloadBlock).toContain('workItemResolveContext');
+    });
+
+    it('batch-resolve handler extracts workItemId from __wi-plan__ path', () => {
+        const planPrefixIdx = source.indexOf("const planPrefix = '__wi-plan__/'");
+        expect(planPrefixIdx).toBeGreaterThan(-1);
+        const handlerBlock = source.substring(planPrefixIdx, planPrefixIdx + 300);
+        expect(handlerBlock).toContain("taskPath.startsWith(planPrefix)");
+        expect(handlerBlock).toContain('workItemId');
     });
 });

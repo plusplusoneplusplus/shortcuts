@@ -126,7 +126,7 @@ export function registerDiffCommentsRoutes(
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
                 sessionCategory: 'resolve-commit-comments' satisfies SessionCategory,
-                ...(workItemId ? { workItemResolveContext: { workItemId, wsId, autoReExecute: autoReExecute ?? false } } : {}),
+                ...(workItemId ? { workItemId, workItemResolveContext: { workItemId, wsId, autoReExecute: autoReExecute ?? false } } : {}),
                 context: {
                     resolveDiffCommentsMulti: {
                         files,
