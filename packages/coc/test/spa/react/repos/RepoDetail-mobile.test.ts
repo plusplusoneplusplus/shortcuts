@@ -228,6 +228,10 @@ describe('RepoDetail mobile: MobileTabBar integration', () => {
         expect(REPO_DETAIL_SOURCE).toContain('activityCount={');
     });
 
+    it('passes workItemCount to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('workItemCount={unseenWorkItemCount}');
+    });
+
     it('hides top tab strip on mobile', () => {
         // Tab strip is in the desktop-only branch of the top-level isMobile ternary (not wrapped in !isMobile && ())
         expect(REPO_DETAIL_SOURCE).toContain('repo-sub-tab-strip-container');
