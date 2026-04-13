@@ -531,6 +531,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                             images: validatedImages,
                             workingDirectory: proc.workingDirectory,
                             readonly: (proc as any).payload?.readonly,
+                            workspaceId: proc.metadata?.workspaceId as string | undefined,
                             ...(modeOverride ? { mode: modeOverride } : {}),
                             deliveryMode,
                         },

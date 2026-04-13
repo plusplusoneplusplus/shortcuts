@@ -37,6 +37,7 @@ const mockBuildModeSystemMessage = vi.fn().mockReturnValue({ mode: 'replace', co
 const mockWithRepoInstructions = vi.fn().mockImplementation(async (sm: any) => sm);
 const mockBuildConversationHistoryContext = vi.fn().mockReturnValue(undefined);
 const mockBuildFollowUpSuggestionsAddon = vi.fn().mockReturnValue({ tools: [], suffix: '' });
+const mockBuildCreateWorkItemAddon = vi.fn().mockReturnValue({ tools: [], suffix: '' });
 
 vi.mock('../../../src/server/executors/prompt-builder', () => ({
     buildModeSystemMessage: (...args: any[]) => mockBuildModeSystemMessage(...args),
@@ -45,10 +46,7 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
     withRepoInstructions: (...args: any[]) => mockWithRepoInstructions(...args),
     buildConversationHistoryContext: (...args: any[]) => mockBuildConversationHistoryContext(...args),
     buildFollowUpSuggestionsAddon: (...args: any[]) => mockBuildFollowUpSuggestionsAddon(...args),
-    prependSelectedSkillsDirective: (prompt: string, selectedSkills?: string[]) =>
-        selectedSkills && selectedSkills.length > 0
-            ? `<selected_skills>\nThe user explicitly selected these skills: ${selectedSkills.join(', ')}.\nUse the native skill system and invoke each selected skill immediately before proceeding with the request.\nDo not inline or restate the skill bodies yourself.\n</selected_skills>\n\n${prompt}`
-            : prompt,
+    buildCreateWorkItemAddon: (...args: any[]) => mockBuildCreateWorkItemAddon(...args),
 }));
 
 const mockEmitMessageSteering = vi.fn();
@@ -106,6 +104,7 @@ describe('FollowUpExecutor', () => {
         store = createMockProcessStore();
         sdkMocks.resetAll();
         mockBuildFollowUpSuggestionsAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
+        mockBuildCreateWorkItemAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
         mockBuildConversationHistoryContext.mockReset().mockReturnValue(undefined);
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
         mockBuildModeSystemMessage.mockReset().mockReturnValue({ mode: 'replace', content: 'system' });
@@ -433,5 +432,90 @@ describe('FollowUpExecutor', () => {
         // buildFollowUpSuggestionsAddon must be called with enabled=true even
         // when there are already assistant turns in the conversation.
         expect(mockBuildFollowUpSuggestionsAddon).toHaveBeenCalledWith(true, 3);
+    });
+
+    // -------------------------------------------------------------------------
+    // Work item tools injection
+    // -------------------------------------------------------------------------
+
+    it('calls buildCreateWorkItemAddon with dataDir and resolved wsId', async () => {
+        const proc = makeProcess({
+            id: 'proc-wi',
+            metadata: { type: 'chat', workspaceId: 'ws-123' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-wi', 'create a work item');
+
+        expect(mockBuildCreateWorkItemAddon).toHaveBeenCalledWith(
+            undefined, // dataDir (not passed in makeExecutor helper)
+            'ws-123',
+            undefined,
+        );
+    });
+
+    it('injects create_work_item tools into sendMessage when workspaceId is available', async () => {
+        const fakeTool = { name: 'create_work_item', description: 'fake', inputSchema: {} };
+        mockBuildCreateWorkItemAddon.mockReturnValue({
+            tools: [fakeTool],
+            suffix: '\n\nwork item suffix',
+        });
+
+        const proc = makeProcess({
+            id: 'proc-wi-tools',
+            metadata: { type: 'chat', workspaceId: 'ws-456' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-wi-tools', 'track this feature');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                tools: expect.arrayContaining([fakeTool]),
+                prompt: expect.stringContaining('work item suffix'),
+            }),
+        );
+    });
+
+    it('does not inject work item tools when workspaceId is unavailable', async () => {
+        mockBuildCreateWorkItemAddon.mockReturnValue({ tools: [], suffix: '' });
+
+        const proc = makeProcess({
+            id: 'proc-no-ws',
+            metadata: { type: 'chat' },
+            workingDirectory: undefined,
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            resolveWorkspaceIdForPath: vi.fn().mockResolvedValue(undefined),
+        });
+        await executor.executeFollowUp('proc-no-ws', 'msg');
+
+        // buildCreateWorkItemAddon was called — its guard returns empty tools
+        expect(mockBuildCreateWorkItemAddon).toHaveBeenCalled();
+        // No tools injected
+        const sentOpts = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(sentOpts.tools).toBeUndefined();
+    });
+
+    it('passes broadcast function when getWsServer is provided', async () => {
+        const mockWsServer = { broadcastProcessEvent: vi.fn() };
+        const proc = makeProcess({
+            id: 'proc-ws',
+            metadata: { type: 'chat', workspaceId: 'ws-789' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            getWsServer: () => mockWsServer as any,
+        } as any);
+        await executor.executeFollowUp('proc-ws', 'msg');
+
+        // broadcastFn should be a function (third arg), not undefined
+        const broadcastArg = mockBuildCreateWorkItemAddon.mock.calls[0][2];
+        expect(typeof broadcastArg).toBe('function');
     });
 });
