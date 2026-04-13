@@ -119,6 +119,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         prompt: string,
         documentContent: string,
         skills?: string[],
+        workItemId?: string,
+        autoReExecute?: boolean,
     ): Promise<string | undefined> {
         const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
         bridge.getOrCreateBridge(wsRootPath);
@@ -136,6 +138,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
                 sessionCategory,
+                ...(workItemId ? { workItemId, workItemResolveContext: { workItemId, wsId, autoReExecute: autoReExecute ?? false } } : {}),
                 context: {
                     files: [path.resolve(wsRootPath, taskPath)],
                     resolveComments: {
@@ -408,8 +411,12 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             const prompt = buildBatchResolvePrompt(openComments, absoluteTaskPath, taskPath, userContext);
             const commentIds = openComments.map(c => c.id);
 
+            // Extract workItemId from synthetic plan path (__wi-plan__/{workItemId})
+            const planPrefix = '__wi-plan__/';
+            const workItemId = taskPath.startsWith(planPrefix) ? taskPath.slice(planPrefix.length) : undefined;
+
             try {
-                const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent, skills);
+                const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent, skills, workItemId);
                 if (taskId) {
                     return sendJSON(res, 202, { taskId });
                 }
