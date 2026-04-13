@@ -200,10 +200,19 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     bridge.on('queueChange', (event: { type: string; task?: any }) => {
         if (event.type !== 'added' || !event.task) return;
         const task = event.task;
-        const resolveCtx = task.payload?.workItemResolveContext as { workItemId: string; wsId: string; autoReExecute?: boolean } | undefined;
+        const resolveCtx = task.payload?.workItemResolveContext as { workItemId: string; wsId: string; autoReExecute?: boolean; sourceRunIndex?: number; sourcePlanVersion?: number } | undefined;
         if (!resolveCtx) return;
         const { workItemId } = resolveCtx;
         const sessionCategory = task.payload?.sessionCategory as string | undefined;
+
+        // Compute descriptive title from resolve context
+        let resolveTitle: string | undefined;
+        if (sessionCategory === 'resolve-plan-comments' && resolveCtx.sourcePlanVersion != null) {
+            resolveTitle = `Resolve comments for Plan #${resolveCtx.sourcePlanVersion}`;
+        } else if (resolveCtx.sourceRunIndex != null) {
+            resolveTitle = `Resolve comments for Run #${resolveCtx.sourceRunIndex}`;
+        }
+
         (async () => {
             try {
                 const item = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
@@ -213,6 +222,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     startedAt: new Date().toISOString(),
                     status: 'running',
                     ...(sessionCategory ? { sessionCategory } : {}),
+                    ...(resolveTitle ? { title: resolveTitle } : {}),
                 });
                 getWsServer?.()?.broadcastProcessEvent({
                     type: 'work-item-updated',
