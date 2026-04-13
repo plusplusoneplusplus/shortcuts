@@ -27,6 +27,7 @@ import {
     QueueExecutorBridge,
     createQueueExecutorBridge,
 } from './queue-executor-bridge';
+import { resolveRootPath } from './routes/queue-shared';
 
 // ============================================================================
 // Types
@@ -299,13 +300,14 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
 
     /**
      * Enqueue a task into the correct per-repo queue.
-     * Routes based on payload.workingDirectory. Falls back to process.cwd().
+     * Resolves rootPath from payload.workingDirectory or payload.workspaceId
+     * (via workspace store). Falls back to process.cwd().
      * Implements the optional enqueue() method of QueueExecutorBridge so that
      * api-handler.ts can route follow-ups through the queue instead of firing
      * them directly.
      */
     async enqueue(input: CreateTaskInput): Promise<string> {
-        const rootPath = (input.payload as any)?.workingDirectory || process.cwd();
+        const rootPath = await resolveRootPath(input.payload, this.store, undefined) || process.cwd();
         this.getOrCreateBridge(rootPath);
         if (!input.repoId) {
             input.repoId = this.getRepoIdForPath(rootPath);
