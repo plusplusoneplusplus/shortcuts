@@ -278,9 +278,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     ...(sourceRunIndex != null ? { sourceRunIndex } : {}),
                 }),
             });
-            if (result.taskId && onNavigateToTasksTab) {
-                onNavigateToTasksTab(result.taskId);
-            }
         } catch (err: any) {
             setError(err.message || 'Failed to enqueue resolve task');
         } finally {
@@ -288,34 +285,28 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     };
 
-    /** AI-resolve all open diff comments for a change's commits, then auto-re-execute. */
+    /** Resolve all open diff comments for a change's commits. */
     const handleAutoResolveChange = async (idx: number, commits: Array<{ sha: string }>) => {
         if (!item) return;
         setResolvingChangeIdx(idx);
         const sourceRunIndex = idx + 1;
         try {
-            let lastTaskId: string | undefined;
             for (const commit of commits) {
                 const openCount = commentTotals.get(commit.sha)?.open ?? 0;
                 if (openCount === 0) continue;
-                const result = await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}/resolve-with-ai`, {
+                await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}/resolve-with-ai`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         oldRef: `${commit.sha}^`,
                         newRef: commit.sha,
                         workItemId: item.id,
-                        autoReExecute: true,
                         sourceRunIndex,
                     }),
                 });
-                if (result?.taskId) lastTaskId = result.taskId;
-            }
-            if (lastTaskId && onNavigateToTasksTab) {
-                onNavigateToTasksTab(lastTaskId);
             }
         } catch (err: any) {
-            setError(err.message || 'Failed to enqueue auto-resolve tasks');
+            setError(err.message || 'Failed to enqueue resolve tasks');
         } finally {
             setResolvingChangeIdx(null);
         }
@@ -604,9 +595,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                         'disabled:opacity-50 disabled:cursor-not-allowed',
                                                     )}
                                                     data-testid={`exec-auto-resolve-btn-${i}`}
-                                                    title="AI-resolve all open diff comments and re-execute"
+                                                    title="Resolve all open diff comments"
                                                 >
-                                                    {resolvingChangeIdx === i ? '⏳ Resolving…' : `Resolve with agent (${execOpenCommentCount})`}
+                                                    {resolvingChangeIdx === i ? '⏳ Resolving…' : `Resolve all (${execOpenCommentCount})`}
                                                 </button>
                                             )}
                                         </div>
@@ -653,9 +644,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                                         'disabled:opacity-50 disabled:cursor-not-allowed',
                                                                     )}
                                                                     data-testid={`commit-resolve-btn-${c.sha.slice(0, 7)}`}
-                                                                    title="Enqueue AI resolve task for this commit"
+                                                                    title="Resolve open diff comments for this commit"
                                                                 >
-                                                                    {resolvingCommitSha === c.sha ? '⏳ ' : ''}Resolve with agent
+                                                                    {resolvingCommitSha === c.sha ? '⏳ ' : ''}Resolve
                                                                 </button>
                                                             )}
                                                             <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={c.message}>{c.message}</span>
