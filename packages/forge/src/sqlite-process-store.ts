@@ -649,12 +649,12 @@ export class SqliteProcessStore implements ProcessStore {
         if (filter?.limit !== undefined) queryParams.push(filter.limit);
         if (filter?.offset !== undefined) queryParams.push(filter.offset);
 
-        const rows = this.db.prepare(query).all(...queryParams) as ProcessRow[];
-
         const excludeConversation = filter?.exclude?.includes('conversation');
         const excludeToolCalls = filter?.exclude?.includes('toolCalls');
 
-        return rows.map(row => {
+        // Use .iterate() to avoid materializing all rows at once
+        const results: AIProcess[] = [];
+        for (const row of this.db.prepare(query).iterate(...queryParams) as IterableIterator<ProcessRow>) {
             let turns: ConversationTurn[] | undefined;
             if (!excludeConversation) {
                 const turnRows = this.getTurnsStmt.all(row.id) as TurnRow[];
@@ -671,10 +671,12 @@ export class SqliteProcessStore implements ProcessStore {
             const process = rowToProcess(row, turns);
             if (excludeConversation) {
                 const { conversationTurns: _ct, fullPrompt: _fp, result: _r, ...rest } = process;
-                return rest as AIProcess;
+                results.push(rest as AIProcess);
+            } else {
+                results.push(process);
             }
-            return process;
-        });
+        }
+        return results;
     }
 
     async getProcessCount(filter?: ProcessFilter): Promise<number> {
@@ -700,12 +702,12 @@ export class SqliteProcessStore implements ProcessStore {
         if (filter?.limit !== undefined) queryParams.push(filter.limit);
         if (filter?.offset !== undefined) queryParams.push(filter.offset);
 
-        const rows = this.db.prepare(selectQuery).all(...queryParams) as ProcessRow[];
-
-        const entries: ProcessIndexEntry[] = rows.map(row => {
+        // Use .iterate() to avoid materializing all summary rows at once
+        const entries: ProcessIndexEntry[] = [];
+        for (const row of this.db.prepare(selectQuery).iterate(...queryParams) as IterableIterator<ProcessRow>) {
             const startMs = new Date(row.start_time).getTime();
             const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
-            return {
+            entries.push({
                 id: row.id,
                 workspaceId: row.workspace_id,
                 status: row.status,
@@ -720,8 +722,8 @@ export class SqliteProcessStore implements ProcessStore {
                 lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
                 pinnedAt: row.pinned_at ?? undefined,
                 archived: intToBool(row.archived) || undefined,
-            };
-        });
+            });
+        }
 
         return { entries, total };
     }
@@ -729,8 +731,12 @@ export class SqliteProcessStore implements ProcessStore {
     async getProcessIds(filter?: ProcessFilter): Promise<string[]> {
         const { sql, params } = this.buildProcessWhereClause(filter);
         const query = `SELECT id FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC`;
-        const rows = this.db.prepare(query).all(...params) as Array<{ id: string }>;
-        return rows.map(row => row.id);
+        // Use .iterate() to avoid materializing all ID rows at once
+        const ids: string[] = [];
+        for (const row of this.db.prepare(query).iterate(...params) as IterableIterator<{ id: string }>) {
+            ids.push(row.id);
+        }
+        return ids;
     }
 
     async updateProcess(id: string, updates: Partial<AIProcess>): Promise<void> {
