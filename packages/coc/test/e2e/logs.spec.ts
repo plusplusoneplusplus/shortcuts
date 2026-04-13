@@ -9,9 +9,9 @@
 import { test, expect } from './fixtures/server-fixture';
 import { request } from './fixtures/seed';
 
-// Import captureEntry from the compiled coc-server package.
+// Import captureEntry from the compiled server module.
 // This is the same singleton used by the running test server.
-const { captureEntry, clearLogBuffer } = require('@plusplusoneplusplus/coc-server');
+const { captureEntry, clearLogBuffer } = require('../../../dist/server/index');
 
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 

@@ -47,6 +47,7 @@ const { mockState } = vi.hoisted(() => ({
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getWsPath: () => '/ws',
+    getWsUrl: () => 'ws://localhost/ws',
 }));
 
 // Display settings

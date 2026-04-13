@@ -82,9 +82,13 @@ export async function resolveSkillConfig(
     }
 
     if (root) {
-        const skillsDir = resolvePathInExecutionContext(root, DEFAULT_SKILLS_SETTINGS.installPath);
-        const hostSkillsDir = resolvePathForHostFilesystem(root, DEFAULT_SKILLS_SETTINGS.installPath);
-        await tryAddSkillDirectory(skillsDir, hostSkillsDir);
+        try {
+            const skillsDir = resolvePathInExecutionContext(root, DEFAULT_SKILLS_SETTINGS.installPath);
+            const hostSkillsDir = resolvePathForHostFilesystem(root, DEFAULT_SKILLS_SETTINGS.installPath);
+            await tryAddSkillDirectory(skillsDir, hostSkillsDir);
+        } catch {
+            // Non-fatal: skip repo-local skills when path translation fails (e.g. Linux path on Windows without WSL)
+        }
     }
 
     if (dataDir) {
@@ -94,14 +98,18 @@ export async function resolveSkillConfig(
 
     if (extraSkillFolders) {
         for (const folder of extraSkillFolders) {
-            const sourcePath = (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl')
-                ? folder
-                : (root ? resolvePathInExecutionContext(root, folder) : null);
-            const hostPath = (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl')
-                ? resolvePathForHostFilesystem(folder)
-                : (root ? resolvePathForHostFilesystem(root, folder) : null);
-            if (sourcePath && hostPath) {
-                await tryAddSkillDirectory(sourcePath, hostPath);
+            try {
+                const sourcePath = (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl')
+                    ? folder
+                    : (root ? resolvePathInExecutionContext(root, folder) : null);
+                const hostPath = (path.isAbsolute(folder) || resolveWorkspaceExecutionContext(folder).kind === 'wsl')
+                    ? resolvePathForHostFilesystem(folder)
+                    : (root ? resolvePathForHostFilesystem(root, folder) : null);
+                if (sourcePath && hostPath) {
+                    await tryAddSkillDirectory(sourcePath, hostPath);
+                }
+            } catch {
+                // Non-fatal: skip extra skill folders when path translation fails
             }
         }
     }

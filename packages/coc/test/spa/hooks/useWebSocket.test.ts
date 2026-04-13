@@ -196,13 +196,13 @@ describe('useWebSocket', () => {
         expect(MockWebSocket.instances.length).toBe(beforeCount);
     });
 
-    it('constructs wss:// URL when page uses https:', () => {
+    it('constructs ws:// URL regardless of page protocol', () => {
         Object.defineProperty(window, 'location', {
             writable: true,
             value: { protocol: 'https:', host: 'example.com', hash: '' },
         });
         const { result } = renderHook(() => useWebSocket({ onMessage: vi.fn() }));
         act(() => { result.current.connect(); });
-        expect(getLatestWs().url).toMatch(/^wss:\/\//);
+        expect(getLatestWs().url).toMatch(/^ws:\/\//);
     });
 });

@@ -30,6 +30,7 @@ vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', (
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getWsPath: () => '/ws',
+    getWsUrl: () => 'ws://localhost/ws',
 }));
 
 // Mock useDisplaySettings
