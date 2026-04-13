@@ -83,7 +83,7 @@ describe('executeWorkItem', () => {
         expect(call.payload.mode).toBe('autopilot');
         expect(call.payload.prompt).toContain('Plan content');
         expect(call.payload.workItemId).toBe('wi-exec-1');
-        expect(call.displayName).toContain('Test work item');
+        expect(call.displayName).toBe('Run #1: Code Implement');
 
         // Verify status transitioned
         const updated = await store.getWorkItem('wi-exec-1', 'test-repo');
@@ -224,5 +224,59 @@ describe('executeWorkItem sessionCategory', () => {
         const updated = await store.getWorkItem('wi-cat-exec', 'test-repo');
         expect(updated!.executionHistory).toHaveLength(1);
         expect(updated!.executionHistory![0].sessionCategory).toBe('generating-code');
+    });
+});
+
+describe('executeWorkItem title', () => {
+    it('sets title to "Code Implement" on the execution entry', async () => {
+        const item = makeWorkItem({ id: 'wi-title-1', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-title-1');
+        await executeWorkItem('wi-title-1', store, enqueue);
+
+        const updated = await store.getWorkItem('wi-title-1', 'test-repo');
+        expect(updated!.executionHistory![0].title).toBe('Code Implement');
+    });
+
+    it('sets displayName to "Run #1: Code Implement" for the first execution', async () => {
+        const item = makeWorkItem({ id: 'wi-dn-1', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-dn-1');
+        await executeWorkItem('wi-dn-1', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.displayName).toBe('Run #1: Code Implement');
+    });
+
+    it('increments run number based on existing execution history', async () => {
+        const item = makeWorkItem({
+            id: 'wi-dn-2',
+            status: 'readyToExecute',
+            executionHistory: [
+                { taskId: 'prev-1', startedAt: '2026-01-01T00:00:00Z', status: 'completed', title: 'Code Implement' },
+                { taskId: 'prev-2', startedAt: '2026-01-01T01:00:00Z', status: 'completed', title: 'Resolve comments for Run #1' },
+            ],
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-dn-3');
+        await executeWorkItem('wi-dn-2', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.displayName).toBe('Run #3: Code Implement');
+    });
+
+    it('preserves title "Code Implement" on auto-re-executed runs', async () => {
+        const item = makeWorkItem({ id: 'wi-auto-title', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-auto-title');
+        await executeWorkItem('wi-auto-title', store, enqueue, { autoReExecuted: true });
+
+        const updated = await store.getWorkItem('wi-auto-title', 'test-repo');
+        expect(updated!.executionHistory![0].title).toBe('Code Implement');
+        expect(updated!.executionHistory![0].autoReExecuted).toBe(true);
     });
 });

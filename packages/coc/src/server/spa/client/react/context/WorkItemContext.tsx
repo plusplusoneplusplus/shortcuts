@@ -1,4 +1,6 @@
-import { createContext, useContext, useReducer, type Dispatch, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useReducer, useRef, type Dispatch, type ReactNode } from 'react';
+
+export const UNSEEN_STORAGE_PREFIX = 'coc-unseen-work-items-';
 
 export interface WorkItemSummary {
     id: string;
@@ -18,6 +20,7 @@ export interface WorkItemContextState {
     workItemsByRepo: Record<string, WorkItemSummary[]>;
     loading: Record<string, boolean>;
     selectedWorkItemId: string | null;
+    unseenByRepo: Record<string, string[]>;
 }
 
 export type WorkItemAction =
@@ -26,13 +29,22 @@ export type WorkItemAction =
     | { type: 'SELECT_WORK_ITEM'; id: string | null }
     | { type: 'WORK_ITEM_ADDED'; repoId: string; item: WorkItemSummary }
     | { type: 'WORK_ITEM_UPDATED'; repoId: string; item: WorkItemSummary }
-    | { type: 'WORK_ITEM_REMOVED'; repoId: string; id: string };
+    | { type: 'WORK_ITEM_REMOVED'; repoId: string; id: string }
+    | { type: 'LOAD_UNSEEN_WORK_ITEMS'; repoId: string; ids: string[] }
+    | { type: 'MARK_WORK_ITEMS_SEEN'; repoId: string };
 
 const initialState: WorkItemContextState = {
     workItemsByRepo: {},
     loading: {},
     selectedWorkItemId: null,
+    unseenByRepo: {},
 };
+
+function addToUnseen(unseenByRepo: Record<string, string[]>, repoId: string, itemId: string): Record<string, string[]> {
+    const current = unseenByRepo[repoId] || [];
+    if (current.includes(itemId)) return unseenByRepo;
+    return { ...unseenByRepo, [repoId]: [...current, itemId] };
+}
 
 function workItemReducer(state: WorkItemContextState, action: WorkItemAction): WorkItemContextState {
     switch (action.type) {
@@ -44,16 +56,39 @@ function workItemReducer(state: WorkItemContextState, action: WorkItemAction): W
             return { ...state, selectedWorkItemId: action.id };
         case 'WORK_ITEM_ADDED': {
             const existing = state.workItemsByRepo[action.repoId] || [];
-            return { ...state, workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: [...existing, action.item] } };
+            return {
+                ...state,
+                workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: [...existing, action.item] },
+                unseenByRepo: addToUnseen(state.unseenByRepo, action.repoId, action.item.id),
+            };
         }
         case 'WORK_ITEM_UPDATED': {
-            const items = (state.workItemsByRepo[action.repoId] || []).map(i => i.id === action.item.id ? action.item : i);
-            return { ...state, workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: items } };
+            const items = state.workItemsByRepo[action.repoId] || [];
+            const oldItem = items.find(i => i.id === action.item.id);
+            const updatedItems = items.map(i => i.id === action.item.id ? action.item : i);
+            const statusChanged = !!oldItem && oldItem.status !== action.item.status;
+            return {
+                ...state,
+                workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: updatedItems },
+                unseenByRepo: statusChanged ? addToUnseen(state.unseenByRepo, action.repoId, action.item.id) : state.unseenByRepo,
+            };
         }
         case 'WORK_ITEM_REMOVED': {
-            const items = (state.workItemsByRepo[action.repoId] || []).filter(i => i.id !== action.id);
-            return { ...state, workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: items } };
+            const filtered = (state.workItemsByRepo[action.repoId] || []).filter(i => i.id !== action.id);
+            const unseen = (state.unseenByRepo[action.repoId] || []).filter(id => id !== action.id);
+            return {
+                ...state,
+                workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: filtered },
+                unseenByRepo: { ...state.unseenByRepo, [action.repoId]: unseen },
+            };
         }
+        case 'LOAD_UNSEEN_WORK_ITEMS': {
+            const existingIds = new Set((state.workItemsByRepo[action.repoId] || []).map(i => i.id));
+            const validIds = action.ids.filter(id => existingIds.has(id));
+            return { ...state, unseenByRepo: { ...state.unseenByRepo, [action.repoId]: validIds } };
+        }
+        case 'MARK_WORK_ITEMS_SEEN':
+            return { ...state, unseenByRepo: { ...state.unseenByRepo, [action.repoId]: [] } };
         default:
             return state;
     }
@@ -66,9 +101,31 @@ const WorkItemContext = createContext<{ state: WorkItemContextState; dispatch: D
 
 export function WorkItemProvider({ children }: { children: ReactNode }) {
     const [state, dispatch] = useReducer(workItemReducer, initialState);
+
+    // Persist unseen state to localStorage whenever it changes
+    const prevUnseenRef = useRef(state.unseenByRepo);
+    useEffect(() => {
+        if (state.unseenByRepo === prevUnseenRef.current) return;
+        prevUnseenRef.current = state.unseenByRepo;
+        for (const [repoId, ids] of Object.entries(state.unseenByRepo)) {
+            try {
+                localStorage.setItem(UNSEEN_STORAGE_PREFIX + repoId, JSON.stringify(ids));
+                window.dispatchEvent(new CustomEvent('coc-seen-updated'));
+            } catch { /* quota or unavailable */ }
+        }
+    }, [state.unseenByRepo]);
+
     return <WorkItemContext.Provider value={{ state, dispatch }}>{children}</WorkItemContext.Provider>;
 }
 
 export function useWorkItems() {
     return useContext(WorkItemContext);
+}
+
+/** Load unseen work item IDs from localStorage for a workspace. */
+export function loadUnseenWorkItemIds(workspaceId: string): string[] {
+    try {
+        const raw = localStorage.getItem(UNSEEN_STORAGE_PREFIX + workspaceId);
+        return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
 }

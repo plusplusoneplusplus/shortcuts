@@ -25,6 +25,7 @@ export interface MobileTabBarProps {
     taskCount?: number;
     activityCount?: number;
     gitPendingCount?: number;
+    workItemCount?: number;
     actions?: MobileTabBarAction[];
 }
 
@@ -36,6 +37,7 @@ export function MobileTabBar({
     taskCount = 0,
     activityCount = 0,
     gitPendingCount = 0,
+    workItemCount = 0,
     actions = [],
 }: MobileTabBarProps){
     const [moreOpen, setMoreOpen] = useState(false);
@@ -48,6 +50,7 @@ export function MobileTabBar({
         if (key === 'chats') return activityCount;
         if (key === 'tasks') return taskCount;
         if (key === 'git') return gitPendingCount;
+        if (key === 'work-items') return workItemCount;
         return 0;
     };
 

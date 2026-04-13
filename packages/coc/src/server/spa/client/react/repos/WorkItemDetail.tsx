@@ -55,7 +55,7 @@ interface WorkItemFull {
     createdAt: string; updatedAt: string; completedAt?: string;
     plan?: { version: number; content: string; updatedAt: string; resolvedBy?: string };
     taskId?: string; processId?: string;
-    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean }>;
+    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string }>;
     tags?: string[];
     autoExecute?: boolean;
     autoResolveAndReExecute?: boolean;
@@ -264,7 +264,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     };
 
     /** Enqueue a per-commit AI resolve task via POST /api/diff-comments/:wsId/resolve-with-ai. */
-    const handlePerCommitResolve = async (sha: string) => {
+    const handlePerCommitResolve = async (sha: string, sourceRunIndex?: number) => {
         if (!item) return;
         setResolvingCommitSha(sha);
         try {
@@ -275,11 +275,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     oldRef: `${sha}^`,
                     newRef: sha,
                     workItemId: item.id,
+                    ...(sourceRunIndex != null ? { sourceRunIndex } : {}),
                 }),
             });
-            if (result.taskId && onNavigateToTasksTab) {
-                onNavigateToTasksTab(result.taskId);
-            }
         } catch (err: any) {
             setError(err.message || 'Failed to enqueue resolve task');
         } finally {
@@ -287,32 +285,28 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     };
 
-    /** AI-resolve all open diff comments for a change's commits, then auto-re-execute. */
+    /** Resolve all open diff comments for a change's commits. */
     const handleAutoResolveChange = async (idx: number, commits: Array<{ sha: string }>) => {
         if (!item) return;
         setResolvingChangeIdx(idx);
+        const sourceRunIndex = idx + 1;
         try {
-            let lastTaskId: string | undefined;
             for (const commit of commits) {
                 const openCount = commentTotals.get(commit.sha)?.open ?? 0;
                 if (openCount === 0) continue;
-                const result = await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}/resolve-with-ai`, {
+                await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}/resolve-with-ai`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         oldRef: `${commit.sha}^`,
                         newRef: commit.sha,
                         workItemId: item.id,
-                        autoReExecute: true,
+                        sourceRunIndex,
                     }),
                 });
-                if (result?.taskId) lastTaskId = result.taskId;
-            }
-            if (lastTaskId && onNavigateToTasksTab) {
-                onNavigateToTasksTab(lastTaskId);
             }
         } catch (err: any) {
-            setError(err.message || 'Failed to enqueue auto-resolve tasks');
+            setError(err.message || 'Failed to enqueue resolve tasks');
         } finally {
             setResolvingChangeIdx(null);
         }
@@ -573,7 +567,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                     <div key={i} className="rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-xs" data-testid={`exec-entry-${i}`}>
                                         <div className="flex items-center gap-2 px-3 py-2">
                                             <span>{exec.status === 'running' ? '🔵' : exec.status === 'completed' ? '🟢' : exec.status === 'failed' ? '🔴' : '⚪'}</span>
-                                            <span className="font-medium text-[#3c3c3c] dark:text-[#cccccc]">Run #{i + 1}</span>
+                                            <span className="font-medium text-[#3c3c3c] dark:text-[#cccccc]">Run #{i + 1}{exec.title ? `: ${exec.title}` : ''}</span>
                                             {exec.autoReExecuted && (
                                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[9px]" data-testid={`exec-auto-reexecute-badge-${i}`}>
                                                     🔄 Auto re-executed
@@ -601,9 +595,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                         'disabled:opacity-50 disabled:cursor-not-allowed',
                                                     )}
                                                     data-testid={`exec-auto-resolve-btn-${i}`}
-                                                    title="AI-resolve all open diff comments and re-execute"
+                                                    title="Resolve all open diff comments"
                                                 >
-                                                    {resolvingChangeIdx === i ? '⏳ Resolving…' : `🤖 Auto Resolve (${execOpenCommentCount})`}
+                                                    {resolvingChangeIdx === i ? '⏳ Resolving…' : `Resolve all (${execOpenCommentCount})`}
                                                 </button>
                                             )}
                                         </div>
@@ -639,7 +633,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                             )}
                                                             {isAiDone && openCount > 0 && (
                                                                 <button
-                                                                    onClick={() => handlePerCommitResolve(c.sha)}
+                                                                    onClick={() => handlePerCommitResolve(c.sha, i + 1)}
                                                                     disabled={resolvingCommitSha === c.sha}
                                                                     className={cn(
                                                                         'inline-flex items-center gap-0.5 px-1 py-px rounded text-[9px] border transition-colors shrink-0',
@@ -650,9 +644,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                                                         'disabled:opacity-50 disabled:cursor-not-allowed',
                                                                     )}
                                                                     data-testid={`commit-resolve-btn-${c.sha.slice(0, 7)}`}
-                                                                    title="Enqueue AI resolve task for this commit"
+                                                                    title="Resolve open diff comments for this commit"
                                                                 >
-                                                                    {resolvingCommitSha === c.sha ? '⏳' : '🔧'} Resolve
+                                                                    {resolvingCommitSha === c.sha ? '⏳ ' : ''}Resolve
                                                                 </button>
                                                             )}
                                                             <span className="text-[#3c3c3c] dark:text-[#cccccc] truncate" title={c.message}>{c.message}</span>

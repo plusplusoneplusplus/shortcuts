@@ -272,6 +272,24 @@ describe('MobileTabBar: badge display', () => {
         renderBar({ gitPendingCount: 0 });
         expect(screen.queryByTestId('mobile-tab-badge-git')).toBeNull();
     });
+
+    it('shows work-items badge when workItemCount > 0', () => {
+        renderBar({ workItemCount: 2 });
+        expect(screen.getByTestId('mobile-tab-badge-work-items')).toBeTruthy();
+        expect(screen.getByTestId('mobile-tab-badge-work-items').textContent).toBe('2');
+    });
+
+    it('hides work-items badge when workItemCount is 0', () => {
+        renderBar({ workItemCount: 0 });
+        expect(screen.queryByTestId('mobile-tab-badge-work-items')).toBeNull();
+    });
+
+    it('shows work-items badge alongside other badges', () => {
+        renderBar({ workItemCount: 3, activityCount: 1, gitPendingCount: 2 });
+        expect(screen.getByTestId('mobile-tab-badge-work-items').textContent).toBe('3');
+        expect(screen.getByTestId('mobile-tab-badge-chats').textContent).toBe('1');
+        expect(screen.getByTestId('mobile-tab-badge-git').textContent).toBe('2');
+    });
 });
 
 describe('MobileTabBar: custom pinned tabs', () => {
