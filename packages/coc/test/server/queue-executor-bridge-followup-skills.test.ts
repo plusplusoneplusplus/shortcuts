@@ -347,7 +347,7 @@ describe('executeFollowUp — skill configuration', () => {
     });
 
     // 11 ----------------------------------------------------------------------
-    it('translates WSL UNC repo-local skills to Linux paths for the SDK', async () => {
+    it.runIf(process.platform === 'win32')('translates WSL UNC repo-local skills to Linux paths for the SDK', async () => {
         const workDir = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
         const hostSkillsDir = String.raw`\\wsl$\Ubuntu\home\tester\repo\.github\skills`;
 

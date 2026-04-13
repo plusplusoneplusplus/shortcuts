@@ -193,7 +193,7 @@ describe('WorkingTreeService.stageFile', () => {
         expect(result.error).toContain('pathspec did not match');
     });
 
-    it('routes WSL repos through wsl.exe', async () => {
+    it.runIf(process.platform === 'win32')('routes WSL repos through wsl.exe', async () => {
         mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
         const repo = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
         const file = String.raw`\\wsl$\Ubuntu\home\tester\repo\src\foo.ts`;

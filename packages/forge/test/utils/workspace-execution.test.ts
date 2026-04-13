@@ -189,7 +189,7 @@ describe('workspace-execution', () => {
     });
 
     describe('resolvePathInExecutionContext', () => {
-        it('uses native path resolution for Windows paths', () => {
+        it.runIf(process.platform === 'win32')('uses native path resolution for Windows paths', () => {
             expect(resolvePathInExecutionContext('C:\\repo', '.github', 'skills')).toBe(path.win32.resolve('C:\\repo', '.github', 'skills'));
         });
 
@@ -200,7 +200,7 @@ describe('workspace-execution', () => {
     });
 
     describe('resolvePathForHostFilesystem', () => {
-        it('uses native filesystem paths for Windows roots', () => {
+        it.runIf(process.platform === 'win32')('uses native filesystem paths for Windows roots', () => {
             expect(resolvePathForHostFilesystem('C:\\repo', '.github', 'skills')).toBe(path.win32.resolve('C:\\repo', '.github', 'skills'));
         });
 
