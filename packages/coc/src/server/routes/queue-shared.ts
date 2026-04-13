@@ -461,3 +461,39 @@ export function buildSummarizePrompt(filePaths: string[], userPrompt?: string): 
     }
     return prompt;
 }
+
+// ============================================================================
+// Conversation Serialization for Summarization
+// ============================================================================
+
+export interface SummarizeConversation {
+    id: string;
+    title?: string;
+    status: string;
+    turns: ConversationTurn[];
+}
+
+/**
+ * Serialize a conversation into compact text for inclusion in a summarization prompt.
+ * Truncates long assistant responses and strips tool calls.
+ */
+export function serializeConversationForSummary(conv: SummarizeConversation, maxTurnLength = 3000): string {
+    const header = conv.title
+        ? `## Process ${conv.id} — ${conv.title} [${conv.status}]`
+        : `## Process ${conv.id} [${conv.status}]`;
+
+    if (!conv.turns || conv.turns.length === 0) {
+        return header;
+    }
+
+    const lines: string[] = [header];
+    for (const turn of conv.turns) {
+        const role = turn.role === 'user' ? 'User' : 'Assistant';
+        let content = turn.content;
+        if (turn.role === 'assistant' && content.length > maxTurnLength) {
+            content = content.slice(0, maxTurnLength) + '… (truncated)';
+        }
+        lines.push(`[${role}] (turn ${turn.turnIndex}): ${content}`);
+    }
+    return lines.join('\n');
+}

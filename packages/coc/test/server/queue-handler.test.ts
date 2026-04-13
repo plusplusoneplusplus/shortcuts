@@ -11,7 +11,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
-import { buildSummarizePrompt } from '../../src/server/queue-handler';
+import { buildSummarizePrompt, serializeConversationForSummary } from '../../src/server/queue-handler';
+import type { ConversationTurn } from '@plusplusoneplusplus/forge';
 import { FileProcessStore, SqliteProcessStore, SqliteQueueStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
@@ -2203,6 +2204,102 @@ describe('Queue Handler', () => {
         it('should mention the coc-chat skill for reading files', () => {
             const prompt = buildSummarizePrompt(['/data/proc1.json']);
             expect(prompt).toContain('coc-chat skill');
+        });
+    });
+
+    // ========================================================================
+    // serializeConversationForSummary
+    // ========================================================================
+
+    describe('serializeConversationForSummary', () => {
+        const baseTurn = (overrides: Partial<ConversationTurn>): ConversationTurn => ({
+            role: 'user',
+            content: 'hello',
+            timestamp: new Date(),
+            turnIndex: 0,
+            timeline: [],
+            ...overrides,
+        });
+
+        it('should return just header with id and status for empty turns', () => {
+            const result = serializeConversationForSummary({
+                id: 'p1', status: 'completed', turns: [],
+            });
+            expect(result).toBe('## Process p1 [completed]');
+        });
+
+        it('should format a single user turn', () => {
+            const result = serializeConversationForSummary({
+                id: 'p1', status: 'running',
+                turns: [baseTurn({ role: 'user', content: 'hello', turnIndex: 0 })],
+            });
+            expect(result).toContain('[User] (turn 0): hello');
+        });
+
+        it('should format a single assistant turn', () => {
+            const result = serializeConversationForSummary({
+                id: 'p1', status: 'running',
+                turns: [baseTurn({ role: 'assistant', content: 'world', turnIndex: 0 })],
+            });
+            expect(result).toContain('[Assistant] (turn 0): world');
+        });
+
+        it('should truncate long assistant turns with suffix', () => {
+            const longContent = 'x'.repeat(4000);
+            const result = serializeConversationForSummary({
+                id: 'p1', status: 'running',
+                turns: [baseTurn({ role: 'assistant', content: longContent, turnIndex: 1 })],
+            });
+            expect(result).toContain('… (truncated)');
+            expect(result).not.toContain('x'.repeat(4000));
+        });
+
+        it('should include title in header when present', () => {
+            const result = serializeConversationForSummary({
+                id: 'p1', title: 'My Chat', status: 'completed', turns: [],
+            });
+            expect(result).toBe('## Process p1 — My Chat [completed]');
+        });
+
+        it('should omit title from header when undefined', () => {
+            const result = serializeConversationForSummary({
+                id: 'p1', status: 'failed', turns: [],
+            });
+            expect(result).toBe('## Process p1 [failed]');
+            expect(result).not.toContain('—');
+        });
+
+        it('should show status in header', () => {
+            const result = serializeConversationForSummary({
+                id: 'p1', status: 'cancelled', turns: [],
+            });
+            expect(result).toContain('[cancelled]');
+        });
+
+        it('should not render tool calls', () => {
+            const result = serializeConversationForSummary({
+                id: 'p1', status: 'completed',
+                turns: [baseTurn({
+                    role: 'assistant', content: 'I ran a tool',
+                    turnIndex: 0, toolCalls: [{ name: 'read_file', input: '{}', output: 'data' } as any],
+                })],
+            });
+            expect(result).not.toContain('read_file');
+            expect(result).not.toContain('toolCalls');
+            expect(result).toContain('[Assistant] (turn 0): I ran a tool');
+        });
+
+        it('should respect custom maxTurnLength', () => {
+            const content = 'a'.repeat(100);
+            const result = serializeConversationForSummary(
+                { id: 'p1', status: 'completed', turns: [baseTurn({ role: 'assistant', content, turnIndex: 0 })] },
+                50,
+            );
+            expect(result).toContain('… (truncated)');
+            const turnLine = result.split('\n').find(l => l.startsWith('[Assistant]'))!;
+            // 50 chars of content + '… (truncated)' suffix
+            expect(turnLine).toContain('a'.repeat(50));
+            expect(turnLine).not.toContain('a'.repeat(51));
         });
     });
 

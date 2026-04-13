@@ -15,7 +15,8 @@ import { registerQueueControlRoutes } from './routes/queue-control';
 import { registerQueueFollowUpRoutes } from './routes/queue-follow-up';
 import { registerQueueImagesRoutes } from './routes/queue-images';
 
-export { buildContextPrompt, buildSummarizePrompt } from './routes/queue-shared';
+export { buildContextPrompt, buildSummarizePrompt, serializeConversationForSummary } from './routes/queue-shared';
+export type { SummarizeConversation } from './routes/queue-shared';
 
 export function registerQueueRoutes(
     routes: Route[],
