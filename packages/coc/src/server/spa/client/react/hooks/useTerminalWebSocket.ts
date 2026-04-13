@@ -6,7 +6,7 @@
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { getWsUrl } from '../utils/config';
+import { getWsPath } from '../utils/config';
 
 export type { WsStatus } from './useWebSocket';
 type WsStatus = 'connecting' | 'open' | 'closed';
@@ -95,7 +95,9 @@ export function useTerminalWebSocket({
             wsRef.current.close();
         }
 
-        const wsUrl = `${getWsUrl()}/terminal?workspaceId=${encodeURIComponent(params.workspaceId)}&cols=${params.cols}&rows=${params.rows}`;
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const basePath = getWsPath();
+        const wsUrl = `${protocol}//${location.host}${basePath}/terminal?workspaceId=${encodeURIComponent(params.workspaceId)}&cols=${params.cols}&rows=${params.rows}`;
         setStatus('connecting');
 
         const ws = new WebSocket(wsUrl);

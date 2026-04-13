@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getApiBase, getWsUrl } from '../utils/config';
+import { getApiBase, getWsPath } from '../utils/config';
 
 export function useFileCommentCounts(
     wsId: string,
@@ -45,7 +45,8 @@ export function useFileCommentCounts(
     // WebSocket subscription for instant refresh on diff-comment-updated
     useEffect(() => {
         if (!wsId) return;
-        const ws = new WebSocket(getWsUrl());
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
         ws.addEventListener('message', (event) => {
             try {
                 const msg = JSON.parse(event.data as string) as { type: string; workspaceId?: string };
