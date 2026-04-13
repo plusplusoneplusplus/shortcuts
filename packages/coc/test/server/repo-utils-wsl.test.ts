@@ -17,7 +17,7 @@ describe('repo-utils (WSL)', () => {
         vi.restoreAllMocks();
     });
 
-    it('routes git root discovery through wsl.exe for WSL paths', () => {
+    it.runIf(process.platform === 'win32')('routes git root discovery through wsl.exe for WSL paths', () => {
         const spy = vi.spyOn(childProcess, 'execFileSync').mockReturnValue('/home/tester/repo\n' as never);
         const repoPath = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
 
@@ -31,7 +31,7 @@ describe('repo-utils (WSL)', () => {
         );
     });
 
-    it('normalizes WSL paths to a stable repo identity', () => {
+    it.runIf(process.platform === 'win32')('normalizes WSL paths to a stable repo identity', () => {
         const repoPath = `${String.raw`\\wsl$\Ubuntu\home\tester\repo`}\\`;
         expect(normalizeRepoPath(repoPath)).toBe('wsl://ubuntu/home/tester/repo');
     });
