@@ -85,6 +85,8 @@
     "build": "tsc",
     "test": "vitest",
     "test:run": "vitest run",
+    "coverage": "vitest run --coverage",
+    "coverage:diff": "bash ../../scripts/coverage-diff.sh",
     "lint": "eslint src"
   },
   "dependencies": {
@@ -99,6 +101,7 @@
     "@types/diff": "^5.2.0",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^1.6.1",
     "pino-pretty": "^13.x",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0"
