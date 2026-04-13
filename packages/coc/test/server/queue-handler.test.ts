@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
 import { buildSummarizePrompt, serializeConversationForSummary } from '../../src/server/queue-handler';
+import type { SummarizeConversation } from '../../src/server/queue-handler';
 import type { ConversationTurn } from '@plusplusoneplusplus/forge';
 import { FileProcessStore, SqliteProcessStore, SqliteQueueStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
@@ -2163,47 +2164,75 @@ describe('Queue Handler', () => {
     // ========================================================================
 
     describe('buildSummarizePrompt', () => {
-        it('should include all file paths with 2 paths', () => {
-            const paths = ['/data/proc1.json', '/data/proc2.json'];
-            const prompt = buildSummarizePrompt(paths);
-            expect(prompt).toContain('- /data/proc1.json');
-            expect(prompt).toContain('- /data/proc2.json');
+        function makeConv(id: string, turns: Array<{ role: 'user' | 'assistant'; content: string }> = []): SummarizeConversation {
+            return {
+                id,
+                status: 'completed',
+                turns: turns.map((t, i) => ({ role: t.role, content: t.content, timestamp: new Date(), turnIndex: i, timeline: [] })),
+            };
+        }
+
+        it('should include all conversations with 2 conversations', () => {
+            const convs = [
+                makeConv('proc1', [{ role: 'user', content: 'hello' }]),
+                makeConv('proc2', [{ role: 'user', content: 'world' }]),
+            ];
+            const prompt = buildSummarizePrompt(convs);
+            expect(prompt).toContain('═══ Conversation 1 ═══');
+            expect(prompt).toContain('═══ Conversation 2 ═══');
+            expect(prompt).toContain('hello');
+            expect(prompt).toContain('world');
             expect(prompt).toContain('Summarize the following conversation logs');
-            expect(prompt).toContain('Conversation files:');
         });
 
-        it('should include all file paths with 5 paths', () => {
-            const paths = Array.from({ length: 5 }, (_, i) => `/data/proc${i}.json`);
-            const prompt = buildSummarizePrompt(paths);
-            for (const p of paths) {
-                expect(prompt).toContain(`- ${p}`);
+        it('should include all conversations with 5 conversations', () => {
+            const convs = Array.from({ length: 5 }, (_, i) => makeConv(`proc${i}`, [{ role: 'user', content: `msg${i}` }]));
+            const prompt = buildSummarizePrompt(convs);
+            for (let i = 1; i <= 5; i++) {
+                expect(prompt).toContain(`═══ Conversation ${i} ═══`);
             }
         });
 
         it('should not include user prompt section when userPrompt is undefined', () => {
-            const prompt = buildSummarizePrompt(['/data/proc1.json']);
+            const prompt = buildSummarizePrompt([makeConv('proc1')]);
             expect(prompt).not.toContain('Additional focus');
         });
 
         it('should not include user prompt section when userPrompt is empty', () => {
-            const prompt = buildSummarizePrompt(['/data/proc1.json'], '');
+            const prompt = buildSummarizePrompt([makeConv('proc1')], '');
             expect(prompt).not.toContain('Additional focus');
         });
 
         it('should not include user prompt section when userPrompt is whitespace', () => {
-            const prompt = buildSummarizePrompt(['/data/proc1.json'], '   ');
+            const prompt = buildSummarizePrompt([makeConv('proc1')], '   ');
             expect(prompt).not.toContain('Additional focus');
         });
 
         it('should append user prompt section when userPrompt is provided', () => {
-            const prompt = buildSummarizePrompt(['/data/proc1.json'], 'Focus on action items');
+            const prompt = buildSummarizePrompt([makeConv('proc1')], 'Focus on action items');
             expect(prompt).toContain('Additional focus / question from the user:');
             expect(prompt).toContain('Focus on action items');
         });
 
-        it('should mention the coc-chat skill for reading files', () => {
-            const prompt = buildSummarizePrompt(['/data/proc1.json']);
-            expect(prompt).toContain('coc-chat skill');
+        it('should inline conversation content in the prompt', () => {
+            const conv = makeConv('proc1', [
+                { role: 'user', content: 'What is X?' },
+                { role: 'assistant', content: 'X is Y.' },
+            ]);
+            const prompt = buildSummarizePrompt([conv]);
+            expect(prompt).toContain('What is X?');
+            expect(prompt).toContain('X is Y.');
+        });
+
+        it('should delimit conversations with ═══ markers', () => {
+            const convs = [
+                makeConv('proc1', [{ role: 'user', content: 'a' }]),
+                makeConv('proc2', [{ role: 'user', content: 'b' }]),
+            ];
+            const prompt = buildSummarizePrompt(convs);
+            expect(prompt).toMatch(/═══ Conversation 1 ═══/);
+            expect(prompt).toMatch(/═══ Conversation 2 ═══/);
+            expect(prompt).not.toContain('Conversation files:');
         });
     });
 
@@ -2308,8 +2337,31 @@ describe('Queue Handler', () => {
     // ========================================================================
 
     describe('POST /api/queue/summarize', () => {
+        /** Seed a process into the store so store.getProcess() finds it. */
+        async function seedProcess(store: FileProcessStore, id: string, workspaceId: string): Promise<void> {
+            await store.registerWorkspace({ id: workspaceId, name: 'test', rootPath: '/test' });
+            await store.addProcess({
+                id,
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                metadata: { type: 'clarification', workspaceId },
+                conversationTurns: [
+                    { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'Hi there', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                ],
+            });
+        }
+
         it('should return 201 with taskId on success', async () => {
-            const srv = await startServer();
+            const store = new FileProcessStore({ dataDir });
+            await seedProcess(store, 'queue_id1', 'ws1');
+            await seedProcess(store, 'queue_id2', 'ws1');
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['id1', 'id2'],
                 workspaceId: 'ws1',
@@ -2332,7 +2384,11 @@ describe('Queue Handler', () => {
         });
 
         it('should accept a single processId (minimum boundary)', async () => {
-            const srv = await startServer();
+            const store = new FileProcessStore({ dataDir });
+            await seedProcess(store, 'queue_id1', 'ws1');
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['id1'],
                 workspaceId: 'ws1',
@@ -2386,8 +2442,14 @@ describe('Queue Handler', () => {
         });
 
         it('should accept exactly 20 processIds (maximum boundary)', async () => {
-            const srv = await startServer();
+            const store = new FileProcessStore({ dataDir });
             const ids = Array.from({ length: 20 }, (_, i) => `p${i}`);
+            for (const id of ids) {
+                await seedProcess(store, `queue_${id}`, 'ws1');
+            }
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ids,
                 workspaceId: 'ws1',
@@ -2398,7 +2460,13 @@ describe('Queue Handler', () => {
         });
 
         it('should return 201 with only a taskId field on success', async () => {
-            const srv = await startServer();
+            const store = new FileProcessStore({ dataDir });
+            await seedProcess(store, 'queue_a', 'ws1');
+            await seedProcess(store, 'queue_b', 'ws1');
+            await seedProcess(store, 'queue_c', 'ws1');
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['a', 'b', 'c'],
                 workspaceId: 'ws1',
@@ -2434,10 +2502,11 @@ describe('Queue Handler', () => {
 
         it('should normalize bare task IDs by prepending queue_ prefix', async () => {
             const store = new FileProcessStore({ dataDir });
+            await seedProcess(store, 'queue_abc123', 'ws1');
+            await seedProcess(store, 'queue_def456', 'ws1');
             const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
             server = srv;
 
-            // Send bare IDs (without queue_ prefix)
             const res = await postJSON(`${srv.url}/api/queue/summarize`, {
                 processIds: ['abc123', 'def456'],
                 workspaceId: 'ws1',
@@ -2446,7 +2515,6 @@ describe('Queue Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.taskId).toBeDefined();
 
-            // Verify paths contain queue_ prefix by checking the enqueued task prompt (use detail endpoint for full payload)
             const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
             const detailBody = JSON.parse(detailRes.body);
             expect(detailBody.task).toBeDefined();
@@ -2456,6 +2524,8 @@ describe('Queue Handler', () => {
 
         it('should preserve IDs that already have queue_ prefix', async () => {
             const store = new FileProcessStore({ dataDir });
+            await seedProcess(store, 'queue_abc123', 'ws1');
+            await seedProcess(store, 'queue_def456', 'ws1');
             const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
             server = srv;
 
@@ -2466,17 +2536,16 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
 
-            // Use detail endpoint for full payload
             const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
             const detailBody = JSON.parse(detailRes.body);
             expect(detailBody.task).toBeDefined();
-            // Should NOT double-prefix
             expect(detailBody.task.payload.prompt).toContain('queue_abc123');
             expect(detailBody.task.payload.prompt).not.toContain('queue_queue_abc123');
         });
 
         it('should forward userPrompt into the enqueued task prompt', async () => {
             const store = new FileProcessStore({ dataDir });
+            await seedProcess(store, 'queue_id1', 'ws1');
             const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
             server = srv;
 
@@ -2488,7 +2557,6 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
 
-            // Use detail endpoint for full payload
             const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
             const detailBody = JSON.parse(detailRes.body);
             expect(detailBody.task).toBeDefined();
@@ -2498,6 +2566,7 @@ describe('Queue Handler', () => {
 
         it('should not include user prompt section when userPrompt is empty', async () => {
             const store = new FileProcessStore({ dataDir });
+            await seedProcess(store, 'queue_id1', 'ws1');
             const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
             server = srv;
 
@@ -2509,7 +2578,6 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
 
-            // Use detail endpoint for full payload
             const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
             const detailBody = JSON.parse(detailRes.body);
             expect(detailBody.task).toBeDefined();
@@ -2518,6 +2586,7 @@ describe('Queue Handler', () => {
 
         it('should truncate userPrompt to 2000 characters', async () => {
             const store = new FileProcessStore({ dataDir });
+            await seedProcess(store, 'queue_id1', 'ws1');
             const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
             server = srv;
 
@@ -2530,14 +2599,48 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
 
-            // Use detail endpoint for full payload
             const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
             const detailBody = JSON.parse(detailRes.body);
             expect(detailBody.task).toBeDefined();
-            // The user prompt section should exist but be truncated
             expect(detailBody.task.payload.prompt).toContain('Additional focus');
             const afterMarker = detailBody.task.payload.prompt.split('Additional focus / question from the user:\n')[1];
             expect(afterMarker.length).toBeLessThanOrEqual(2000);
+        });
+
+        it('should return 404 when none of the processes are found', async () => {
+            const store = new FileProcessStore({ dataDir });
+            await store.registerWorkspace({ id: 'ws1', name: 'test', rootPath: '/test' });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['nonexistent1', 'nonexistent2'],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(404);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('None of the requested processes were found');
+        });
+
+        it('should proceed with partial results when some processes are missing', async () => {
+            const store = new FileProcessStore({ dataDir });
+            await seedProcess(store, 'queue_existing', 'ws1');
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['existing', 'missing'],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBeDefined();
+
+            const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
+            const detailBody = JSON.parse(detailRes.body);
+            expect(detailBody.task).toBeDefined();
+            expect(detailBody.task.payload.prompt).toContain('queue_existing');
+            expect(detailBody.task.payload.prompt).not.toContain('queue_missing');
         });
     });
 });

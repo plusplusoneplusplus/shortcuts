@@ -18,6 +18,7 @@ import {
     buildSummarizePrompt,
     type QueueRouteContext,
     type TaskValidationResult,
+    type SummarizeConversation,
 } from './queue-shared';
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
@@ -270,13 +271,25 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             const rawUserPrompt = typeof body.userPrompt === 'string'
                 ? body.userPrompt.trim().slice(0, 2000)
                 : undefined;
-            const filePaths: string[] = body.processIds.map((id: string) => {
-                const trimmed = id.trim();
-                const normalized = ensureQueueProcessId(trimmed);
-                return store!.getProcessFilePath!(workspaceId, normalized);
-            });
+            const conversations: SummarizeConversation[] = [];
+            for (const id of body.processIds as string[]) {
+                const normalized = ensureQueueProcessId(id.trim());
+                const proc = await store!.getProcess(normalized, workspaceId);
+                if (proc) {
+                    conversations.push({
+                        id: proc.id,
+                        title: proc.title,
+                        status: proc.status,
+                        turns: proc.conversationTurns ?? [],
+                    });
+                }
+            }
 
-            const prompt = buildSummarizePrompt(filePaths, rawUserPrompt);
+            if (conversations.length === 0) {
+                return sendError(res, 404, 'None of the requested processes were found');
+            }
+
+            const prompt = buildSummarizePrompt(conversations, rawUserPrompt);
 
             const taskSpec = {
                 type: 'chat' as const,

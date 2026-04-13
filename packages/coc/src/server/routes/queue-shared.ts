@@ -440,20 +440,21 @@ export function buildContextPrompt(turns: ConversationTurn[]): string {
 }
 
 /**
- * Build a prompt that asks the AI to summarize multiple conversation process files.
+ * Build a prompt that asks the AI to summarize multiple conversations.
  *
- * @param filePaths  Paths to the JSON process files to summarize.
- * @param userPrompt Optional focus question or instructions from the user (max 2000 chars).
+ * @param conversations  Serializable conversation objects to summarize.
+ * @param userPrompt     Optional focus question or instructions from the user (max 2000 chars).
  */
-export function buildSummarizePrompt(filePaths: string[], userPrompt?: string): string {
-    const fileList = filePaths.map(fp => `- ${fp}`).join('\n');
+export function buildSummarizePrompt(conversations: SummarizeConversation[], userPrompt?: string): string {
+    const sections = conversations.map((conv, i) =>
+        `═══ Conversation ${i + 1} ═══\n${serializeConversationForSummary(conv)}`
+    );
+
     let prompt =
-        'Summarize the following conversation logs. Each file is a JSON process record ' +
-        'containing conversation turns. Use the coc-chat skill to read each file, then ' +
-        'produce a concise summary that highlights: key topics discussed, decisions made, ' +
+        'Summarize the following conversation logs. Each conversation is delimited by ═══ markers.\n' +
+        'Produce a concise summary that highlights: key topics discussed, decisions made, ' +
         'action items, and any unresolved questions.\n\n' +
-        'Conversation files:\n' +
-        fileList;
+        sections.join('\n\n');
 
     const trimmed = userPrompt?.trim();
     if (trimmed) {
