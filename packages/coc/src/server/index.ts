@@ -37,6 +37,7 @@ import { createStubStore } from './in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { shortenHostname } from './hostname-utils';
 import { gitInfoCache } from './git-info-cache';
+import { migrateWorkspaceRegistryIfNeeded } from './startup-workspace-migration';
 
 // ============================================================================
 // Close Handler Builder
@@ -135,6 +136,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     );
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
     const { outputPruner, staleDetector } = createCleanupInfrastructure(store, dataDir, queueFacade);
+
+    // Auto-migrate legacy workspace/wiki registries from JSON to SQLite
+    await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
