@@ -158,6 +158,17 @@ export const test = base.extend<ServerFixture & { _context: ServerContext }>({
             JSON.stringify({ storageDir: memoryDir }),
         );
 
+        // Pre-dismiss the welcome modal and concept tour so they don't block E2E interactions
+        fs.writeFileSync(
+            path.join(tmpDir, 'preferences.json'),
+            JSON.stringify({
+                global: {
+                    hasSeenWelcome: true,
+                    onboardingProgress: { hasCompletedTour: true, dismissed: true },
+                },
+            }),
+        );
+
         const store = new FileProcessStore({ dataDir: tmpDir });
         const mockAI = createE2EMockSDKService();
 
