@@ -329,19 +329,27 @@ export function NoteEditor({
             sourceSaveTimerRef.current = null;
         }
         // Convert raw markdown to HTML and load into Tiptap
-        if (editor) {
+        const ed = editorRef.current;
+        if (ed && !ed.isDestroyed) {
             let html = markdownToHtml(rawMarkdown);
             html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
-            editor.commands.setContent(html);
+            ed.commands.setContent(html);
+
+            // Cancel any save triggered by setContent
+            pendingContentRef.current = null;
+            if (saveTimerRef.current) {
+                clearTimeout(saveTimerRef.current);
+                saveTimerRef.current = null;
+            }
 
             // Re-anchor comments
             if (commentsEnabled) {
                 const threads = loadedThreadsRef.current;
                 for (const thread of threads) {
                     if (thread.status === 'resolved') continue;
-                    const result = findAnchorInDoc(editor.state.doc, thread.anchor);
+                    const result = findAnchorInDoc(ed.state.doc, thread.anchor);
                     if (result) {
-                        applyCommentMark(editor, thread.id, result.from, result.to);
+                        applyCommentMark(ed, thread.id, result.from, result.to);
                     }
                 }
             }
@@ -349,7 +357,7 @@ export function NoteEditor({
         setSourceDirty(false);
         setDirty(false);
         setViewMode('rich');
-    }, [rawMarkdown, editor, commentsEnabled, setViewMode]);
+    }, [rawMarkdown, commentsEnabled, setViewMode]);
 
     // ── Apply comment marks from threads prop ─────────────────────────────────
 
@@ -538,7 +546,8 @@ export function NoteEditor({
                 </>
             )}
 
-            {viewMode === 'source' && !editorHidden ? (
+            {/* Source editor — mounted only when in source mode */}
+            {viewMode === 'source' && !editorHidden && (
                 <div className="flex-1 overflow-y-auto" onPaste={handleSourcePaste} data-testid="note-source-container">
                     <SourceEditor
                         content={rawMarkdown}
@@ -546,58 +555,60 @@ export function NoteEditor({
                         ref={sourceTextareaRef}
                     />
                 </div>
-            ) : (
-                <div
-                    className="flex-1 overflow-y-auto relative"
-                    onContextMenu={(e) => {
-                        if (!editorHidden && editor && !editor.state.selection.empty) {
-                            e.preventDefault();
-                            setContextMenu({ x: e.clientX, y: e.clientY });
-                        }
-                    }}
-                >
-                    {/* Editor is always mounted but hidden during loading/error/empty
-                        so the TipTap instance survives across note switches. */}
-                    <div style={editorHidden ? { visibility: 'hidden', height: 0, overflow: 'hidden' } : undefined}>
-                        <RichEditorCore
-                            commentsEnabled={commentsEnabled}
-                            onCommentActivated={onCommentActivated}
-                            onChange={handleEditorChange}
-                            onEditorReady={handleEditorReady}
-                            handlePaste={handlePaste}
-                        />
-                    </div>
-
-                    {isEmpty && (
-                        <div
-                            className="flex-1 flex flex-col items-center justify-center text-sm text-[#616161] dark:text-[#999] select-none gap-2 absolute inset-0"
-                        >
-                            <span className="text-3xl">📄</span>
-                            <span className="italic">Select a page to start editing</span>
-                        </div>
-                    )}
-
-                    {loading && (
-                        <div
-                            className="flex-1 flex items-center justify-center text-sm text-[#616161] dark:text-[#999] absolute inset-0"
-                            data-testid="note-editor-loading"
-                        >
-                            <span className="animate-spin mr-2">⏳</span> Loading…
-                        </div>
-                    )}
-
-                    {loadError && (
-                        <div
-                            className="flex-1 flex items-center justify-center absolute inset-0"
-                            data-testid="note-editor-error"
-                        >
-                            <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded px-4 py-2">
-                                {loadError}
-                            </div>
-                        </div>
-                    )}
-                </div>
             )}
+
+            {/* Rich editor — always mounted so the TipTap instance is never
+                destroyed.  Hidden via CSS when source mode, loading, error,
+                or empty state is active. */}
+            <div
+                className="flex-1 overflow-y-auto relative"
+                style={viewMode === 'source' && !editorHidden ? { display: 'none' } : undefined}
+                onContextMenu={(e) => {
+                    if (!editorHidden && viewMode !== 'source' && editor && !editor.state.selection.empty) {
+                        e.preventDefault();
+                        setContextMenu({ x: e.clientX, y: e.clientY });
+                    }
+                }}
+            >
+                <div style={editorHidden ? { visibility: 'hidden', height: 0, overflow: 'hidden' } : undefined}>
+                    <RichEditorCore
+                        commentsEnabled={commentsEnabled}
+                        onCommentActivated={onCommentActivated}
+                        onChange={handleEditorChange}
+                        onEditorReady={handleEditorReady}
+                        handlePaste={handlePaste}
+                    />
+                </div>
+
+                {isEmpty && (
+                    <div
+                        className="flex-1 flex flex-col items-center justify-center text-sm text-[#616161] dark:text-[#999] select-none gap-2 absolute inset-0"
+                    >
+                        <span className="text-3xl">📄</span>
+                        <span className="italic">Select a page to start editing</span>
+                    </div>
+                )}
+
+                {loading && (
+                    <div
+                        className="flex-1 flex items-center justify-center text-sm text-[#616161] dark:text-[#999] absolute inset-0"
+                        data-testid="note-editor-loading"
+                    >
+                        <span className="animate-spin mr-2">⏳</span> Loading…
+                    </div>
+                )}
+
+                {loadError && (
+                    <div
+                        className="flex-1 flex items-center justify-center absolute inset-0"
+                        data-testid="note-editor-error"
+                    >
+                        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded px-4 py-2">
+                            {loadError}
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* Right-click context menu for adding comments */}
             {contextMenu && (

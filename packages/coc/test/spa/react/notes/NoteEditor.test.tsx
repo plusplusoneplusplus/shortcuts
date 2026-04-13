@@ -709,5 +709,60 @@ describe('NoteEditor', () => {
             expect(screen.getByTestId('note-editor-toolbar')).toBeDefined();
             expect(screen.getByTestId('note-mode-toggle')).toBeDefined();
         });
+
+        it('editor stays mounted when switching to source mode and back', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledTimes(1));
+            expect(richEditorMountCount).toBe(1);
+
+            // Switch to source mode
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+            await act(async () => {
+                screen.getByTestId('note-mode-source').click();
+            });
+            await waitFor(() => expect(screen.getByTestId('note-source-container')).toBeDefined());
+
+            // Editor-content should still be in the DOM (hidden, not unmounted)
+            expect(screen.getByTestId('editor-content')).toBeDefined();
+            expect(richEditorMountCount).toBe(1);
+
+            // Switch back to rich mode
+            await act(async () => {
+                screen.getByTestId('note-mode-rich').click();
+            });
+
+            // Editor should have received setContent with the markdown→HTML conversion
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledTimes(2));
+            expect(richEditorMountCount).toBe(1);
+        });
+
+        it('content is preserved after source→rich round-trip', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Original', path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>'));
+
+            // Switch to source — loads fresh markdown from server
+            mockLoadContent.mockResolvedValue({ content: '# Edited in source', path: 'page.md' });
+            await act(async () => {
+                screen.getByTestId('note-mode-source').click();
+            });
+            await waitFor(() => expect(screen.getByTestId('note-source-container')).toBeDefined());
+
+            // Switch back to rich — should convert the source markdown to HTML
+            await act(async () => {
+                screen.getByTestId('note-mode-rich').click();
+            });
+
+            await waitFor(() => {
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Edited in source</p>');
+            });
+        });
     });
 });
