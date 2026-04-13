@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
@@ -34,7 +36,13 @@ jobs:
         working-directory: packages/forge
 
       - name: Run forge tests
+        if: matrix.os != 'ubuntu-latest'
         run: npm run test:run
+        working-directory: packages/forge
+
+      - name: Run forge tests with coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run coverage
         working-directory: packages/forge
 
       - name: Build coc SPA client bundle
@@ -42,11 +50,23 @@ jobs:
         working-directory: packages/coc
 
       - name: Run coc tests
+        if: matrix.os != 'ubuntu-latest'
         run: npm run test:run
         working-directory: packages/coc
 
+      - name: Run coc tests with coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run coverage
+        working-directory: packages/coc
+
       - name: Run deep-wiki tests
+        if: matrix.os != 'ubuntu-latest'
         run: npm run test:run
+        working-directory: packages/deep-wiki
+
+      - name: Run deep-wiki tests with coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run coverage
         working-directory: packages/deep-wiki
 
       - name: Build coc package
@@ -82,6 +102,27 @@ jobs:
       - name: Run extension tests (macOS/Windows)
         if: runner.os != 'Linux'
         run: npm run test:extension
+
+      - name: Generate diff coverage report
+        if: matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
+        run: |
+          for pkg in forge coc deep-wiki; do
+            echo "==> Generating diff coverage for $pkg"
+            cd packages/$pkg
+            bash ../../scripts/coverage-diff.sh origin/main || true
+            cd ../..
+          done
+
+      - name: Upload coverage reports
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            packages/forge/coverage/
+            packages/coc/coverage/
+            packages/deep-wiki/coverage/
+          retention-days: 14
 
   package:
     runs-on: ubuntu-latest

@@ -763,6 +763,86 @@ describe('MultiRepoQueueExecutorBridge', () => {
     // aggregate facade cancelTask routes through QueueExecutor
     // ========================================================================
 
+    // --------------------------------------------------------------------
+    // enqueue() workspaceId resolution
+    // --------------------------------------------------------------------
+
+    describe('enqueue workspaceId resolution', () => {
+        it('resolves rootPath from workspaceId when workingDirectory is absent', async () => {
+            const { bridge, store, registry } = createBridge();
+            // Simulate a registered workspace
+            (store.getWorkspaces as any).mockResolvedValue([
+                { id: 'delta-repo', rootPath: '/repos/delta-zero' },
+            ]);
+
+            const taskId = await bridge.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'hello', workspaceId: 'delta-repo' },
+                config: {},
+            });
+
+            // Task should be enqueued into the delta-zero repo queue
+            expect(taskId).toBeTruthy();
+            expect(registry.hasRepo('/repos/delta-zero')).toBe(true);
+            const qm = registry.getQueueForRepo('/repos/delta-zero');
+            expect(qm.getTask(taskId)).toBeDefined();
+        });
+
+        it('prefers workingDirectory over workspaceId when both are set', async () => {
+            const { bridge, store, registry } = createBridge();
+            (store.getWorkspaces as any).mockResolvedValue([
+                { id: 'delta-repo', rootPath: '/repos/delta-zero' },
+            ]);
+
+            const taskId = await bridge.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'hello', workingDirectory: '/explicit/path', workspaceId: 'delta-repo' },
+                config: {},
+            });
+
+            expect(registry.hasRepo('/explicit/path')).toBe(true);
+            const qm = registry.getQueueForRepo('/explicit/path');
+            expect(qm.getTask(taskId)).toBeDefined();
+            // delta-zero should NOT have a queue
+            expect(registry.hasRepo('/repos/delta-zero')).toBe(false);
+        });
+
+        it('falls back to process.cwd() when neither workspaceId nor workingDirectory is set', async () => {
+            const { bridge, registry } = createBridge();
+
+            const taskId = await bridge.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'hello' },
+                config: {},
+            });
+
+            const cwd = process.cwd();
+            expect(registry.hasRepo(cwd)).toBe(true);
+            const qm = registry.getQueueForRepo(cwd);
+            expect(qm.getTask(taskId)).toBeDefined();
+        });
+
+        it('writes resolved rootPath back to payload.workingDirectory', async () => {
+            const { bridge, store } = createBridge();
+            (store.getWorkspaces as any).mockResolvedValue([
+                { id: 'delta-repo', rootPath: '/repos/delta-zero' },
+            ]);
+
+            const payload: any = { kind: 'chat', mode: 'ask', prompt: 'hello', workspaceId: 'delta-repo' };
+            await bridge.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload,
+                config: {},
+            });
+
+            expect(payload.workingDirectory).toBe('/repos/delta-zero');
+        });
+    });
+
     describe('aggregate facade cancelTask', () => {
         it('routes cancel through QueueExecutor.cancelTask for running tasks', () => {
             const { bridge } = createBridge();
