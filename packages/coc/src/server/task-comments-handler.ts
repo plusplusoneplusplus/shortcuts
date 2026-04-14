@@ -128,7 +128,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             priority: 'normal',
             payload: {
                 kind: 'chat',
-                mode: 'autopilot',
+                mode: 'ask',
                 prompt,
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,

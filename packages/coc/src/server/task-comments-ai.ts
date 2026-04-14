@@ -54,13 +54,13 @@ export function buildBatchResolvePrompt(
         .filter(c => c.status === 'open')
         .sort((a, b) => a.selection.startLine - b.selection.startLine);
 
-    let prompt = '# Document Revision Request\n\n';
-    prompt += 'Please review and address the following comments in the markdown document.\n';
-    prompt += 'For each comment, make the necessary changes to the document.\n\n';
+    let prompt = '# Document Review Request\n\n';
+    prompt += 'Please review the following comments in the markdown document and propose how to address each one.\n';
+    prompt += 'Do NOT directly modify the file. Instead, explain what changes should be made and show proposed edits as markdown code blocks or diffs.\n\n';
     prompt += '---\n\n';
     prompt += `## File: ${displayPath}\n\n`;
     prompt += `The document is located at: ${absoluteFilePath}\n`;
-    prompt += 'Read it using your tools before making changes.\n\n';
+    prompt += 'Read it using your tools to understand the full context.\n\n';
 
     openComments.forEach((c, i) => {
         prompt += `### Comment ${i + 1} (Line ${c.selection.startLine})\n\n`;
@@ -96,16 +96,16 @@ export function buildBatchResolvePrompt(
                 prompt += `${replies.join('\n')}\n\n`;
             }
         }
-        prompt += '**Requested Action:** Revise this section to address the comment.\n\n';
+        prompt += '**Requested Action:** Propose how to revise this section to address the comment.\n\n';
     });
 
     prompt += '---\n\n';
     prompt += '# Instructions\n\n';
-    prompt += '1. For each comment above, modify the corresponding section in the document\n';
-    prompt += '2. Preserve the overall document structure and formatting\n';
-    prompt += '3. Output the COMPLETE revised document content\n';
-    prompt += '4. Do NOT include any markdown fencing or explanation — output ONLY the revised document\n';
-    prompt += '5. You have a `resolve_comment` tool available. For each comment you address, call `resolve_comment` with the comment\'s ID and a brief summary of the change.\n';
+    prompt += '1. For each comment above, propose the specific changes needed in the document\n';
+    prompt += '2. Show proposed edits as markdown code blocks or unified diffs\n';
+    prompt += '3. Explain why each change addresses the comment\n';
+    prompt += '4. Do NOT directly edit or overwrite the file — only propose changes for the user to review\n';
+    prompt += '5. You have a `resolve_comment` tool available. For each comment you propose a solution for, call `resolve_comment` with the comment\'s ID and a brief summary of the proposed change.\n';
     prompt += '6. Do NOT call `resolve_comment` for comments you cannot address (e.g., ambiguous, need clarification, out of scope).\n';
 
     if (userContext?.trim()) {

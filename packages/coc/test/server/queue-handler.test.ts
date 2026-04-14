@@ -461,7 +461,7 @@ describe('Queue Handler', () => {
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
                 type: 'chat',
-                payload: { kind: 'chat', mode: 'autopilot', prompt: 'Resolve comments', tools: ['resolve-comments'], context: { resolveComments: { documentUri: 'file:///test.md', commentIds: ['c1'] } } },
+                payload: { kind: 'chat', mode: 'ask', prompt: 'Resolve comments', tools: ['resolve-comments'], context: { resolveComments: { documentUri: 'file:///test.md', commentIds: ['c1'] } } },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);

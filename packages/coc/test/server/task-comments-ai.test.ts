@@ -25,7 +25,7 @@ describe('buildBatchResolvePrompt', () => {
     it('builds a prompt with open comments', () => {
         const comments = [makeComment({ id: 'c1', comment: 'Fix this typo' })];
         const result = buildBatchResolvePrompt(comments, '/abs/docs/readme.md', 'docs/readme.md');
-        expect(result).toContain('Document Revision Request');
+        expect(result).toContain('Document Review Request');
         expect(result).toContain('docs/readme.md');
         expect(result).toContain('Fix this typo');
         expect(result).toContain('`c1`');

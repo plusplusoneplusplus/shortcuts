@@ -74,7 +74,7 @@ function makeResolveCommentsTask(id = 'rc-task-1'): QueuedTask {
         createdAt: Date.now(),
         payload: {
             kind: 'chat',
-            mode: 'autopilot',
+            mode: 'ask',
             prompt: 'Resolve the comment in the document.',
             context: {
                 resolveComments: {
@@ -171,6 +171,36 @@ describe('ResolveCommentsExecutor', () => {
 
         // Falls back to rc.commentIds from payload
         expect(result.commentIds).toEqual(['comment-id-1']);
+    });
+
+    it('sets agentMode to interactive for single-file task comments (ask mode)', async () => {
+        const executor = new ResolveCommentsExecutor(store, makeOptions(store));
+        const task = makeResolveCommentsTask();
+
+        let capturedMode: string | undefined;
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            capturedMode = opts.mode;
+            return { success: true, response: 'Done.', sessionId: 's1', toolCalls: [] };
+        });
+
+        await executor.executeTask(task);
+        expect(capturedMode).toBe('interactive');
+    });
+
+    it('injects read-only system message for single-file task comments', async () => {
+        const executor = new ResolveCommentsExecutor(store, makeOptions(store));
+        const task = makeResolveCommentsTask();
+
+        let capturedSystemMessage: unknown;
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            capturedSystemMessage = opts.systemMessage;
+            return { success: true, response: 'Done.', sessionId: 's1', toolCalls: [] };
+        });
+
+        await executor.executeTask(task);
+        expect(capturedSystemMessage).toBeDefined();
+        expect((capturedSystemMessage as any).mode).toBe('append');
+        expect((capturedSystemMessage as any).content).toBeTruthy();
     });
 });
 

@@ -20,6 +20,7 @@ import type { ChatPayload } from '../task-types';
 import { createResolveCommentTool } from '../llm-tools/resolve-comment-tool';
 import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import { buildModeSystemMessage } from './prompt-builder';
 import type { ProcessWebSocketServer } from '../websocket';
 
 // ============================================================================
@@ -163,8 +164,8 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const isMultiFile = !!payload.context?.resolveDiffCommentsMulti;
         return {
-            agentMode: isMultiFile ? 'autopilot' : undefined,
-            systemMessage: undefined,
+            agentMode: isMultiFile ? 'autopilot' : 'interactive',
+            systemMessage: isMultiFile ? undefined : buildModeSystemMessage('ask'),
             tools: [tool as Tool<unknown>],
             effectivePrompt: prompt,
         };
