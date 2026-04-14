@@ -88,7 +88,7 @@ function FocusedBranchFileDiff({ workspaceId, filePath }: { workspaceId: string;
     }
     return (
         <div className="px-1 py-1" data-testid="focused-branch-diff-content">
-            <UnifiedDiffViewer diff={diff} />
+            <UnifiedDiffViewer diff={diff} fileName={filePath} showLineNumbers />
         </div>
     );
 }

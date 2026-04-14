@@ -193,6 +193,14 @@ describe('CommitDetail', () => {
         it('skips scrollToFilePath effect when focusedFilePath is set', () => {
             expect(source).toContain('if (!scrollToFilePath || focusedFilePath) return');
         });
+
+        it('passes fileName to diff viewers from focusedFilePath', () => {
+            expect(source).toContain('fileName={focusedFilePath ?? undefined}');
+        });
+
+        it('enables showLineNumbers only when a single file is focused', () => {
+            expect(source).toContain('showLineNumbers={!!focusedFilePath}');
+        });
     });
 
     describe('commit detail root', () => {

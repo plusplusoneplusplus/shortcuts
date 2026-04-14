@@ -312,16 +312,11 @@ describe('BranchChanges', () => {
                 expect(source).toContain('setFileDiffError');
             });
 
-            it('tracks showFullDiff state', () => {
-                expect(source).toContain('setShowFullDiff');
-            });
-
             it('resets diff state when workspace or range data changes', () => {
                 const resetEffect = source.slice(0, source.indexOf('[workspaceId, branchRangeData]'));
                 expect(resetEffect).toContain('setExpandedFile(null)');
                 expect(resetEffect).toContain('setFileDiff(null)');
                 expect(resetEffect).toContain('setFileDiffError(null)');
-                expect(resetEffect).toContain('setShowFullDiff(false)');
             });
         });
 
@@ -357,16 +352,6 @@ describe('BranchChanges', () => {
                     source.indexOf('const renderDiffContent')
                 );
                 expect(toggleFn).toContain('setFileDiffLoading(true)');
-            });
-
-            it('resets showFullDiff on file change', () => {
-                const toggleFn = source.slice(
-                    source.indexOf('const toggleFileDiff'),
-                    source.indexOf('const renderDiffContent')
-                );
-                // showFullDiff is reset in both collapse and expand paths
-                const occurrences = toggleFn.split('setShowFullDiff(false)').length - 1;
-                expect(occurrences).toBeGreaterThanOrEqual(2);
             });
 
             it('sets fileDiff from API response data.diff', () => {
@@ -423,9 +408,9 @@ describe('BranchChanges', () => {
             });
         });
 
-        describe('diff rendering with truncation', () => {
-            it('defines DIFF_LINE_LIMIT constant at 500', () => {
-                expect(source).toContain('const DIFF_LINE_LIMIT = 500');
+        describe('diff rendering with UnifiedDiffViewer', () => {
+            it('imports UnifiedDiffViewer', () => {
+                expect(source).toContain("import { UnifiedDiffViewer }");
             });
 
             it('defines renderDiffContent function', () => {
@@ -440,49 +425,26 @@ describe('BranchChanges', () => {
                 expect(source).toContain('data-testid="branch-file-diff-empty"');
             });
 
-            it('splits diff by newlines for truncation logic', () => {
-                expect(source).toContain("fileDiff.split('\\n')");
+            it('renders diff via UnifiedDiffViewer component', () => {
+                expect(source).toContain('<UnifiedDiffViewer');
             });
 
-            it('truncates when lines exceed DIFF_LINE_LIMIT and showFullDiff is false', () => {
-                expect(source).toContain('lines.length > DIFF_LINE_LIMIT && !showFullDiff');
+            it('passes fileName prop from expandedFile', () => {
+                expect(source).toContain('fileName={expandedFile ?? undefined}');
             });
 
-            it('slices to DIFF_LINE_LIMIT lines when truncated', () => {
-                expect(source).toContain('lines.slice(0, DIFF_LINE_LIMIT)');
+            it('passes showLineNumbers prop', () => {
+                expect(source).toContain('showLineNumbers');
             });
 
-            it('renders diff content in a <pre> element', () => {
-                expect(source).toContain('<pre');
-                expect(source).toContain("displayLines.join('\\n')");
-            });
-
-            it('has data-testid on diff content pre element', () => {
+            it('has data-testid on diff content', () => {
                 expect(source).toContain('data-testid="branch-file-diff-content"');
             });
 
-            it('uses CommitDetail-matching styling on pre element', () => {
-                expect(source).toContain('p-3 text-xs font-mono bg-[#f5f5f5] dark:bg-[#2d2d2d]');
-                expect(source).toContain('max-h-[500px]');
-                expect(source).toContain('whitespace-pre');
-            });
-
-            it('renders "Show All" button when truncated', () => {
-                expect(source).toContain('data-testid="branch-file-diff-show-all"');
-                expect(source).toContain('Diff too large');
-                expect(source).toContain('Show All');
-            });
-
-            it('Show All button calls setShowFullDiff(true)', () => {
-                expect(source).toContain('setShowFullDiff(true)');
-            });
-
-            it('Show All button stops event propagation', () => {
-                expect(source).toContain('e.stopPropagation()');
-            });
-
-            it('shows line limit count in truncation message', () => {
-                expect(source).toContain('{DIFF_LINE_LIMIT}');
+            it('does not use manual truncation or <pre> element', () => {
+                expect(source).not.toContain('DIFF_LINE_LIMIT');
+                expect(source).not.toContain('showFullDiff');
+                expect(source).not.toContain('<pre');
             });
         });
     });

@@ -145,6 +145,15 @@ describe('BranchRangeOverview', () => {
             expect(source).toContain('focusedFilePath ?');
             expect(source).toContain('<FocusedBranchFileDiff');
         });
+
+        it('passes fileName and showLineNumbers to UnifiedDiffViewer in FocusedBranchFileDiff', () => {
+            const focusedFn = source.slice(
+                source.indexOf('function FocusedBranchFileDiff'),
+                source.indexOf('export function BranchRangeOverview')
+            );
+            expect(focusedFn).toContain('fileName={filePath}');
+            expect(focusedFn).toContain('showLineNumbers');
+        });
     });
 
     describe('rendering', () => {

@@ -333,6 +333,8 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                             <SideBySideDiffViewer
                                 ref={viewerRef}
                                 diff={diff}
+                                fileName={focusedFilePath ?? undefined}
+                                showLineNumbers={!!focusedFilePath}
                                 onLinesReady={setDiffLines}
                                 data-testid="diff-content"
                             />
@@ -340,6 +342,8 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                             <UnifiedDiffViewer
                                 ref={viewerRef}
                                 diff={diff}
+                                fileName={focusedFilePath ?? undefined}
+                                showLineNumbers={!!focusedFilePath}
                                 onLinesReady={setDiffLines}
                                 data-testid="diff-content"
                             />

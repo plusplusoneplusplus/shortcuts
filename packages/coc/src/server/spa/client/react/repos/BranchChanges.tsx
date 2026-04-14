@@ -17,6 +17,7 @@ import { computeDiffCommentKey } from '../../diff-comment-utils';
 import { buildFileTree, compactFolders, FileTreeView, FlatFileList } from './FileTree';
 import type { FileChange } from './FileTree';
 import { useFilesViewMode } from '../hooks/useFilesViewMode';
+import { UnifiedDiffViewer } from './UnifiedDiffViewer';
 
 export interface BranchRangeInfo {
     baseRef: string;
@@ -44,8 +45,6 @@ interface BranchChangesProps {
 
 interface BranchRangeFile extends FileChange {}
 
-const DIFF_LINE_LIMIT = 500;
-
 export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDefaultBranch, onFileSelect, selectedFile, onBranchContextMenu, onBranchRangeSelect }: BranchChangesProps) {
     const rangeInfo = branchRangeData ?? null;
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
@@ -56,7 +55,6 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
     const [fileDiff, setFileDiff] = useState<string | null>(null);
     const [fileDiffLoading, setFileDiffLoading] = useState(false);
     const [fileDiffError, setFileDiffError] = useState<string | null>(null);
-    const [showFullDiff, setShowFullDiff] = useState(false);
     const { mode: viewMode, setMode: setViewMode } = useFilesViewMode(workspaceId);
 
     // Fetch active comment counts for all files in this branch range
@@ -91,7 +89,6 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
         setExpandedFile(null);
         setFileDiff(null);
         setFileDiffError(null);
-        setShowFullDiff(false);
     }, [workspaceId, branchRangeData]);
 
     useEffect(() => {
@@ -121,14 +118,12 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
             setExpandedFile(null);
             setFileDiff(null);
             setFileDiffError(null);
-            setShowFullDiff(false);
             return;
         }
         setExpandedFile(filePath);
         setFileDiff(null);
         setFileDiffError(null);
         setFileDiffLoading(true);
-        setShowFullDiff(false);
 
         fetchApi(
             `/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/files/${encodeURIComponent(filePath)}/diff`
@@ -144,28 +139,13 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
             return <div className="text-xs text-[#848484] italic" data-testid="branch-file-diff-empty">(empty diff)</div>;
         }
 
-        const lines = fileDiff.split('\n');
-        const isTruncated = lines.length > DIFF_LINE_LIMIT && !showFullDiff;
-        const displayLines = isTruncated ? lines.slice(0, DIFF_LINE_LIMIT) : lines;
-
         return (
-            <>
-                <pre
-                    className="p-3 text-xs font-mono bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded overflow-x-auto max-h-[500px] overflow-y-auto whitespace-pre"
-                    data-testid="branch-file-diff-content"
-                >
-                    {displayLines.join('\n')}
-                </pre>
-                {isTruncated && (
-                    <button
-                        className="mt-1 text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline"
-                        onClick={(e) => { e.stopPropagation(); setShowFullDiff(true); }}
-                        data-testid="branch-file-diff-show-all"
-                    >
-                        Diff too large — showing first {DIFF_LINE_LIMIT} lines. Show All
-                    </button>
-                )}
-            </>
+            <UnifiedDiffViewer
+                diff={fileDiff}
+                fileName={expandedFile ?? undefined}
+                showLineNumbers
+                data-testid="branch-file-diff-content"
+            />
         );
     };
 
