@@ -41,6 +41,7 @@ import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
 import { createUpdateTaskStatusTool } from '../update-task-status-tool';
 import { createWorkItemTool, type BroadcastWorkItemFn } from '../create-work-item-tool';
 import { createBugTool } from '../create-bug-tool';
+import { createUpdateWorkItemTool } from '../update-work-item-tool';
 
 // ============================================================================
 // System Message Builders
@@ -395,11 +396,13 @@ export function buildCreateWorkItemAddon(
 
     const { tool: workItemTool } = createWorkItemTool(dataDir, repoId, broadcastFn);
     const { tool: bugTool } = createBugTool(dataDir, repoId, broadcastFn);
+    const { tool: updateWorkItemTool } = createUpdateWorkItemTool(dataDir, repoId, broadcastFn);
     const suffix =
-        '\n\nYou have access to the `create_work_item` and `create_bug` tools. ' +
+        '\n\nYou have access to the `create_work_item`, `create_bug`, and `update_work_item` tools. ' +
         'When the user asks to create a work item, track a feature, or save a task for later execution, ' +
         'use `create_work_item`. When the user asks to file a bug, report a defect, or log an issue, ' +
-        'use `create_bug`. Both tools follow the same workflow:\n' +
+        'use `create_bug`. When the user asks to update, modify, edit, or revise an existing work item, ' +
+        'use `update_work_item`. All creation tools follow the same workflow:\n' +
         '1. **Draft** — Analyze the request and present a summary:\n' +
         '   📋 Work Item Draft / 🐛 Bug Report Draft\n' +
         '   Title: <title>\n' +
@@ -410,8 +413,11 @@ export function buildCreateWorkItemAddon(
         '   Then ask "Confirm to create, or give feedback to refine."\n' +
         '2. **Refine** — If the user provides feedback, update and re-present the summary. Repeat until confirmed.\n' +
         '3. **Create** — Only after the user confirms, call the appropriate tool with title, description, priority, tags, and a complete plan.\n' +
-        'The `plan` parameter is REQUIRED — always generate a plan with concrete steps.\n' +
+        'The `plan` parameter is REQUIRED for creation tools — always generate a plan with concrete steps.\n' +
+        'For `update_work_item`: look up the current work item first, present a draft of the proposed changes, ' +
+        'iterate until confirmed, then call the tool with only the fields that should change. ' +
+        'Status is always reset to `planning` after an update. A new `plan` creates a new plan version.\n' +
         'Never execute the work item steps inside this chat session — use the tool to persist it, then stop.';
 
-    return { tools: [workItemTool, bugTool], suffix };
+    return { tools: [workItemTool, bugTool, updateWorkItemTool], suffix };
 }

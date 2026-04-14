@@ -53,6 +53,11 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         name: 'create-bug',
         description: 'Interactively create a bug report for this repository with title, description, priority, and an AI-generated plan',
         relativePath: 'create-bug'
+    },
+    {
+        name: 'update-work-item',
+        description: 'Interactively update an existing work item — patch common fields or create a new plan version, then reset status to planning',
+        relativePath: 'update-work-item'
     }
 ];
 
