@@ -21,6 +21,7 @@ import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import { renderWithProviders } from '../test-utils';
 import { useQueue } from '../../../../src/server/spa/client/react/context/QueueContext';
+import { useApp } from '../../../../src/server/spa/client/react/context/AppContext';
 import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/queue-process-id';
 
 // ── Mock child components ──────────────────────────────────────────────
@@ -1357,5 +1358,81 @@ describe('RepoActivityTab: pagination', () => {
         await renderTab();
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
         expect(lastProps?.loadingMore).toBe(false);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// REACTIVE TITLE UPDATES FROM process-updated WS events
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoActivityTab: reactive title updates from AppContext', () => {
+    /** Helper component that dispatches PROCESS_UPDATED to AppContext. */
+    function AppDispatcher({ dispatchRef }: { dispatchRef: { current: ((process: any) => void) | null } }) {
+        const { dispatch } = useApp();
+        dispatchRef.current = (process: any) => {
+            dispatch({ type: 'PROCESS_ADDED', process });
+            dispatch({ type: 'PROCESS_UPDATED', process });
+        };
+        return null;
+    }
+
+    it('merges title from process-updated WS event into history items', async () => {
+        const historyTask = makeHistoryTask('queue_proc-h1', { title: 'Original title' });
+        setupFetchMock({ history: [historyTask] });
+        const appRef: { current: ((process: any) => void) | null } = { current: null };
+
+        await act(async () => {
+            renderWithProviders(
+                React.createElement(React.Fragment, null,
+                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(AppDispatcher, { dispatchRef: appRef }),
+                ),
+            );
+        });
+        await waitFor(() => {
+            expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument();
+        });
+
+        // Verify original title
+        let lastProps = mockListPane.mock.calls.at(-1)?.[0];
+        expect(lastProps?.history[0]?.title).toBe('Original title');
+
+        // Simulate process-updated WS event with new title
+        await act(async () => {
+            appRef.current?.({ id: 'queue_proc-h1', title: 'AI Generated Title' });
+        });
+
+        await waitFor(() => {
+            lastProps = mockListPane.mock.calls.at(-1)?.[0];
+            expect(lastProps?.history[0]?.title).toBe('AI Generated Title');
+        });
+    });
+
+    it('does not mutate history if no title changed', async () => {
+        const historyTask = makeHistoryTask('queue_proc-h2', { title: 'Same title' });
+        setupFetchMock({ history: [historyTask] });
+        const appRef: { current: ((process: any) => void) | null } = { current: null };
+
+        await act(async () => {
+            renderWithProviders(
+                React.createElement(React.Fragment, null,
+                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(AppDispatcher, { dispatchRef: appRef }),
+                ),
+            );
+        });
+        await waitFor(() => {
+            expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument();
+        });
+
+        const propsBefore = mockListPane.mock.calls.at(-1)?.[0]?.history;
+
+        // Dispatch process-updated with same title
+        await act(async () => {
+            appRef.current?.({ id: 'queue_proc-h2', title: 'Same title' });
+        });
+
+        const propsAfter = mockListPane.mock.calls.at(-1)?.[0]?.history;
+        expect(propsAfter).toBe(propsBefore);
     });
 });

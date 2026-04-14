@@ -67,7 +67,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     }, []);
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
-    const { dispatch: appDispatch } = useApp();
+    const { state: appState, dispatch: appDispatch } = useApp();
     const { refreshUnseenCounts } = useRepos();
     const selectedTaskId = queueState.selectedTaskIdByRepo[workspaceId] ?? null;
     const { isMobile, isTablet } = useBreakpoint();
@@ -189,6 +189,23 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         }
         setLoading(false);
     }, [repoQueue, history, fetchHistory]);
+
+    // Merge title updates from process-updated WS events into history items
+    useEffect(() => {
+        if (!history.length || !appState.processes.length) return;
+        setHistory(prev => {
+            let changed = false;
+            const next = prev.map(item => {
+                const proc = appState.processes.find((p: any) => p.id === item.id);
+                if (proc?.title && proc.title !== item.title) {
+                    changed = true;
+                    return { ...item, title: proc.title };
+                }
+                return item;
+            });
+            return changed ? next : prev;
+        });
+    }, [appState.processes]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Clear selection if the selected task is no longer reachable.
     // Tasks from deep-links may not appear in the paginated history list,

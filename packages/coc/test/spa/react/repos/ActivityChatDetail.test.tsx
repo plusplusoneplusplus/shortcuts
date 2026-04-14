@@ -1394,4 +1394,92 @@ describe('ActivityChatDetail', () => {
             });
         });
     });
+
+    describe('reactive title updates', () => {
+        /** Helper component that dispatches PROCESS_UPDATED to AppContext. */
+        function AppDispatcher({ dispatchRef }: { dispatchRef: { current: ((process: any) => void) | null } }) {
+            const { dispatch } = useApp();
+            dispatchRef.current = (process: any) => {
+                dispatch({ type: 'PROCESS_ADDED', process });
+                dispatch({ type: 'PROCESS_UPDATED', process });
+            };
+            return null;
+        }
+
+        it('updates ChatHeader title when process-updated WS event arrives', async () => {
+            const proc = makeProcess({ title: undefined });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_proc-1': { body: { process: proc } },
+                '/models': { body: [] },
+            });
+            const appRef: { current: ((process: any) => void) | null } = { current: null };
+
+            render(
+                <Wrap>
+                    <ActivityChatDetail taskId="queue_proc-1" />
+                    <AppDispatcher dispatchRef={appRef} />
+                </Wrap>,
+            );
+
+            // Initially shows "Chat" (no title)
+            await waitFor(() => {
+                expect(screen.getByTestId('chat-header')).toBeTruthy();
+            });
+            expect(screen.getByText('Chat')).toBeTruthy();
+
+            // Simulate process-updated WS event with new title
+            await act(async () => {
+                appRef.current?.({ id: 'queue_proc-1', title: 'AI Generated Title' });
+            });
+
+            await waitFor(() => {
+                expect(screen.getByText('AI Generated Title')).toBeTruthy();
+            });
+        });
+
+        it('does not override explicit title prop', async () => {
+            const proc = makeProcess({ title: undefined });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_proc-1': { body: { process: proc } },
+                '/models': { body: [] },
+            });
+            const appRef: { current: ((process: any) => void) | null } = { current: null };
+
+            render(
+                <Wrap>
+                    <ActivityChatDetail taskId="queue_proc-1" title="Explicit Title" />
+                    <AppDispatcher dispatchRef={appRef} />
+                </Wrap>,
+            );
+
+            await waitFor(() => {
+                expect(screen.getByText('Explicit Title')).toBeTruthy();
+            });
+
+            // Simulate process-updated — explicit title should still win
+            await act(async () => {
+                appRef.current?.({ id: 'queue_proc-1', title: 'AI Title' });
+            });
+
+            expect(screen.getByText('Explicit Title')).toBeTruthy();
+            expect(screen.queryByText('AI Title')).not.toBeInTheDocument();
+        });
+
+        it('shows title from initial process load', async () => {
+            const proc = makeProcess({ title: 'Pre-existing Title' });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_proc-1': { body: { process: proc } },
+                '/models': { body: [] },
+            });
+
+            render(<Wrap><ActivityChatDetail taskId="queue_proc-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByText('Pre-existing Title')).toBeTruthy();
+            });
+        });
+    });
 });

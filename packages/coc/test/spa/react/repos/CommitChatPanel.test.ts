@@ -226,7 +226,7 @@ describe('ActivityChatDetail — standalone, title, hideModeSelector props', () 
     });
 
     it('passes title to ChatHeader', () => {
-        expect(actSource).toContain('title={title}');
+        expect(actSource).toContain('title={title || task?.displayName}');
     });
 
     it('passes hideModeSelector to FollowUpInputArea', () => {

@@ -165,6 +165,17 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     // Reset patch guard when switching tasks
     useEffect(() => { planPatchedRef.current = false; }, [taskId]);
 
+    // Reactively sync title from process-updated WS events (via AppContext)
+    useEffect(() => {
+        if (!processId) return;
+        const proc = appState.processes.find((p: any) => p.id === processId);
+        if (!proc?.title) return;
+        setTask((prev: any) => {
+            if (!prev || prev.displayName === proc.title) return prev;
+            return { ...prev, displayName: proc.title };
+        });
+    }, [processId, appState.processes]);
+
     // Seed tokenLimit from /api/models as soon as sessionModel is known.
     // Only runs when sessionTokenLimit is still undefined to avoid clobbering
     // a value already received via SSE (conversation-snapshot / token-usage).
@@ -610,7 +621,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 onLaunchInteractiveResume={() => { void launchInteractiveResume(); }}
                 onPopOut={handlePopOut}
                 onFloat={handleFloat}
-                title={title}
+                title={title || task?.displayName}
                 wsId={workspaceId}
             />
             <div className="relative flex-1 min-h-0 flex overflow-x-hidden min-w-0">
