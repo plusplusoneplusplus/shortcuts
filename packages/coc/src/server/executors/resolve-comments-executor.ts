@@ -17,7 +17,7 @@
 import type { ProcessStore, QueuedTask, Tool } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
-import { createResolveCommentTool } from '../resolve-comment-tool';
+import { createResolveCommentTool } from '../llm-tools/resolve-comment-tool';
 import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import type { ProcessWebSocketServer } from '../websocket';

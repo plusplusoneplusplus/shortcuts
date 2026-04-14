@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSuggestFollowUpsTool, type FollowUpSuggestion } from '../../src/server/suggest-follow-ups-tool';
+import { createSuggestFollowUpsTool, type FollowUpSuggestion } from '../../../src/server/llm-tools/suggest-follow-ups-tool';
 
 describe('createSuggestFollowUpsTool', () => {
     it('returns a tool with name "suggest_follow_ups"', () => {

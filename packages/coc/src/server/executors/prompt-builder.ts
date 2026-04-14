@@ -25,7 +25,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import * as fs from 'fs';
 import * as path from 'path';
-import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
+import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import type { ChatMode, ChatPayload, RunScriptPayload } from '../task-types';
 import {
     hasCommitChatContext,
@@ -35,7 +35,7 @@ import {
     isRunScriptPayload,
     isRunWorkflowPayload,
 } from '../task-types';
-import { createUpdateTaskStatusTool } from '../update-task-status-tool';
+import { createUpdateTaskStatusTool } from '../llm-tools/update-task-status-tool';
 
 // ============================================================================
 // System Message Builders

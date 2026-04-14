@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createResolveCommentTool } from '../../src/server/resolve-comment-tool';
+import { createResolveCommentTool } from '../../../src/server/llm-tools/resolve-comment-tool';
 
 // Minimal invocation stub for handler calls
 const invocationStub = {

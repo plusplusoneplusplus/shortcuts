@@ -120,7 +120,11 @@ src/
 │   ├── diff-comments-handler.ts  # Git diff view comment CRUD API
 │   ├── image-blob-store.ts       # Externalizes base64 images from queue persistence into JSON files
 │   ├── replicate-apply-handler.ts # Applies ReplicateResult changes to disk (idempotent)
-│   ├── resolve-comment-tool.ts   # Factory for per-invocation resolve_comment AI tool
+│   ├── llm-tools/                # AI tool factories for chat executors
+│   │   ├── index.ts              # Barrel re-exports
+│   │   ├── resolve-comment-tool.ts   # Factory for per-invocation resolve_comment AI tool
+│   │   ├── suggest-follow-ups-tool.ts # Factory for suggest_follow_ups AI tool
+│   │   └── update-task-status-tool.ts # Factory for update_task_status AI tool
 │   ├── task-migration.ts         # One-time migration from legacy .vscode/tasks/ location
 │   ├── startup-process-migration.ts # Auto-migrates file-based process histories to SQLite on startup (renames processes/ → processes.migrated/)
 │   ├── template-watcher.ts       # Watches .vscode/templates/ for file changes

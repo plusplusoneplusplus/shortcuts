@@ -16,7 +16,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
 });
 
-import { createUpdateTaskStatusTool, type UpdateTaskStatusArgs } from '../../src/server/update-task-status-tool';
+import { createUpdateTaskStatusTool, type UpdateTaskStatusArgs } from '../../../src/server/llm-tools/update-task-status-tool';
 
 describe('createUpdateTaskStatusTool', () => {
     beforeEach(() => {
