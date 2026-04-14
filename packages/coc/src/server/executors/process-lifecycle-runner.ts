@@ -194,6 +194,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 workflowName: isRunWorkflowPayload(task.payload)
                     ? path.basename(task.payload.workflowPath)
                     : undefined,
+                planFilePath: isChatPayload(task.payload)
+                    ? task.payload.context?.files?.[0]
+                    : undefined,
             },
         };
 

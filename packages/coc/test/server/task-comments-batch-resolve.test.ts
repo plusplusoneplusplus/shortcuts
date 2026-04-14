@@ -93,18 +93,18 @@ describe('buildBatchResolvePrompt', () => {
         const comments = [makeComment()];
         const prompt = buildBatchResolvePrompt(comments, '/workspace/feature/task1.md', 'feature/task1.md');
 
-        expect(prompt).toContain('# Document Review Request');
+        expect(prompt).toContain('# Document Revision Request');
         expect(prompt).toContain('## File: feature/task1.md');
         expect(prompt).toContain('The document is located at: /workspace/feature/task1.md');
-        expect(prompt).toContain('Read it using your tools to understand the full context.');
+        expect(prompt).toContain('Read it using your tools before making changes.');
         expect(prompt).toContain('### Comment 1 (Line 5)');
         expect(prompt).toContain('**ID:** `aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee`');
         expect(prompt).toContain('**Selected Text:**');
         expect(prompt).toContain('some selected text');
         expect(prompt).toContain('**Comment:** Fix this section');
-        expect(prompt).toContain('**Requested Action:** Propose how to revise this section to address the comment.');
+        expect(prompt).toContain('**Requested Action:** Revise this section to address the comment.');
         expect(prompt).toContain('# Instructions');
-        expect(prompt).toContain('Do NOT directly edit or overwrite the file');
+        expect(prompt).toContain('Do NOT include any markdown fencing or explanation');
     });
 
     it('sorts comments by startLine ascending', () => {
@@ -415,7 +415,7 @@ describe('batch-resolve endpoints', () => {
 
             const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
             const taskBody = JSON.parse(taskRes.body);
-            expect(taskBody.task.payload.prompt).toContain('# Document Review Request');
+            expect(taskBody.task.payload.prompt).toContain('# Document Revision Request');
             expect(taskBody.task.payload.prompt).toContain('The document is located at:');
             expect(taskBody.task.payload.prompt).toContain('my selected text');
         });

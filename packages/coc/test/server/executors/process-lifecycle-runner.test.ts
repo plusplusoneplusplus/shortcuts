@@ -560,3 +560,113 @@ describe('ProcessLifecycleRunner — metadata.workspaceId from task.repoId', () 
         expect(proc?.metadata?.workspaceId).toBeUndefined();
     });
 });
+
+// ============================================================================
+// metadata.planFilePath from payload.context.files
+// ============================================================================
+
+describe('ProcessLifecycleRunner — metadata.planFilePath from context.files', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('copies context.files[0] to metadata.planFilePath for chat tasks', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Implement this feature',
+                workspaceId: 'ws-abc',
+                context: { files: ['/home/user/project/feature.plan.md'] },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.planFilePath).toBe('/home/user/project/feature.plan.md');
+    });
+
+    it('copies Windows-style paths from context.files[0]', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Fix the bug',
+                workspaceId: 'ws-abc',
+                context: { files: ['C:\\Users\\dev\\project\\fix.plan.md'] },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.planFilePath).toBe('C:\\Users\\dev\\project\\fix.plan.md');
+    });
+
+    it('sets planFilePath to undefined when context.files is empty', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Hello',
+                workspaceId: 'ws-abc',
+                context: { files: [] },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.planFilePath).toBeUndefined();
+    });
+
+    it('sets planFilePath to undefined when context is absent', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Hello',
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.planFilePath).toBeUndefined();
+    });
+
+    it('sets planFilePath to undefined for non-chat task types', async () => {
+        const task = makeTask({
+            type: 'run-workflow',
+            payload: {
+                kind: 'run-workflow',
+                workflowPath: '/wf.yaml',
+                workingDirectory: '/tmp',
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.planFilePath).toBeUndefined();
+    });
+
+    it('uses only the first file from context.files', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Multi-file context',
+                workspaceId: 'ws-abc',
+                context: { files: ['/first/plan.md', '/second/extra.md', '/third/notes.md'] },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.planFilePath).toBe('/first/plan.md');
+    });
+});
