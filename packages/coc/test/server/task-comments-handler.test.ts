@@ -1138,7 +1138,7 @@ describe('Task Comments Resolve AI Routes', () => {
             const input = mockEnqueue.mock.calls[0][0];
             expect(input.type).toBe('chat');
             expect(input.payload.kind).toBe('chat');
-            expect(input.payload.mode).toBe('autopilot');
+            expect(input.payload.mode).toBe('ask');
             expect(input.payload.tools).toContain('resolve-comments');
             expect(input.payload.context.resolveComments).toBeDefined();
             expect(input.payload.context.resolveComments.documentUri).toBe(TASK_PATH);
