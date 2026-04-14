@@ -121,6 +121,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const processId = task?.processId ?? (taskId
         ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
         : null);
+    const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
     const isPending = task?.status === 'queued';
     const isTerminal = task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
     const inputDisabled = loading || isPending || task?.status === 'cancelled' || task?.status === 'cancelling' || sessionExpired;
@@ -289,7 +290,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     // Fetch full task data for pending tasks (metadata + payload)
     useEffect(() => {
         if (!taskId || !isPending) { setFullTask(null); return; }
-        fetchApi(`/queue/${encodeURIComponent(taskId)}`)
+        fetchApi(`/queue/${encodeURIComponent(bareTaskId)}`)
             .then((data: any) => setFullTask(data?.task || null))
             .catch(() => setFullTask(null));
     }, [taskId, isPending, queueState.refreshVersion]);
@@ -369,8 +370,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 }
 
                 // Queue fetch path — taskId may be bare or a processId that fell through
-                const effectiveTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
-                const queueData = await fetchApi(`/queue/${encodeURIComponent(effectiveTaskId)}`);
+                const queueData = await fetchApi(`/queue/${encodeURIComponent(bareTaskId)}`);
                 if (loadCounterRef.current !== loadId) return;
                 const loadedTask = queueData?.task ?? null;
                 if (loadedTask?.payload?.mode && ['ask', 'plan', 'autopilot'].includes(loadedTask.payload.mode)) {
@@ -497,8 +497,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     // Fall through to queue fetch with bare taskId
                 }
 
-                const effectiveTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
-                const queueData = await fetchApi(`/queue/${encodeURIComponent(effectiveTaskId)}`);
+                const queueData = await fetchApi(`/queue/${encodeURIComponent(bareTaskId)}`);
                 const refreshedTask = queueData?.task ?? null;
 
                 const pid = refreshedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
@@ -554,13 +553,13 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     useEffect(() => () => { stopStreaming(); closeFollowUpStream(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleCancel = async () => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId), { method: 'DELETE' });
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(bareTaskId), { method: 'DELETE' });
         if (!standalone) queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
         onBack?.();
     };
 
     const handleMoveToTop = async () => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-to-top', { method: 'POST' });
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(bareTaskId) + '/move-to-top', { method: 'POST' });
         queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
     };
 
