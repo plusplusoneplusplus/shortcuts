@@ -953,27 +953,73 @@ describe('RepoGitTab', () => {
             expect(closeIdx).toBeLessThan(squashIdx);
         });
 
-        it('defines handleEnqueueSkill async callback', () => {
-            expect(source).toContain('const handleEnqueueSkill = useCallback(async');
+        it('defines handleEnqueueSkill callback that opens dialog', () => {
+            expect(source).toContain('const handleEnqueueSkill = useCallback(');
         });
 
-        it('handleEnqueueSkill uses commit hash tag for single commit', () => {
-            expect(source).toContain('<commit>${snapshot.commit.hash}</commit>');
+        it('handleEnqueueSkill sets pendingSkillRun state instead of directly enqueuing', () => {
+            const block = source.match(/const handleEnqueueSkill = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('setPendingSkillRun');
+            expect(block![0]).not.toContain('/queue/tasks');
         });
 
-        it('handleEnqueueSkill uses commit-range tag for branch range', () => {
+        it('tracks pendingSkillRun state', () => {
+            expect(source).toContain('const [pendingSkillRun, setPendingSkillRun]');
+        });
+
+        it('pendingSkillRun state includes skillName and type fields', () => {
+            expect(source).toContain('skillName: string;');
+            expect(source).toContain("type: 'commit' | 'multi-commit' | 'branch-range'");
+        });
+
+        it('defines pendingSkillTargetSummary via useMemo', () => {
+            expect(source).toContain('const pendingSkillTargetSummary = useMemo');
+        });
+
+        it('defines handleConfirmSkillRun async callback', () => {
+            expect(source).toContain('const handleConfirmSkillRun = useCallback(async');
+        });
+
+        it('handleConfirmSkillRun uses commit hash tag for single commit', () => {
+            expect(source).toContain('<commit>${pendingSkillRun.commit.hash}</commit>');
+        });
+
+        it('handleConfirmSkillRun uses commit-range tag for branch range', () => {
             expect(source).toContain('<commit-range>');
         });
 
-        it('handleEnqueueSkill enqueues chat task with skill context', () => {
+        it('handleConfirmSkillRun enqueues chat task with skill context', () => {
             expect(source).toContain("type: 'chat'");
             expect(source).toContain("priority: 'normal'");
             expect(source).toContain('skills');
             expect(source).toContain('promptContent');
         });
 
-        it('handleEnqueueSkill POSTs to /queue/tasks via getApiBase', () => {
+        it('handleConfirmSkillRun POSTs to /queue/tasks via getApiBase', () => {
             expect(source).toContain("getApiBase() + '/queue/tasks'");
+        });
+
+        it('handleConfirmSkillRun appends user context to prompt when non-empty', () => {
+            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('User context:');
+            expect(block![0]).toContain('userContext');
+        });
+
+        it('handleConfirmSkillRun clears pendingSkillRun after enqueue', () => {
+            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('setPendingSkillRun(null)');
+        });
+
+        it('renders SkillContextDialog component', () => {
+            expect(source).toContain('<SkillContextDialog');
+            expect(source).toContain('onConfirm={handleConfirmSkillRun}');
+        });
+
+        it('SkillContextDialog onClose clears pendingSkillRun', () => {
+            expect(source).toContain('onClose={() => setPendingSkillRun(null)}');
         });
 
         it('handleEnqueueSkill does not fetch or embed diffs', () => {
@@ -1224,15 +1270,15 @@ describe('RepoGitTab', () => {
             expect(multiBlock![0]).toContain("launchMode: 'floating-chat'");
         });
 
-        it('handleEnqueueSkill uses commits tag for multi-commit', () => {
-            const block = source.match(/else if \(snapshot\.type === 'multi-commit'[\s\S]*?} else \{/);
+        it('handleConfirmSkillRun uses commits tag for multi-commit', () => {
+            const block = source.match(/else if \(pendingSkillRun\.type === 'multi-commit'[\s\S]*?} else \{/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('<commits>');
             expect(block![0]).toContain('.map(c => c.hash)');
         });
 
-        it('handleEnqueueSkill shortId shows commit count for multi-commit', () => {
-            expect(source).toContain("snapshot.type === 'multi-commit' && snapshot.commits?.length");
+        it('handleConfirmSkillRun shortId shows commit count for multi-commit', () => {
+            expect(source).toContain("pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length");
             expect(source).toContain('commits`');
         });
     });

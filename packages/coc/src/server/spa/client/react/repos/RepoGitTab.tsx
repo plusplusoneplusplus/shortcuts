@@ -31,6 +31,7 @@ import { WorkingTreeAllComments } from './WorkingTreeAllComments';
 import { BranchRangeAllComments } from './BranchRangeAllComments';
 import { BranchPickerModal } from './BranchPickerModal';
 import { AmendMessageModal } from './AmendMessageModal';
+import { SkillContextDialog } from './SkillContextDialog';
 import { clearCacheForHash } from './useCommitDiffCache';
 import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from './useBranchRangeCache';
 import { getCommitsCache, setCommitsCache, clearCommitsCache } from './useCommitsCache';
@@ -175,6 +176,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [skills, setSkills] = useState<Array<{ name: string; description?: string }>>([]);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'commit' | 'branch-range' | 'multi-commit'; commit?: GitCommitItem; commits?: GitCommitItem[] } | null>(null);
     const [enqueueToast, setEnqueueToast] = useState<string | null>(null);
+    const [pendingSkillRun, setPendingSkillRun] = useState<{ skillName: string; type: 'commit' | 'multi-commit' | 'branch-range'; commit?: GitCommitItem; commits?: GitCommitItem[] } | null>(null);
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
     const [rewordingCommit, setRewordingCommit] = useState<GitCommitItem | null>(null);
@@ -864,57 +866,79 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode, initialPrompt, launchMode: 'floating-chat' });
     }, [workspaceId, buildBranchReferencePrompt, queueDispatch]);
 
-    const handleEnqueueSkill = useCallback(async (skillName: string) => {
+    const handleEnqueueSkill = useCallback((skillName: string) => {
         if (!contextMenu) return;
         const snapshot = { ...contextMenu };
         closeContextMenu();
 
-        try {
-            let promptContent: string;
-            if (snapshot.type === 'commit' && snapshot.commit) {
-                promptContent = `<commit>${snapshot.commit.hash}</commit>`;
-            } else if (snapshot.type === 'multi-commit' && snapshot.commits?.length) {
-                promptContent = `<commits>\n${snapshot.commits.map(c => c.hash).join('\n')}\n</commits>`;
-            } else {
-                const base = (branchRangeData?.baseRef ?? 'main').replace(/^origin\//, '');
-                const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
-                promptContent = `<commit-range>${base}..${head}</commit-range>`;
-            }
+        setPendingSkillRun({
+            skillName,
+            type: snapshot.type,
+            commit: snapshot.commit,
+            commits: snapshot.commits,
+        });
+    }, [contextMenu, closeContextMenu]);
 
-            const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-            const shortId =
-                snapshot.type === 'commit' && snapshot.commit
-                    ? snapshot.commit.shortHash
-                    : snapshot.type === 'multi-commit' && snapshot.commits?.length
-                        ? `${snapshot.commits.length} commits`
-                        : branchName || 'branch';
-
-            await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'chat',
-                    priority: 'normal',
-                    displayName: `Skill: ${skillName} — ${shortId}`,
-                    payload: {
-                        kind: 'chat',
-                        mode: 'autopilot',
-                        prompt: promptContent,
-                        workingDirectory: ws?.rootPath || '',
-                        context: {
-                            skills: [skillName],
-                        },
-                    },
-                }),
-            });
-
-            setEnqueueToast(`Skill "${skillName}" enqueued`);
-            setTimeout(() => setEnqueueToast(null), 3000);
-        } catch (err: any) {
-            setEnqueueToast(`Failed to enqueue: ${err.message || 'Unknown error'}`);
-            setTimeout(() => setEnqueueToast(null), 5000);
+    const pendingSkillTargetSummary = useMemo(() => {
+        if (!pendingSkillRun) return '';
+        if (pendingSkillRun.type === 'commit' && pendingSkillRun.commit) {
+            return `Commit ${pendingSkillRun.commit.shortHash} — ${pendingSkillRun.commit.subject}`;
         }
-    }, [contextMenu, workspaceId, branchRangeData, branchName, state.workspaces, closeContextMenu]);
+        if (pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length) {
+            return `${pendingSkillRun.commits.length} commits selected`;
+        }
+        return `Branch range: ${branchName || 'current branch'}`;
+    }, [pendingSkillRun, branchName]);
+
+    const handleConfirmSkillRun = useCallback(async (userContext: string) => {
+        if (!pendingSkillRun) return;
+
+        let promptContent: string;
+        if (pendingSkillRun.type === 'commit' && pendingSkillRun.commit) {
+            promptContent = `<commit>${pendingSkillRun.commit.hash}</commit>`;
+        } else if (pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length) {
+            promptContent = `<commits>\n${pendingSkillRun.commits.map(c => c.hash).join('\n')}\n</commits>`;
+        } else {
+            const base = (branchRangeData?.baseRef ?? 'main').replace(/^origin\//, '');
+            const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
+            promptContent = `<commit-range>${base}..${head}</commit-range>`;
+        }
+
+        if (userContext) {
+            promptContent += `\n\nUser context:\n${userContext}`;
+        }
+
+        const ws = state.workspaces.find((w: any) => w.id === workspaceId);
+        const shortId =
+            pendingSkillRun.type === 'commit' && pendingSkillRun.commit
+                ? pendingSkillRun.commit.shortHash
+                : pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length
+                    ? `${pendingSkillRun.commits.length} commits`
+                    : branchName || 'branch';
+
+        await fetch(getApiBase() + '/queue/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'chat',
+                priority: 'normal',
+                displayName: `Skill: ${pendingSkillRun.skillName} — ${shortId}`,
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: promptContent,
+                    workingDirectory: ws?.rootPath || '',
+                    context: {
+                        skills: [pendingSkillRun.skillName],
+                    },
+                },
+            }),
+        });
+
+        setPendingSkillRun(null);
+        setEnqueueToast(`Skill "${pendingSkillRun.skillName}" enqueued`);
+        setTimeout(() => setEnqueueToast(null), 3000);
+    }, [pendingSkillRun, workspaceId, branchRangeData, branchName, state.workspaces]);
 
     const handleSquashCommits = useCallback(async () => {
         if (!contextMenu || contextMenu.type !== 'multi-commit' || !contextMenu.commits?.length) return;
@@ -1606,6 +1630,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 </button>
             </div>
         )}
+        <SkillContextDialog
+            open={!!pendingSkillRun}
+            skillName={pendingSkillRun?.skillName ?? ''}
+            targetSummary={pendingSkillTargetSummary}
+            onClose={() => setPendingSkillRun(null)}
+            onConfirm={handleConfirmSkillRun}
+        />
         <BranchPickerModal
             workspaceId={workspaceId}
             currentBranch={branchName || 'HEAD'}
