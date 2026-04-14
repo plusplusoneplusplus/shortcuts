@@ -53,8 +53,8 @@ describe('truncateDiffIfNeeded', () => {
         expect(result.truncated).toBeUndefined();
     });
 
-    it('DIFF_LINE_LIMIT is 5000', () => {
-        expect(DIFF_LINE_LIMIT).toBe(5000);
+    it('DIFF_LINE_LIMIT is 50000', () => {
+        expect(DIFF_LINE_LIMIT).toBe(50_000);
     });
 });
 
