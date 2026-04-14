@@ -953,6 +953,32 @@ describe('RepoGitTab', () => {
             expect(closeIdx).toBeLessThan(squashIdx);
         });
 
+        it('handleSquashCommits does not enforce a contiguity check', () => {
+            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).not.toContain('selected commits must be contiguous');
+        });
+
+        it('handleSquashCommits still guards against pushed commits', () => {
+            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('all selected commits must be unpushed');
+        });
+
+        it('handleSquashCommits detects contiguity to build an appropriate prompt', () => {
+            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('isContiguous');
+        });
+
+        it('handleSquashCommits includes interleaved commit context for non-contiguous squash', () => {
+            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('[SQUASH]');
+            expect(block![0]).toContain('[KEEP]');
+            expect(block![0]).toContain('non-contiguous');
+        });
+
         it('defines handleEnqueueSkill callback that opens dialog', () => {
             expect(source).toContain('const handleEnqueueSkill = useCallback(');
         });

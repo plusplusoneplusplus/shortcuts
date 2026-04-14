@@ -947,7 +947,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
         if (selectedCommits.length < 2) return;
 
-        // Contiguity check: all selected commits must be consecutive in the unpushed list
+        // All selected commits must be unpushed
         const indices = selectedCommits
             .map(c => {
                 const idx = commits.indexOf(c);
@@ -961,20 +961,35 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             setTimeout(() => setEnqueueToast(null), 5000);
             return;
         }
-        for (let i = 1; i < indices.length; i++) {
-            if (indices[i] !== indices[i - 1] + 1) {
-                setEnqueueToast('Squash failed: selected commits must be contiguous');
-                setTimeout(() => setEnqueueToast(null), 5000);
-                return;
-            }
-        }
+
+        // Detect whether selected commits are contiguous
+        const isContiguous = indices.every((v, i) => i === 0 || v === indices[i - 1] + 1);
 
         // Sort oldest-first for the prompt (unpushed list is newest-first)
         const oldestFirst = [...selectedCommits].reverse();
         const commitList = oldestFirst
             .map(c => `- ${c.hash} ${c.subject}`)
             .join('\n');
-        const promptContent = `Squash the following ${oldestFirst.length} commits into a single commit. Preserve the intent of all changes.\n\nCommits (oldest first):\n${commitList}\n\nWrite a clear combined commit message summarizing all changes.`;
+
+        let promptContent: string;
+        if (isContiguous) {
+            promptContent = `Squash the following ${oldestFirst.length} commits into a single commit. Preserve the intent of all changes.\n\nCommits (oldest first):\n${commitList}\n\nWrite a clear combined commit message summarizing all changes.`;
+        } else {
+            // Include interleaved commits so the AI knows what to preserve
+            const minIdx = indices[0];
+            const maxIdx = indices[indices.length - 1];
+            const selectedSet = new Set(indices);
+            const interleavedList = [];
+            for (let i = minIdx; i <= maxIdx; i++) {
+                const c = commits[i];
+                const marker = selectedSet.has(i) ? '[SQUASH]' : '[KEEP]';
+                interleavedList.push(`- ${marker} ${c.hash} ${c.subject}`);
+            }
+            // Reverse to oldest-first (commits array is newest-first)
+            interleavedList.reverse();
+            const fullRange = interleavedList.join('\n');
+            promptContent = `Squash the following ${oldestFirst.length} non-contiguous commits into a single commit. The selected commits are NOT adjacent — there are interleaved commits that must be preserved.\n\nUse an appropriate strategy such as interactive rebase with reordering, or sequential cherry-pick onto a new base.\n\nFull commit range (oldest first, [SQUASH] = selected, [KEEP] = preserve):\n${fullRange}\n\nWrite a clear combined commit message summarizing all squashed changes.`;
+        }
 
         try {
             const ws = state.workspaces.find((w: any) => w.id === workspaceId);
