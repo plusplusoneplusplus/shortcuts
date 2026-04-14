@@ -14,6 +14,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { test, expect } from '@playwright/test';
 import type { Page, WebSocketRoute } from '@playwright/test';
+import { safeRmSync } from '../helpers/safe-rm';
 
 // Import from compiled dist — Playwright doesn't transpile source TS
 const { createExecutionServer } = require('../../dist/server/index');
@@ -24,29 +25,6 @@ const { FileProcessStore } = require('@plusplusoneplusplus/forge');
 // ============================================================================
 
 type ExecutionServer = Awaited<ReturnType<typeof createExecutionServer>>;
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-const RETRIABLE_CODES = new Set(['ENOTEMPTY', 'EBUSY', 'EPERM', 'EACCES']);
-function safeRmSync(dir: string, maxRetries = 5): void {
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-            fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-            return;
-        } catch (err: any) {
-            const retriable = RETRIABLE_CODES.has(err.code);
-            if (attempt === maxRetries || !retriable) {
-                if (err.code === 'ENOENT') return;
-                throw err;
-            }
-            const delayMs = 200 * Math.pow(2, attempt);
-            const start = Date.now();
-            while (Date.now() - start < delayMs) { /* busy-wait */ }
-        }
-    }
-}
 
 async function startServer(): Promise<{
     server: ExecutionServer;

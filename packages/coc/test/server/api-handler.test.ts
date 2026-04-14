@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
+import { safeRmSync } from '../helpers/safe-rm';
 
 // ============================================================================
 // Helpers
@@ -108,7 +109,7 @@ describe('API Handler', () => {
             server = undefined;
         }
         // Clean up temp data dir
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        safeRmSync(dataDir);
     });
 
     async function startServer(): Promise<ExecutionServer> {
@@ -377,8 +378,8 @@ describe('API Handler', () => {
                 expect(gitWs.isGitRepo).toBe(true);
                 expect(nonGitWs.isGitRepo).toBe(false);
             } finally {
-                fs.rmSync(gitDir, { recursive: true, force: true });
-                fs.rmSync(nonGitDir, { recursive: true, force: true });
+                safeRmSync(gitDir);
+                safeRmSync(nonGitDir);
             }
         });
 
@@ -513,7 +514,7 @@ describe('API Handler', () => {
             const workspaces = JSON.parse(listRes.body).workspaces;
             const ws = workspaces.find((w: any) => w.id === 'ws-no-remote');
             expect(ws.remoteUrl).toBeUndefined();
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('should include remoteUrl in git-info response', async () => {
@@ -564,7 +565,7 @@ describe('API Handler', () => {
                 expect(body.isGitRepo).toBe(false);
                 expect(body.remoteUrl).toBe('https://dev.azure.com/myorg/myproject/_git/myrepo');
             } finally {
-                fs.rmSync(repoDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                safeRmSync(repoDir);
             }
         });
 
@@ -592,7 +593,7 @@ describe('API Handler', () => {
                 expect(batchBody.results['ws-empty-git-batch'].remoteUrl)
                     .toBe('https://dev.azure.com/myorg/myproject/_git/myrepo');
             } finally {
-                fs.rmSync(repoDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                safeRmSync(repoDir);
             }
         });
 
@@ -635,8 +636,8 @@ describe('API Handler', () => {
                 expect(body.ahead).toBe(0);
                 expect(body.behind).toBe(0);
             } finally {
-                fs.rmSync(bareDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-                fs.rmSync(cloneDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                safeRmSync(bareDir);
+                safeRmSync(cloneDir);
             }
         });
 
@@ -664,8 +665,8 @@ describe('API Handler', () => {
                 expect(body.ahead).toBe(1);
                 expect(body.behind).toBe(0);
             } finally {
-                fs.rmSync(bareDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-                fs.rmSync(cloneDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                safeRmSync(bareDir);
+                safeRmSync(cloneDir);
             }
         });
 
@@ -701,9 +702,9 @@ describe('API Handler', () => {
                 expect(body.ahead).toBe(0);
                 expect(body.behind).toBe(1);
             } finally {
-                fs.rmSync(bareDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-                fs.rmSync(cloneDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-                fs.rmSync(pusherDir, { recursive: true, force: true });
+                safeRmSync(bareDir);
+                safeRmSync(cloneDir);
+                safeRmSync(pusherDir);
             }
         });
 
@@ -724,7 +725,7 @@ describe('API Handler', () => {
                 expect(body.ahead).toBe(0);
                 expect(body.behind).toBe(0);
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -762,9 +763,9 @@ describe('API Handler', () => {
                 expect(body.ahead).toBe(1);
                 expect(body.behind).toBe(1);
             } finally {
-                fs.rmSync(bareDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-                fs.rmSync(cloneDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-                fs.rmSync(pusherDir, { recursive: true, force: true });
+                safeRmSync(bareDir);
+                safeRmSync(cloneDir);
+                safeRmSync(pusherDir);
             }
         });
 
@@ -786,7 +787,7 @@ describe('API Handler', () => {
             expect(body.workflows).toHaveLength(1);
             expect(body.workflows[0].name).toBe('test-pipeline');
 
-            fs.rmSync(wsRoot, { recursive: true, force: true });
+            safeRmSync(wsRoot);
         });
 
         it('should return empty array when no workflows folder exists', async () => {
@@ -801,7 +802,7 @@ describe('API Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.workflows).toEqual([]);
 
-            fs.rmSync(wsRoot, { recursive: true, force: true });
+            safeRmSync(wsRoot);
         });
     });
 
@@ -1223,7 +1224,7 @@ describe('API Handler', () => {
             expect(body.entries[0].type).toBe('directory');
             expect(body.entries[1].name).toBe('subdir-b');
 
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('should return 404 for non-existent path', async () => {
@@ -1283,7 +1284,7 @@ describe('API Handler', () => {
             expect(body.entries).toHaveLength(1);
             expect(body.entries[0].name).toBe('visible');
 
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('should show hidden directories with showHidden=true', async () => {
@@ -1299,7 +1300,7 @@ describe('API Handler', () => {
             expect(names).toContain('.hidden');
             expect(names).toContain('visible');
 
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('should detect git repos via .git subdirectory', async () => {
@@ -1319,7 +1320,7 @@ describe('API Handler', () => {
             expect(repo.isGitRepo).toBe(true);
             expect(nonRepo.isGitRepo).toBe(false);
 
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
 
         it('should sort entries alphabetically', async () => {
@@ -1334,7 +1335,7 @@ describe('API Handler', () => {
             const names = body.entries.map((e: any) => e.name);
             expect(names).toEqual(['alpha', 'bravo', 'charlie']);
 
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         });
     });
 
