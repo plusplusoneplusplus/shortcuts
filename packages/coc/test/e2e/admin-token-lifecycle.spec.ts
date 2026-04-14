@@ -148,6 +148,7 @@ test.describe('Admin token — UI display after generation', () => {
         await page.click('#admin-toggle');
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5_000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5_000 });
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Initially no confirm/cancel buttons
         await expect(page.locator('#admin-wipe-confirm')).toHaveCount(0);

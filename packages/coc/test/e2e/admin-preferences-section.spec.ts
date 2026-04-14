@@ -76,9 +76,13 @@ test.describe('Admin: Preferences section', () => {
     // ----------------------------------------------------------------
 
     test('preferences load failure shows error state', async ({ page, serverUrl }) => {
-        // Abort the preferences request to simulate network failure
-        await page.route('**/api/preferences', (route, req) => {
-            if (req.method() === 'GET') return route.abort('failed');
+        // Abort GET only after the admin panel is open. Aborting every GET breaks App bootstrap
+        // (welcome state never loads), which leaves the welcome modal blocking #admin-toggle.
+        await page.route('**/api/preferences', async (route, req) => {
+            if (req.method() === 'GET') {
+                const adminOpen = await page.locator('#view-admin').isVisible().catch(() => false);
+                if (adminOpen) return route.abort('failed');
+            }
             return route.continue();
         });
 

@@ -23,6 +23,7 @@ async function navigateToAdmin(page: import('@playwright/test').Page, serverUrl:
     await page.click('#admin-toggle');
     await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
+    await page.click('[data-testid="admin-tab-providers"]');
 }
 
 /** Intercept GET /api/providers/config to return the given providers shape,

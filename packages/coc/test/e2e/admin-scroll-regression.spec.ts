@@ -81,6 +81,7 @@ test.describe('Admin page scrollability regression', () => {
 
     test('admin page bottom content (Danger Zone) is reachable by scroll', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Scroll to the bottom
         await page.locator('#view-admin').evaluate((el) => {

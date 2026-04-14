@@ -20,6 +20,7 @@ async function navigateToAdmin(page: import('@playwright/test').Page, serverUrl:
     await page.click('#admin-toggle');
     await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
+    await page.click('[data-testid="admin-tab-data"]');
 }
 
 /** Upload a file to the import file input. */

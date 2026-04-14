@@ -69,12 +69,12 @@ test.describe('Admin Panel (008)', () => {
         await navigateToAdmin(page, serverUrl);
 
         // Stat cards should be visible and rendered
-        await expect(page.locator('#admin-stat-processes')).toBeVisible();
-        await expect(page.locator('#admin-stat-wikis')).toBeVisible();
-        await expect(page.locator('#admin-stat-disk')).toBeVisible();
+        await expect(page.locator('[data-testid="stat-processes"]')).toBeVisible();
+        await expect(page.locator('[data-testid="stat-wikis"]')).toBeVisible();
+        await expect(page.locator('[data-testid="stat-disk"]')).toBeVisible();
 
         // Stats should have loaded (no longer showing the loading indicator "…")
-        await expect(page.locator('#admin-stat-processes')).not.toHaveText('…', { timeout: 5000 });
+        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
     });
 
     // ----------------------------------------------------------------
@@ -85,7 +85,7 @@ test.describe('Admin Panel (008)', () => {
         await navigateToAdmin(page, serverUrl);
 
         // Wait for initial stats load
-        await expect(page.locator('#admin-stat-processes')).not.toHaveText('…', { timeout: 5000 });
+        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
 
         // Intercept the next stats request to prove refresh triggers a new fetch
         const statsPromise = page.waitForRequest(req =>
@@ -99,7 +99,7 @@ test.describe('Admin Panel (008)', () => {
         await statsPromise;
 
         // After refresh, stats should finish loading again
-        await expect(page.locator('#admin-stat-processes')).not.toHaveText('…', { timeout: 5000 });
+        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
     });
 
     // ----------------------------------------------------------------
@@ -112,6 +112,7 @@ test.describe('Admin Panel (008)', () => {
         await seedProcess(serverUrl, 'admin-preview-2', { status: 'running' });
 
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Preview area is not rendered initially (React conditional)
         await expect(page.locator('#admin-wipe-preview')).toHaveCount(0);
@@ -135,6 +136,7 @@ test.describe('Admin Panel (008)', () => {
         await seedProcess(serverUrl, 'admin-preview-wikis-1');
 
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Check include wikis checkbox
         await page.check('#admin-include-wikis');
@@ -158,7 +160,8 @@ test.describe('Admin Panel (008)', () => {
         await seedProcess(serverUrl, 'admin-wipe-cancel-1', { status: 'completed' });
 
         await navigateToAdmin(page, serverUrl);
-        await expect(page.locator('#admin-stat-processes')).not.toHaveText('…', { timeout: 5000 });
+        await page.click('[data-testid="admin-tab-data"]');
+        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
 
         // Click "Wipe Data" to get token (two-step flow)
         await page.click('#admin-wipe-btn');
@@ -186,6 +189,7 @@ test.describe('Admin Panel (008)', () => {
         await seedProcess(serverUrl, 'admin-wipe-ok-2', { status: 'running' });
 
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Click "Wipe Data" to get token (two-step flow)
         await page.click('#admin-wipe-btn');
@@ -212,6 +216,7 @@ test.describe('Admin Panel (008)', () => {
 
     test('8.9 wipe two-step flow shows confirm and cancel buttons', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Initially only "Wipe Data" button visible, no confirm/cancel
         await expect(page.locator('#admin-wipe-btn')).toBeVisible();
@@ -251,10 +256,10 @@ test.describe('Admin Panel (008)', () => {
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
-        // Stats should show "—" (dash) when API fails
-        await expect(page.locator('[data-testid="stat-processes"]')).toHaveText('—', { timeout: 5000 });
-        await expect(page.locator('[data-testid="stat-wikis"]')).toHaveText('—');
-        await expect(page.locator('[data-testid="stat-disk"]')).toHaveText('—');
+        // Stats should show "—" (dash) when API fails (counts are suffixed: "— processes", "— wikis")
+        await expect(page.locator('[data-testid="stat-processes"]')).toContainText('—', { timeout: 5000 });
+        await expect(page.locator('[data-testid="stat-wikis"]')).toContainText('—');
+        await expect(page.locator('[data-testid="stat-disk"]')).toContainText('—');
     });
 
     // ----------------------------------------------------------------
@@ -264,6 +269,7 @@ test.describe('Admin Panel (008)', () => {
     test('8.11 export button triggers download', async ({ page, serverUrl }) => {
         await seedProcess(serverUrl, 'export-ui-1', { status: 'completed' });
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Intercept download
         const downloadPromise = page.waitForEvent('download');
@@ -292,6 +298,7 @@ test.describe('Admin Panel (008)', () => {
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
+        await page.click('[data-testid="admin-tab-data"]');
         await page.click('#admin-export-btn');
         await expect(page.locator('#admin-export-status')).toContainText('Export failed', { timeout: 5000 });
     });
@@ -302,6 +309,7 @@ test.describe('Admin Panel (008)', () => {
 
     test('8.13 import file input accepts .json', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         const fileInput = page.locator('#admin-import-file');
         await expect(fileInput).toBeVisible();
@@ -314,6 +322,7 @@ test.describe('Admin Panel (008)', () => {
 
     test('8.14 import preview shows counts', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Create a valid export payload file
         const exportPayload = {
@@ -356,6 +365,7 @@ test.describe('Admin Panel (008)', () => {
 
     test('8.15 import preview shows error for no file selected', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         await page.click('#admin-import-preview-btn');
         await expect(page.locator('#admin-import-status')).toContainText('select a JSON file', { timeout: 5000 });
@@ -368,6 +378,7 @@ test.describe('Admin Panel (008)', () => {
     test('8.16 import replace executes', async ({ page, serverUrl }) => {
         await seedProcess(serverUrl, 'existing-1', { status: 'completed' });
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         const exportPayload = {
             version: 1,
@@ -415,6 +426,7 @@ test.describe('Admin Panel (008)', () => {
     test('8.17 import merge executes', async ({ page, serverUrl }) => {
         await seedProcess(serverUrl, 'existing-merge-1', { status: 'completed' });
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         const exportPayload = {
             version: 1,
@@ -452,6 +464,7 @@ test.describe('Admin Panel (008)', () => {
 
     test('8.18 import with valid payload shows success', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         const exportPayload = {
             version: 1,
@@ -484,6 +497,7 @@ test.describe('Admin Panel (008)', () => {
 
     test('8.19 import mode radios are present and default to replace', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         const replaceRadio = page.locator('input[name="import-mode"][value="replace"]');
         const mergeRadio = page.locator('input[name="import-mode"][value="merge"]');
@@ -502,6 +516,7 @@ test.describe('Admin Panel (008)', () => {
         await seedProcess(serverUrl, 'admin-wipe-wikis-1', { status: 'completed' });
 
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Check the include wikis checkbox
         await page.check('#admin-include-wikis');
@@ -533,9 +548,10 @@ test.describe('Admin Panel (008)', () => {
         await seedProcess(serverUrl, 'admin-stats-wipe-1', { status: 'completed' });
 
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
 
         // Wait for initial stat load to finish (not loading indicator "…")
-        await expect(page.locator('#admin-stat-processes')).not.toHaveText('…', { timeout: 5000 });
+        await expect(page.locator('[data-testid="stat-processes"]')).not.toHaveText('…', { timeout: 5000 });
 
         // Perform wipe
         await page.click('#admin-wipe-btn');

@@ -72,7 +72,8 @@ test.describe('Admin: Configuration section', () => {
         await expect(page.locator('#admin-config-timeout')).toHaveValue('3600');
         await expect(page.locator('#admin-config-output')).toHaveValue('json');
 
-        // configFilePath should be shown
+        // configFilePath is on the Server tab
+        await page.click('[data-testid="admin-tab-server"]');
         await expect(page.locator('#admin-page-content')).toContainText('/tmp/.coc/config.yaml');
     });
 
@@ -112,7 +113,7 @@ test.describe('Admin: Configuration section', () => {
 
         // Toast should appear
         await expect(page.locator('.toast-success')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('.toast-success')).toContainText('Configuration saved');
+        await expect(page.locator('.toast-success')).toContainText('Settings saved');
     });
 
     test('config save validation rejects parallelism less than 1', async ({ page, serverUrl }) => {
@@ -331,7 +332,7 @@ test.describe('Admin: Chat settings', () => {
         });
 
         await navigateToAdmin(page, serverUrl);
-        await expect(page.locator('#admin-chat-save')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('#admin-config-save')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('[data-testid="input-chat-followup-count"]')).toHaveValue('3', { timeout: 5000 });
 
         // Change count to 5
@@ -341,14 +342,14 @@ test.describe('Admin: Chat settings', () => {
             req.url().includes('/api/admin/config') && req.method() === 'PUT',
         );
 
-        await page.click('#admin-chat-save');
+        await page.click('#admin-config-save');
 
         const putReq = await putPromise;
         const body = JSON.parse(putReq.postData() ?? '{}');
         expect(body['chat.followUpSuggestions.count']).toBe(5);
 
         await expect(page.locator('.toast-success')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('.toast-success')).toContainText('Chat settings saved');
+        await expect(page.locator('.toast-success')).toContainText('Settings saved');
     });
 
     test('chat count validation rejects out-of-range value', async ({ page, serverUrl }) => {
@@ -368,7 +369,7 @@ test.describe('Admin: Chat settings', () => {
 
         // Set invalid count (0)
         await page.fill('[data-testid="input-chat-followup-count"]', '0');
-        await page.click('#admin-chat-save');
+        await page.click('#admin-config-save');
 
         await expect(page.locator('.toast-error')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('.toast-error')).toContainText('Follow-up count must be an integer between 1 and 5');
@@ -412,6 +413,7 @@ test.describe('Admin: Server restart', () => {
         );
 
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-server"]');
 
         const restartPromise = page.waitForRequest(req =>
             req.url().includes('/api/admin/restart') && req.method() === 'POST',
@@ -447,6 +449,7 @@ test.describe('Admin: Server restart', () => {
         );
 
         await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-server"]');
 
         await page.click('#admin-restart-btn');
 
