@@ -4063,7 +4063,7 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
-    "@github/copilot-sdk": "^0.2.0",
+    "@github/copilot-sdk": "^0.2.2",
     "@plusplusoneplusplus/forge": "file:packages/forge",
     "diff": "^5.2.0",
     "js-yaml": "^4.1.0"

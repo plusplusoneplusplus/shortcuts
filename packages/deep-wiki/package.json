@@ -24,7 +24,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@github/copilot-sdk": "^0.2.0",
+    "@github/copilot-sdk": "^0.2.2",
     "@octokit/rest": "^22.0.1",
     "@plusplusoneplusplus/forge": "^1.2.0",
     "azure-devops-node-api": "^14.1.0",
