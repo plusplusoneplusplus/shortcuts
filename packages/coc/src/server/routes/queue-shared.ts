@@ -136,6 +136,7 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
         promptContent: truncateString(payload?.promptContent, 200),
         planFilePath: payload?.planFilePath,
         filePath: payload?.filePath,
+        workflowPath: payload?.workflowPath,
         workingDirectory: payload?.workingDirectory,
         workspaceId: payload?.workspaceId,
         scheduleId: payload?.scheduleId,

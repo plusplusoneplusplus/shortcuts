@@ -73,6 +73,7 @@ describe('serializeTaskSummary', () => {
                 promptContent: 'world',
                 planFilePath: '/plans/p.md',
                 filePath: '/src/a.ts',
+                workflowPath: '/workflows/build.yaml',
                 workingDirectory: '/repo',
                 workspaceId: 'ws-1',
                 scheduleId: 'sched-1',
@@ -86,6 +87,7 @@ describe('serializeTaskSummary', () => {
         expect(p.promptContent).toBe('world');
         expect(p.planFilePath).toBe('/plans/p.md');
         expect(p.filePath).toBe('/src/a.ts');
+        expect(p.workflowPath).toBe('/workflows/build.yaml');
         expect(p.workingDirectory).toBe('/repo');
         expect(p.workspaceId).toBe('ws-1');
         expect(p.scheduleId).toBe('sched-1');

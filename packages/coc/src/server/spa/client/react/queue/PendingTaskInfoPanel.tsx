@@ -33,6 +33,9 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
     const created = task.createdAt ? new Date(task.createdAt).toLocaleString() : '';
     const model = task.config?.model || '';
     const workingDir = task.payload?.workingDirectory || '';
+    const planFilePath = task.payload?.planFilePath || '';
+    const filePath = task.payload?.filePath || '';
+    const workflowPath = task.payload?.workflowPath || '';
     const repoId = task.repoId || '';
 
     return (
@@ -51,6 +54,9 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
                 {created && <MetaRow label="Created" value={created} />}
                 {model && <MetaRow label="Model" value={model} />}
                 {workingDir && <FilePathValue label="Working Directory" value={workingDir} />}
+                {planFilePath && <FilePathValue label="Plan File" value={planFilePath} />}
+                {filePath && <FilePathValue label="File" value={filePath} />}
+                {workflowPath && <FilePathValue label="Workflow" value={workflowPath} />}
                 {repoId && <MetaRow label="Repo ID" value={repoId} breakAll />}
             </div>
 
