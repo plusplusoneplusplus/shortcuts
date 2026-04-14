@@ -52,7 +52,7 @@ export class GitLogService {
             const output = execSync(command, {
                 cwd: repoRoot,
                 encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
+                maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
 
@@ -165,7 +165,7 @@ export class GitLogService {
             const output = execSync(command, {
                 cwd: repoRoot,
                 encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
+                maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
 
@@ -184,14 +184,14 @@ export class GitLogService {
             const unstaged = execSync('git diff', {
                 cwd: repoRoot,
                 encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
+                maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
 
             const staged = execSync('git diff --cached', {
                 cwd: repoRoot,
                 encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
+                maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
 
@@ -222,7 +222,7 @@ export class GitLogService {
             const output = execSync(command, {
                 cwd: repoRoot,
                 encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
+                maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
 
@@ -300,7 +300,7 @@ export class GitLogService {
             const output = execSync(command, {
                 cwd: repoRoot,
                 encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
+                maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
 

@@ -26,7 +26,7 @@ export interface ExecGitOptions {
     cwd?: string;
 }
 
-const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024; // 10 MB
+const DEFAULT_MAX_BUFFER = 50 * 1024 * 1024; // 50 MB
 const DEFAULT_TIMEOUT = 30_000;               // 30 s
 
 function createGitExecError(args: string[], err: unknown): Error {

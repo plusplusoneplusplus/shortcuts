@@ -227,7 +227,7 @@ export class RepoTreeService {
         try {
             const result = await execFileAsync('rg', ['--files', '--hidden', '--max-depth', '1', '--', absPath], {
                 encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
+                maxBuffer: 50 * 1024 * 1024,
             });
             const listedFiles = new Set(
                 result.stdout.split('\n')

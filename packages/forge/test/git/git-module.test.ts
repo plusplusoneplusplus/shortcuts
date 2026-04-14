@@ -280,7 +280,7 @@ describe('execGit', () => {
         expect(mockExecSync).toHaveBeenCalledWith(
             expect.any(String),
             expect.objectContaining({
-                maxBuffer: 10 * 1024 * 1024,
+                maxBuffer: 50 * 1024 * 1024,
                 timeout: 30_000,
                 encoding: 'utf-8',
             }),

@@ -17,7 +17,7 @@ export function execAsync(
     return new Promise((resolve, reject) => {
         const defaultOptions: ExecOptions = {
             timeout: 30000, // 30 second default timeout
-            maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+            maxBuffer: 50 * 1024 * 1024, // 50MB buffer
             ...options
         };
 
@@ -52,7 +52,7 @@ export function execFileAsync(
     return new Promise((resolve, reject) => {
         const defaultOptions: ExecFileOptions = {
             timeout: 30000,
-            maxBuffer: 10 * 1024 * 1024,
+            maxBuffer: 50 * 1024 * 1024,
             windowsHide: true,
             ...options,
         };

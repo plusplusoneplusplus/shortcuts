@@ -107,7 +107,7 @@ describe('execGitAsync', () => {
 
     it('uses default maxBuffer and timeout when no options given', async () => {
         mockedExec.mockImplementation((_cmd: string, opts: any, cb: any) => {
-            expect(opts.maxBuffer).toBe(10 * 1024 * 1024); // 10 MB
+            expect(opts.maxBuffer).toBe(50 * 1024 * 1024); // 50 MB
             expect(opts.timeout).toBe(30_000);
             cb(null, '', '');
         });
