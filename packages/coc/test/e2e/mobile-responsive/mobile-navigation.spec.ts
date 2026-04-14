@@ -133,20 +133,22 @@ test.describe('Mobile Navigation', () => {
         }
     });
 
-    test('mobile: admin panel stat cards stack vertically at 375px', async ({ page, serverUrl }) => {
+    test('mobile: admin panel inline stats render at 375px', async ({ page, serverUrl }) => {
         await page.setViewportSize({ width: 375, height: 812 });
         await page.goto(`${serverUrl}/#admin`);
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
 
-        const procBox = await page.locator('#admin-stat-processes').boundingBox();
-        const wikiBox = await page.locator('#admin-stat-wikis').boundingBox();
-        const diskBox = await page.locator('#admin-stat-disk').boundingBox();
+        await expect(page.locator('[data-testid="stat-processes"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="stat-wikis"]')).toBeVisible();
+        await expect(page.locator('[data-testid="stat-disk"]')).toBeVisible();
 
-        if (procBox && wikiBox && diskBox) {
-            // On mobile, cards should stack in a single column (different y positions)
-            expect(wikiBox.y).toBeGreaterThan(procBox.y);
-            expect(diskBox.y).toBeGreaterThan(wikiBox.y);
-        }
+        // Header stats stay in one horizontal row (tabbed admin refactor — not stacked cards)
+        const procBox = await page.locator('[data-testid="stat-processes"]').boundingBox();
+        const wikiBox = await page.locator('[data-testid="stat-wikis"]').boundingBox();
+        const diskBox = await page.locator('[data-testid="stat-disk"]').boundingBox();
+        expect(procBox && wikiBox && diskBox).toBeTruthy();
+        expect(Math.abs(procBox!.y - wikiBox!.y)).toBeLessThan(10);
+        expect(Math.abs(wikiBox!.y - diskBox!.y)).toBeLessThan(10);
     });
 
     test('mobile: bottom nav hides when a repo is selected', async ({ page, serverUrl }) => {
