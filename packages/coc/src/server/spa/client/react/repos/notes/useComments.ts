@@ -123,7 +123,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
             id: tempId,
             anchor,
             status: 'open',
-            comments: [{ id: `temp-c-${Date.now()}`, body: initialComment, createdAt: now }],
+            comments: [{ id: `temp-c-${Date.now()}`, content: initialComment, createdAt: now }],
             createdAt: now,
         };
 
@@ -173,7 +173,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
         const prev = threadsRef.current;
         const tempComment: Comment = {
             id: `temp-c-${Date.now()}`,
-            body: content,
+            content,
             createdAt: new Date().toISOString(),
         };
         setAllThreads(prev.map(t =>
@@ -199,7 +199,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
         const prev = threadsRef.current;
         setAllThreads(prev.map(t =>
             t.id === threadId
-                ? { ...t, comments: t.comments.map(c => c.id === commentId ? { ...c, body: content, updatedAt: new Date().toISOString() } : c) }
+                ? { ...t, comments: t.comments.map(c => c.id === commentId ? { ...c, content, updatedAt: new Date().toISOString() } : c) }
                 : t,
         ));
         try {

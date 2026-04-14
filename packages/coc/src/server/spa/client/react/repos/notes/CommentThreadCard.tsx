@@ -126,7 +126,7 @@ export function CommentThreadCard({
                             />
                         ) : (
                             <>
-                                <div>{comment.body}</div>
+                                <div>{comment.content}</div>
                                 <div className="flex items-center gap-1">
                                     <span
                                         data-testid={`comment-time-${comment.id}`}
@@ -141,7 +141,7 @@ export function CommentThreadCard({
                                             onMouseDown={e => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                startEditing(comment.id, comment.body);
+                                                startEditing(comment.id, comment.content);
                                             }}
                                         >
                                             ✏️

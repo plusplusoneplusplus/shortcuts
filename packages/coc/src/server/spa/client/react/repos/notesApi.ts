@@ -35,7 +35,7 @@ export type { TextAnchor } from './notes/textAnchor';
 
 export interface Comment {
     id: string;
-    body: string;
+    content: string;
     createdAt: string;
     updatedAt?: string;
 }

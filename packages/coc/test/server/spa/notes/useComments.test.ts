@@ -34,8 +34,8 @@ const THREAD_OPEN: CommentThread = {
     anchor: { quotedText: 'highlighted text here', prefix: 'some context before ', suffix: ' some context after' },
     status: 'open',
     comments: [
-        { id: 'c1', body: 'This needs review', createdAt: '2024-01-15T10:00:00Z' },
-        { id: 'c2', body: 'I agree', createdAt: '2024-01-15T10:05:00Z' },
+        { id: 'c1', content: 'This needs review', createdAt: '2024-01-15T10:00:00Z' },
+        { id: 'c2', content: 'I agree', createdAt: '2024-01-15T10:05:00Z' },
     ],
     createdAt: '2024-01-15T10:00:00Z',
 };
@@ -45,7 +45,7 @@ const THREAD_RESOLVED: CommentThread = {
     anchor: { quotedText: 'another passage', prefix: 'before text ', suffix: ' after text' },
     status: 'resolved',
     comments: [
-        { id: 'c3', body: 'Fixed the typo', createdAt: '2024-01-14T08:00:00Z' },
+        { id: 'c3', content: 'Fixed the typo', createdAt: '2024-01-14T08:00:00Z' },
     ],
     createdAt: '2024-01-14T08:00:00Z',
 };
@@ -55,7 +55,7 @@ const THREAD_OPEN_OLDER: CommentThread = {
     anchor: { quotedText: 'older open text', prefix: '', suffix: '' },
     status: 'open',
     comments: [
-        { id: 'c4', body: 'Older comment', createdAt: '2024-01-10T08:00:00Z' },
+        { id: 'c4', content: 'Older comment', createdAt: '2024-01-10T08:00:00Z' },
     ],
     createdAt: '2024-01-10T08:00:00Z',
 };
@@ -86,9 +86,9 @@ describe('useComments', () => {
         mockUpdateThread.mockResolvedValue({ thread: THREAD_OPEN });
         mockDeleteThread.mockResolvedValue(undefined);
         mockAddComment.mockImplementation(async (_wsId, _path, _threadId, content) => ({
-            comment: { id: 'c-server', body: content, createdAt: new Date().toISOString() },
+            comment: { id: 'c-server', content, createdAt: new Date().toISOString() },
         }));
-        mockEditComment.mockResolvedValue({ comment: { id: 'c1', body: 'edited', createdAt: THREAD_OPEN.comments[0].createdAt } });
+        mockEditComment.mockResolvedValue({ comment: { id: 'c1', content: 'edited', createdAt: THREAD_OPEN.comments[0].createdAt } });
         mockDeleteComment.mockResolvedValue(undefined);
     });
 
@@ -561,7 +561,7 @@ describe('useComments', () => {
 
             const thread = result.current.threads.find(t => t.id === 'thread-1')!;
             const comment = thread.comments.find(c => c.id === 'c1')!;
-            expect(comment.body).toBe('Updated text');
+            expect(comment.content).toBe('Updated text');
         });
 
         it('calls notesApi.editComment', async () => {
@@ -589,7 +589,7 @@ describe('useComments', () => {
 
             const thread = result.current.threads.find(t => t.id === 'thread-1')!;
             const comment = thread.comments.find(c => c.id === 'c1')!;
-            expect(comment.body).toBe('This needs review'); // original
+            expect(comment.content).toBe('This needs review'); // original
             expect(result.current.error).toBe('Edit failed');
         });
     });
