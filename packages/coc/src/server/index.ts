@@ -34,6 +34,7 @@ import { createTerminalInfrastructure } from './infrastructure/terminal-infrastr
 import { HeapMonitor } from './heap-monitor';
 import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { autoUpdateBundledSkills } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { shortenHostname } from './hostname-utils';
@@ -149,6 +150,21 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Auto-migrate legacy file-based process histories to SQLite
     await migrateProcessHistoryIfNeeded(dataDir, store);
+
+    // Auto-update stale globally-installed bundled skills (non-blocking on errors)
+    if (resolvedConfig.skills.autoUpdate) {
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        autoUpdateBundledSkills(globalSkillsDir).then(result => {
+            if (result.updated.length > 0) {
+                for (const u of result.updated) {
+                    process.stderr.write(`[skills] Auto-updated "${u.name}" ${u.previousVersion} → ${u.newVersion}\n`);
+                }
+            }
+            for (const e of result.errors) {
+                process.stderr.write(`[skills] Failed to update "${e.name}": ${e.error}\n`);
+            }
+        }).catch(() => { /* best-effort — never block startup */ });
+    }
 
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);

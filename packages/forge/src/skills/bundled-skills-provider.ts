@@ -11,49 +11,43 @@ import { getLogger, LogCategory } from '../logger';
 /**
  * Registry of bundled skills
  * Each skill must have a corresponding directory in resources/bundled-skills/
+ * Version is read from each skill's SKILL.md frontmatter at runtime.
  */
 const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
     {
         name: 'pipeline-generator',
         description: 'Generate optimized YAML pipeline or DAG workflow configurations from natural language requirements',
         relativePath: 'pipeline-generator',
-        version: '0.0.1'
     },
     {
         name: 'skill-for-skills',
         description: 'Create and update Agent Skills following the agentskills.io specification',
         relativePath: 'skill-for-skills',
-        version: '0.0.1'
     },
     {
         name: 'go-deep',
         description: 'Advanced research and verification methodologies using multi-phase approaches and parallel sub-agents',
         relativePath: 'go-deep',
-        version: '0.0.1'
     },
     {
         name: 'coc-chat',
         description: 'Access, search, analyze, and submit CoC conversation process records via REST API to a running CoC server',
         relativePath: 'coc-chat',
-        version: '0.0.1'
     },
     {
         name: 'rethink',
         description: 'Review a bug fix proposal and evaluate whether it is the cleanest solution, considering root cause alignment, simplicity, consistency, technical debt, side effects, and idiomatic alternatives',
         relativePath: 'rethink',
-        version: '0.0.1'
     },
     {
         name: 'code-refactoring',
         description: 'Automated code refactoring suggestion that drafts a refactoring plan for critical, high-value technical debt issues',
         relativePath: 'code-refactoring',
-        version: '0.0.1'
     },
     {
         name: 'kb-refresh',
         description: 'Distill recent CoC chat histories into knowledge-base skill improvements, proposing additions, updates, and removals',
         relativePath: 'kb-refresh',
-        version: '0.0.1'
     }
 ];
 
@@ -191,4 +185,61 @@ async function copyDirectory(sourcePath: string, targetPath: string): Promise<vo
             logger.debug(LogCategory.GENERAL, `Copied bundled skill file: ${item}`);
         }
     }
+}
+
+/**
+ * Parse the version of a bundled skill from its SKILL.md frontmatter.
+ *
+ * Reads the SKILL.md file in `resources/bundled-skills/<skillName>/` and
+ * extracts the `metadata.version` field from the YAML frontmatter.
+ *
+ * @returns The version string, or undefined if not found or unparseable.
+ */
+export function parseBundledSkillVersion(skillName: string): string | undefined {
+    const skillMdPath = path.join(getBundledSkillsPath(), skillName, 'SKILL.md');
+    return parseSkillVersionFromFile(skillMdPath);
+}
+
+/**
+ * Parse the version from a SKILL.md file's frontmatter.
+ *
+ * Supports both top-level `version:` and nested `metadata:\n  version:`.
+ */
+export function parseSkillVersionFromFile(skillMdPath: string): string | undefined {
+    try {
+        if (!fs.existsSync(skillMdPath)) return undefined;
+        const content = fs.readFileSync(skillMdPath, 'utf-8');
+        return parseSkillVersionFromContent(content);
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Parse the version from SKILL.md content string.
+ *
+ * Supports both top-level `version:` and nested `metadata:\n  version:`.
+ */
+export function parseSkillVersionFromContent(content: string): string | undefined {
+    const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fmMatch) return undefined;
+
+    const frontmatter = fmMatch[1];
+
+    // Try top-level version: first
+    const topLevel = frontmatter.match(/^version:\s*["']?(.+?)["']?\s*$/m);
+    if (topLevel) return topLevel[1];
+
+    // Try nested metadata.version
+    const nested = frontmatter.match(/^metadata:\s*\r?\n\s+version:\s*["']?(.+?)["']?\s*$/m);
+    if (nested) return nested[1];
+
+    return undefined;
+}
+
+/**
+ * Get a read-only copy of the bundled skills registry.
+ */
+export function getBundledSkillsRegistry(): readonly BundledSkill[] {
+    return BUNDLED_SKILLS_REGISTRY;
 }

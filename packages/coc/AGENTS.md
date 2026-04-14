@@ -29,7 +29,7 @@ coc run <path>              # Execute a workflow
 coc validate <path>         # Validate YAML without executing
 coc list [dir]              # List workflow packages in a directory
 coc serve                   # Start AI Execution Dashboard web server
-coc skills                  # Manage CoC skills (list, install-bundled, install, delete)
+coc skills                  # Manage CoC skills (list, install-bundled, install, delete, check-updates)
 coc wipe-data               # Clear all stored data
 ```
 
@@ -235,6 +235,10 @@ monitoring:
     intervalMs: 30000
     warnThreshold: 70
     criticalThreshold: 85
+
+# Skills configuration
+skills:
+  autoUpdate: true           # Auto-update stale global skills on serve startup (default: true)
 ```
 
 **Configuration Precedence:** CLI flags > config file > defaults

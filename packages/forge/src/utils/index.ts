@@ -158,6 +158,9 @@ export {
     isWslPath,
 } from './workspace-execution';
 
+// Version comparison
+export { compareVersions } from './version-compare';
+
 // Template engine
 export {
     TEMPLATE_VARIABLE_REGEX,

@@ -14,7 +14,7 @@ import { executeList } from './commands/list';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
 import { resolveConfig } from './config';
 import { setColorEnabled } from './logger';
-import { executeSkillList, executeSkillInstallBundled, executeSkillInstall, executeSkillDelete } from './commands/skills';
+import { executeSkillList, executeSkillInstallBundled, executeSkillInstall, executeSkillDelete, executeSkillCheckUpdates } from './commands/skills';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -244,6 +244,16 @@ export function createProgram(): Command {
                 workspace: opts.workspace as string | undefined,
                 global: opts.global as boolean | undefined,
             });
+            process.exit(exitCode);
+        });
+
+    skills
+        .command('check-updates')
+        .description('Check for available updates to globally-installed bundled skills')
+        .option('--no-color', 'Disable colored output')
+        .action(async (opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const exitCode = await executeSkillCheckUpdates();
             process.exit(exitCode);
         });
 

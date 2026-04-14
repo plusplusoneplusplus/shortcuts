@@ -11,6 +11,7 @@ import {
     executeSkillInstallBundled,
     executeSkillDelete,
     executeSkillInstall,
+    executeSkillCheckUpdates,
 } from '../../src/commands/skills';
 
 describe('executeSkillList', () => {
@@ -384,5 +385,115 @@ describe('executeSkillInstallBundled --global', () => {
         expect([0, 1]).toContain(code);
         // Global dir should have been created
         expect(fs.existsSync(path.join(globalDir, 'skills'))).toBe(true);
+    });
+});
+
+describe('executeSkillCheckUpdates', () => {
+    let globalDir: string;
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+    let origDataDir: string | undefined;
+
+    beforeEach(() => {
+        globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-check-updates-'));
+        consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        origDataDir = process.env.COC_DATA_DIR;
+        process.env.COC_DATA_DIR = globalDir;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        fs.rmSync(globalDir, { recursive: true, force: true });
+        if (origDataDir !== undefined) process.env.COC_DATA_DIR = origDataDir;
+        else delete process.env.COC_DATA_DIR;
+    });
+
+    it('returns 0 when no skills are installed globally', async () => {
+        // Ensure skills dir exists but is empty
+        fs.mkdirSync(path.join(globalDir, 'skills'), { recursive: true });
+        const code = await executeSkillCheckUpdates();
+        expect(code).toBe(0);
+        const logOutput = consoleSpy.mock.calls.flat().join('\n');
+        expect(logOutput).toContain('up to date');
+    });
+
+    it('returns 1 when updates are available', async () => {
+        // Install a bundled skill with a stale version
+        const skillsDir = path.join(globalDir, 'skills');
+        fs.mkdirSync(skillsDir, { recursive: true });
+
+        // Install a known bundled skill with older version
+        const skillName = 'go-deep';
+        const skillDir = path.join(skillsDir, skillName);
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(skillDir, 'SKILL.md'),
+            '---\nname: go-deep\ndescription: test\nmetadata:\n  version: "0.0.0"\n---\n\n# Go Deep\n',
+        );
+
+        const code = await executeSkillCheckUpdates();
+        expect(code).toBe(1);
+        const logOutput = consoleSpy.mock.calls.flat().join('\n');
+        expect(logOutput).toContain('Updates available');
+        expect(logOutput).toContain('go-deep');
+    });
+});
+
+describe('executeSkillList --global version indicators', () => {
+    let globalDir: string;
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+    let origDataDir: string | undefined;
+
+    beforeEach(() => {
+        globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-list-ver-'));
+        consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        origDataDir = process.env.COC_DATA_DIR;
+        process.env.COC_DATA_DIR = globalDir;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        fs.rmSync(globalDir, { recursive: true, force: true });
+        if (origDataDir !== undefined) process.env.COC_DATA_DIR = origDataDir;
+        else delete process.env.COC_DATA_DIR;
+    });
+
+    it('shows ✓ for up-to-date bundled skills', async () => {
+        // Install a bundled skill with the current bundled version
+        const skillsDir = path.join(globalDir, 'skills');
+        fs.mkdirSync(skillsDir, { recursive: true });
+
+        const skillName = 'go-deep';
+        const skillDir = path.join(skillsDir, skillName);
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(skillDir, 'SKILL.md'),
+            '---\nname: go-deep\ndescription: test\nmetadata:\n  version: "0.0.1"\n---\n\n# Go Deep\n',
+        );
+
+        const code = await executeSkillList({ global: true });
+        expect(code).toBe(0);
+        const logOutput = consoleSpy.mock.calls.flat().join('\n');
+        expect(logOutput).toContain('✓');
+    });
+
+    it('shows ↑ for outdated bundled skills', async () => {
+        const skillsDir = path.join(globalDir, 'skills');
+        fs.mkdirSync(skillsDir, { recursive: true });
+
+        const skillName = 'go-deep';
+        const skillDir = path.join(skillsDir, skillName);
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(skillDir, 'SKILL.md'),
+            '---\nname: go-deep\ndescription: test\nmetadata:\n  version: "0.0.0"\n---\n\n# Go Deep\n',
+        );
+
+        const code = await executeSkillList({ global: true });
+        expect(code).toBe(0);
+        const logOutput = consoleSpy.mock.calls.flat().join('\n');
+        expect(logOutput).toContain('↑');
+        expect(logOutput).toContain('available');
     });
 });

@@ -217,6 +217,12 @@ function parseSkillMetadata(content: string): SkillMetadata {
         
         const versionMatch = frontmatter.match(/^version:\s*["']?(.+?)["']?\s*$/m);
         if (versionMatch) metadata.version = versionMatch[1];
+
+        // Also check for nested metadata.version (e.g., metadata:\n  version: "0.0.1")
+        if (!metadata.version) {
+            const nestedVersionMatch = frontmatter.match(/^metadata:\s*\r?\n\s+version:\s*["']?(.+?)["']?\s*$/m);
+            if (nestedVersionMatch) metadata.version = nestedVersionMatch[1];
+        }
         
         // Parse variables array
         const variablesMatch = frontmatter.match(/^variables:\s*\[([^\]]+)\]/m);

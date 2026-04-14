@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as yaml from 'yaml';
-import { getBundledSkills, installBundledSkills, getBundledSkillsPath } from '../../src/skills/bundled-skills-provider';
+import { getBundledSkills, installBundledSkills, getBundledSkillsPath, parseBundledSkillVersion } from '../../src/skills/bundled-skills-provider';
 import type { BundledSkill } from '../../src/skills/types';
 
 describe('getBundledSkillsPath', () => {
@@ -52,33 +52,30 @@ describe('getBundledSkills', () => {
 });
 
 describe('BundledSkill version field', () => {
-    it('every registry entry has a version string', async () => {
-        // Import the registry indirectly via module internals isn't possible,
-        // so we verify through the getBundledSkills output + SKILL.md files.
+    it('every registry entry has a version in its SKILL.md', () => {
+        // Verify bundled skill versions are accessible through parseBundledSkillVersion
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'version-check-'));
         try {
             const skills = getBundledSkills(tmpDir);
             expect(skills.length).toBeGreaterThan(0);
+
+            for (const skill of skills) {
+                const version = parseBundledSkillVersion(skill.name);
+                expect(version, `${skill.name} should have a parseable version`).toBeDefined();
+            }
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
     });
 
-    it('BundledSkill type accepts optional version field', () => {
+    it('BundledSkill type does not have a version field', () => {
         const skill: BundledSkill = {
             name: 'test',
             description: 'A test skill',
             relativePath: 'test',
-            version: '0.0.1'
         };
-        expect(skill.version).toBe('0.0.1');
-
-        const skillWithout: BundledSkill = {
-            name: 'test2',
-            description: 'Another test',
-            relativePath: 'test2'
-        };
-        expect(skillWithout.version).toBeUndefined();
+        expect(skill.name).toBe('test');
+        // version is no longer on BundledSkill — it comes from SKILL.md
     });
 });
 

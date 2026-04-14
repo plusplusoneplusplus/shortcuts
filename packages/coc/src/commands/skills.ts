@@ -26,6 +26,10 @@ import {
     isWithinDirectory,
     setLogger,
     resolveClawHubToGitHub,
+    parseBundledSkillVersion,
+    parseSkillVersionFromFile,
+    autoUpdateBundledSkills,
+    compareVersions,
 } from '@plusplusoneplusplus/forge';
 import { listInstalledSkills } from '../server/skill-handler';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
@@ -81,7 +85,10 @@ export async function executeSkillList(options: SkillListOptions): Promise<numbe
         for (const skill of allSkills) {
             const padded = skill.name.padEnd(maxNameLen + 2);
             const src = skill.source.padEnd(maxSourceLen + 2);
-            console.log(`  ${padded}${src}${skill.description || ''}`);
+            const status = skill.source === 'global'
+                ? getVersionStatus(globalDir, skill.name) + '  '
+                : '';
+            console.log(`  ${padded}${src}${status}${skill.description || ''}`);
         }
         console.log(`\n${allSkills.length} skill(s) total (${globalSkills.length} global, ${repoSkills.length} repo).`);
         return 0;
@@ -99,7 +106,8 @@ export async function executeSkillList(options: SkillListOptions): Promise<numbe
         const maxNameLen = Math.max(...skills.map(s => s.name.length), 4);
         for (const skill of skills) {
             const padded = skill.name.padEnd(maxNameLen + 2);
-            console.log(`  ${padded}${skill.description || ''}`);
+            const status = getVersionStatus(globalDir, skill.name);
+            console.log(`  ${padded}${status}  ${skill.description || ''}`);
         }
         console.log(`\n${skills.length} global skill(s) installed.`);
         return 0;
@@ -283,4 +291,55 @@ export async function executeSkillDelete(
         console.error(`Failed to delete skill: ${err.message}`);
         return 1;
     }
+}
+
+// ============================================================================
+// Version Status Helpers
+// ============================================================================
+
+/**
+ * Get a version status indicator for a globally-installed skill.
+ * ✓ = up-to-date, ↑ = update available, ? = unknown
+ */
+function getVersionStatus(globalDir: string, skillName: string): string {
+    const installedSkillMd = path.join(globalDir, skillName, 'SKILL.md');
+    const installedVersion = parseSkillVersionFromFile(installedSkillMd);
+    const bundledVersion = parseBundledSkillVersion(skillName);
+
+    if (!bundledVersion) {
+        // Not a bundled skill or bundled has no version
+        return '?';
+    }
+    if (!installedVersion) {
+        return '?';
+    }
+
+    const cmp = compareVersions(bundledVersion, installedVersion);
+    if (cmp === undefined) return '?';
+    if (cmp > 0) return `↑ ${bundledVersion} available`;
+    return '✓';
+}
+
+// ============================================================================
+// Check Updates Command
+// ============================================================================
+
+export async function executeSkillCheckUpdates(): Promise<number> {
+    const globalDir = getGlobalSkillsDir();
+    const result = await autoUpdateBundledSkills(globalDir, { dryRun: true });
+
+    if (result.updated.length === 0) {
+        console.log('All globally-installed bundled skills are up to date.');
+        return 0;
+    }
+
+    console.log('Updates available:\n');
+    const maxNameLen = Math.max(...result.updated.map(u => u.name.length), 4);
+    for (const u of result.updated) {
+        const padded = u.name.padEnd(maxNameLen + 2);
+        console.log(`  ↑ ${padded}${u.previousVersion} → ${u.newVersion}`);
+    }
+    console.log(`\n${result.updated.length} skill(s) can be updated.`);
+    console.log('Run "coc skills install-bundled --global --replace" to update.');
+    return 1;
 }

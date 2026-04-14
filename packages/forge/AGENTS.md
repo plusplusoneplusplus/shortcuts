@@ -25,7 +25,7 @@ Pure Node.js AI pipeline engine. No VS Code dependencies. Published to npm as `@
 | **git** | `src/git/` | `BranchService` (pull/push/fetch/merge/stash), `GitLogService`, `GitRangeService`, `WorkingTreeService`, `GitOpsStore` (background git op tracking, file-persisted to `~/.coc/git-ops/`), exec helpers, remote URL detection |
 | **templates** | `src/templates/` | `replicateCommit()`, prompt builder, result parser — commit template replication service |
 | **ado** | `src/ado/` | Azure DevOps integration: `AdoConnectionFactory` (PAT + Azure CLI bearer token auth), `AdoWorkItemsService`, `AdoPullRequestsService` |
-| **skills** | `src/skills/` | Skill management: source detector, skill scanner, skill installer, bundled skills provider, skill resolver (`skill-resolver.ts` — resolves and loads skill prompts from `.github/skills/`) |
+| **skills** | `src/skills/` | Skill management: source detector, skill scanner, skill installer, bundled skills provider (`getBundledSkillsRegistry`, `parseBundledSkillVersion`, `parseSkillVersionFromFile`), skill updater (`autoUpdateBundledSkills` — version-aware auto-update of globally-installed skills), skill resolver (`skill-resolver.ts` — resolves and loads skill prompts from `.github/skills/`). Version is read from each skill's `SKILL.md` frontmatter `metadata.version` at runtime (no hardcoded versions in the registry). |
 
 Entry point: `src/index.ts` — re-exports all public API from the modules above.
 

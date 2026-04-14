@@ -83,6 +83,9 @@ export const CLIConfigSchema = z.object({
             criticalThreshold: z.number().min(0).max(100).optional(),
         }).strict().optional(),
     }).strict().optional(),
+    skills: z.object({
+        autoUpdate: z.boolean().optional(),
+    }).strict().optional(),
 }).strict();
 
 /**

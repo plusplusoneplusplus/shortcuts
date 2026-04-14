@@ -93,6 +93,11 @@ export interface CLIConfig {
             criticalThreshold?: number;
         };
     };
+    /** Skills configuration */
+    skills?: {
+        /** Auto-update globally-installed bundled skills on serve startup (default: true) */
+        autoUpdate?: boolean;
+    };
 }
 
 // ============================================================================
@@ -191,6 +196,11 @@ export interface ResolvedCLIConfig {
             criticalThreshold: number;
         };
     };
+    /** Skills configuration */
+    skills: {
+        /** Auto-update globally-installed bundled skills on serve startup */
+        autoUpdate: boolean;
+    };
 }
 
 // ============================================================================
@@ -241,6 +251,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
             warnThreshold: 70,
             criticalThreshold: 85,
         },
+    },
+    skills: {
+        autoUpdate: true,
     },
 };
 
@@ -409,6 +422,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
                 warnThreshold: override.monitoring?.heapCheck?.warnThreshold ?? base.monitoring?.heapCheck?.warnThreshold ?? 70,
                 criticalThreshold: override.monitoring?.heapCheck?.criticalThreshold ?? base.monitoring?.heapCheck?.criticalThreshold ?? 85,
             },
+        },
+        skills: {
+            autoUpdate: override.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
         },
     };
 }
