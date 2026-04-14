@@ -306,8 +306,8 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const { content, resolvedRef } = readGitFileAtCommit(hash, filePath, ws.rootPath);
-                if (Buffer.byteLength(content, 'utf-8') > 2 * 1024 * 1024) {
-                    return handleAPIError(res, badRequest('Commit file is too large (max 2MB)'));
+                if (Buffer.byteLength(content, 'utf-8') > 4 * 1024 * 1024) {
+                    return handleAPIError(res, badRequest('Commit file is too large (max 4MB)'));
                 }
 
                 const allLines = content.split('\n');

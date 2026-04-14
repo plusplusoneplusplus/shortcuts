@@ -234,6 +234,28 @@ describe('Tasks Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.content).toBe(markdown);
         });
+
+        it('should return 400 for files exceeding 4MB', async () => {
+            const srv = await startServer();
+            const largeContent = 'x'.repeat(4 * 1024 * 1024 + 1);
+            createTaskFiles({ 'huge.md': largeContent });
+
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=huge.md`);
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('too large');
+        });
+
+        it('should return 200 for files just under 4MB', async () => {
+            const srv = await startServer();
+            const content = 'x'.repeat(4 * 1024 * 1024 - 1);
+            createTaskFiles({ 'big.md': content });
+
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=big.md`);
+            expect(res.status).toBe(200);
+        });
     });
 
     // ========================================================================

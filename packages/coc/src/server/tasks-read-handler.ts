@@ -148,9 +148,9 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 if (!stat.isFile()) {
                     return sendError(res, 404, 'Not a file');
                 }
-                // File size cap: 2MB
-                if (stat.size > 2 * 1024 * 1024) {
-                    return sendError(res, 400, 'File too large (max 2MB)');
+                // File size cap: 4MB
+                if (stat.size > 4 * 1024 * 1024) {
+                    return sendError(res, 400, 'File too large (max 4MB)');
                 }
 
                 const content = await fs.promises.readFile(resolvedPath, 'utf-8');
@@ -260,6 +260,9 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 const stat = await fs.promises.stat(resolvedPath);
                 if (!stat.isFile()) {
                     return sendError(res, 404, 'Not a file');
+                }
+                if (stat.size > 4 * 1024 * 1024) {
+                    return sendError(res, 400, 'File too large (max 4MB)');
                 }
                 const content = await fs.promises.readFile(resolvedPath, 'utf-8');
                 sendJSON(res, 200, { content, path: filePath });

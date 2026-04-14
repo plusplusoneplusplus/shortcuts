@@ -278,6 +278,30 @@ describe('Git Commit Edge Cases', () => {
             expect(data.lines).toEqual(['export const added = true;']);
             expect(data.resolvedRef).toBe('abc1234ef:added.ts');
         });
+
+        it('returns 400 when file content exceeds 4MB', async () => {
+            const largeContent = 'x'.repeat(4 * 1024 * 1024 + 1);
+            mockExecFileSync.mockReturnValue(largeContent);
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('huge.bin')}/content`,
+            );
+
+            expect(res.status).toBe(400);
+            const data = res.json();
+            expect(data.error).toContain('too large');
+        });
+
+        it('returns 200 when file content is just under 4MB', async () => {
+            const justUnderContent = 'x'.repeat(4 * 1024 * 1024 - 1);
+            mockExecFileSync.mockReturnValue(justUnderContent);
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('big.txt')}/content`,
+            );
+
+            expect(res.status).toBe(200);
+        });
     });
 
     describe('GET /api/workspaces/:id/git/commits — pagination', () => {
