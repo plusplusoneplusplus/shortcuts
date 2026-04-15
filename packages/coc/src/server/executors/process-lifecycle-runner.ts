@@ -60,6 +60,46 @@ const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 export { TERMINAL_STATUSES };
 
+/** Tool names that create files (mirrors client-side conversationScan.ts). */
+const CREATE_TOOL_NAMES = new Set(['create', 'write_file', 'create_file', 'apply_patch']);
+
+/**
+ * Scan conversation turns for a created `.plan.md` file.
+ * Mirrors the client-side detection in ActivityChatDetail.tsx.
+ */
+export function scanTurnsForPlanFile(turns: ConversationTurn[]): string | undefined {
+    for (const turn of turns) {
+        for (const item of turn.timeline ?? []) {
+            if (item.type !== 'tool-complete' || !item.toolCall) continue;
+            const toolName = item.toolCall.name || '';
+            if (!CREATE_TOOL_NAMES.has(toolName)) continue;
+
+            // Handle apply_patch: check result "Added N file(s): ..." and string args "*** Add File: ..."
+            if (toolName === 'apply_patch') {
+                const paths: string[] = [];
+                const result = item.toolCall.result;
+                if (typeof result === 'string') {
+                    const addedMatch = /Added \d+ file\(s\): (.+)/.exec(result);
+                    if (addedMatch) paths.push(...addedMatch[1].split(',').map(s => s.trim()));
+                }
+                const rawArgs = item.toolCall.args as Record<string, unknown>;
+                const patchText = typeof rawArgs?.diff === 'string' ? rawArgs.diff : '';
+                for (const m of patchText.matchAll(/^\*\*\* Add File: (.+)$/gm)) {
+                    paths.push(m[1].trim());
+                }
+                const planPath = paths.find(p => p.endsWith('.plan.md'));
+                if (planPath) return planPath;
+                continue;
+            }
+
+            const args = item.toolCall.args ?? {};
+            const filePath = String(args.path || args.filePath || '');
+            if (filePath.endsWith('.plan.md')) return filePath;
+        }
+    }
+    return undefined;
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -324,6 +364,18 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 // Drain pending messages after task completion
                 if (finalStatus === 'completed' && opts.onDrainPendingMessages) {
                     try { await opts.onDrainPendingMessages(processId, task.id); } catch { /* non-fatal */ }
+                }
+
+                // Eagerly detect .plan.md in conversation turns and set planFilePath
+                if (currentProc && (currentProc.metadata as any)?.mode === 'plan' && !(currentProc.metadata as any)?.planFilePath) {
+                    const detected = scanTurnsForPlanFile(combinedTurns);
+                    if (detected) {
+                        try {
+                            await this.store.updateProcess(processId, {
+                                metadata: { ...currentProc.metadata, planFilePath: detected } as any,
+                            });
+                        } catch { /* best-effort persist */ }
+                    }
                 }
 
                 setTimeout(() => this.onGenerateTitle(processId, combinedTurns), 0);

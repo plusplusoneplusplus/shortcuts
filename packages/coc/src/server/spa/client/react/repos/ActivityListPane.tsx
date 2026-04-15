@@ -26,6 +26,8 @@ import { useQueue } from '../context/QueueContext';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
+import { groupHistoryByPlanFile, type HistoryGroup } from './history-grouping';
+import { HistoryGroupHeader } from './HistoryGroupHeader';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -208,7 +210,7 @@ export function ActivityListPane({
     const [renameTarget, setRenameTarget] = useState<{ taskId: string; title: string } | null>(null);
 
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
-    const { taskCardDensity } = useDisplaySettings();
+    const { taskCardDensity, historyGrouping } = useDisplaySettings();
     const isDense = taskCardDensity === 'dense';
 
     useEffect(() => {
@@ -312,6 +314,42 @@ export function ActivityListPane({
         }
         return { filteredPinned: pinned, filteredUnpinned: unpinned };
     }, [activeHistory, pinnedChatIds]);
+
+    // Group unpinned history by plan file (when grouping is enabled)
+    const groupedUnpinned = useMemo(
+        () => historyGrouping ? groupHistoryByPlanFile(filteredUnpinned, unseenProcessIds) : null,
+        [filteredUnpinned, unseenProcessIds, historyGrouping],
+    );
+
+    // Expand/collapse state for plan-file groups
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    const toggleGroup = useCallback((planFilePath: string) => {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            next.has(planFilePath) ? next.delete(planFilePath) : next.add(planFilePath);
+            return next;
+        });
+    }, []);
+
+    // Auto-collapse groups where all children are seen (on group list change)
+    const prevGroupKeysRef = useRef<string>('');
+    useEffect(() => {
+        if (!groupedUnpinned) return;
+        const groupKeys = groupedUnpinned
+            .filter((e): e is HistoryGroup => e.kind === 'group')
+            .map(g => g.planFilePath)
+            .sort()
+            .join('\0');
+        if (groupKeys === prevGroupKeysRef.current) return;
+        prevGroupKeysRef.current = groupKeys;
+        const toCollapse = new Set<string>();
+        for (const entry of groupedUnpinned) {
+            if (entry.kind === 'group' && !entry.hasUnseen) {
+                toCollapse.add(entry.planFilePath);
+            }
+        }
+        if (toCollapse.size > 0) setCollapsedGroups(toCollapse);
+    }, [groupedUnpinned]);
 
     // Count pinned tasks that are still running (not yet in history)
     const pinnedRunningCount = useMemo(() => {
@@ -629,6 +667,60 @@ export function ActivityListPane({
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
     }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
+
+    /** Render a single history card (shared between flat and grouped layouts). */
+    const renderHistoryCard = useCallback((task: any) => {
+        const isUnseen = unseenProcessIds?.has(task.id) ?? false;
+        const hasDraft = !!getDraft(task.id);
+        const isHistorySelected = selectedHistoryIds.has(task.id);
+        return (
+            <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
+            <Card
+                className={cn(
+                    isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
+                    isHistorySelected
+                        ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
+                        : isSelected(task.id) && "ring-2 ring-[#0078d4]",
+                    selectedHistoryIds.size > 0 && "select-none"
+                )}
+                onClick={e => {
+                    if (historyLongPress.didLongPress()) return;
+                    handleHistoryItemClick(e, task, filteredUnpinned);
+                }}
+                onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                onTouchEnd={historyLongPress.onTouchEnd}
+                onTouchMove={historyLongPress.onTouchMove}
+                data-task-id={task.id}
+                data-unseen={isUnseen || undefined}
+                data-selected={isHistorySelected || undefined}
+            >
+                <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                    <span className="flex items-center gap-1 min-w-0 truncate">
+                        {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
+                        {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
+                        <span className="shrink-0">
+                            {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                        </span>
+                        <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.title || task.type || 'Task'}>
+                            {task.displayName || task.title || task.type || 'Task'}
+                        </span>
+                        {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                    </span>
+                    <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
+                        {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
+                    </span>
+                </div>
+                {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
+                {!isDense && task.error && (
+                    <div className="text-[10px] text-red-500 mt-0.5 truncate">
+                        {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
+                    </div>
+                )}
+            </Card>
+            </SwipeableHistoryItem>
+        );
+    }, [unseenProcessIds, selectedHistoryIds, isDense, isMobile, isSelected, handleHistoryItemClick, handleTaskContextMenu, filteredUnpinned, onArchiveChat, onUnarchiveChat]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
@@ -1103,58 +1195,35 @@ export function ActivityListPane({
                         </div>
                         {showHistory && (
                             <div className={cn("flex flex-col mt-1", isDense ? "gap-0.5" : "gap-1")}>
-                                {filteredUnpinned.map(task => {
-                                    const isUnseen = unseenProcessIds?.has(task.id) ?? false;
-                                    const hasUnpinnedDraft = !!getDraft(task.id);
-                                    const isHistorySelected = selectedHistoryIds.has(task.id);
-                                    return (
-                                        <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
-                                        <Card
-                                            className={cn(
-                                                isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
-                                                isHistorySelected
-                                                    ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
-                                                    : isSelected(task.id) && "ring-2 ring-[#0078d4]",
-                                                selectedHistoryIds.size > 0 && "select-none"
-                                            )}
-                                            onClick={e => {
-                                                if (historyLongPress.didLongPress()) return;
-                                                handleHistoryItemClick(e, task, filteredUnpinned);
-                                            }}
-                                            onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
-                                            onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
-                                            onTouchEnd={historyLongPress.onTouchEnd}
-                                            onTouchMove={historyLongPress.onTouchMove}
-                                            data-task-id={task.id}
-                                            data-unseen={isUnseen || undefined}
-                                            data-selected={isHistorySelected || undefined}
-                                        >
-                                            <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                                                <span className="flex items-center gap-1 min-w-0 truncate">
-                                                    {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
-                                                    {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
-                                                    <span className="shrink-0">
-                                                        {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
-                                                    </span>
-                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.title || task.type || 'Task'}>
-                                                        {task.displayName || task.title || task.type || 'Task'}
-                                                    </span>
-                                                    {hasUnpinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
-                                                </span>
-                                                <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
-                                                    {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
-                                                </span>
+                                {groupedUnpinned ? groupedUnpinned.map(entry => {
+                                    if (entry.kind === 'group') {
+                                        // Expanded by default if group has unseen items; user toggle overrides
+                                        const expanded = !collapsedGroups.has(entry.planFilePath);
+                                        return (
+                                            <div key={entry.planFilePath} data-testid="history-group">
+                                                <HistoryGroupHeader
+                                                    group={entry}
+                                                    isExpanded={expanded}
+                                                    onToggle={() => toggleGroup(entry.planFilePath)}
+                                                    onContextMenu={e => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        const ids = entry.children.map(c => c.id);
+                                                        setSelectedHistoryIds(new Set(ids));
+                                                        setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids });
+                                                    }}
+                                                    isDense={isDense}
+                                                />
+                                                {expanded && (
+                                                    <div className={cn("flex flex-col pl-4 border-l-2 border-gray-200 dark:border-gray-700 ml-1", isDense ? "gap-0.5 mt-0.5" : "gap-1 mt-1")}>
+                                                        {entry.children.map(task => renderHistoryCard(task))}
+                                                    </div>
+                                                )}
                                             </div>
-                                            {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
-                                            {!isDense && task.error && (
-                                                <div className="text-[10px] text-red-500 mt-0.5 truncate">
-                                                    {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
-                                                </div>
-                                            )}
-                                        </Card>
-                                        </SwipeableHistoryItem>
-                                    );
-                                })}
+                                        );
+                                    }
+                                    return renderHistoryCard(entry);
+                                }) : filteredUnpinned.map(task => renderHistoryCard(task))}
                             </div>
                         )}
                     </div>

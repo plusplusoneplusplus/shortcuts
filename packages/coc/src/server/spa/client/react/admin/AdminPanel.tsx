@@ -66,6 +66,7 @@ export function AdminPanel() {
     const [showReportIntent, setShowReportIntent] = useState(false);
     const [toolCompactness, setToolCompactness] = useState<0 | 1 | 2 | 3>(3);
     const [taskCardDensity, setTaskCardDensity] = useState<'compact' | 'dense'>('dense');
+    const [historyGrouping, setHistoryGrouping] = useState(true);
     const [displaySaving, setDisplaySaving] = useState(false);
 
     // Chat settings
@@ -145,6 +146,7 @@ export function AdminPanel() {
             setShowReportIntent(resolved.showReportIntent ?? false);
             setToolCompactness((resolved.toolCompactness ?? 1) as 0 | 1 | 2 | 3);
             setTaskCardDensity((resolved.taskCardDensity === 'dense' ? 'dense' : 'compact') as 'compact' | 'dense');
+            setHistoryGrouping(resolved.historyGrouping ?? true);
             setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
             setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
             setServerName(resolved.serve?.serverName ?? '');
@@ -363,6 +365,30 @@ export function AdminPanel() {
             setDisplaySaving(false);
         }
     }, [taskCardDensity, addToast]);
+
+    const handleChangeHistoryGrouping = useCallback(async (newValue: boolean) => {
+        const prevValue = historyGrouping;
+        setHistoryGrouping(newValue);
+        setDisplaySaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ historyGrouping: newValue }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Settings saved', 'success');
+            invalidateDisplaySettings();
+        } catch (err: any) {
+            setHistoryGrouping(prevValue);
+            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+        } finally {
+            setDisplaySaving(false);
+        }
+    }, [historyGrouping, addToast]);
 
     const handleSaveServerName = useCallback(async () => {
         const trimmed = serverName.trim();
@@ -831,6 +857,26 @@ export function AdminPanel() {
                                                     </button>
                                                 ))}
                                             </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]"
+                                               title="Group related plan and autopilot tasks together in the history list">
+                                            History grouping
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['historyGrouping']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={historyGrouping}
+                                                    disabled={displaySaving}
+                                                    onChange={e => void handleChangeHistoryGrouping(e.target.checked)}
+                                                    data-testid="toggle-history-grouping"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
                                         </div>
                                     </div>
                                 </div>

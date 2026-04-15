@@ -10,13 +10,14 @@ interface DisplaySettings {
     showReportIntent: boolean;
     toolCompactness: 0 | 1 | 2 | 3;
     taskCardDensity: 'compact' | 'dense';
+    historyGrouping: boolean;
     groupSingleLineMessages: boolean;
     terminalEnabled: boolean;
     notesEnabled: boolean;
     myWorkEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false, myWorkEnabled: false };
+const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', historyGrouping: true, groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false, myWorkEnabled: false };
 
 /** Build initial settings seeded from window.__DASHBOARD_CONFIG__ when available. */
 function getInitialSettings(): DisplaySettings {
@@ -35,6 +36,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             showReportIntent: data?.resolved?.showReportIntent ?? false,
             toolCompactness: (data?.resolved?.toolCompactness ?? 3) as 0 | 1 | 2 | 3,
             taskCardDensity: (data?.resolved?.taskCardDensity === 'compact' ? 'compact' : 'dense') as 'compact' | 'dense',
+            historyGrouping: data?.resolved?.historyGrouping ?? true,
             groupSingleLineMessages: data?.resolved?.groupSingleLineMessages ?? true,
             terminalEnabled: data?.resolved?.terminal?.enabled ?? false,
             notesEnabled: data?.resolved?.notes?.enabled ?? false,
