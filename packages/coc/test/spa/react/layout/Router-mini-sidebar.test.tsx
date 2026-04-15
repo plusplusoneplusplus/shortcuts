@@ -71,7 +71,7 @@ vi.mock('../../../../src/server/spa/client/react/views/logs/LogsView', () => ({
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-const NON_REPOS_TABS: DashboardTab[] = ['processes', 'wiki', 'memory', 'skills', 'admin', 'logs'];
+const NON_REPOS_TABS: DashboardTab[] = ['wiki', 'memory', 'skills', 'admin', 'logs'];
 
 describe('Router — no persistent mini sidebar on any tab', () => {
     it('does NOT render mini-sidebar-layout on repos tab', () => {
@@ -87,12 +87,6 @@ describe('Router — no persistent mini sidebar on any tab', () => {
         expect(container.querySelector('[data-testid="mini-sidebar-layout"]')).toBeNull();
         expect(container.querySelector('[data-testid="persistent-mini-sidebar"]')).toBeNull();
         expect(container.querySelector('[data-testid="mini-repos-sidebar"]')).toBeNull();
-    });
-
-    it('renders view content directly on processes tab', () => {
-        mockActiveTab = 'processes';
-        const { container } = render(<Router />);
-        expect(container.querySelector('#view-processes')).not.toBeNull();
     });
 
     it('renders ReposView directly on repos tab', () => {

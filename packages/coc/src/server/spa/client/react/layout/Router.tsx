@@ -6,12 +6,10 @@
 import { useEffect, useLayoutEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
-import { ProcessesView } from '../processes/ProcessesView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
 import { isTerminalEnabled, isNotesEnabled } from '../utils/config';
-import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
 import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 
@@ -28,7 +26,6 @@ function StubView({ id, label }: { id: string; label: string }) {
 
 export function tabFromHash(hash: string): DashboardTab | null {
     const h = hash.replace(/^#/, '').split('/')[0].split('?')[0];
-    if (h === 'processes' || h === 'process' || h === 'session') return 'processes';
     if (h === 'repos' || h === 'tasks') return 'repos';
     if (h === 'wiki') return 'wiki';
     if (h === 'reports') return 'reports';
@@ -323,24 +320,6 @@ export function Router() {
                 return;
             }
 
-            // Parse process deep links: #process/:id, #session/:id, #processes/:id
-            if (tab === 'processes') {
-                const processId = parseProcessDeepLink('#' + hash);
-                if (processId) {
-                    if (isQueueProcessId(processId)) {
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: toTaskId(processId) });
-                        dispatch({ type: 'SELECT_PROCESS', id: null });
-                    } else {
-                        dispatch({ type: 'SELECT_PROCESS', id: processId });
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
-                    }
-                } else {
-                    // Plain #processes means no detail selection.
-                    dispatch({ type: 'SELECT_PROCESS', id: null });
-                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
-                }
-            }
-
             // Parse repo deep links: #repos/:id or #repos/:id/:subTab
             if (tab === 'repos') {
                 const parts = hash.split('/');
@@ -577,8 +556,6 @@ export function Router() {
     }, [dispatch, queueDispatch, state.activeTab, state.selectedRepoId]);
 
     switch (state.activeTab) {
-        case 'processes':
-            return <ProcessesView />;
         case 'repos':
             return <ReposView />;
         case 'wiki':

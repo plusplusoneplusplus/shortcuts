@@ -140,7 +140,7 @@ describe('TopBar', () => {
     it('hamburger is noop outside Repos tab (aria-pressed stays false)', () => {
         renderTopBar();
         act(() => {
-            fireEvent.click(document.getElementById('processes-toggle')!);
+            fireEvent.click(document.getElementById('skills-toggle')!);
         });
 
         const btn = document.getElementById('hamburger-btn')!;
@@ -174,14 +174,6 @@ describe('TopBar', () => {
 // ─── TopBar tab click → hash update ─────────────────────────────
 
 describe('TopBar — tab click updates location.hash', () => {
-    it('sets hash to #processes when Processes icon button is clicked', () => {
-        renderTopBar();
-        act(() => {
-            fireEvent.click(document.getElementById('processes-toggle')!);
-        });
-        expect(location.hash).toBe('#processes');
-    });
-
     it('sets hash to #repos is no longer applicable (repos is implicit default)', () => {
         // Repos has no tab button — navigating away from a detail page clears the hash
         expect(ALL_TABS.map(t => t.tab)).not.toContain('repos');
@@ -196,12 +188,12 @@ describe('TopBar — tab click updates location.hash', () => {
     });
 
     it('clicking the same icon tab still sets the hash', () => {
-        location.hash = '#processes';
+        location.hash = '#skills';
         renderTopBar();
         act(() => {
-            fireEvent.click(document.getElementById('processes-toggle')!);
+            fireEvent.click(document.getElementById('skills-toggle')!);
         });
-        expect(location.hash).toBe('#processes');
+        expect(location.hash).toBe('#skills');
     });
 
     it('clicking icon tabs in sequence updates hash each time', () => {
@@ -209,8 +201,8 @@ describe('TopBar — tab click updates location.hash', () => {
         act(() => { fireEvent.click(document.getElementById('skills-toggle')!); });
         expect(location.hash).toBe('#skills');
 
-        act(() => { fireEvent.click(document.getElementById('processes-toggle')!); });
-        expect(location.hash).toBe('#processes');
+        act(() => { fireEvent.click(document.getElementById('stats-toggle')!); });
+        expect(location.hash).toBe('#stats');
 
         act(() => { fireEvent.click(document.getElementById('memory-toggle')!); });
         expect(location.hash).toBe('#memory');
@@ -229,8 +221,8 @@ describe('TopBar — active tab styling', () => {
 
     it('non-active icon tabs do not have active class', () => {
         renderTopBar();
-        const processesBtn = document.getElementById('processes-toggle')!;
-        expect(processesBtn.className).not.toContain('bg-[#0078d4]');
+        const skillsBtn = document.getElementById('skills-toggle')!;
+        expect(skillsBtn.className).not.toContain('bg-[#0078d4]');
     });
 
     it('memory icon button becomes active when clicked', () => {
@@ -246,7 +238,7 @@ describe('TopBar — active tab styling', () => {
     it('active icon tab loses active class after clicking another icon', () => {
         renderTopBar();
         act(() => {
-            fireEvent.click(document.getElementById('processes-toggle')!);
+            fireEvent.click(document.getElementById('skills-toggle')!);
         });
         const memoryBtn = document.getElementById('memory-toggle')!;
         expect(memoryBtn.className).not.toContain('bg-[#0078d4]');

@@ -39,16 +39,16 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#tasks')).toBe('repos');
     });
 
-    it('returns "processes" for #processes', () => {
-        expect(tabFromHash('#processes')).toBe('processes');
+    it('returns null for #processes (no longer routed)', () => {
+        expect(tabFromHash('#processes')).toBeNull();
     });
 
-    it('returns "processes" for #process', () => {
-        expect(tabFromHash('#process')).toBe('processes');
+    it('returns null for #process (no longer routed)', () => {
+        expect(tabFromHash('#process')).toBeNull();
     });
 
-    it('returns "processes" for #session', () => {
-        expect(tabFromHash('#session')).toBe('processes');
+    it('returns null for #session (no longer routed)', () => {
+        expect(tabFromHash('#session')).toBeNull();
     });
 
     it('returns "wiki" for #wiki (accessible via hash route even when tab hidden)', () => {

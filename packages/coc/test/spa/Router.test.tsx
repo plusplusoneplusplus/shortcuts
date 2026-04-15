@@ -24,20 +24,20 @@ import {
 // ── tabFromHash ───────────────────────────────────────────────────────────────
 
 describe('tabFromHash', () => {
-    it('returns "processes" for #processes', () => {
-        expect(tabFromHash('#processes')).toBe('processes');
+    it('returns null for #processes (no longer routed)', () => {
+        expect(tabFromHash('#processes')).toBeNull();
     });
 
-    it('returns "processes" for #processes/abc123', () => {
-        expect(tabFromHash('#processes/abc123')).toBe('processes');
+    it('returns null for #processes/abc123 (no longer routed)', () => {
+        expect(tabFromHash('#processes/abc123')).toBeNull();
     });
 
-    it('returns "processes" for legacy #process', () => {
-        expect(tabFromHash('#process')).toBe('processes');
+    it('returns null for legacy #process (no longer routed)', () => {
+        expect(tabFromHash('#process')).toBeNull();
     });
 
-    it('returns "processes" for legacy #session', () => {
-        expect(tabFromHash('#session')).toBe('processes');
+    it('returns null for legacy #session (no longer routed)', () => {
+        expect(tabFromHash('#session')).toBeNull();
     });
 
     it('returns "repos" for #repos', () => {

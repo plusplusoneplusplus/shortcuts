@@ -46,7 +46,7 @@ describe('BottomNav', () => {
         render(<BottomNav />);
         expect(screen.getByTestId('bottom-nav')).toBeTruthy();
         const buttons = screen.getAllByRole('button');
-        expect(buttons).toHaveLength(5); // repos removed; processes, skills, memory, stats, logs remain
+        expect(buttons).toHaveLength(4); // processes removed; skills, memory, stats, logs remain
     });
 
     it('hidden on desktop viewport', () => {
@@ -61,14 +61,16 @@ describe('BottomNav', () => {
         expect(container.innerHTML).toBe('');
     });
 
-    it('highlights active processes tab on mobile (repos has no bottom nav button)', () => {
+    it('highlights active skills tab on mobile (repos has no bottom nav button)', () => {
         viewportCleanup = mockViewport(375);
-        mockActiveTab = 'processes';
+        mockActiveTab = 'skills';
         render(<BottomNav />);
-        const processesBtn = screen.getByText('Processes').closest('button')!;
-        expect(processesBtn.className).toContain('text-[#0078d4]');
+        const skillsBtn = screen.getByText('Skills').closest('button')!;
+        expect(skillsBtn.className).toContain('text-[#0078d4]');
         // Repos has no button in BottomNav — it is the implicit default
         expect(screen.queryByText('Repos')).toBeNull();
+        // Processes tab removed from BottomNav
+        expect(screen.queryByText('Processes')).toBeNull();
     });
 
     it('highlights active memory tab', () => {
@@ -82,8 +84,8 @@ describe('BottomNav', () => {
     it('dispatches SET_ACTIVE_TAB on click', () => {
         viewportCleanup = mockViewport(375);
         render(<BottomNav />);
-        fireEvent.click(screen.getByText('Processes').closest('button')!);
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_TAB', tab: 'processes' });
+        fireEvent.click(screen.getByText('Skills').closest('button')!);
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_TAB', tab: 'skills' });
     });
 
     it('updates location hash on click', () => {
@@ -95,14 +97,16 @@ describe('BottomNav', () => {
 
     it('sets aria-current="page" on active tab only', () => {
         viewportCleanup = mockViewport(375);
-        mockActiveTab = 'processes';
+        mockActiveTab = 'skills';
         render(<BottomNav />);
-        const processesBtn = screen.getByText('Processes').closest('button')!;
-        expect(processesBtn.getAttribute('aria-current')).toBe('page');
+        const skillsBtn = screen.getByText('Skills').closest('button')!;
+        expect(skillsBtn.getAttribute('aria-current')).toBe('page');
         const memoryBtn = screen.getByText('Memory').closest('button')!;
         expect(memoryBtn.getAttribute('aria-current')).toBeNull();
         // repos has no bottom nav button
         expect(screen.queryByText('Repos')).toBeNull();
+        // processes removed from bottom nav
+        expect(screen.queryByText('Processes')).toBeNull();
     });
 
     it('has safe area padding attribute for notched devices', () => {
@@ -126,16 +130,16 @@ describe('BottomNav', () => {
 
     it('active tab has background tint', () => {
         viewportCleanup = mockViewport(375);
-        mockActiveTab = 'processes';
+        mockActiveTab = 'skills';
         render(<BottomNav />);
-        const processesBtn = screen.getByText('Processes').closest('button')!;
-        expect(processesBtn.className).toContain('bg-[#0078d4]/10');
-        expect(processesBtn.className).toContain('rounded-lg');
+        const skillsBtn = screen.getByText('Skills').closest('button')!;
+        expect(skillsBtn.className).toContain('bg-[#0078d4]/10');
+        expect(skillsBtn.className).toContain('rounded-lg');
     });
 
     it('inactive tab has no background tint', () => {
         viewportCleanup = mockViewport(375);
-        mockActiveTab = 'processes';
+        mockActiveTab = 'skills';
         render(<BottomNav />);
         const memoryBtn = screen.getByText('Memory').closest('button')!;
         expect(memoryBtn.className).not.toContain('bg-[#0078d4]/10');
@@ -146,7 +150,9 @@ describe('BottomNav', () => {
         render(<BottomNav />);
         // repos is no longer in BottomNav — it is the implicit default view
         expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="repos"]')).toBeNull();
-        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="processes"]')).toBeTruthy();
+        // processes removed from BottomNav
+        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="processes"]')).toBeNull();
+        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="skills"]')).toBeTruthy();
         expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="memory"]')).toBeTruthy();
     });
 

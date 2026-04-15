@@ -163,21 +163,6 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 </span>
                 <NotificationBell />
                 <button
-                    id="processes-toggle"
-                    data-tab="processes"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'processes'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Processes"
-                    title="Processes"
-                    onClick={() => switchTab('processes')}
-                >
-                    &#128223;
-                </button>
-                <button
                     id="skills-toggle"
                     data-tab="skills"
                     className={

@@ -114,14 +114,14 @@ describe('TopBar responsive behavior', () => {
         expect(document.getElementById('theme-toggle')).toBeTruthy();
     });
 
-    it('processes button has hidden md:inline-flex classes (hidden on mobile)', () => {
-        viewportCleanup = mockViewport(375);
+    it('inactive icon buttons do not have active border class', () => {
+        viewportCleanup = mockViewport(1024);
         render(<TopBar />);
-        const btn = document.getElementById('processes-toggle')!;
-        expect(btn.className).toContain('hidden');
-        expect(btn.className).toContain('md:inline-flex');
+        // skills is not active (activeTab is 'repos')
+        const btn = document.getElementById('skills-toggle')!;
+        expect(btn.className).not.toContain('active');
+        expect(btn.className).not.toContain('border-b-2');
     });
-
     it('skills button has hidden md:inline-flex classes (hidden on mobile)', () => {
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
@@ -180,12 +180,4 @@ describe('TopBar responsive behavior', () => {
         expect(desktopLink.className).not.toContain('text-white');
     });
 
-    it('inactive icon buttons do not have active border class', () => {
-        viewportCleanup = mockViewport(1024);
-        render(<TopBar />);
-        // processes is not active (activeTab is 'repos')
-        const btn = document.getElementById('processes-toggle')!;
-        expect(btn.className).not.toContain('active');
-        expect(btn.className).not.toContain('border-b-2');
-    });
 });
