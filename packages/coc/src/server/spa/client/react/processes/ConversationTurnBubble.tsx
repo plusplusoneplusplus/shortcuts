@@ -103,6 +103,8 @@ interface ConversationTurnBubbleProps {
     processType?: string;
     /** Workspace ID — stamped as data-ws-id so file-path click handlers can route to the right workspace. */
     wsId?: string;
+    /** Index of this turn in the conversation, emitted as data-turn-index for snapshot selection. */
+    turnIndex?: number;
 }
 
 interface RenderToolCall {
@@ -590,7 +592,7 @@ function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === 'run-script';
     const assistantRender = !isUser ? buildAssistantRender(turn, wsId) : null;
@@ -739,6 +741,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
             turn.isError && 'error'
         )}
             {...(wsId ? { 'data-ws-id': wsId } : {})}
+            {...(turnIndex != null ? { 'data-turn-index': turnIndex } : {})}
         >
             <div
                 className={cn(

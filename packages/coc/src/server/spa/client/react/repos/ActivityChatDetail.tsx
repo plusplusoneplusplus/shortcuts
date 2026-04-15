@@ -35,6 +35,9 @@ import { ConversationArea } from './ConversationArea';
 import { FollowUpInputArea } from './FollowUpInputArea';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { ConversationMiniMap } from '../processes/ConversationMiniMap';
+import { useConversationSelection } from '../hooks/useConversationSelection';
+import { snapshotConversation } from '../utils/snapshot-copy-utils';
+import { copyHtmlToClipboard } from '../utils/format';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -108,6 +111,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const textPaste = useTextPaste();
     const { isMobile } = useBreakpoint();
+    const selection = useConversationSelection();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     // Init from current refreshVersion so a fresh mount treats it as "already seen"
     const lastRefreshVersionRef = useRef(queueState.refreshVersion);
@@ -139,7 +143,20 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     );
     const effectivePlanPath = planPath || detectedPlanFile;
 
-    // Deduplicate: remove the detected plan file from the regular files list
+    const handleCopySelected = useCallback(async () => {
+        if (!turnsContainerRef.current || selection.selectedTurns.size === 0) return;
+        try {
+            const html = snapshotConversation(turnsContainerRef.current, {
+                selectedIndices: selection.selectedTurns,
+            });
+            await copyHtmlToClipboard(html);
+            selection.stopSelecting();
+        } catch (e) {
+            console.error('Copy selected HTML failed:', e);
+        }
+    }, [selection]);
+
+    // Deduplicate:remove the detected plan file from the regular files list
     const displayFiles = useMemo(
         () => effectivePlanPath ? createdFiles.filter(f => f.filePath !== effectivePlanPath) : createdFiles,
         [createdFiles, effectivePlanPath],
@@ -622,6 +639,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 onFloat={handleFloat}
                 title={title || task?.displayName}
                 wsId={workspaceId}
+                turnsContainerRef={turnsContainerRef}
+                isSelecting={selection.isSelecting}
+                onToggleSelecting={selection.toggleSelecting}
             />
             <div className="relative flex-1 min-h-0 flex overflow-x-hidden min-w-0">
                 <ConversationArea
@@ -642,6 +662,11 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     variant={variant}
                     taskId={taskId}
                     wsId={workspaceId}
+                    isSelecting={selection.isSelecting}
+                    selectedTurns={selection.selectedTurns}
+                    onTurnClick={selection.handleTurnClick}
+                    onCopySelected={handleCopySelected}
+                    onCancelSelection={selection.stopSelecting}
                 />
                 {variant !== 'floating' && !isMobile && (
                     <ConversationMiniMap

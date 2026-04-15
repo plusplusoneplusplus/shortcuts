@@ -14,6 +14,7 @@ import { ConversationMiniMap } from './ConversationMiniMap';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from './ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel, copyHtmlToClipboard, formatConversationAsHtml } from '../utils/format';
 import { chatMarkdownToHtml } from './ConversationTurnBubble';
+import { snapshotConversation } from '../utils/snapshot-copy-utils';
 import { WorkflowDAGSection } from './dag';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import type { ClientConversationTurn } from '../types/dashboard';
@@ -386,7 +387,12 @@ export function ProcessDetail() {
                                 disabled={loading || turns.length === 0}
                                 onClick={async () => {
                                     try {
-                                        const html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId ?? undefined));
+                                        let html: string;
+                                        if (turnsContainerRef.current) {
+                                            html = snapshotConversation(turnsContainerRef.current);
+                                        } else {
+                                            html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId ?? undefined));
+                                        }
                                         await copyHtmlToClipboard(html);
                                         setCopiedHtml(true);
                                         setTimeout(() => setCopiedHtml(false), 2000);

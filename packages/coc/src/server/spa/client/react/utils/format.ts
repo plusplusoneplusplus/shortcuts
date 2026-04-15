@@ -183,6 +183,10 @@ export function splitMarkdownSections(content: string): MarkdownSection[] {
  * Convert an entire conversation to a self-contained HTML string suitable for
  * pasting into rich-text editors (email, Notion, Google Docs, etc.).
  *
+ * @deprecated Use `snapshotConversation()` from `snapshot-copy-utils.ts` for
+ * higher-fidelity DOM-based snapshots. This function is retained as a fallback
+ * for contexts where a live DOM is not available (e.g., server-side rendering).
+ *
  * @param turns       The conversation turns to render.
  * @param contentToHtml  Converts a single turn's markdown content to HTML.
  *                       Callers typically pass `(c) => chatMarkdownToHtml(c, wsId)`.

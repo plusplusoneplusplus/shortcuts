@@ -7,6 +7,7 @@ import { ConversationMetadataPopover } from '../processes/ConversationMetadataPo
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { chatMarkdownToHtml } from '../processes/ConversationTurnBubble';
+import { snapshotConversation } from '../utils/snapshot-copy-utils';
 import { cn } from '../shared/cn';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useContainerWidth, type ContainerWidthTier } from '../hooks/useContainerWidth';
@@ -41,6 +42,12 @@ export interface ChatHeaderProps {
     title?: string;
     /** Workspace ID for HTML copy (markdown rendering with image path rewriting) */
     wsId?: string;
+    /** Ref to the turns container DOM element for DOM snapshot copy */
+    turnsContainerRef?: React.RefObject<HTMLDivElement | null>;
+    /** Whether turn selection mode is active */
+    isSelecting?: boolean;
+    /** Toggle selection mode on/off */
+    onToggleSelecting?: () => void;
 }
 
 /** Build overflow menu items based on what's hidden at the current container tier */
@@ -71,6 +78,8 @@ function buildOverflowItems(
         onCopyHtml: () => void;
         copiedHtml: boolean;
         onOpenRefs?: () => void;
+        onToggleSelecting?: () => void;
+        isSelecting?: boolean;
     },
 ): OverflowMenuItem[] {
     if (tier === 'wide') return [];
@@ -84,6 +93,16 @@ function buildOverflowItems(
         icon: <span className="text-[10px]">HTML</span>,
         onClick: props.onCopyHtml,
     });
+
+    // Select turns for partial copy
+    if (props.onToggleSelecting && props.turns.length > 0) {
+        items.push({
+            key: 'select-turns',
+            label: props.isSelecting ? 'Cancel selection' : 'Select turns',
+            icon: <span className="text-[10px]">☐</span>,
+            onClick: props.onToggleSelecting,
+        });
+    }
 
     // Metadata
     if (!props.isPending && props.metadataProcess) {
@@ -203,6 +222,9 @@ export function ChatHeader({
     onFloat,
     title,
     wsId,
+    turnsContainerRef,
+    isSelecting,
+    onToggleSelecting,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -221,7 +243,12 @@ export function ChatHeader({
 
     const handleCopyHtml = async () => {
         try {
-            const html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId));
+            let html: string;
+            if (turnsContainerRef?.current) {
+                html = snapshotConversation(turnsContainerRef.current);
+            } else {
+                html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId));
+            }
             await copyHtmlToClipboard(html);
             setCopiedHtml(true);
             setTimeout(() => setCopiedHtml(false), 2000);
@@ -259,7 +286,9 @@ export function ChatHeader({
         onCopyHtml: () => void handleCopyHtml(),
         copiedHtml,
         onOpenRefs: () => setRefsSheetOpen(true),
-    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId]); // eslint-disable-line react-hooks/exhaustive-deps
+        onToggleSelecting,
+        isSelecting,
+    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div
@@ -388,6 +417,21 @@ export function ChatHeader({
                         >
                             {copiedHtml ? '✓' : 'HTML'}
                         </button>
+                        {onToggleSelecting && turns.length > 0 && (
+                            <button
+                                title={isSelecting ? 'Cancel selection' : 'Select turns for partial copy'}
+                                data-testid="select-turns-btn"
+                                onClick={onToggleSelecting}
+                                className={cn(
+                                    'inline-flex items-center justify-center px-1 py-0.5 rounded text-[10px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0',
+                                    isSelecting
+                                        ? 'text-[#0078d4] dark:text-[#3794ff] font-medium'
+                                        : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+                                )}
+                            >
+                                {isSelecting ? '✕ Cancel' : '☐ Select'}
+                            </button>
+                        )}
                         {!isPending && metadataProcess && (
                             <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
                         )}
