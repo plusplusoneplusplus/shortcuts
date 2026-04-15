@@ -1,22 +1,40 @@
 /**
  * MyWorkView — landing page for the "My Work" virtual workspace.
  *
- * Renders the notes system for the `my_work` workspace with an extra
- * toolbar for syncing from Work IQ and generating weekly summaries.
+ * Renders a tab bar with Activity and Notes tabs below a shared toolbar.
+ * Activity reuses RepoActivityTab; Notes reuses NotesView.
  */
 
 import { useState, useCallback } from 'react';
 import { NotesView } from './NotesView';
+import { RepoActivityTab } from './RepoActivityTab';
 import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../context/AppContext';
+import { cn } from '../shared';
+import type { RepoSubTab } from '../types/dashboard';
 
 export const MY_WORK_WORKSPACE_ID = 'my_work';
 
+const MY_WORK_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
+    { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
+    { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
+];
+
 export function MyWorkView() {
-    const { state } = useApp();
+    const { state, dispatch } = useApp();
     const [syncing, setSyncing] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+    // Default to 'notes' when the current sub-tab is not one of the My Work tabs
+    const activeTab = MY_WORK_TABS.some(t => t.key === state.activeRepoSubTab)
+        ? state.activeRepoSubTab
+        : 'notes';
+
+    const switchTab = useCallback((tab: RepoSubTab) => {
+        dispatch({ type: 'SET_REPO_SUB_TAB', tab });
+        location.hash = '#repos/' + MY_WORK_WORKSPACE_ID + '/' + tab;
+    }, [dispatch]);
 
     const handleSync = useCallback(async () => {
         setSyncing(true);
@@ -46,7 +64,6 @@ export function MyWorkView() {
             });
             if (result.path) {
                 setStatusMsg(`Summary saved to ${result.path}`);
-                // Navigate to the generated summary note
                 location.hash = `#repos/${MY_WORK_WORKSPACE_ID}/notes/${encodeURIComponent(result.path)}`;
             }
             setTimeout(() => setStatusMsg(null), 4000);
@@ -93,12 +110,44 @@ export function MyWorkView() {
                 <div className="flex-1" />
             </div>
 
-            {/* Notes view (reused as-is) */}
-            <div className="flex-1 min-h-0">
-                <NotesView
-                    workspaceId={MY_WORK_WORKSPACE_ID}
-                    initialNotePath={state.selectedNotePath}
-                />
+            {/* Tab bar */}
+            <div
+                className="flex px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] flex-shrink-0"
+                data-testid="my-work-tab-bar"
+            >
+                {MY_WORK_TABS.map(t => (
+                    <button
+                        key={t.key}
+                        data-subtab={t.key}
+                        title={t.shortcut}
+                        className={cn(
+                            'text-xs font-medium transition-colors relative whitespace-nowrap shrink-0 px-3 py-2',
+                            activeTab === t.key
+                                ? 'text-[#0078d4] dark:text-[#3794ff]'
+                                : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                        )}
+                        onClick={() => switchTab(t.key)}
+                        data-testid={`my-work-tab-${t.key}`}
+                    >
+                        {t.label}
+                        {activeTab === t.key && (
+                            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
+                        )}
+                    </button>
+                ))}
+            </div>
+
+            {/* Tab content */}
+            <div className="flex-1 min-h-0 overflow-hidden">
+                <div style={{ display: activeTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                    <RepoActivityTab workspaceId={MY_WORK_WORKSPACE_ID} />
+                </div>
+                <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                    <NotesView
+                        workspaceId={MY_WORK_WORKSPACE_ID}
+                        initialNotePath={state.selectedNotePath}
+                    />
+                </div>
             </div>
         </div>
     );
