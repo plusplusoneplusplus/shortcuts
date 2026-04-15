@@ -60,18 +60,18 @@ describe('MyWorkView', () => {
         location.hash = '';
     });
 
-    it('renders the toolbar with Sync and Generate buttons', () => {
+    it('renders the single-row header with tabs and action buttons', () => {
         renderView();
-        expect(screen.getByTestId('my-work-toolbar')).toBeTruthy();
+        expect(screen.getByTestId('my-work-header')).toBeTruthy();
         expect(screen.getByTestId('my-work-sync-btn')).toBeTruthy();
         expect(screen.getByTestId('my-work-generate-btn')).toBeTruthy();
-    });
-
-    it('renders the tab bar with Activity and Notes tabs', () => {
-        renderView();
-        expect(screen.getByTestId('my-work-tab-bar')).toBeTruthy();
         expect(screen.getByTestId('my-work-tab-activity')).toBeTruthy();
         expect(screen.getByTestId('my-work-tab-notes')).toBeTruthy();
+    });
+
+    it('renders a vertical splitter between tabs and action buttons', () => {
+        renderView();
+        expect(screen.getByTestId('my-work-header-splitter')).toBeTruthy();
     });
 
     it('defaults to Notes tab when activeRepoSubTab is not activity/notes', () => {
@@ -157,17 +157,17 @@ describe('MyWorkView', () => {
         expect(notesBtn.querySelector('span')).toBeNull();
     });
 
-    it('toolbar stays visible regardless of active tab', () => {
+    it('header stays visible regardless of active tab', () => {
         // Notes tab
         mockActiveRepoSubTab = 'notes';
         const { unmount } = renderView();
-        expect(screen.getByTestId('my-work-toolbar')).toBeTruthy();
+        expect(screen.getByTestId('my-work-header')).toBeTruthy();
         unmount();
 
         // Activity tab
         mockActiveRepoSubTab = 'activity';
         renderView();
-        expect(screen.getByTestId('my-work-toolbar')).toBeTruthy();
+        expect(screen.getByTestId('my-work-header')).toBeTruthy();
     });
 
     it('exports MY_WORK_WORKSPACE_ID constant', () => {
