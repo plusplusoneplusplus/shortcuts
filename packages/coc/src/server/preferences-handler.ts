@@ -105,6 +105,8 @@ export interface PerRepoPreferences {
     skillTemplates?: SkillTemplateEntry[];
     /** Preferred file-list display mode across all git views (commits, branch changes, working tree). */
     filesViewMode?: 'flat' | 'tree';
+    /** Memory extraction settings. Extraction is opt-in per repo (default: disabled). */
+    memoryExtraction?: { enabled: boolean };
 }
 
 /** backward-compat alias */
@@ -305,6 +307,13 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
 
     if (obj.filesViewMode === 'flat' || obj.filesViewMode === 'tree') {
         result.filesViewMode = obj.filesViewMode;
+    }
+
+    if (typeof obj.memoryExtraction === 'object' && obj.memoryExtraction !== null) {
+        const me = obj.memoryExtraction as Record<string, unknown>;
+        if (typeof me.enabled === 'boolean') {
+            result.memoryExtraction = { enabled: me.enabled };
+        }
     }
 
     return result;

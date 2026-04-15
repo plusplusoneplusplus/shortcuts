@@ -50,6 +50,7 @@ import { migrateProcessHistoryIfNeeded } from './startup-process-migration';
 interface CloseHandlerDeps {
     staleDetector: { dispose(): void };
     outputPruner: { stopListening(): void };
+    extractionSweep: { dispose(): void };
     heapMonitor: { dispose(): void };
     taskWatcher: { closeAll(): void };
     pipelineWatcher: { closeAll(): void };
@@ -73,6 +74,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
 
         staleDetector.dispose();
         outputPruner.stopListening();
+        deps.extractionSweep.dispose();
         deps.heapMonitor.dispose();
         taskWatcher.closeAll();
         pipelineWatcher.closeAll();
@@ -141,7 +143,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         resolvedConfig.chat.followUpSuggestions, () => wsServer,
     );
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
-    const { outputPruner, staleDetector } = createCleanupInfrastructure(store, dataDir, queueFacade);
+
+    // Cleanup infra is created after aiInvoker below (needs it for extraction sweep)
+    let cleanupInfra: ReturnType<typeof createCleanupInfrastructure>;
 
     const heapMonitor = new HeapMonitor(resolvedConfig.monitoring.heapCheck);
     heapMonitor.start();
@@ -175,6 +179,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const resolvedAiService = options.aiService ?? getCopilotSDKService();
     const aiInvoker = createCLIAIInvoker({ approvePermissions: true });
+    cleanupInfra = createCleanupInfrastructure(store, dataDir, queueFacade, aiInvoker);
+    const { outputPruner, staleDetector, extractionSweep } = cleanupInfra;
     const routes: Route[] = [];
     const { wikiManager } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
@@ -222,7 +228,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     return {
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
-            staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher,
+            staleDetector, outputPruner, extractionSweep, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher,
             wikiManager, scheduleManager, scheduleInfraDispose, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,

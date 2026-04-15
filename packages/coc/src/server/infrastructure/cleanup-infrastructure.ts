@@ -10,9 +10,11 @@
 
 import { OutputPruner } from '../output-pruner';
 import { StaleTaskDetector } from '../stale-task-detector';
+import { MemoryExtractionSweep } from '../memory/memory-extraction-sweep';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from '../server-logger';
-import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { AIInvoker, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { ExtractionConfig } from '../memory/extraction-config';
 
 // ============================================================================
 // Types
@@ -21,6 +23,7 @@ import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge'
 export interface CleanupInfrastructure {
     outputPruner: OutputPruner;
     staleDetector: StaleTaskDetector;
+    extractionSweep: MemoryExtractionSweep;
 }
 
 // ============================================================================
@@ -29,16 +32,20 @@ export interface CleanupInfrastructure {
 
 /**
  * Creates and wires up the cleanup infrastructure (OutputPruner +
- * StaleTaskDetector) required by the execution server.
+ * StaleTaskDetector + MemoryExtractionSweep) required by the execution server.
  *
  * @param store       - Process store for task tracking.
  * @param dataDir     - Root data directory (e.g. `~/.coc/`).
  * @param queueFacade - Aggregate queue facade for stale task detection.
+ * @param aiInvoker   - AI invoker for memory extraction.
+ * @param extractionConfig - Optional extraction configuration overrides.
  */
 export function createCleanupInfrastructure(
     store: ProcessStore,
     dataDir: string,
     queueFacade: TaskQueueManager,
+    aiInvoker?: AIInvoker,
+    extractionConfig?: Partial<ExtractionConfig>,
 ): CleanupInfrastructure {
     const outputPruner = new OutputPruner(store, dataDir);
 
@@ -57,5 +64,14 @@ export function createCleanupInfrastructure(
         getServerLogger().warn({ err }, '[OutputPruner] stale queue cleanup failed');
     });
 
-    return { outputPruner, staleDetector };
+    const extractionSweep = new MemoryExtractionSweep({
+        store,
+        dataDir,
+        aiInvoker: aiInvoker ?? (() => Promise.resolve({ success: false, error: 'No AI invoker configured' })),
+        queueFacade,
+        config: extractionConfig,
+    });
+    extractionSweep.start();
+
+    return { outputPruner, staleDetector, extractionSweep };
 }
