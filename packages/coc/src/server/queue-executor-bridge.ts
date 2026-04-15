@@ -90,19 +90,23 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         if (!this.queueManager) throw new Error('Queue manager is not available');
-        if (this.queueManager.getTask(taskId)) {
+        const existingTask = this.queueManager.getTask(taskId);
+        if (existingTask && existingTask.status !== 'running') {
             applyFollowUpToTask(this.queueManager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images, selectedSkillNames);
             return;
         }
-        // Fallback: task not in in-memory queue (e.g. after server restart).
-        // Reconstruct from the process store and enqueue as a new task.
-        const processId = toQueueProcessId(taskId);
-        const proc = await this.store.getProcess(processId) ?? await this.store.getProcess(taskId);
+        // Fallback: task not in in-memory queue (e.g. after server restart)
+        // or still in running map (drain race). Reconstruct from the process
+        // store and enqueue as a new task.
+        const derivedProcessId = existingTask?.processId ?? toQueueProcessId(taskId);
+        const proc = await this.store.getProcess(derivedProcessId) ?? await this.store.getProcess(toQueueProcessId(taskId)) ?? await this.store.getProcess(taskId);
         if (!proc) throw new Error(`Task ${taskId} not found`);
         const reconstructed = processToQueuedTask(proc);
         this.queueManager.enqueue({
-            id: taskId,
-            processId: processId,
+            // For server-restart (task absent), reuse the original ID.
+            // For running tasks, omit id to auto-generate and avoid ID collision.
+            ...(existingTask ? {} : { id: taskId }),
+            processId: derivedProcessId,
             type: reconstructed.type ?? 'chat',
             priority: 'normal',
             payload: { ...(reconstructed.payload as any), prompt, attachments, imageTempDir, ...(images ? { images } : {}), ...(mode ? { mode } : {}), ...(deliveryMode ? { deliveryMode } : {}) },
@@ -157,18 +161,35 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     /**
-     * Drain one pending message from the process store and requeue it.
+     * Drain one pending message from the process store and enqueue it as a follow-up.
      * Called by the lifecycle runner after a task completes.
      *
-     * requeueForFollowUp is intentionally called only here (internal drain), never
-     * from the API route layer. The route layer always uses bridge.enqueue() for fresh tasks.
+     * Enqueues directly (not via requeueForFollowUp) because at this point the
+     * parent task is still in the running map — QueueExecutor has not yet called
+     * markCompleted. Using requeueForFollowUp would hit applyFollowUpToTask →
+     * requeueFromHistory which fails for running tasks.
      */
-    private async drainPendingMessages(processId: string, taskId: string): Promise<void> {
+    private async drainPendingMessages(processId: string, _taskId: string): Promise<void> {
         const proc = await this.store.getProcess(processId);
         if (!proc?.pendingMessages?.length) return;
+        if (!this.queueManager) return;
         const [nextMsg, ...rest] = proc.pendingMessages;
+        // Enqueue follow-up first — only remove pending message after success
+        // to prevent data loss if enqueue fails.
+        this.queueManager.enqueue({
+            processId,
+            type: 'chat',
+            priority: 'normal',
+            payload: {
+                kind: 'chat' as const,
+                processId,
+                prompt: nextMsg.content,
+                ...(nextMsg.mode ? { mode: nextMsg.mode } : {}),
+            },
+            config: {},
+            displayName: nextMsg.content.trim().substring(0, 57) + (nextMsg.content.trim().length > 57 ? '...' : ''),
+        });
         await this.store.updateProcess(processId, { pendingMessages: rest });
-        await this.requeueForFollowUp(taskId, nextMsg.content, undefined, undefined, nextMsg.mode);
     }
 }
 

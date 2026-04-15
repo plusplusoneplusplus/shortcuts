@@ -340,12 +340,19 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      */
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         for (const manager of this.registry.getAllQueues().values()) {
-            if (!manager.getTask(taskId)) continue;
-            applyFollowUpToTask(manager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images, selectedSkillNames);
-            return;
+            const existingTask = manager.getTask(taskId);
+            if (!existingTask) continue;
+            // Skip applyFollowUpToTask when the task is still running (not yet
+            // in history), which happens during the drain race with QueueExecutor.
+            if (existingTask.status !== 'running') {
+                applyFollowUpToTask(manager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode, images, selectedSkillNames);
+                return;
+            }
+            // Running task — fall through to fallback enqueue below
+            break;
         }
-        // Fallback: task not in any in-memory queue (e.g. after server restart).
-        // Reconstruct from the process store and enqueue via the bridge.
+        // Fallback: task not in any in-memory queue (e.g. after server restart)
+        // or still running (drain race). Reconstruct from the process store.
         const processId = toQueueProcessId(taskId);
         const proc = await this.store.getProcess(processId) ?? await this.store.getProcess(taskId);
         if (!proc) throw new Error(`Task ${taskId} not found in any queue`);

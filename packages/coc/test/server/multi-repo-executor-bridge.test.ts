@@ -550,8 +550,8 @@ describe('MultiRepoQueueExecutorBridge', () => {
             bridge.dispose();
         });
 
-        it('throws when task is running (not in history)', async () => {
-            const { bridge } = createBridge();
+        it('uses fallback enqueue when task is running (not in history)', async () => {
+            const { bridge, store } = createBridge();
             bridge.getOrCreateBridge('/repo/requeue-running');
             const manager = bridge.registry.getQueueForRepo('/repo/requeue-running');
 
@@ -565,10 +565,21 @@ describe('MultiRepoQueueExecutorBridge', () => {
             });
             manager.markStarted(taskId);
 
-            // Task is running — requeueFromHistory returns false → should throw
+            // Provide process in store for fallback path
+            await store.addProcess({
+                id: `queue_${taskId}`,
+                type: 'chat',
+                status: 'running',
+                promptPreview: 'Original',
+                fullPrompt: 'Original',
+                startTime: new Date(),
+                workingDirectory: '/repo/requeue-running',
+            } as any);
+
+            // Task is running — skips applyFollowUpToTask, falls through to enqueue
             await expect(
                 bridge.requeueForFollowUp(taskId, 'Follow-up while running')
-            ).rejects.toThrow(/not available in history/);
+            ).resolves.toBeUndefined();
 
             bridge.dispose();
         });

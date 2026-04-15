@@ -133,9 +133,9 @@ function createMockQueueManager(): MockQueueManager {
     } as MockQueueManager;
 }
 
-/** Collect the drained message prompts from updateTask calls (via applyFollowUpToTask) */
+/** Collect the drained message prompts from enqueue calls (via drainPendingMessages) */
 function drainedPrompts(qm: MockQueueManager): string[] {
-    return qm.updateTask.mock.calls.map((call: any[]) => call[1]?.payload?.prompt).filter(Boolean);
+    return qm.enqueue.mock.calls.map((call: any[]) => call[0]?.payload?.prompt).filter(Boolean);
 }
 
 // ============================================================================
@@ -175,22 +175,21 @@ describe('Follow-up FIFO — server orchestration', () => {
         expect(afterFirst?.pendingMessages).toHaveLength(1);
         expect(afterFirst?.pendingMessages![0].content).toBe('Message B');
 
-        // applyFollowUpToTask called requeueFromHistory for the first drain
-        expect(queueManager.requeueFromHistory).toHaveBeenCalledTimes(1);
+        // drainPendingMessages enqueued a follow-up for the first drain
+        expect(queueManager.enqueue).toHaveBeenCalledTimes(1);
         expect(drainedPrompts(queueManager)).toEqual(['Message A']);
 
         // Second follow-up completes → drains Message B
         const task2 = followUpTask({ id: 'fu-task-2', processId: 'proc-1', content: 'Message A execution' });
         queueManager.tasks.set(task2.id, task2);
-        queueManager.updateTask.mockClear();
-        queueManager.requeueFromHistory.mockClear();
+        queueManager.enqueue.mockClear();
 
         await executor.execute(task2);
 
         const afterSecond = await store.getProcess('proc-1');
         expect(afterSecond?.pendingMessages).toHaveLength(0);
         expect(drainedPrompts(queueManager)).toEqual(['Message B']);
-        expect(queueManager.requeueFromHistory).toHaveBeenCalledTimes(1);
+        expect(queueManager.enqueue).toHaveBeenCalledTimes(1);
     });
 
     it('pendingMessages length transitions 2 → 1 → 0 across drains', async () => {
@@ -223,7 +222,7 @@ describe('Follow-up FIFO — server orchestration', () => {
         await executor.execute(task);
 
         // No drain activity
-        expect(queueManager.requeueFromHistory).not.toHaveBeenCalled();
+        expect(queueManager.enqueue).not.toHaveBeenCalled();
         expect(drainedPrompts(queueManager)).toEqual([]);
     });
 });
@@ -358,16 +357,16 @@ describe('Follow-up FIFO — mixed delivery mode interactions', () => {
         const t1 = followUpTask({ id: 'mode-t1', processId: 'proc-mode', content: 'trigger' });
         queueManager.tasks.set(t1.id, t1);
         await executor.execute(t1);
-        const firstCall = queueManager.updateTask.mock.calls[0];
-        expect(firstCall[1].payload.mode).toBe('plan');
+        const firstCall = queueManager.enqueue.mock.calls[0];
+        expect(firstCall[0].payload.mode).toBe('plan');
 
         // Second drain → autopilot mode
         const t2 = followUpTask({ id: 'mode-t2', processId: 'proc-mode', content: 'trigger2' });
         queueManager.tasks.set(t2.id, t2);
-        queueManager.updateTask.mockClear();
+        queueManager.enqueue.mockClear();
         await executor.execute(t2);
-        const secondCall = queueManager.updateTask.mock.calls[0];
-        expect(secondCall[1].payload.mode).toBe('autopilot');
+        const secondCall = queueManager.enqueue.mock.calls[0];
+        expect(secondCall[0].payload.mode).toBe('autopilot');
     });
 });
 
@@ -412,8 +411,8 @@ describe('Follow-up FIFO — metadata preservation', () => {
         queueManager.tasks.set(task.id, task);
         await executor.execute(task);
 
-        const updateCall = queueManager.updateTask.mock.calls[0];
-        expect(updateCall[1].payload.mode).toBe('autopilot');
+        const enqueueCall = queueManager.enqueue.mock.calls[0];
+        expect(enqueueCall[0].payload.mode).toBe('autopilot');
     });
 
     it('handles messages without mode gracefully', async () => {
@@ -427,8 +426,8 @@ describe('Follow-up FIFO — metadata preservation', () => {
 
         expect(drainedPrompts(queueManager)).toEqual(['no mode msg']);
         // mode should not be set when the pending message had none
-        const updateCall = queueManager.updateTask.mock.calls[0];
-        expect(updateCall[1].payload.mode).toBeUndefined();
+        const enqueueCall = queueManager.enqueue.mock.calls[0];
+        expect(enqueueCall[0].payload.mode).toBeUndefined();
     });
 
     it('pending message id and createdAt do not leak into requeued task payload', async () => {
@@ -440,10 +439,10 @@ describe('Follow-up FIFO — metadata preservation', () => {
         queueManager.tasks.set(task.id, task);
         await executor.execute(task);
 
-        const updateCall = queueManager.updateTask.mock.calls[0];
-        // The requeued payload should not contain the PendingMessage-specific fields
-        expect(updateCall[1].payload.id).toBeUndefined();
-        expect(updateCall[1].payload.createdAt).toBeUndefined();
+        const enqueueCall = queueManager.enqueue.mock.calls[0];
+        // The enqueued payload should not contain the PendingMessage-specific fields
+        expect(enqueueCall[0].payload.id).toBeUndefined();
+        expect(enqueueCall[0].payload.createdAt).toBeUndefined();
     });
 
     it('displayName of requeued task is derived from pending message content', async () => {
@@ -455,8 +454,8 @@ describe('Follow-up FIFO — metadata preservation', () => {
         queueManager.tasks.set(task.id, task);
         await executor.execute(task);
 
-        const updateCall = queueManager.updateTask.mock.calls[0];
-        expect(updateCall[1].displayName).toBe('Short prompt');
+        const enqueueCall = queueManager.enqueue.mock.calls[0];
+        expect(enqueueCall[0].displayName).toBe('Short prompt');
     });
 
     it('truncates long displayName at 60 chars', async () => {
@@ -469,9 +468,9 @@ describe('Follow-up FIFO — metadata preservation', () => {
         queueManager.tasks.set(task.id, task);
         await executor.execute(task);
 
-        const updateCall = queueManager.updateTask.mock.calls[0];
-        expect(updateCall[1].displayName.length).toBeLessThanOrEqual(60);
-        expect(updateCall[1].displayName).toContain('...');
+        const enqueueCall = queueManager.enqueue.mock.calls[0];
+        expect(enqueueCall[0].displayName.length).toBeLessThanOrEqual(60);
+        expect(enqueueCall[0].displayName).toContain('...');
     });
 });
 
@@ -517,8 +516,8 @@ describe('Follow-up FIFO — failure-path queue integrity', () => {
         expect(after?.pendingMessages![0].content).toBe('Should stay A');
         expect(after?.pendingMessages![1].content).toBe('Should stay B');
 
-        // No drain activity (no updateTask from drain, no requeueFromHistory)
-        expect(queueManager.requeueFromHistory).not.toHaveBeenCalled();
+        // No drain activity (no enqueue from drain path)
+        expect(queueManager.enqueue).not.toHaveBeenCalled();
         expect(drainedPrompts(queueManager)).toEqual([]);
 
         spy.mockRestore();
@@ -542,7 +541,7 @@ describe('Follow-up FIFO — failure-path queue integrity', () => {
         // Pending messages remain
         const after = await store.getProcess('proc-cancel');
         expect(after?.pendingMessages).toHaveLength(2);
-        expect(queueManager.requeueFromHistory).not.toHaveBeenCalled();
+        expect(queueManager.enqueue).not.toHaveBeenCalled();
     });
 
     it('successful drain after a prior failure preserves remaining queue order', async () => {
@@ -563,7 +562,7 @@ describe('Follow-up FIFO — failure-path queue integrity', () => {
         await executor.execute(task1);
 
         expect((await store.getProcess('proc-recover'))?.pendingMessages).toHaveLength(3);
-        expect(queueManager.requeueFromHistory).not.toHaveBeenCalled();
+        expect(queueManager.enqueue).not.toHaveBeenCalled();
 
         // Second execution succeeds → drains Queued 1
         spy.mockRestore();
@@ -590,18 +589,109 @@ describe('Follow-up FIFO — failure-path queue integrity', () => {
         await executor.execute(task);
 
         // Should have drained exactly once
-        expect(queueManager.requeueFromHistory).toHaveBeenCalledTimes(1);
+        expect(queueManager.enqueue).toHaveBeenCalledTimes(1);
         expect((await store.getProcess('proc-dedup'))?.pendingMessages).toHaveLength(0);
 
         // Execute again with no pending messages
-        queueManager.requeueFromHistory.mockClear();
-        queueManager.updateTask.mockClear();
+        queueManager.enqueue.mockClear();
         const task2 = followUpTask({ id: 'dedup-2', processId: 'proc-dedup', content: 'trigger2' });
         queueManager.tasks.set(task2.id, task2);
         await executor.execute(task2);
 
         // No additional drain
-        expect(queueManager.requeueFromHistory).not.toHaveBeenCalled();
+        expect(queueManager.enqueue).not.toHaveBeenCalled();
         expect(drainedPrompts(queueManager)).toEqual([]);
+    });
+});
+
+// ============================================================================
+// 6. Drain race condition tests
+// ============================================================================
+
+describe('Follow-up FIFO — drain race condition (running task)', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let executor: CLITaskExecutor;
+    let queueManager: MockQueueManager;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        queueManager = createMockQueueManager();
+        executor.setQueueManager(queueManager as any);
+    });
+
+    it('drains pending message even when parent task is still in running map', async () => {
+        // This is the core race condition scenario: drain is called from
+        // inside execute(), before QueueExecutor calls markCompleted.
+        // The task is still in the running map (status: 'running').
+        const proc = createCompletedProcessWithSession('proc-race', 'sess-race');
+        proc.pendingMessages = [
+            makePendingMessage('Buffered follow-up'),
+        ];
+        await store.addProcess(proc);
+
+        // Simulate follow-up task that's in the running map (as it would be
+        // during execute() — QueueExecutor hasn't called markCompleted yet)
+        const task = followUpTask({ id: 'race-task', processId: 'proc-race', content: 'running task' });
+        task.status = 'running';
+        queueManager.tasks.set(task.id, task);
+        await executor.execute(task);
+
+        // Pending message should have been drained
+        const after = await store.getProcess('proc-race');
+        expect(after?.pendingMessages).toHaveLength(0);
+
+        // The drained message should have been enqueued as a follow-up
+        expect(queueManager.enqueue).toHaveBeenCalledTimes(1);
+        const enqueued = queueManager.enqueue.mock.calls[0][0];
+        expect(enqueued.payload.prompt).toBe('Buffered follow-up');
+        expect(enqueued.payload.processId).toBe('proc-race');
+        expect(enqueued.payload.kind).toBe('chat');
+        expect(enqueued.type).toBe('chat');
+    });
+
+    it('pending message is preserved if enqueue throws', async () => {
+        const proc = createCompletedProcessWithSession('proc-enq-fail', 'sess-enq-fail');
+        proc.pendingMessages = [
+            makePendingMessage('Should survive'),
+        ];
+        await store.addProcess(proc);
+
+        // Make enqueue throw (simulates queue full, draining, etc.)
+        queueManager.enqueue.mockImplementationOnce(() => { throw new Error('Queue is full'); });
+
+        const task = followUpTask({ processId: 'proc-enq-fail', content: 'trigger' });
+        queueManager.tasks.set(task.id, task);
+
+        // The drain error is caught by the lifecycle runner (non-fatal)
+        const result = await executor.execute(task);
+        expect(result.success).toBe(true);
+
+        // Pending message must NOT be removed since enqueue failed
+        const after = await store.getProcess('proc-enq-fail');
+        expect(after?.pendingMessages).toHaveLength(1);
+        expect(after?.pendingMessages![0].content).toBe('Should survive');
+    });
+
+    it('enqueued follow-up has correct processId for conversation continuity', async () => {
+        const proc = createCompletedProcessWithSession('proc-cont', 'sess-cont');
+        proc.pendingMessages = [
+            makePendingMessage('Continue conversation'),
+        ];
+        await store.addProcess(proc);
+
+        const task = followUpTask({ id: 'cont-task', processId: 'proc-cont', content: 'trigger' });
+        task.status = 'running';
+        queueManager.tasks.set(task.id, task);
+        await executor.execute(task);
+
+        // The enqueued task must reference the correct processId
+        const enqueued = queueManager.enqueue.mock.calls[0][0];
+        expect(enqueued.processId).toBe('proc-cont');
+        // And the payload must also contain processId for isChatFollowUp check
+        expect(enqueued.payload.processId).toBe('proc-cont');
     });
 });
