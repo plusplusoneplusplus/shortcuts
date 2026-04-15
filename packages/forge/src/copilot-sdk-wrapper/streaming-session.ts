@@ -101,11 +101,6 @@ export interface ISessionEvent {
         toolRequests?: Array<{ toolCallId: string; name: string; arguments?: unknown }>;
         // Abort reason
         reason?: string;
-        // Background tasks (session.idle, background_tasks_changed)
-        backgroundTasks?: {
-            agents?: Array<{ id: string; type?: string; description?: string }>;
-            shells?: Array<{ id: string; type?: string; description?: string }>;
-        };
     };
 }
 
@@ -316,14 +311,15 @@ export class StreamingSession {
             case 'assistant.message':         this.handleMessage(event);       break;
             case 'assistant.turn_start':      this.handleTurnStart();          break;
             case 'assistant.turn_end':        this.handleTurnEnd();            break;
-            case 'session.idle':              this.handleSessionIdle(event);   break;
+            case 'session.idle':              this.handleSessionIdle();        break;
             case 'session.error':             this.handleSessionError(event);  break;
             case 'assistant.usage':           this.handleUsage(event);         break;
             case 'session.usage_info':        this.handleUsageInfo(event);     break;
             case 'tool.execution_start':      this.handleToolStart(event);     break;
             case 'tool.execution_complete':   this.handleToolComplete(event);  break;
             case 'tool.execution_progress':   this.handleToolProgress(event);  break;
-            case 'background_tasks_changed':  this.handleBackgroundTasksChanged(event); break;
+            case 'session.background_tasks_changed':
+                this.handleBackgroundTasksChanged(); break;
             case 'assistant.intent':
                 this.sessionLog.debug({ intent: event.data?.intent }, 'Assistant intent');
                 break;
@@ -397,61 +393,33 @@ export class StreamingSession {
         }
     }
 
-    private handleSessionIdle(event: ISessionEvent): void {
-        const bgTasks = event.data?.backgroundTasks;
-        const activeAgents = bgTasks?.agents ?? [];
-        const activeShells = bgTasks?.shells ?? [];
-        const totalActive = activeAgents.length + activeShells.length;
-
-        if (totalActive > 0) {
-            this.waitingForBackgroundTasks = true;
-            this.timers.cancelTurnEndGrace();
-            this.sessionLog.debug(
-                { agents: activeAgents.length, shells: activeShells.length },
-                'Session idle with active background tasks — deferring settle',
-            );
-            this.notifyBackgroundTasksChanged(activeAgents, activeShells, true);
-            return;
-        }
-
+    private handleSessionIdle(): void {
         this.sessionLog.debug({ turns: this.telemetry.turnCount }, 'Session idle');
         this.waitingForBackgroundTasks = false;
         this.settleWithResult();
     }
 
-    private handleBackgroundTasksChanged(event: ISessionEvent): void {
-        const bgTasks = event.data?.backgroundTasks;
-        const activeAgents = bgTasks?.agents ?? [];
-        const activeShells = bgTasks?.shells ?? [];
-        const totalActive = activeAgents.length + activeShells.length;
-
-        this.sessionLog.debug(
-            { agents: activeAgents.length, shells: activeShells.length, waiting: this.waitingForBackgroundTasks },
-            'Background tasks changed',
-        );
-
-        this.notifyBackgroundTasksChanged(activeAgents, activeShells, this.waitingForBackgroundTasks);
-
-        if (this.waitingForBackgroundTasks && totalActive === 0) {
-            this.sessionLog.debug('All background tasks drained — settling');
-            this.waitingForBackgroundTasks = false;
-            this.notifyBackgroundTasksChanged([], [], false);
-            this.settleWithResult();
-        }
+    /**
+     * session.background_tasks_changed signals that background work exists.
+     * Set the waiting flag and cancel the grace timer; settlement is deferred
+     * to session.idle which only fires once all background tasks drain.
+     */
+    private handleBackgroundTasksChanged(): void {
+        if (this.waitingForBackgroundTasks) { return; }
+        this.waitingForBackgroundTasks = true;
+        this.timers.cancelTurnEndGrace();
+        this.sessionLog.debug('Background tasks active — deferring settle to session.idle');
+        this.notifyBackgroundTasksChanged(true);
     }
 
     /** Fire the onBackgroundTasksChanged callback if provided. */
-    private notifyBackgroundTasksChanged(
-        agents: Array<{ id: string; type?: string; description?: string }>,
-        shells: Array<{ id: string; type?: string; description?: string }>,
-        waitingForDrain: boolean,
-    ): void {
+    private notifyBackgroundTasksChanged(waitingForDrain: boolean): void {
         if (!this.options.onBackgroundTasksChanged) return;
         try {
             this.options.onBackgroundTasksChanged({
-                backgroundAgents: agents,
-                backgroundShells: shells,
-                backgroundTotalActive: agents.length + shells.length,
+                backgroundAgents: [],
+                backgroundShells: [],
+                backgroundTotalActive: 0,
                 backgroundWaitingForDrain: waitingForDrain,
             });
         } catch {
