@@ -122,6 +122,8 @@ src/
 │   ├── replicate-apply-handler.ts # Applies ReplicateResult changes to disk (idempotent)
 │   ├── llm-tools/                # AI tool factories for chat executors
 │   │   ├── index.ts              # Barrel re-exports
+│   │   ├── add-diff-comment-tool.ts # Factory for per-invocation add_diff_comment AI tool (commit chat)
+│   │   ├── diff-line-mapper.ts   # Unified diff parser and source-line → diff-index mapper
 │   │   ├── resolve-comment-tool.ts   # Factory for per-invocation resolve_comment AI tool
 │   │   ├── search-conversations-tool.ts # Factory for search_conversations AI tool (FTS5 conversation search)
 │   │   ├── suggest-follow-ups-tool.ts # Factory for suggest_follow_ups AI tool
