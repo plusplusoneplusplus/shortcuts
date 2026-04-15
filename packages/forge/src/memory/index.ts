@@ -25,6 +25,12 @@ export { MemoryAggregator, MEMORY_CONSOLIDATION_INSTRUCTIONS } from './memory-ag
 export type { AggregatorOptions } from './memory-aggregator';
 export { withMemory } from './with-memory';
 export type { WithMemoryOptions } from './with-memory';
+export {
+    EXTRACTION_SYSTEM_PROMPT,
+    buildExtractionUserPrompt,
+    parseExtractionResponse,
+} from './extraction-prompts';
+export type { ExtractedFact } from './extraction-prompts';
 
 // Tool call cache
 export type {
