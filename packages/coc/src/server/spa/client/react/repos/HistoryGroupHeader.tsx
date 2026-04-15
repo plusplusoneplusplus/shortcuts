@@ -1,11 +1,11 @@
 /**
  * HistoryGroupHeader — collapsible header for plan-file task groups.
  *
- * Renders a card with chain icon, plan file basename, aggregate status,
- * expand/collapse chevron, and relative timestamp.
+ * Visually distinct from regular task cards via a colored left accent
+ * border, leading chevron, and always-visible count badge.
  */
 
-import { Card, cn } from '../shared';
+import { cn } from '../shared';
 import { formatRelativeTime } from '../utils/format';
 import type { HistoryGroup } from './history-grouping';
 
@@ -17,34 +17,42 @@ interface HistoryGroupHeaderProps {
     isDense: boolean;
 }
 
-const STATUS_ICON: Record<string, string> = {
-    completed: '✅',
-    failed: '❌',
-    cancelled: '🚫',
+/** Left-border accent color by aggregate status. */
+const ACCENT_COLOR: Record<string, string> = {
+    completed: 'border-l-emerald-500 dark:border-l-emerald-400',
+    failed: 'border-l-red-500 dark:border-l-red-400',
+    cancelled: 'border-l-amber-500 dark:border-l-amber-400',
+};
+
+/** Count badge bg by aggregate status. */
+const BADGE_BG: Record<string, string> = {
+    completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    cancelled: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
 };
 
 export function HistoryGroupHeader({ group, isExpanded, onToggle, onContextMenu, isDense }: HistoryGroupHeaderProps) {
-    const statusIcon = STATUS_ICON[group.aggregateStatus] ?? '';
     const chevron = isExpanded ? '▾' : '▸';
     const timestamp = group.latestTimestamp
         ? formatRelativeTime(new Date(group.latestTimestamp).toISOString())
         : '';
 
-    const completedCount = group.children.filter(c => c.status === 'completed').length;
     const failedCount = group.children.filter(c => c.status === 'failed').length;
     const cancelledCount = group.children.filter(c => c.status === 'cancelled').length;
 
-    const parts: string[] = [];
-    if (completedCount > 0) parts.push(`${completedCount} completed`);
-    if (failedCount > 0) parts.push(`${failedCount} failed`);
-    if (cancelledCount > 0) parts.push(`${cancelledCount} cancelled`);
-    const summaryText = `${group.children.length} tasks${parts.length > 0 ? ' · ' + parts.join(', ') : ''}`;
+    // Compact badge text: "3 tasks" or "3 tasks · 1 failed"
+    const badgeParts = [`${group.children.length}`];
+    if (failedCount > 0) badgeParts.push(`${failedCount} ❌`);
+    else if (cancelledCount > 0) badgeParts.push(`${cancelledCount} 🚫`);
+    const badgeText = badgeParts.join(' · ');
 
     return (
-        <Card
+        <div
             className={cn(
-                isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
-                "bg-gray-50 dark:bg-gray-800/50",
+                "rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] border-l-[3px] cursor-pointer",
+                "bg-[#f5f5f5] dark:bg-[#2a2a2a] hover:bg-[#eaeaea] dark:hover:bg-[#333] transition-colors",
+                isDense ? "px-2 py-1.5" : "px-2.5 py-2",
+                ACCENT_COLOR[group.aggregateStatus] ?? ACCENT_COLOR.completed,
             )}
             onClick={onToggle}
             onContextMenu={onContextMenu}
@@ -52,29 +60,30 @@ export function HistoryGroupHeader({ group, isExpanded, onToggle, onContextMenu,
             data-plan-file={group.planFilePath}
         >
             <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                <span className="flex items-center gap-1 min-w-0 truncate">
+                <span className="flex items-center gap-1.5 min-w-0 truncate">
+                    {/* Leading chevron — makes it obvious this is expandable */}
+                    <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999] w-3 text-center">{chevron}</span>
                     {group.hasUnseen && (
                         <span
                             className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]"
                             data-testid="group-unseen-dot"
                         />
                     )}
-                    <span className="shrink-0">🔗</span>
                     <span className={cn("truncate", group.hasUnseen && "font-semibold")} title={group.planFilePath}>
                         {group.label}
                     </span>
-                    <span className="shrink-0">{statusIcon}</span>
-                    <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]">{chevron}</span>
+                    {/* Always-visible count badge */}
+                    <span className={cn(
+                        "shrink-0 text-[10px] font-medium px-1.5 py-px rounded-full",
+                        BADGE_BG[group.aggregateStatus] ?? BADGE_BG.completed,
+                    )}>
+                        {badgeText}
+                    </span>
                 </span>
                 <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
                     {timestamp}
                 </span>
             </div>
-            {!isDense && (
-                <div className="text-[10px] mt-0.5 text-[#848484] dark:text-[#bbb]">
-                    {summaryText}
-                </div>
-            )}
-        </Card>
+        </div>
     );
 }
