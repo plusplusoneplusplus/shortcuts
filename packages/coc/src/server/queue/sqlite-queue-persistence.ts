@@ -58,8 +58,6 @@ export class SqliteQueuePersistence {
     private readonly db: Database.Database;
     private readonly restartPolicy: RestartPolicy;
 
-    /** Tracks which repos we've subscribed to (rootPath → change listener). */
-    private readonly subscribedRepos = new Map<string, (event: QueueChangeEvent) => void>();
     /** Maps repoId → rootPath (persisted in queue_repo_paths table). */
     private readonly repoIdToPath = new Map<string, string>();
 
@@ -80,7 +78,6 @@ export class SqliteQueuePersistence {
         this.bridgeChangeListener = (event: BridgeQueueChangeEvent) => {
             const { repoPath, repoId } = event;
             this.trackRepoPath(repoId, repoPath);
-            this.subscribeToRepo(repoPath);
             this.handleChange(repoId, repoPath, event);
         };
         this.bridge.on('queueChange', this.bridgeChangeListener);
@@ -133,13 +130,16 @@ export class SqliteQueuePersistence {
 
         for (const [repoId, repoTasks] of repoTaskGroups) {
             const rootPath = this.repoIdToPath.get(repoId);
-            if (!rootPath) continue;
+            if (!rootPath) {
+                process.stderr.write(
+                    `[SqliteQueuePersistence] Warning: ${repoTasks.length} task(s) with repoId='${repoId}' skipped — no root path mapping found in queue_repo_paths\n`
+                );
+                continue;
+            }
 
             this.bridge.getOrCreateBridge(rootPath);
             const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
             if (!queueManager) continue;
-
-            this.subscribeToRepo(rootPath);
 
             for (const task of repoTasks) {
                 oldTaskIds.push(task.id);
@@ -192,14 +192,6 @@ export class SqliteQueuePersistence {
      */
     dispose(): void {
         this.bridge.removeListener('queueChange', this.bridgeChangeListener);
-
-        for (const [rootPath, listener] of this.subscribedRepos) {
-            const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
-            if (queueManager) {
-                queueManager.removeListener('change', listener);
-            }
-        }
-        this.subscribedRepos.clear();
     }
 
     // ========================================================================
@@ -224,26 +216,13 @@ export class SqliteQueuePersistence {
     }
 
     // ========================================================================
-    // Private — event subscription
-    // ========================================================================
-
-    private subscribeToRepo(rootPath: string): void {
-        if (this.subscribedRepos.has(rootPath)) return;
-
-        const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
-        if (!queueManager) return;
-
-        const repoId = this.bridge.getRepoIdForPath(rootPath);
-        const listener = (event: QueueChangeEvent) => this.handleChange(repoId, rootPath, event);
-        queueManager.on('change', listener);
-        this.subscribedRepos.set(rootPath, listener);
-    }
-
-    // ========================================================================
     // Private — incremental change handler (no debounce)
     // ========================================================================
 
     private handleChange(repoId: string, rootPath: string, event: QueueChangeEvent): void {
+        // Safety net: enrich task with repoId if missing (defense-in-depth)
+        const task = event.task && !event.task.repoId ? { ...event.task, repoId } : event.task;
+
         switch (event.type) {
             case 'added':
             case 'updated':
@@ -253,16 +232,16 @@ export class SqliteQueuePersistence {
             case 'unadmitted':
             case 'pause-marker-added':
             case 'pause-marker-removed':
-                if (event.task) {
-                    this.store.upsertQueueTask(event.task);
+                if (task) {
+                    this.store.upsertQueueTask(task);
                 }
                 break;
 
             case 'removed':
                 // Persist the task's final state (completed/failed/cancelled) for history restoration.
                 // Only persist terminal statuses — delete non-terminal removals (dequeue, removeTask).
-                if (event.task && isTerminalStatus(event.task.status)) {
-                    this.store.upsertQueueTask(event.task);
+                if (task && isTerminalStatus(task.status)) {
+                    this.store.upsertQueueTask(task);
                 } else if (event.taskId) {
                     this.store.removeQueueTask(event.taskId);
                 }
@@ -293,10 +272,9 @@ export class SqliteQueuePersistence {
             case 'reordered': {
                 const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
                 if (queueManager) {
-                    for (const task of queueManager.getQueued()) {
-                        if (task.repoId === repoId) {
-                            this.store.upsertQueueTask(task);
-                        }
+                    for (const queuedTask of queueManager.getQueued()) {
+                        const enriched = queuedTask.repoId ? queuedTask : { ...queuedTask, repoId };
+                        this.store.upsertQueueTask(enriched);
                     }
                 }
                 break;

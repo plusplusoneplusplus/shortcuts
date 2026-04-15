@@ -382,6 +382,9 @@ export async function enqueueViaBridge(
     const fallback = globalWorkspaceRootPath ?? process.cwd();
     const rootPath = await resolveRootPath(input.payload, store, globalWorkspaceRootPath) || fallback;
     bridge.getOrCreateBridge(rootPath);
+    if (!input.repoId) {
+        input.repoId = bridge.getRepoIdForPath(rootPath);
+    }
     const queueManager = bridge.registry.getQueueForRepo(rootPath);
     if (state.globalPaused && !queueManager.getStats().isPaused) {
         queueManager.pause();

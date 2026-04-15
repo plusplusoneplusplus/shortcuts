@@ -300,6 +300,9 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     async enqueue(input: CreateTaskInput): Promise<string> {
         const rootPath = (input.payload as any)?.workingDirectory || process.cwd();
         this.getOrCreateBridge(rootPath);
+        if (!input.repoId) {
+            input.repoId = this.getRepoIdForPath(rootPath);
+        }
         const queueManager = this.registry.getQueueForRepo(rootPath);
         return queueManager.enqueue(input);
     }
@@ -349,11 +352,13 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         const rootPath = proc.workingDirectory || process.cwd();
         this.getOrCreateBridge(rootPath);
         const manager = this.registry.getQueueForRepo(rootPath);
+        const repoId = this.getRepoIdForPath(rootPath);
         manager.enqueue({
             id: taskId,
             processId: processId,
             type: proc.type === 'clarification' ? 'chat' : proc.type,
             priority: 'normal',
+            repoId,
             payload: {
                 prompt,
                 processId: proc.id,
@@ -424,6 +429,9 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
                 || ((input.payload as any)?.workingDirectory)
                 || process.cwd();
             bridgeRef.getOrCreateBridge(rootPath);
+            if (!input.repoId) {
+                input.repoId = bridgeRef.getRepoIdForPath(rootPath);
+            }
             const manager = reg.getQueueForRepo(rootPath);
             // Ensure newly created managers respect global pause state
             if (globalPaused && !manager.getStats().isPaused) {

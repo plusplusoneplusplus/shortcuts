@@ -423,6 +423,26 @@ describe('SqliteQueuePersistence', () => {
             expect(store.getQueueTasks(rId, ['queued'])).toHaveLength(1); // still in DB
         });
 
+        it('logs a warning for tasks without a root path mapping', () => {
+            const rId = 'unmapped-repo-id';
+            persistence = new SqliteQueuePersistence(bridge, db);
+
+            store.upsertQueueTask(makeTask('t1', { repoId: rId, status: 'queued' }));
+            store.upsertQueueTask(makeTask('t2', { repoId: rId, status: 'queued' }));
+            // No entry in queue_repo_paths
+
+            const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+            persistence.restore();
+
+            const warningCalls = stderrSpy.mock.calls.filter(
+                ([msg]) => typeof msg === 'string' && msg.includes('Warning') && msg.includes(rId)
+            );
+            expect(warningCalls).toHaveLength(1);
+            expect(warningCalls[0][0]).toContain('2 task(s)');
+            stderrSpy.mockRestore();
+        });
+
         it('cleans up terminal tasks from SQLite on restore', () => {
             const rootPath = '/repo/with-history';
             const rId = repoId(rootPath);
@@ -547,6 +567,43 @@ describe('SqliteQueuePersistence', () => {
 
             freshPersistence.dispose();
             // Reassign for afterEach cleanup
+            registry = freshRegistry;
+            bridge = freshBridge;
+        });
+
+        it('tasks without explicit repoId survive enqueue → persist → restore', () => {
+            const rootPath = '/repo/no-explicit-repoid';
+            const rId = repoId(rootPath);
+            persistence = new SqliteQueuePersistence(bridge, db);
+            bridge.registerRepoId(rId, rootPath);
+            bridge.getOrCreateBridge(rootPath);
+            const qm = registry.getQueueForRepo(rootPath)!;
+
+            // Enqueue WITHOUT repoId — mimics the bug scenario
+            qm.enqueue({ type: 'custom', priority: 'normal', payload: { msg: 'no-repo-id' }, config: {}, displayName: 'Orphan Task' });
+
+            // Verify the task was persisted with enriched repoId (safety net in handleChange)
+            const rows = store.getQueueTasks(rId);
+            expect(rows).toHaveLength(1);
+            expect(rows[0].repoId).toBe(rId);
+            expect(rows[0].displayName).toBe('Orphan Task');
+
+            persistence.dispose();
+
+            // Simulate restart
+            const freshMockStore = createMockProcessStore();
+            const freshRegistry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });
+            const freshBridge = new MultiRepoQueueExecutorBridge(freshRegistry, freshMockStore, { autoStart: false });
+
+            const freshPersistence = new SqliteQueuePersistence(freshBridge, db);
+            freshPersistence.restore();
+
+            const freshQm = freshRegistry.getQueueForRepo(rootPath);
+            expect(freshQm).toBeDefined();
+            expect(freshQm!.getQueued()).toHaveLength(1);
+            expect(freshQm!.getQueued()[0].displayName).toBe('Orphan Task');
+
+            freshPersistence.dispose();
             registry = freshRegistry;
             bridge = freshBridge;
         });
