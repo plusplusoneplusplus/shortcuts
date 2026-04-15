@@ -82,4 +82,48 @@ export function registerTerminalRoutes(
             res.end();
         },
     });
+
+    // PATCH /api/workspaces/:id/terminals/:sessionId/pin — toggle pin state
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)\/terminals\/([^/]+)\/pin$/,
+        handler: async (req, res, match) => {
+            const mgr = getTerminalSessionManager();
+            if (!mgr) {
+                return handleAPIError(res, notFound('Terminal session'));
+            }
+
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const sessionId = decodeURIComponent(match![2]);
+
+            let body: { pinned: boolean };
+            try {
+                const chunks: Buffer[] = [];
+                for await (const chunk of req) chunks.push(chunk as Buffer);
+                body = JSON.parse(Buffer.concat(chunks).toString());
+            } catch {
+                sendJSON(res, 400, { error: 'Invalid JSON body' });
+                return;
+            }
+
+            if (typeof body.pinned !== 'boolean') {
+                sendJSON(res, 400, { error: 'Missing or invalid "pinned" field (boolean required)' });
+                return;
+            }
+
+            const success = body.pinned ? mgr.pinSession(sessionId) : mgr.unpinSession(sessionId);
+            if (!success) {
+                return handleAPIError(res, notFound('Terminal session'));
+            }
+
+            const session = mgr.getSession(sessionId);
+            if (session) {
+                sendJSON(res, 200, { sessionId, pinned: session.pinned });
+            } else {
+                sendJSON(res, 200, { sessionId, pinned: body.pinned });
+            }
+        },
+    });
 }

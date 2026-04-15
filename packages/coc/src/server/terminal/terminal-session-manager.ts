@@ -71,6 +71,7 @@ export function toSessionInfo(session: TerminalSession): TerminalSessionInfo {
         createdAt: session.createdAt,
         lastActivity: session.lastActivity,
         pid: session.pty.pid,
+        pinned: session.pinned,
     };
 }
 
@@ -148,7 +149,8 @@ export class TerminalSessionManager {
         if (!this.nodePty) {
             throw new Error(`Terminal is not available: ${this.nodePtyError ?? 'node-pty not installed'}`);
         }
-        if (this.sessions.size >= this.options.maxSessions) {
+        const unpinnedCount = [...this.sessions.values()].filter(s => !s.pinned).length;
+        if (unpinnedCount >= this.options.maxSessions) {
             throw new Error(`Maximum terminal sessions (${this.options.maxSessions}) reached`);
         }
 
@@ -170,6 +172,7 @@ export class TerminalSessionManager {
             rows,
             createdAt: Date.now(),
             lastActivity: Date.now(),
+            pinned: false,
         };
 
         // Wire PTY events
@@ -221,6 +224,25 @@ export class TerminalSessionManager {
         return true;
     }
 
+    // --------------------------------------------------------------------
+    // Pin / Unpin
+    // --------------------------------------------------------------------
+
+    pinSession(id: string): boolean {
+        const session = this.sessions.get(id);
+        if (!session) return false;
+        session.pinned = true;
+        return true;
+    }
+
+    unpinSession(id: string): boolean {
+        const session = this.sessions.get(id);
+        if (!session) return false;
+        session.pinned = false;
+        session.lastActivity = Date.now();
+        return true;
+    }
+
     destroyAll(): void {
         for (const [, session] of this.sessions) {
             try { session.pty.kill(); } catch { /* ignore */ }
@@ -260,6 +282,7 @@ export class TerminalSessionManager {
     private cleanupIdleSessions(): void {
         const now = Date.now();
         for (const [id, session] of this.sessions) {
+            if (session.pinned) continue;
             if ((now - session.lastActivity) > this.options.idleTimeoutMs) {
                 try { session.pty.kill(); } catch { /* ignore */ }
                 this.sessions.delete(id);

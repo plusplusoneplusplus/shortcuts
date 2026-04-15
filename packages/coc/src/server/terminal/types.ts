@@ -42,6 +42,8 @@ export interface TerminalSession {
     readonly createdAt: number;
     /** Unix timestamp of last input or output activity */
     lastActivity: number;
+    /** Whether this session is pinned (exempt from idle cleanup and soft session limit) */
+    pinned: boolean;
 }
 
 /**
@@ -56,6 +58,7 @@ export interface TerminalSessionInfo {
     createdAt: number;
     lastActivity: number;
     pid: number;
+    pinned: boolean;
 }
 
 // ============================================================================
@@ -66,7 +69,9 @@ export type TerminalClientMessage =
     | { type: 'terminal-create'; workspaceId: string; cols?: number; rows?: number }
     | { type: 'terminal-input'; sessionId: string; data: string }
     | { type: 'terminal-resize'; sessionId: string; cols: number; rows: number }
-    | { type: 'terminal-close'; sessionId: string };
+    | { type: 'terminal-close'; sessionId: string }
+    | { type: 'terminal-pin'; sessionId: string }
+    | { type: 'terminal-unpin'; sessionId: string };
 
 // ============================================================================
 // Server → Client messages (sent over WebSocket)
@@ -76,4 +81,5 @@ export type TerminalServerMessage =
     | { type: 'terminal-created'; session: TerminalSessionInfo }
     | { type: 'terminal-output'; sessionId: string; data: string }
     | { type: 'terminal-exit'; sessionId: string; exitCode: number; signal?: number }
-    | { type: 'terminal-error'; sessionId: string | null; message: string };
+    | { type: 'terminal-error'; sessionId: string | null; message: string }
+    | { type: 'terminal-pin-changed'; sessionId: string; pinned: boolean };

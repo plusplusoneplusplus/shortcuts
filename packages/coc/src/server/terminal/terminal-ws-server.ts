@@ -222,6 +222,40 @@ export class TerminalWebSocketServer {
                 client.sessions.delete(msg.sessionId);
                 break;
             }
+            case 'terminal-pin': {
+                const pinned = this.sessionManager.pinSession(msg.sessionId);
+                if (pinned) {
+                    this.sendMessage(client.socket, {
+                        type: 'terminal-pin-changed',
+                        sessionId: msg.sessionId,
+                        pinned: true,
+                    });
+                } else {
+                    this.sendMessage(client.socket, {
+                        type: 'terminal-error',
+                        sessionId: msg.sessionId,
+                        message: 'Terminal session not found',
+                    });
+                }
+                break;
+            }
+            case 'terminal-unpin': {
+                const unpinned = this.sessionManager.unpinSession(msg.sessionId);
+                if (unpinned) {
+                    this.sendMessage(client.socket, {
+                        type: 'terminal-pin-changed',
+                        sessionId: msg.sessionId,
+                        pinned: false,
+                    });
+                } else {
+                    this.sendMessage(client.socket, {
+                        type: 'terminal-error',
+                        sessionId: msg.sessionId,
+                        message: 'Terminal session not found',
+                    });
+                }
+                break;
+            }
         }
     }
 

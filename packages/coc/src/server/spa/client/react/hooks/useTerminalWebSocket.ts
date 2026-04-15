@@ -17,6 +17,8 @@ export type TerminalClientMessage =
     | { type: 'terminal-input'; sessionId: string; data: string }
     | { type: 'terminal-resize'; sessionId: string; cols: number; rows: number }
     | { type: 'terminal-close'; sessionId: string }
+    | { type: 'terminal-pin'; sessionId: string }
+    | { type: 'terminal-unpin'; sessionId: string }
     | { type: 'ping' };
 
 // Server → Client (aligned with packages/coc/src/server/terminal/types.ts)
@@ -28,6 +30,7 @@ export interface TerminalSessionInfo {
     createdAt: number;
     lastActivity: number;
     pid: number;
+    pinned: boolean;
 }
 
 export type TerminalServerMessage =
@@ -35,6 +38,7 @@ export type TerminalServerMessage =
     | { type: 'terminal-output'; sessionId: string; data: string }
     | { type: 'terminal-exit'; sessionId: string; exitCode: number; signal?: number }
     | { type: 'terminal-error'; sessionId: string | null; message: string }
+    | { type: 'terminal-pin-changed'; sessionId: string; pinned: boolean }
     | { type: 'pong' };
 
 export interface UseTerminalWebSocketOptions {
@@ -49,6 +53,8 @@ export interface UseTerminalWebSocketReturn {
     disconnect: () => void;
     sendInput: (data: string) => void;
     sendResize: (cols: number, rows: number) => void;
+    sendPin: (sessionId: string) => void;
+    sendUnpin: (sessionId: string) => void;
 }
 
 export function useTerminalWebSocket({
@@ -181,6 +187,18 @@ export function useTerminalWebSocket({
         }
     }, []);
 
+    const sendPin = useCallback((sessionId: string) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'terminal-pin', sessionId }));
+        }
+    }, []);
+
+    const sendUnpin = useCallback((sessionId: string) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'terminal-unpin', sessionId }));
+        }
+    }, []);
+
     useEffect(() => {
         return () => {
             manualCloseRef.current = true;
@@ -192,5 +210,5 @@ export function useTerminalWebSocket({
         };
     }, [cleanup]);
 
-    return { status, connect, disconnect, sendInput, sendResize };
+    return { status, connect, disconnect, sendInput, sendResize, sendPin, sendUnpin };
 }

@@ -16,6 +16,7 @@ export interface TerminalViewProps {
 interface TerminalTab {
     id: string;
     title: string;
+    pinned: boolean;
 }
 
 export function TerminalView({ workspaceId }: TerminalViewProps) {
@@ -30,7 +31,7 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         counterRef.current += 1;
         const id = crypto.randomUUID();
         const title = `Terminal ${counterRef.current}`;
-        setTerminals(prev => [...prev, { id, title }]);
+        setTerminals(prev => [...prev, { id, title, pinned: false }]);
         setActiveId(id);
     }, []);
 
@@ -49,6 +50,18 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
     const handleExit = useCallback((id: string, code: number) => {
         setTerminals(prev =>
             prev.map(t => t.id === id ? { ...t, title: `${t.title} (exited)` } : t)
+        );
+    }, []);
+
+    const togglePin = useCallback((id: string) => {
+        setTerminals(prev =>
+            prev.map(t => t.id === id ? { ...t, pinned: !t.pinned } : t)
+        );
+    }, []);
+
+    const updatePinState = useCallback((id: string, pinned: boolean) => {
+        setTerminals(prev =>
+            prev.map(t => t.id === id ? { ...t, pinned } : t)
         );
     }, []);
 
@@ -90,7 +103,7 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
                         <button
                             key={tab.id}
                             className={cn(
-                                "flex items-center gap-1.5 px-3 py-1 text-xs rounded-t whitespace-nowrap",
+                                "flex items-center gap-1.5 px-3 py-1 text-xs rounded-t whitespace-nowrap group",
                                 "hover:bg-gray-200 dark:hover:bg-gray-700",
                                 tab.id === activeId
                                     ? "bg-white dark:bg-gray-800 border border-b-0 border-gray-200 dark:border-gray-700 font-medium"
@@ -123,7 +136,20 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
                                 </span>
                             )}
                             <span
-                                className="ml-1 opacity-50 hover:opacity-100"
+                                className={cn(
+                                    "ml-0.5 cursor-pointer",
+                                    tab.pinned
+                                        ? "opacity-80 hover:opacity-100 text-blue-500 dark:text-blue-400"
+                                        : "opacity-0 group-hover:opacity-50 hover:!opacity-100"
+                                )}
+                                onClick={(e) => { e.stopPropagation(); togglePin(tab.id); }}
+                                title={tab.pinned ? 'Unpin terminal' : 'Pin terminal'}
+                                data-testid={`terminal-tab-pin-${tab.id}`}
+                            >
+                                📌
+                            </span>
+                            <span
+                                className="ml-0.5 opacity-50 hover:opacity-100"
                                 onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id); }}
                                 data-testid={`terminal-tab-close-${tab.id}`}
                             >
