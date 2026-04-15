@@ -48,6 +48,7 @@ import { registerPinArchiveRoutes } from '../pin-archive-handler';
 import { registerProcessHistoryRoutes } from '../process-history-handler';
 import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
+import { registerMyWorkRoutes } from '../my-work-handler';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { TerminalSessionManager } from '../terminal/index';
@@ -165,6 +166,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerStatsRoutes(routes, store);
     registerDbBrowserRoutes(routes, store);
     registerHeapRoutes(routes);
+    registerMyWorkRoutes(routes, store, dataDir);
 
     const wikiManager = registerWikiRoutes(routes, {
         wikis: wikiOptions?.wikis,

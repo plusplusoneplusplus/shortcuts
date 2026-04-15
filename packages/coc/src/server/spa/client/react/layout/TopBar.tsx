@@ -8,6 +8,7 @@ import { useRepos } from '../context/ReposContext';
 import { useTheme } from './ThemeProvider';
 import { NotificationBell } from '../shared/NotificationBell';
 import { RepoTabStrip } from '../repos/RepoTabStrip';
+import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { getHostname } from '../utils/config';
@@ -58,6 +59,12 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
         location.hash = '#' + tab;
     }, [dispatch]);
 
+    const goToMyWork = useCallback(() => {
+        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
+        dispatch({ type: 'SET_SELECTED_REPO', id: MY_WORK_WORKSPACE_ID });
+        location.hash = '#repos/' + MY_WORK_WORKSPACE_ID + '/notes';
+    }, [dispatch]);
+
     const toggleRepoManagement = useCallback(() => {
         if (state.activeTab !== 'repos') {
             location.hash = '#repos';
@@ -98,14 +105,14 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     href="#"
                     data-tab-mobile="repos"
                     className={`text-sm font-semibold whitespace-nowrap md:hidden flex-shrink-0 px-2 h-7 transition-colors inline-flex items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:underline'}`}
-                    onClick={e => { e.preventDefault(); switchTab('repos'); }}
+                    onClick={e => { e.preventDefault(); goToMyWork(); }}
                 >{ brandLabel }</a>
                 <a
                     href="#"
                     data-tab="repos"
                     className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 transition-colors items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'}`}
                     title={brandTooltip}
-                    onClick={e => { e.preventDefault(); switchTab('repos'); }}
+                    onClick={e => { e.preventDefault(); goToMyWork(); }}
                 >{ brandLabel }</a>
                 {!isMobile && (
                     <RepoTabStrip

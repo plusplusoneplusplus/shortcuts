@@ -11,6 +11,7 @@ import { useRepos } from '../context/ReposContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { ReposGrid } from './ReposGrid';
 import { RepoDetail } from './RepoDetail';
+import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 
 
 export function ReposView() {
@@ -41,7 +42,8 @@ export function ReposView() {
     // If a specific repo was requested via deep-link but hasn't appeared in the
     // list yet (repo data still loading), keep showing the loading indicator
     // rather than flashing the empty "Select a repository" panel.
-    if (loading && state.selectedRepoId && !repos.find(r => r.workspace.id === state.selectedRepoId)) {
+    // Exception: my_work is a virtual workspace that won't appear in repos list.
+    if (loading && state.selectedRepoId && state.selectedRepoId !== MY_WORK_WORKSPACE_ID && !repos.find(r => r.workspace.id === state.selectedRepoId)) {
         return (
             <div id="view-repos" className={`flex items-center justify-center ${heightClass} text-sm text-[#848484]`}>
                 Loading repositories...
@@ -49,11 +51,19 @@ export function ReposView() {
         );
     }
 
+    // My Work virtual workspace — dedicated view with notes + toolbar
+    const isMyWork = state.selectedRepoId === MY_WORK_WORKSPACE_ID;
+
     const selectedRepo = repos.find(r => r.workspace.id === state.selectedRepoId) || null;
 
     return (
         <div id="view-repos" className={`flex ${heightClass} overflow-hidden`}>
-            {isMobile ? (
+            {isMyWork ? (
+                // ── My Work: notes-based workspace with sync/summary toolbar ──
+                <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
+                    <MyWorkView />
+                </main>
+            ) : isMobile ? (
                 // ── Mobile: master-detail ──
                 hasSelection && selectedRepo ? (
                     <div className="flex-1 min-w-0 min-h-0 flex flex-col">

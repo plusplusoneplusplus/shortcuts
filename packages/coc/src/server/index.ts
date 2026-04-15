@@ -26,6 +26,7 @@ import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
+import { ensureMyWorkWorkspace } from './my-work-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
@@ -168,6 +169,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
+
+    const myWorkWorkspace = await ensureMyWorkWorkspace(dataDir, store);
+    bridge.registerRepoId(myWorkWorkspace.id, myWorkWorkspace.rootPath);
 
     const resolvedAiService = options.aiService ?? getCopilotSDKService();
     const aiInvoker = createCLIAIInvoker({ approvePermissions: true });

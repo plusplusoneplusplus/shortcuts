@@ -1,0 +1,311 @@
+/**
+ * My Work Handler Tests
+ *
+ * Tests for the My Work REST API endpoints:
+ * - POST /api/my-work/sync — append Work IQ data to notes
+ * - POST /api/my-work/generate-summary — generate weekly summary
+ * - GET /api/my-work/status — check initialization status
+ *
+ * Uses direct handler registration without full server startup.
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as http from 'http';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { registerMyWorkRoutes } from '../../src/server/my-work-handler';
+import { MY_WORK_WORKSPACE_ID } from '../../src/server/my-work-workspace';
+import { createRequestHandler } from '../../src/server/router';
+import type { Route } from '../../src/server/types';
+import { FileProcessStore, getRepoDataPath } from '@plusplusoneplusplus/forge';
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
+
+function request(
+    url: string,
+    options: { method?: string; body?: string; headers?: Record<string, string> } = {}
+): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+        const parsed = new URL(url);
+        const req = http.request(
+            {
+                hostname: parsed.hostname,
+                port: parsed.port,
+                path: parsed.pathname + parsed.search,
+                method: options.method || 'GET',
+                headers: options.headers,
+            },
+            (res) => {
+                const chunks: Buffer[] = [];
+                res.on('data', (chunk: Buffer) => chunks.push(chunk));
+                res.on('end', () => {
+                    resolve({
+                        status: res.statusCode || 0,
+                        body: Buffer.concat(chunks).toString('utf-8'),
+                    });
+                });
+            }
+        );
+        req.on('error', reject);
+        if (options.body) req.write(options.body);
+        req.end();
+    });
+}
+
+function postJSON(url: string, data?: unknown) {
+    return request(url, {
+        method: 'POST',
+        body: data ? JSON.stringify(data) : undefined,
+        headers: data ? { 'Content-Type': 'application/json' } : undefined,
+    });
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe('My Work Handler', () => {
+    let dataDir: string;
+    let store: FileProcessStore;
+    let server: http.Server;
+    let baseUrl: string;
+
+    beforeEach(async () => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'my-work-handler-test-'));
+        store = new FileProcessStore({ dataDir });
+
+        // Register my_work workspace
+        await store.registerWorkspace({
+            id: MY_WORK_WORKSPACE_ID,
+            name: 'My Work',
+            rootPath: path.join(dataDir, 'repos', MY_WORK_WORKSPACE_ID),
+            virtual: true,
+        });
+
+        // Create notes directory structure
+        const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+        const weeklyDir = path.join(notesDir, 'Weekly');
+        fs.mkdirSync(weeklyDir, { recursive: true });
+        fs.writeFileSync(path.join(notesDir, 'Action Items.md'), '# Action Items\n', 'utf-8');
+        fs.writeFileSync(path.join(notesDir, 'Follow Ups.md'), '# Follow Ups\n', 'utf-8');
+
+        // Set up routes and server
+        const routes: Route[] = [];
+        registerMyWorkRoutes(routes, store, dataDir);
+        const handler = createRequestHandler({ routes, spaHtml: () => '<html></html>' });
+        server = http.createServer(handler);
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const addr = server.address() as { port: number };
+        baseUrl = `http://127.0.0.1:${addr.port}`;
+    });
+
+    afterEach(async () => {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    // ── GET /api/my-work/status ──────────────────────────────────────────
+
+    describe('GET /api/my-work/status', () => {
+        it('returns initialized: true when notes exist', async () => {
+            const res = await request(`${baseUrl}/api/my-work/status`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.initialized).toBe(true);
+            expect(body.workspaceId).toBe(MY_WORK_WORKSPACE_ID);
+        });
+
+        it('returns initialized: false when Action Items.md is missing', async () => {
+            const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+            fs.unlinkSync(path.join(notesDir, 'Action Items.md'));
+
+            const res = await request(`${baseUrl}/api/my-work/status`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.initialized).toBe(false);
+        });
+    });
+
+    // ── POST /api/my-work/sync ───────────────────────────────────────────
+
+    describe('POST /api/my-work/sync', () => {
+        it('returns 200 with empty body (no items)', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.synced).toBe(true);
+            expect(body.actionItemCount).toBe(0);
+            expect(body.followUpCount).toBe(0);
+        });
+
+        it('appends action items to Action Items.md', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: ['Send API spec to Sarah', 'Review budget proposal'],
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.actionItemCount).toBe(2);
+
+            const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+            const content = fs.readFileSync(path.join(notesDir, 'Action Items.md'), 'utf-8');
+            expect(content).toContain('## Synced');
+            expect(content).toContain('- [ ] Send API spec to Sarah');
+            expect(content).toContain('- [ ] Review budget proposal');
+        });
+
+        it('appends follow-ups grouped by person to Follow Ups.md', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {
+                followUps: {
+                    'John': ['Waiting on budget approval'],
+                    'Sarah': ['Waiting on API migration timeline', 'Waiting on design review'],
+                },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.followUpCount).toBe(3);
+
+            const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+            const content = fs.readFileSync(path.join(notesDir, 'Follow Ups.md'), 'utf-8');
+            expect(content).toContain('### John');
+            expect(content).toContain('- [ ] Waiting on budget approval');
+            expect(content).toContain('### Sarah');
+            expect(content).toContain('- [ ] Waiting on API migration timeline');
+        });
+
+        it('preserves existing content (append-only)', async () => {
+            // First sync
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: ['First item'],
+            });
+
+            // Second sync
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: ['Second item'],
+            });
+
+            const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+            const content = fs.readFileSync(path.join(notesDir, 'Action Items.md'), 'utf-8');
+            expect(content).toContain('- [ ] First item');
+            expect(content).toContain('- [ ] Second item');
+            // Original header preserved
+            expect(content).toContain('# Action Items');
+        });
+
+        it('handles sync with both action items and follow-ups', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: ['Write tests'],
+                followUps: {
+                    'Bob': ['Waiting on code review'],
+                },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.actionItemCount).toBe(1);
+            expect(body.followUpCount).toBe(1);
+        });
+
+        it('handles empty POST body gracefully', async () => {
+            const res = await request(`${baseUrl}/api/my-work/sync`, { method: 'POST' });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.synced).toBe(true);
+        });
+    });
+
+    // ── POST /api/my-work/generate-summary ───────────────────────────────
+
+    describe('POST /api/my-work/generate-summary', () => {
+        it('generates a weekly summary file', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/generate-summary`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.generated).toBe(true);
+            expect(body.path).toMatch(/^Weekly\/\d{4}-W\d{2}\.md$/);
+        });
+
+        it('includes checked items in Completed section', async () => {
+            const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+            fs.writeFileSync(
+                path.join(notesDir, 'Action Items.md'),
+                '# Action Items\n- [x] Sent API spec\n- [ ] Review budget\n',
+                'utf-8',
+            );
+
+            const res = await postJSON(`${baseUrl}/api/my-work/generate-summary`);
+            const body = JSON.parse(res.body);
+            expect(body.completedCount).toBe(1);
+            expect(body.inProgressCount).toBe(1);
+
+            const weeklyPath = path.join(notesDir, 'Weekly', body.path.replace('Weekly/', ''));
+            const content = fs.readFileSync(weeklyPath, 'utf-8');
+            expect(content).toContain('## Completed');
+            expect(content).toContain('Sent API spec');
+            expect(content).toContain('## In Progress');
+            expect(content).toContain('Review budget');
+        });
+
+        it('includes follow-ups in Waiting On section', async () => {
+            const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+            fs.writeFileSync(
+                path.join(notesDir, 'Follow Ups.md'),
+                '# Follow Ups\n- [ ] Waiting on John for budget\n',
+                'utf-8',
+            );
+
+            const res = await postJSON(`${baseUrl}/api/my-work/generate-summary`);
+            const body = JSON.parse(res.body);
+            expect(body.waitingOnCount).toBe(1);
+
+            const weeklyPath = path.join(notesDir, 'Weekly', body.path.replace('Weekly/', ''));
+            const content = fs.readFileSync(weeklyPath, 'utf-8');
+            expect(content).toContain('## Waiting On');
+            expect(content).toContain('Waiting on John for budget');
+        });
+
+        it('generates summary even with empty notes', async () => {
+            const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+            fs.writeFileSync(path.join(notesDir, 'Action Items.md'), '', 'utf-8');
+            fs.writeFileSync(path.join(notesDir, 'Follow Ups.md'), '', 'utf-8');
+
+            const res = await postJSON(`${baseUrl}/api/my-work/generate-summary`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.generated).toBe(true);
+            expect(body.completedCount).toBe(0);
+            expect(body.inProgressCount).toBe(0);
+        });
+
+        it('includes Next Week placeholder section', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/generate-summary`);
+            const body = JSON.parse(res.body);
+
+            const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+            const weeklyPath = path.join(notesDir, 'Weekly', body.path.replace('Weekly/', ''));
+            const content = fs.readFileSync(weeklyPath, 'utf-8');
+            expect(content).toContain('## Next Week');
+        });
+
+        it('overwrites existing weekly file for same week', async () => {
+            // First generation
+            await postJSON(`${baseUrl}/api/my-work/generate-summary`);
+
+            // Add items and regenerate
+            const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+            fs.writeFileSync(
+                path.join(notesDir, 'Action Items.md'),
+                '- [x] New completed item\n',
+                'utf-8',
+            );
+
+            const res = await postJSON(`${baseUrl}/api/my-work/generate-summary`);
+            const body = JSON.parse(res.body);
+
+            const weeklyPath = path.join(notesDir, 'Weekly', body.path.replace('Weekly/', ''));
+            const content = fs.readFileSync(weeklyPath, 'utf-8');
+            expect(content).toContain('New completed item');
+        });
+    });
+});
