@@ -202,12 +202,15 @@ Opt-in, two-level persistence layer that lets AI pipelines learn from past sessi
 | `createWriteMemoryTool()` | Factory returning an AI-callable `write_memory` tool + `getWrittenFacts()` accessor |
 | `MemoryAggregator` | Batch-threshold check; triggers AI consolidation when `rawCount >= 5` |
 | `withMemory()` | One-liner orchestrator: retrieve → inject tool → invoke AI → aggregate |
+| `EXTRACTION_SYSTEM_PROMPT` | System prompt for offline fact extraction from conversation transcripts |
+| `buildExtractionUserPrompt()` | Builds user prompt wrapping a transcript for extraction |
+| `parseExtractionResponse()` | Parses AI JSON response into `ExtractedFact[]` |
 
 **Tool Call Cache** (secondary subsystem in same folder): `ToolCallCapture`, `FileToolCallCacheStore`, `ToolCallCacheAggregator`, `ToolCallCacheRetriever`, `withToolCallCache()` — caches AI tool call Q&A pairs for replay/reuse across runs.
 
 **Integration:** Features opt in by wrapping AI calls with `withMemory()`. Wiki Ask/Explore handlers in `packages/coc/src/server/` combine TF-IDF context + memory context. Config precedence: CLI flag > pipeline YAML `memory:` field > `~/.coc/config.yaml` > default (disabled).
 
-**Implementation status:** Core forge modules, server routes, and dashboard UI are complete. CLI `coc memory` subcommands and pipeline YAML `memory:` wiring are not yet implemented.
+**Offline Extraction Pipeline** (CoC server integration in `packages/coc/src/server/memory/`): `TranscriptExtractor` reads completed conversation turns, calls AI to extract durable facts, writes them as raw observations. `MemoryExtractionSweep` runs periodically (default 15min), finds idle completed processes, and dispatches extraction. Auto-triggers consolidation via `memory-aggregate` queue task when raw observation count exceeds threshold (default 20). `ExtractionStateManager` tracks per-process extraction state. `appendMemoryContext()` in `prompt-builder.ts` injects `consolidated.md` into chat system prompts. All gated by `PerRepoPreferences.memoryExtraction.enabled` (opt-in per repo, default false).
 
 ## Development Notes
 

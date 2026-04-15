@@ -46,6 +46,7 @@ Persistent memory that lets AI interactions learn from past executions. Stores o
 | `memory-retriever.ts` | `MemoryRetriever` | Loads `consolidated.md` for a repo/system level, formats as a context block for prompt injection |
 | `write-memory-tool.ts` | `createWriteMemoryTool` | Factory returning a `write_memory` tool (via `defineTool`) that AI can call organically during a session to record observations |
 | `memory-aggregator.ts` | `MemoryAggregator` | Checks batch threshold, consolidates raw observations into `consolidated.md` using an AI invoker |
+| `extraction-prompts.ts` | `EXTRACTION_SYSTEM_PROMPT`, `buildExtractionUserPrompt`, `parseExtractionResponse`, `ExtractedFact` | Prompts and JSON parser for offline fact extraction from conversation transcripts |
 | `with-memory.ts` | `withMemory` | Orchestrator: retrieve context → inject `write_memory` tool → invoke AI → check aggregation threshold |
 
 ### Usage Patterns

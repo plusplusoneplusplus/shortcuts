@@ -148,6 +148,16 @@ src/
 │   │   ├── types.ts              # Terminal session and message types (IPty, TerminalSession, TerminalClientMessage, TerminalServerMessage)
 │   │   ├── terminal-session-manager.ts  # PTY lifecycle management (create, resize, destroy, idle cleanup)
 │   │   └── terminal-ws-server.ts # WebSocket server for /ws/terminal — per-workspace connections, multi-session per client, PTY I/O forwarding, heartbeat
+│   ├── memory/                  # Memory extraction and observation management
+│   │   ├── extraction-config.ts         # ExtractionConfig types, defaults, validation
+│   │   ├── extraction-state.ts          # ExtractionStateManager — tracks per-process extraction state in JSON
+│   │   ├── transcript-extractor.ts      # TranscriptExtractor — reads conversation turns, calls AI, writes raw observations
+│   │   ├── memory-extraction-sweep.ts   # MemoryExtractionSweep — periodic sweep (start/stop/dispose) finding idle completed processes
+│   │   ├── memory-aggregate-executor.ts # MemoryAggregateExecutor — consolidates raw observations + notes into consolidated.md
+│   │   ├── memory-config-handler.ts     # Memory config persistence (readMemoryConfig, writeMemoryConfig)
+│   │   ├── memory-routes.ts             # Global memory REST endpoints
+│   │   ├── repo-memory-handler.ts       # Per-repo memory REST endpoints (observations dir, not pipeline)
+│   │   └── repo-memory-migration.ts     # Startup migration for memory directories
 │   └── spa/              # Dashboard SPA
 │       ├── html-template.ts  # HTML generation - Generates full HTML with inline bundled assets from client/dist/
 │       ├── index.ts          # Module exports - generateDashboardHtml + DashboardOptions
