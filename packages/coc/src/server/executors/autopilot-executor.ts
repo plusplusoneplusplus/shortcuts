@@ -18,6 +18,7 @@ import type {
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
 import {
+    appendMemoryContext,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
@@ -54,7 +55,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
 
         return {
             agentMode: 'autopilot' as AgentMode,
-            systemMessage: undefined,
+            systemMessage: appendMemoryContext(undefined, this.dataDir, payload.workspaceId),
             tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools],
             effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix,
         };

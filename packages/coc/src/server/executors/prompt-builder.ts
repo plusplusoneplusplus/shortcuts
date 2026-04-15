@@ -38,6 +38,8 @@ import {
     isRunWorkflowPayload,
 } from '../task-types';
 import { createUpdateTaskStatusTool } from '../llm-tools/update-task-status-tool';
+import { readRepoPreferences } from '../preferences-handler';
+import { getRepoDataPath } from '../paths';
 
 // ============================================================================
 // System Message Builders
@@ -76,6 +78,68 @@ export function appendAutoFolderBlock(
         autoFolderContext.existingFolders,
     );
     return { mode: 'append' as const, content: systemMessage.content + '\n\n' + block };
+}
+
+// ============================================================================
+// Memory Context Injection
+// ============================================================================
+
+/** Maximum characters of consolidated memory injected into the system prompt. */
+const MEMORY_CONTEXT_MAX_CHARS = 8192;
+
+/**
+ * Appends project memory from consolidated.md to the system message.
+ * Checks PerRepoPreferences.memoryExtraction.enabled — returns unchanged
+ * system message if disabled or if no consolidated memory exists.
+ *
+ * Must be called AFTER {@link withRepoInstructions} and BEFORE
+ * {@link appendAutoFolderBlock} so memory context sits between repo
+ * instructions and the auto-folder directive.
+ */
+export function appendMemoryContext(
+    systemMessage: SystemMessageConfig | undefined,
+    dataDir: string | undefined,
+    workspaceId: string | undefined,
+): SystemMessageConfig | undefined {
+    if (!dataDir || !workspaceId) return systemMessage;
+
+    try {
+        const prefs = readRepoPreferences(dataDir, workspaceId);
+        if (!prefs.memoryExtraction?.enabled) return systemMessage;
+    } catch {
+        return systemMessage;
+    }
+
+    let content: string;
+    try {
+        const consolidatedPath = path.join(
+            getRepoDataPath(dataDir, workspaceId, path.join('memory', 'observations')),
+            'consolidated.md',
+        );
+        if (!fs.existsSync(consolidatedPath)) return systemMessage;
+        content = fs.readFileSync(consolidatedPath, 'utf-8').trim();
+        if (content.length === 0) return systemMessage;
+    } catch {
+        return systemMessage;
+    }
+
+    // Truncate if too large
+    if (content.length > MEMORY_CONTEXT_MAX_CHARS) {
+        content = content.slice(0, MEMORY_CONTEXT_MAX_CHARS) + '\n\n(truncated — full memory in consolidated.md)';
+    }
+
+    const memoryBlock = [
+        '## Project Memory',
+        '',
+        'These are facts learned from previous conversations about this codebase.',
+        'They may be outdated — verify against current code when in doubt.',
+        '',
+        content,
+    ].join('\n');
+
+    const base = systemMessage?.content ?? '';
+    const appended = base.length > 0 ? base + '\n\n' + memoryBlock : memoryBlock;
+    return { mode: 'append' as const, content: appended };
 }
 
 /**

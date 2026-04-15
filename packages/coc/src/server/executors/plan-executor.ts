@@ -22,6 +22,7 @@ import type { ChatPayload } from '../task-types';
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
+    appendMemoryContext,
     withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
@@ -57,10 +58,14 @@ export class PlanExecutor extends ChatBaseExecutor {
         }
 
         const systemMessage = appendAutoFolderBlock(
-            await withRepoInstructions(
-                buildModeSystemMessage('plan'),
-                workingDirectory,
-                'plan',
+            appendMemoryContext(
+                await withRepoInstructions(
+                    buildModeSystemMessage('plan'),
+                    workingDirectory,
+                    'plan',
+                ),
+                this.dataDir,
+                payload.workspaceId,
             ),
             autoFolderContext,
         );

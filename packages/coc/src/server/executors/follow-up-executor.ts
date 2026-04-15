@@ -32,6 +32,7 @@ import {
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
+    appendMemoryContext,
     withRepoInstructions,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
@@ -155,10 +156,14 @@ export class FollowUpExecutor extends BaseExecutor {
             autoFolderContextForFollowUp = { tasksRoot, existingFolders };
         }
         const systemMessage = appendAutoFolderBlock(
-            await withRepoInstructions(
-                buildModeSystemMessage(currentMode),
-                workingDirectory,
-                currentMode,
+            appendMemoryContext(
+                await withRepoInstructions(
+                    buildModeSystemMessage(currentMode),
+                    workingDirectory,
+                    currentMode,
+                ),
+                this.dataDir,
+                wsId,
             ),
             autoFolderContextForFollowUp,
         );

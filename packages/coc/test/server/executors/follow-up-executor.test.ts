@@ -41,6 +41,7 @@ const mockBuildFollowUpSuggestionsAddon = vi.fn().mockReturnValue({ tools: [], s
 vi.mock('../../../src/server/executors/prompt-builder', () => ({
     buildModeSystemMessage: (...args: any[]) => mockBuildModeSystemMessage(...args),
     appendAutoFolderBlock: (msg: any, _ctx: any) => msg,
+    appendMemoryContext: (msg: any, _dataDir: any, _wsId: any) => msg,
     withRepoInstructions: (...args: any[]) => mockWithRepoInstructions(...args),
     buildConversationHistoryContext: (...args: any[]) => mockBuildConversationHistoryContext(...args),
     buildFollowUpSuggestionsAddon: (...args: any[]) => mockBuildFollowUpSuggestionsAddon(...args),
