@@ -142,7 +142,7 @@ describe('Admin Handler', () => {
 
             const body = JSON.parse(res.body);
             expect(body.deletedProcesses).toBe(1);
-            expect(body.deletedWorkspaces).toBe(1); // includes auto-registered global workspace
+            expect(body.deletedWorkspaces).toBe(2); // includes auto-registered global + my_work workspaces
             expect(body.deletedWikis).toBe(0);
             expect(body.errors).toEqual([]);
         });
@@ -213,7 +213,7 @@ describe('Admin Handler', () => {
             expect(wipeRes.status).toBe(200);
             const result = JSON.parse(wipeRes.body);
             expect(result.deletedProcesses).toBe(1);
-            expect(result.deletedWorkspaces).toBe(2); // ws1 + auto-registered global workspace
+            expect(result.deletedWorkspaces).toBe(3); // ws1 + auto-registered global + my_work workspaces
             expect(result.errors).toEqual([]);
 
             // Verify data is gone
@@ -344,7 +344,7 @@ describe('Admin Handler', () => {
             expect(typeof body.exportedAt).toBe('string');
             expect(typeof body.metadata).toBe('object');
             expect(body.metadata.processCount).toBe(0);
-            expect(body.metadata.workspaceCount).toBe(1); // auto-registered global workspace
+            expect(body.metadata.workspaceCount).toBe(2); // auto-registered global + my_work workspaces
             expect(Array.isArray(body.processes)).toBe(true);
             expect(Array.isArray(body.workspaces)).toBe(true);
             expect(Array.isArray(body.wikis)).toBe(true);
@@ -466,6 +466,15 @@ describe('Admin Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.resolved.notes.enabled).toBe(false);
             expect(body.sources['notes.enabled']).toBe('default');
+        });
+
+        it('should return myWork.enabled=false by default', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.myWork.enabled).toBe(false);
+            expect(body.sources['myWork.enabled']).toBe('default');
         });
     });
 
@@ -1211,6 +1220,46 @@ describe('Admin Handler', () => {
             expect(res.status).toBe(400);
             const body = JSON.parse(res.body);
             expect(body.error).toContain('notes.enabled');
+        });
+
+        it('should accept myWork.enabled=true', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'myWork.enabled': true }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.myWork.enabled).toBe(true);
+            expect(body.sources['myWork.enabled']).toBe('file');
+        });
+
+        it('should accept myWork.enabled=false', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'myWork.enabled': false }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.myWork.enabled).toBe(false);
+        });
+
+        it('should reject non-boolean myWork.enabled', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'myWork.enabled': 'yes' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('myWork.enabled');
         });
     });
 

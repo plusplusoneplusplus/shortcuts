@@ -80,6 +80,10 @@ export interface CLIConfig {
     notes?: {
         enabled?: boolean;
     };
+    /** My Work configuration */
+    myWork?: {
+        enabled?: boolean;
+    };
     /** Process store configuration */
     store?: {
         backend?: 'file' | 'sqlite';
@@ -183,6 +187,10 @@ export interface ResolvedCLIConfig {
     notes: {
         enabled: boolean;
     };
+    /** My Work configuration */
+    myWork: {
+        enabled: boolean;
+    };
     /** Process store configuration */
     store: {
         backend: 'file' | 'sqlite';
@@ -241,6 +249,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     notes: {
         enabled: false,
     },
+    myWork: {
+        enabled: false,
+    },
     store: {
         backend: 'sqlite',
     },
@@ -272,6 +283,7 @@ export const CONFIG_SOURCE_KEYS = [
     'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme', 'serve.serverName',
     'terminal.enabled',
     'notes.enabled',
+    'myWork.enabled',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -412,6 +424,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         notes: {
             enabled: override.notes?.enabled ?? base.notes.enabled,
         },
+        myWork: {
+            enabled: override.myWork?.enabled ?? base.myWork.enabled,
+        },
         store: {
             backend: override.store?.backend ?? base.store.backend,
         },
@@ -475,6 +490,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('notes.')) {
         const subKey = key.slice('notes.'.length) as keyof NonNullable<CLIConfig['notes']>;
         return fileConfig.notes?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('myWork.')) {
+        const subKey = key.slice('myWork.'.length) as keyof NonNullable<CLIConfig['myWork']>;
+        return fileConfig.myWork?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';

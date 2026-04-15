@@ -335,6 +335,7 @@ timeout: 300
                 chat: { followUpSuggestions: { enabled: true, count: 3 } },
                 terminal: { enabled: false },
                 notes: { enabled: false },
+                myWork: { enabled: false },
                 store: { backend: 'file' },
             };
             const override: CLIConfig = {};
@@ -639,6 +640,8 @@ timeout: 300
                 'terminal:',
                 '  enabled: true',
                 'notes:',
+                '  enabled: true',
+                'myWork:',
                 '  enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);

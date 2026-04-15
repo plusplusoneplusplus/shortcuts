@@ -52,6 +52,9 @@ export interface CLIConfig {
     notes?: {
         enabled?: boolean;
     };
+    myWork?: {
+        enabled?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

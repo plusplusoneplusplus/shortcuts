@@ -9,6 +9,7 @@ interface DashboardConfig {
     hostname?: string;
     terminalEnabled?: boolean;
     notesEnabled?: boolean;
+    myWorkEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -37,4 +38,8 @@ export function isTerminalEnabled(): boolean {
 
 export function isNotesEnabled(): boolean {
     return getConfig().notesEnabled === true;
+}
+
+export function isMyWorkEnabled(): boolean {
+    return getConfig().myWorkEnabled === true;
 }

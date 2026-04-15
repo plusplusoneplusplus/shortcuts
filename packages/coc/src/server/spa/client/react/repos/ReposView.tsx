@@ -9,6 +9,7 @@ import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRepos } from '../context/ReposContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useMyWorkEnabled } from '../hooks/useMyWorkEnabled';
 import { ReposGrid } from './ReposGrid';
 import { RepoDetail } from './RepoDetail';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
@@ -18,6 +19,7 @@ export function ReposView() {
     const { state, dispatch } = useApp();
     const { repos, loading, fetchRepos } = useRepos();
     const { breakpoint } = useBreakpoint();
+    const myWorkEnabled = useMyWorkEnabled();
     const isMobile = breakpoint === 'mobile';
     const hasSelection = state.selectedRepoId !== null;
     const heightClass = isMobile
@@ -42,8 +44,8 @@ export function ReposView() {
     // If a specific repo was requested via deep-link but hasn't appeared in the
     // list yet (repo data still loading), keep showing the loading indicator
     // rather than flashing the empty "Select a repository" panel.
-    // Exception: my_work is a virtual workspace that won't appear in repos list.
-    if (loading && state.selectedRepoId && state.selectedRepoId !== MY_WORK_WORKSPACE_ID && !repos.find(r => r.workspace.id === state.selectedRepoId)) {
+    // Exception: my_work is a virtual workspace that won't appear in repos list (only when enabled).
+    if (loading && state.selectedRepoId && !(myWorkEnabled && state.selectedRepoId === MY_WORK_WORKSPACE_ID) && !repos.find(r => r.workspace.id === state.selectedRepoId)) {
         return (
             <div id="view-repos" className={`flex items-center justify-center ${heightClass} text-sm text-[#848484]`}>
                 Loading repositories...
@@ -52,7 +54,7 @@ export function ReposView() {
     }
 
     // My Work virtual workspace — dedicated view with notes + toolbar
-    const isMyWork = state.selectedRepoId === MY_WORK_WORKSPACE_ID;
+    const isMyWork = myWorkEnabled && state.selectedRepoId === MY_WORK_WORKSPACE_ID;
 
     const selectedRepo = repos.find(r => r.workspace.id === state.selectedRepoId) || null;
 

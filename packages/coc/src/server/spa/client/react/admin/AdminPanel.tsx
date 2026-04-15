@@ -81,6 +81,9 @@ export function AdminPanel() {
     // Notes settings
     const [notesEnabled, setNotesEnabled] = useState(false);
 
+    // My Work settings
+    const [myWorkEnabled, setMyWorkEnabled] = useState(false);
+
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
 
@@ -147,6 +150,7 @@ export function AdminPanel() {
             setServerName(resolved.serve?.serverName ?? '');
             setTerminalEnabled(resolved.terminal?.enabled ?? false);
             setNotesEnabled(resolved.notes?.enabled ?? false);
+            setMyWorkEnabled(resolved.myWork?.enabled ?? false);
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -287,6 +291,30 @@ export function AdminPanel() {
             setDisplaySaving(false);
         }
     }, [notesEnabled, addToast]);
+
+    const handleToggleMyWorkEnabled = useCallback(async (newValue: boolean) => {
+        const prevValue = myWorkEnabled;
+        setMyWorkEnabled(newValue);
+        setDisplaySaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'myWork.enabled': newValue }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Settings saved', 'success');
+            invalidateDisplaySettings();
+        } catch (err: any) {
+            setMyWorkEnabled(prevValue);
+            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+        } finally {
+            setDisplaySaving(false);
+        }
+    }, [myWorkEnabled, addToast]);
 
     const handleChangeToolCompactness= useCallback(async (newValue: 0 | 1 | 2 | 3) => {
         const prevValue = toolCompactness;
@@ -906,7 +934,34 @@ export function AdminPanel() {
 
                                 <hr className={dividerClass} />
 
-                                {/* Preferences section (auto-saves on change) */}
+                                {/* My Work section */}
+                                <div className="space-y-1.5">
+                                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">My Work</div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Enable the My Work landing page">
+                                            Enable My Work
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['myWork.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={myWorkEnabled}
+                                                    disabled={displaySaving}
+                                                    onChange={e => void handleToggleMyWorkEnabled(e.target.checked)}
+                                                    data-testid="toggle-mywork-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-[#616161] dark:text-[#999]">
+                                        When enabled, the logo navigates to a personal My Work page with action items, follow-ups, and weekly summaries.
+                                    </div>
+                                </div>
+
+                                <hr className={dividerClass} />
                                 <PreferencesSection
                                     onError={msg => addToast(msg, 'error')}
                                     onSuccess={msg => addToast(msg, 'success')}

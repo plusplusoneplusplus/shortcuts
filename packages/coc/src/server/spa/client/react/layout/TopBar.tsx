@@ -9,6 +9,7 @@ import { useTheme } from './ThemeProvider';
 import { NotificationBell } from '../shared/NotificationBell';
 import { RepoTabStrip } from '../repos/RepoTabStrip';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
+import { useMyWorkEnabled } from '../hooks/useMyWorkEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { getHostname } from '../utils/config';
@@ -53,6 +54,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
     const brandTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
+    const myWorkEnabled = useMyWorkEnabled();
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -60,10 +62,15 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     }, [dispatch]);
 
     const goToMyWork = useCallback(() => {
+        if (!myWorkEnabled) {
+            dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
+            location.hash = '#repos';
+            return;
+        }
         dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
         dispatch({ type: 'SET_SELECTED_REPO', id: MY_WORK_WORKSPACE_ID });
         location.hash = '#repos/' + MY_WORK_WORKSPACE_ID + '/notes';
-    }, [dispatch]);
+    }, [dispatch, myWorkEnabled]);
 
     const toggleRepoManagement = useCallback(() => {
         if (state.activeTab !== 'repos') {

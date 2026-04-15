@@ -83,6 +83,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         enableWiki = false,
         terminalEnabled,
         notesEnabled,
+        myWorkEnabled,
         reviewFilePath,
         projectDir,
     } = options;
@@ -118,7 +119,8 @@ ${getBundleCss()}
             version: '${escapeHtml(getBundleETag())}'${hostname ? `,
             hostname: '${escapeHtml(hostname)}'` : ''},
             terminalEnabled: ${!!terminalEnabled},
-            notesEnabled: ${!!notesEnabled}
+            notesEnabled: ${!!notesEnabled},
+            myWorkEnabled: ${!!myWorkEnabled}
         };
     </script>${reviewFilePath ? `
     <script>

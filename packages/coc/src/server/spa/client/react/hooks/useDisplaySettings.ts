@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getApiBase, isTerminalEnabled, isNotesEnabled } from '../utils/config';
+import { getApiBase, isTerminalEnabled, isNotesEnabled, isMyWorkEnabled } from '../utils/config';
 
 interface DisplaySettings {
     showReportIntent: boolean;
@@ -13,13 +13,14 @@ interface DisplaySettings {
     groupSingleLineMessages: boolean;
     terminalEnabled: boolean;
     notesEnabled: boolean;
+    myWorkEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false };
+const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 3, taskCardDensity: 'dense', groupSingleLineMessages: true, terminalEnabled: false, notesEnabled: false, myWorkEnabled: false };
 
 /** Build initial settings seeded from window.__DASHBOARD_CONFIG__ when available. */
 function getInitialSettings(): DisplaySettings {
-    return { ...DEFAULT_SETTINGS, terminalEnabled: isTerminalEnabled(), notesEnabled: isNotesEnabled() };
+    return { ...DEFAULT_SETTINGS, terminalEnabled: isTerminalEnabled(), notesEnabled: isNotesEnabled(), myWorkEnabled: isMyWorkEnabled() };
 }
 
 let cachedSettings: DisplaySettings | null = null;
@@ -37,6 +38,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             groupSingleLineMessages: data?.resolved?.groupSingleLineMessages ?? true,
             terminalEnabled: data?.resolved?.terminal?.enabled ?? false,
             notesEnabled: data?.resolved?.notes?.enabled ?? false,
+            myWorkEnabled: data?.resolved?.myWork?.enabled ?? false,
         };
     } catch {
         return DEFAULT_SETTINGS;
