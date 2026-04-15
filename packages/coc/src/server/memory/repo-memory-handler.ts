@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import type { ProcessStore, AIInvoker, TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { FileMemoryStore as PipelineMemoryStore, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { FileMemoryStore as ObservationStore, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { readMemoryConfig } from './memory-config-handler';
@@ -62,10 +62,10 @@ function getNoteStore(dataDir: string, workspaceId: string): FileMemoryStore {
     return new FileMemoryStore(noteDir);
 }
 
-function getPipelineStore(dataDir: string, workspaceId: string): PipelineMemoryStore {
+function getObservationStore(dataDir: string, workspaceId: string): ObservationStore {
     const config = readMemoryConfig(dataDir);
-    const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline'));
-    return new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+    const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'observations'));
+    return new ObservationStore({ dataDir: config.storageDir, repoDir });
 }
 
 async function getRepoRootPath(store: ProcessStore, workspaceId: string): Promise<string | undefined> {
@@ -75,7 +75,7 @@ async function getRepoRootPath(store: ProcessStore, workspaceId: string): Promis
 
 /** Backup path for consolidated.md before aggregation (enables revert). */
 function consolidatedPrevPath(dataDir: string, workspaceId: string): string {
-    return path.join(getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline')), 'consolidated.prev.md');
+    return path.join(getRepoDataPath(dataDir, workspaceId, path.join('memory', 'observations')), 'consolidated.prev.md');
 }
 
 /**
@@ -157,18 +157,18 @@ export function registerRepoMemoryRoutes(
                     return;
                 }
 
-                const pipelineStore = getPipelineStore(dataDir, workspaceId);
+                const obsStore = getObservationStore(dataDir, workspaceId);
                 const noteStore = getNoteStore(dataDir, workspaceId);
 
-                const [obsFilenames, noteResult, pipelineStats] = await Promise.all([
-                    pipelineStore.listRaw('repo', undefined),
+                const [obsFilenames, noteResult, obsStats] = await Promise.all([
+                    obsStore.listRaw('repo', undefined),
                     Promise.resolve(noteStore.list({ pageSize: 10000 })),
-                    pipelineStore.getStats('repo'),
+                    obsStore.getStats('repo'),
                 ]);
 
                 const obsItems = await Promise.all(
                     obsFilenames.map(async (filename): Promise<FeedItem | null> => {
-                        const obs = await pipelineStore.readRaw('repo', undefined, filename);
+                        const obs = await obsStore.readRaw('repo', undefined, filename);
                         if (!obs) return null;
                         return {
                             id: filename,
@@ -217,9 +217,9 @@ export function registerRepoMemoryRoutes(
                 }
 
                 sendJson(res, {
-                    observationCount: pipelineStats.rawCount,
+                    observationCount: obsStats.rawCount,
                     noteCount: noteResult.total,
-                    consolidatedAt: pipelineStats.lastAggregation,
+                    consolidatedAt: obsStats.lastAggregation,
                     consolidationStatus,
                     consolidationTaskId,
                     consolidationProcessId,
@@ -293,8 +293,8 @@ export function registerRepoMemoryRoutes(
                         send404(res, `Repo not found: ${workspaceId}`);
                         return;
                     }
-                    const pipelineStore = getPipelineStore(dataDir, workspaceId);
-                    const deleted = await pipelineStore.deleteRaw('repo', undefined, id);
+                    const obsStore = getObservationStore(dataDir, workspaceId);
+                    const deleted = await obsStore.deleteRaw('repo', undefined, id);
                     if (!deleted) {
                         send404(res, `Observation not found: ${id}`);
                         return;
@@ -329,8 +329,8 @@ export function registerRepoMemoryRoutes(
                     return;
                 }
 
-                const pipelineStore = getPipelineStore(dataDir, workspaceId);
-                const content = await pipelineStore.readConsolidated('repo');
+                const obsStore = getObservationStore(dataDir, workspaceId);
+                const content = await obsStore.readConsolidated('repo');
                 if (content === null) {
                     send404(res, 'No consolidated memory yet');
                     return;
@@ -386,8 +386,8 @@ export function registerRepoMemoryRoutes(
                 }
 
                 const prevContent = fs.readFileSync(prevPath, 'utf-8');
-                const pipelineStore = getPipelineStore(dataDir, workspaceId);
-                await pipelineStore.writeConsolidated('repo', prevContent);
+                const obsStore = getObservationStore(dataDir, workspaceId);
+                await obsStore.writeConsolidated('repo', prevContent);
 
                 try {
                     fs.unlinkSync(prevPath);

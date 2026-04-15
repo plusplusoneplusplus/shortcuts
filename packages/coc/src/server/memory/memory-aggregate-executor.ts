@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
-import { FileMemoryStore as PipelineMemoryStore, MEMORY_CONSOLIDATION_INSTRUCTIONS, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { FileMemoryStore as ObservationStore, MEMORY_CONSOLIDATION_INSTRUCTIONS, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { createCLIAIInvoker } from '../../ai-invoker';
 import type { MemoryAggregatePayload } from '../task-types';
 import { readMemoryConfig } from './memory-config-handler';
@@ -37,14 +37,14 @@ function getNoteStore(dataDir: string, workspaceId: string): FileMemoryStore {
     return new FileMemoryStore(noteDir);
 }
 
-function getPipelineStore(dataDir: string, workspaceId: string): PipelineMemoryStore {
+function getObservationStore(dataDir: string, workspaceId: string): ObservationStore {
     const config = readMemoryConfig(dataDir);
-    const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline'));
-    return new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+    const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'observations'));
+    return new ObservationStore({ dataDir: config.storageDir, repoDir });
 }
 
 function consolidatedPrevPath(dataDir: string, workspaceId: string): string {
-    return path.join(getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline')), 'consolidated.prev.md');
+    return path.join(getRepoDataPath(dataDir, workspaceId, path.join('memory', 'observations')), 'consolidated.prev.md');
 }
 
 export class MemoryAggregateExecutor {
@@ -78,15 +78,15 @@ export class MemoryAggregateExecutor {
 
             this.store.emitProcessOutput(processId, 'Loading memory data…\n');
 
-            const pipelineStore = getPipelineStore(this.dataDir, repoId);
+            const obsStore = getObservationStore(this.dataDir, repoId);
 
             // Load observations
             let observations: Array<{ pipeline: string; content: string }> = [];
             let observationFilenames: string[] = [];
             if (sources.includes('observations')) {
-                observationFilenames = await pipelineStore.listRaw('repo', undefined);
+                observationFilenames = await obsStore.listRaw('repo', undefined);
                 const rawObs = await Promise.all(
-                    observationFilenames.map(f => pipelineStore.readRaw('repo', undefined, f)),
+                    observationFilenames.map(f => obsStore.readRaw('repo', undefined, f)),
                 );
                 observations = rawObs
                     .filter((o): o is NonNullable<typeof o> => o !== undefined)
@@ -116,7 +116,7 @@ export class MemoryAggregateExecutor {
             }
 
             // Read existing consolidated and save backup
-            const previous = await pipelineStore.readConsolidated('repo');
+            const previous = await obsStore.readConsolidated('repo');
             if (previous !== null) {
                 const prevPath = consolidatedPrevPath(this.dataDir, repoId);
                 fs.mkdirSync(path.dirname(prevPath), { recursive: true });
@@ -164,14 +164,14 @@ export class MemoryAggregateExecutor {
             const newConsolidated = result.response ?? '';
 
             // Write new consolidated.md
-            await pipelineStore.writeConsolidated('repo', newConsolidated);
-            await pipelineStore.updateIndex('repo', undefined, {
+            await obsStore.writeConsolidated('repo', newConsolidated);
+            await obsStore.updateIndex('repo', undefined, {
                 lastAggregation: new Date().toISOString(),
             });
 
             // Delete raw observations now that they are consolidated
             for (const filename of observationFilenames) {
-                await pipelineStore.deleteRaw('repo', undefined, filename);
+                await obsStore.deleteRaw('repo', undefined, filename);
             }
 
             // Delete notes that have been consolidated

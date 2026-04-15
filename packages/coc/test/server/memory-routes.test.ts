@@ -356,7 +356,7 @@ describe('POST /api/memory/aggregate-tool-calls', () => {
 // ── Observation browsing routes ───────────────────────────────────────────────
 
 /**
- * Helper to seed pipeline-core memory observation files at a given level.
+ * Helper to seed memory observation files at a given level.
  * Writes .md files with YAML frontmatter directly to the raw/ directory.
  */
 function seedObservation(

@@ -2,7 +2,7 @@
  * Tests for repo-memory-migration.
  *
  * Verifies the one-time migration from hash-based to workspaceId-based
- * repo-level pipeline memory.
+ * repo-level observation memory.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -96,7 +96,7 @@ describe('migrateRepoMemory', () => {
         expect(result.skippedUnmatched).toBe(0);
 
         // Verify files at new location
-        const newDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
+        const newDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'observations'));
         expect(fs.readFileSync(path.join(newDir, 'consolidated.md'), 'utf-8')).toBe('# Facts\n- fact 1');
         expect(fs.readFileSync(path.join(newDir, 'index.json'), 'utf-8')).toContain('lastAggregation');
         expect(fs.readFileSync(path.join(newDir, 'raw', '2026-01-01T00-00-00.000Z-test.md'), 'utf-8')).toContain('raw fact');
@@ -112,7 +112,7 @@ describe('migrateRepoMemory', () => {
         fs.writeFileSync(path.join(oldDir, 'consolidated.md'), 'old version', 'utf-8');
 
         // Pre-create destination with different content
-        const newDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'pipeline'));
+        const newDir = getRepoDataPath(tmpDir, WORKSPACE_ID, path.join('memory', 'observations'));
         fs.mkdirSync(newDir, { recursive: true });
         fs.writeFileSync(path.join(newDir, 'consolidated.md'), 'existing content', 'utf-8');
 
@@ -267,7 +267,7 @@ describe('migrateMemoryToSubfolders', () => {
         expect(fs.existsSync(path.join(memDir, '.memory-separated'))).toBe(true);
     });
 
-    it('separates object index.json (pipeline) and pipeline files into pipeline/', async () => {
+    it('separates object index.json (observations) and observation files into observations/', async () => {
         const wsId = 'ws-sub-2';
         const memDir = path.join(tmpDir, 'repos', wsId, 'memory');
         const rawDir = path.join(memDir, 'raw');
@@ -285,13 +285,13 @@ describe('migrateMemoryToSubfolders', () => {
         const result = await migrateMemoryToSubfolders(tmpDir);
         expect(result.migrated).toBe(1);
 
-        // Pipeline files moved
-        expect(fs.existsSync(path.join(memDir, 'pipeline', 'raw', 'obs.md'))).toBe(true);
-        expect(fs.existsSync(path.join(memDir, 'pipeline', 'consolidated.md'))).toBe(true);
-        expect(fs.existsSync(path.join(memDir, 'pipeline', 'consolidated.prev.md'))).toBe(true);
-        // Pipeline index
-        const pipelineIndex = JSON.parse(fs.readFileSync(path.join(memDir, 'pipeline', 'index.json'), 'utf-8'));
-        expect(pipelineIndex.lastAggregation).toBe('2026-01-01T00:00:00Z');
+        // Observation files moved
+        expect(fs.existsSync(path.join(memDir, 'observations', 'raw', 'obs.md'))).toBe(true);
+        expect(fs.existsSync(path.join(memDir, 'observations', 'consolidated.md'))).toBe(true);
+        expect(fs.existsSync(path.join(memDir, 'observations', 'consolidated.prev.md'))).toBe(true);
+        // Observation index
+        const obsIndex = JSON.parse(fs.readFileSync(path.join(memDir, 'observations', 'index.json'), 'utf-8'));
+        expect(obsIndex.lastAggregation).toBe('2026-01-01T00:00:00Z');
         // Old files cleaned up
         expect(fs.existsSync(path.join(memDir, 'raw'))).toBe(false);
         expect(fs.existsSync(path.join(memDir, 'consolidated.md'))).toBe(false);
@@ -337,8 +337,8 @@ describe('migrateMemoryToSubfolders', () => {
 
         const result = await migrateMemoryToSubfolders(tmpDir);
         expect(result.migrated).toBe(1);
-        // consolidated.md should still be moved to pipeline
-        expect(fs.existsSync(path.join(memDir, 'pipeline', 'consolidated.md'))).toBe(true);
+        // consolidated.md should still be moved to observations
+        expect(fs.existsSync(path.join(memDir, 'observations', 'consolidated.md'))).toBe(true);
         // Corrupted index.json stays in place (not moved to either subfolder)
         expect(fs.existsSync(path.join(memDir, 'index.json'))).toBe(true);
     });

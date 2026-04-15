@@ -27,7 +27,7 @@ import * as path from 'path';
 import * as url from 'url';
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import {
-    FileMemoryStore as PipelineMemoryStore,
+    FileMemoryStore as ObservationStore,
     type MemoryLevel,
     FileToolCallCacheStore,
     resolveToolCallCacheOptions,
@@ -263,15 +263,15 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
         },
     });
 
-    // -- Observation browsing (pipeline-core memory files) --------------------
+    // -- Observation browsing (forge memory files) --------------------
 
-    const getObservationStore = (workspaceId?: string): PipelineMemoryStore => {
+    const getObsStore = (workspaceId?: string): ObservationStore => {
         const config = readMemoryConfig(dataDir);
         if (workspaceId) {
-            const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline'));
-            return new PipelineMemoryStore({ dataDir: config.storageDir, repoDir });
+            const repoDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'observations'));
+            return new ObservationStore({ dataDir: config.storageDir, repoDir });
         }
-        return new PipelineMemoryStore({ dataDir: config.storageDir });
+        return new ObservationStore({ dataDir: config.storageDir });
     };
 
     // Overview of all 3 memory levels with stats and metadata
@@ -280,7 +280,7 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
         pattern: '/api/memory/observations/levels',
         handler: async (_req, res) => {
             try {
-                const store = getObservationStore();
+                const store = getObsStore();
 
                 const [globalStats, repoHashes, remoteHashes] = await Promise.all([
                     store.getStats('system'),
@@ -332,8 +332,8 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
                 }
 
                 const store = (level === 'repo' && workspaceId)
-                    ? getObservationStore(workspaceId)
-                    : getObservationStore();
+                    ? getObsStore(workspaceId)
+                    : getObsStore();
 
                 const mlevel = level as MemoryLevel;
                 const [files, consolidated, stats] = await Promise.all([
@@ -367,8 +367,8 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
                 }
 
                 const store = (level === 'repo' && workspaceId)
-                    ? getObservationStore(workspaceId)
-                    : getObservationStore();
+                    ? getObsStore(workspaceId)
+                    : getObsStore();
 
                 if (filename === 'consolidated') {
                     const content = await store.readConsolidated(level as MemoryLevel, hash);
@@ -440,7 +440,7 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
             try {
                 const config = readMemoryConfig(dataDir);
                 const storageDir = config.storageDir;
-                const obsStore = new PipelineMemoryStore({ dataDir: storageDir });
+                const obsStore = new ObservationStore({ dataDir: storageDir });
 
                 const systemStore = getExploreCacheStore(storageDir, 'system');
                 const systemStats = await systemStore.getStats();

@@ -3,7 +3,7 @@
  *
  * One-time migration from hash-based (`~/.coc/memory/repos/<hash>/`) to
  * workspaceId-based (`~/.coc/repos/<workspaceId>/memory/`) repo-level
- * pipeline memory. System and git-remote levels are unchanged.
+ * observation memory. System and git-remote levels are unchanged.
  *
  * Migration steps:
  * 1. Scan `~/.coc/memory/repos/` for existing `<hash>/` directories
@@ -106,7 +106,7 @@ export async function migrateRepoMemory(
         }
 
         // Copy files to new location
-        const destDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'pipeline'));
+        const destDir = getRepoDataPath(dataDir, workspaceId, path.join('memory', 'observations'));
         const filesCopied = await copyMemoryFiles(srcDir, destDir);
 
         // Write migration marker
@@ -181,7 +181,7 @@ async function copyFileNoClobber(src: string, dest: string): Promise<number> {
 }
 
 // ============================================================================
-// Subfolder migration: memory/ → memory/notes/ + memory/pipeline/
+// Subfolder migration: memory/ → memory/notes/ + memory/observations/
 // ============================================================================
 
 const SEPARATED_MARKER = '.memory-separated';
@@ -192,11 +192,11 @@ export interface SubfolderMigrationResult {
     /** Number of dirs already separated (had marker). */
     skipped: number;
     /** Per-dir details. */
-    details: { workspaceId: string; status: 'migrated' | 'already_separated'; noteFiles: number; pipelineFiles: number }[];
+    details: { workspaceId: string; status: 'migrated' | 'already_separated'; noteFiles: number; observationFiles: number }[];
 }
 
 /**
- * Migrate flat `~/.coc/repos/<wsId>/memory/` into `memory/notes/` and `memory/pipeline/` subfolders.
+ * Migrate flat `~/.coc/repos/<wsId>/memory/` into `memory/notes/` and `memory/observations/` subfolders.
  * Safe to call multiple times — uses a `.memory-separated` marker for idempotency.
  */
 export async function migrateMemoryToSubfolders(dataDir: string): Promise<SubfolderMigrationResult> {
@@ -220,19 +220,19 @@ export async function migrateMemoryToSubfolders(dataDir: string): Promise<Subfol
         const markerPath = path.join(memDir, SEPARATED_MARKER);
         if (fs.existsSync(markerPath)) {
             result.skipped++;
-            result.details.push({ workspaceId, status: 'already_separated', noteFiles: 0, pipelineFiles: 0 });
+            result.details.push({ workspaceId, status: 'already_separated', noteFiles: 0, observationFiles: 0 });
             continue;
         }
 
         const notesDir = path.join(memDir, 'notes');
-        const pipelineDir = path.join(memDir, 'pipeline');
+        const observationsDir = path.join(memDir, 'observations');
         let noteFiles = 0;
-        let pipelineFiles = 0;
+        let observationFiles = 0;
 
         // Classify and move existing index.json
         const indexPath = path.join(memDir, 'index.json');
         let noteIndex: unknown[] | null = null;
-        let pipelineIndex: Record<string, unknown> | null = null;
+        let obsIndex: Record<string, unknown> | null = null;
 
         if (fs.existsSync(indexPath)) {
             try {
@@ -240,7 +240,7 @@ export async function migrateMemoryToSubfolders(dataDir: string): Promise<Subfol
                 if (Array.isArray(parsed)) {
                     noteIndex = parsed;
                 } else if (parsed && typeof parsed === 'object' && 'lastAggregation' in parsed) {
-                    pipelineIndex = parsed;
+                    obsIndex = parsed;
                 }
             } catch {
                 // Corrupted — skip index, each store will recreate
@@ -269,40 +269,40 @@ export async function migrateMemoryToSubfolders(dataDir: string): Promise<Subfol
             noteFiles++;
         }
 
-        // Move pipeline files → pipeline/
+        // Move observation files → observations/
         // raw/ directory
         const rawDir = path.join(memDir, 'raw');
         if (fs.existsSync(rawDir)) {
-            await fsp.mkdir(pipelineDir, { recursive: true });
-            await fsp.rename(rawDir, path.join(pipelineDir, 'raw'));
-            pipelineFiles++;
+            await fsp.mkdir(observationsDir, { recursive: true });
+            await fsp.rename(rawDir, path.join(observationsDir, 'raw'));
+            observationFiles++;
         }
 
         // consolidated.md
         const consolidatedPath = path.join(memDir, 'consolidated.md');
         if (fs.existsSync(consolidatedPath)) {
-            await fsp.mkdir(pipelineDir, { recursive: true });
-            await fsp.rename(consolidatedPath, path.join(pipelineDir, 'consolidated.md'));
-            pipelineFiles++;
+            await fsp.mkdir(observationsDir, { recursive: true });
+            await fsp.rename(consolidatedPath, path.join(observationsDir, 'consolidated.md'));
+            observationFiles++;
         }
 
         // consolidated.prev.md
         const consolidatedPrevPath = path.join(memDir, 'consolidated.prev.md');
         if (fs.existsSync(consolidatedPrevPath)) {
-            await fsp.mkdir(pipelineDir, { recursive: true });
-            await fsp.rename(consolidatedPrevPath, path.join(pipelineDir, 'consolidated.prev.md'));
-            pipelineFiles++;
+            await fsp.mkdir(observationsDir, { recursive: true });
+            await fsp.rename(consolidatedPrevPath, path.join(observationsDir, 'consolidated.prev.md'));
+            observationFiles++;
         }
 
-        // Write pipeline index
-        if (pipelineIndex !== null) {
-            await fsp.mkdir(pipelineDir, { recursive: true });
-            await fsp.writeFile(path.join(pipelineDir, 'index.json'), JSON.stringify(pipelineIndex, null, 2), 'utf-8');
-            pipelineFiles++;
+        // Write observation index
+        if (obsIndex !== null) {
+            await fsp.mkdir(observationsDir, { recursive: true });
+            await fsp.writeFile(path.join(observationsDir, 'index.json'), JSON.stringify(obsIndex, null, 2), 'utf-8');
+            observationFiles++;
         }
 
         // Remove old index.json if we moved data from it
-        if ((noteIndex !== null || pipelineIndex !== null) && fs.existsSync(indexPath)) {
+        if ((noteIndex !== null || obsIndex !== null) && fs.existsSync(indexPath)) {
             try { fs.unlinkSync(indexPath); } catch { /* ignore */ }
         }
 
@@ -310,8 +310,49 @@ export async function migrateMemoryToSubfolders(dataDir: string): Promise<Subfol
         fs.writeFileSync(markerPath, new Date().toISOString(), 'utf-8');
 
         result.migrated++;
-        result.details.push({ workspaceId, status: 'migrated', noteFiles, pipelineFiles });
+        result.details.push({ workspaceId, status: 'migrated', noteFiles, observationFiles });
     }
 
     return result;
+}
+
+// ============================================================================
+// Directory rename migration: pipeline/ → observations/
+// ============================================================================
+
+/**
+ * Rename existing `memory/pipeline/` directories to `memory/observations/` for
+ * all repos. Safe to call multiple times — skips repos that already have an
+ * `observations/` directory or don't have a `pipeline/` directory.
+ */
+export async function migrateObservationsDir(dataDir: string): Promise<{ renamed: number }> {
+    const reposDir = path.join(dataDir, 'repos');
+    let renamed = 0;
+
+    if (!fs.existsSync(reposDir)) return { renamed };
+
+    let wsDirs: string[];
+    try {
+        const entries = await fsp.readdir(reposDir, { withFileTypes: true });
+        wsDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+    } catch {
+        return { renamed };
+    }
+
+    for (const workspaceId of wsDirs) {
+        const pipelineDir = path.join(reposDir, workspaceId, 'memory', 'pipeline');
+        const observationsDir = path.join(reposDir, workspaceId, 'memory', 'observations');
+
+        if (!fs.existsSync(pipelineDir)) continue;
+        if (fs.existsSync(observationsDir)) continue;
+
+        try {
+            await fsp.rename(pipelineDir, observationsDir);
+            renamed++;
+        } catch {
+            // Non-fatal — will be tried again next startup
+        }
+    }
+
+    return { renamed };
 }

@@ -10,7 +10,7 @@ import * as path from 'path';
 import { MemoryAggregateExecutor } from '../../src/server/memory/memory-aggregate-executor';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import { writeMemoryConfig, DEFAULT_MEMORY_CONFIG } from '../../src/server/memory/memory-config-handler';
-import { FileMemoryStore as PipelineMemoryStore } from '@plusplusoneplusplus/forge';
+import { FileMemoryStore as ObservationStore } from '@plusplusoneplusplus/forge';
 import { FileMemoryStore as NoteMemoryStore } from '../../src/server/memory/memory-store';
 
 // Mock the AI invoker module so we never call a real AI service
@@ -32,10 +32,10 @@ afterEach(() => {
 });
 
 /** Seed raw observation files via the store's writeRaw and return the store. */
-async function seedObservations(workspaceId: string, count: number): Promise<PipelineMemoryStore> {
-    const repoDir = path.join(tmpDir, 'repos', workspaceId, 'memory', 'pipeline');
+async function seedObservations(workspaceId: string, count: number): Promise<ObservationStore> {
+    const repoDir = path.join(tmpDir, 'repos', workspaceId, 'memory', 'observations');
     fs.mkdirSync(repoDir, { recursive: true });
-    const pStore = new PipelineMemoryStore({ dataDir: path.join(tmpDir, 'memory'), repoDir });
+    const pStore = new ObservationStore({ dataDir: path.join(tmpDir, 'memory'), repoDir });
 
     for (let i = 0; i < count; i++) {
         await pStore.writeRaw('repo', undefined, {
@@ -144,8 +144,8 @@ describe('MemoryAggregateExecutor', () => {
         const workspaceId = 'test-repo-notes-only';
         seedNotes(workspaceId, 3);
 
-        // Ensure pipeline dir exists for consolidated write
-        const repoDir = path.join(tmpDir, 'repos', workspaceId, 'memory', 'pipeline');
+        // Ensure observations dir exists for consolidated write
+        const repoDir = path.join(tmpDir, 'repos', workspaceId, 'memory', 'observations');
         fs.mkdirSync(repoDir, { recursive: true });
 
         const processStore = createMockProcessStore();
