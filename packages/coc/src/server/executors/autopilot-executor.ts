@@ -20,6 +20,7 @@ import type {
 import {
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
+    buildSearchConversationsAddon,
 } from './prompt-builder';
 import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
@@ -49,12 +50,13 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.count,
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
+        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId);
 
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage: undefined,
-            tools: [...followUp.tools, ...updateStatus.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix,
+            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix,
         };
     }
 }

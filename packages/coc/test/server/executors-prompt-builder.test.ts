@@ -71,6 +71,7 @@ import {
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
+    buildSearchConversationsAddon,
 } from '../../src/server/executors/prompt-builder';
 
 // ============================================================================
@@ -470,5 +471,32 @@ describe('buildUpdateTaskStatusAddon', () => {
     it('creates tool exactly once when plan file present', () => {
         buildUpdateTaskStatusAddon(true);
         expect(mockCreateUpdateTaskStatusTool).toHaveBeenCalledOnce();
+    });
+});
+
+// ============================================================================
+// buildSearchConversationsAddon
+// ============================================================================
+
+describe('buildSearchConversationsAddon', () => {
+    it('returns empty tools and suffix when store does not support searchConversations', () => {
+        const store = {} as any; // no searchConversations method
+        const result = buildSearchConversationsAddon(store);
+        expect(result.tools).toEqual([]);
+        expect(result.suffix).toBe('');
+    });
+
+    it('returns tool and suffix when store supports searchConversations', () => {
+        const store = { searchConversations: vi.fn() } as any;
+        const result = buildSearchConversationsAddon(store, 'ws-1');
+        expect(result.tools).toHaveLength(1);
+        expect(result.tools[0].name).toBe('search_conversations');
+        expect(result.suffix).toContain('search_conversations');
+    });
+
+    it('suffix mentions past conversation history', () => {
+        const store = { searchConversations: vi.fn() } as any;
+        const result = buildSearchConversationsAddon(store);
+        expect(result.suffix).toContain('conversation history');
     });
 });

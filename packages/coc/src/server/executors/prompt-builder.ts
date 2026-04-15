@@ -11,6 +11,7 @@
 import type {
     AutoFolderContext,
     ConversationTurn,
+    ProcessStore,
     QueuedTask,
     SystemMessageConfig,
     Tool,
@@ -25,6 +26,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import type { ChatMode, ChatPayload, RunScriptPayload } from '../task-types';
 import {
@@ -301,6 +303,33 @@ export function buildUpdateTaskStatusAddon(
         '\n\nYou have access to the `update_task_status` tool. ' +
         'Provide the absolute file path and new status. ' +
         'Call it when you begin work (set in-progress) and when complete (set done).';
+
+    return { tools: [tool], suffix };
+}
+
+// ============================================================================
+// Search Conversations
+// ============================================================================
+
+/**
+ * Builds the tools array and prompt suffix for the `search_conversations` tool.
+ * The tool is only injected when the store supports `searchConversations` (SQLite only).
+ *
+ * @param store        The ProcessStore instance.
+ * @param workspaceId  Optional default workspace to scope searches.
+ */
+export function buildSearchConversationsAddon(
+    store: ProcessStore,
+    workspaceId?: string,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!store.searchConversations) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { tool } = createSearchConversationsTool(store, workspaceId);
+    const suffix =
+        '\n\nYou have access to `search_conversations` to search past AI conversation history in this workspace. ' +
+        'Use it when the user references previous discussions or you need context from earlier sessions.';
 
     return { tools: [tool], suffix };
 }

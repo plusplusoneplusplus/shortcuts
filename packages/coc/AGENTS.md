@@ -123,6 +123,7 @@ src/
 │   ├── llm-tools/                # AI tool factories for chat executors
 │   │   ├── index.ts              # Barrel re-exports
 │   │   ├── resolve-comment-tool.ts   # Factory for per-invocation resolve_comment AI tool
+│   │   ├── search-conversations-tool.ts # Factory for search_conversations AI tool (FTS5 conversation search)
 │   │   ├── suggest-follow-ups-tool.ts # Factory for suggest_follow_ups AI tool
 │   │   └── update-task-status-tool.ts # Factory for update_task_status AI tool
 │   ├── task-migration.ts         # One-time migration from legacy .vscode/tasks/ location
