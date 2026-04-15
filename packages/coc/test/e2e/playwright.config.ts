@@ -5,11 +5,10 @@ export default defineConfig({
     testMatch: '**/*.spec.ts',
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
-    retries: process.env.CI ? 2 : 1,
-    workers: process.env.CI ? 2 : 4,
+    retries: 1,
+    workers: 4,
     reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['html', { open: 'never' }]],
     timeout: 30_000,
-    globalTimeout: process.env.CI ? 30 * 60_000 : undefined,
     use: {
         trace: 'on-first-retry',
     },

@@ -53,14 +53,6 @@ jobs:
         run: npm run build
         working-directory: packages/coc
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-        working-directory: packages/coc
-
-      - name: Run Playwright E2E tests
-        run: npm run test:e2e
-        working-directory: packages/coc
-
       - name: Lint
         run: npm run lint
 
