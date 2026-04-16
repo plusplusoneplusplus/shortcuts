@@ -3,7 +3,8 @@
  * All statuses are shown (including done/failed). Sections with no items are hidden.
  * Done and failed sections start collapsed.
  *
- * Supports server-side search (debounced) and batch loading (20 items per page).
+ * Uses server-side grouped endpoint for initial load and search.
+ * Per-status infinite scroll auto-loads more items when scrolling to the end of a group.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -39,6 +40,42 @@ const STATUS_ORDER = ['created', 'planning', 'readyToExecute', 'executing', 'aiD
 
 const PRIORITY_ICON: Record<string, string> = { high: '🔴', normal: '', low: '🔵' };
 
+/** Per-status infinite scroll sentinel — triggers auto-load when visible. */
+function StatusGroupSentinel({
+    status,
+    hasMore,
+    onLoadMore,
+}: {
+    status: string;
+    hasMore: boolean;
+    onLoadMore: (status: string) => void;
+}) {
+    const sentinelRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel || !hasMore) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0]?.isIntersecting) {
+                    onLoadMore(status);
+                }
+            },
+            { rootMargin: '200px' },
+        );
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [status, hasMore, onLoadMore]);
+
+    if (!hasMore) return null;
+    return (
+        <div ref={sentinelRef} className="flex justify-center py-1" data-testid={`work-items-sentinel-${status}`}>
+            <span className="text-[10px] text-[#848484] dark:text-[#999]">Loading…</span>
+        </div>
+    );
+}
+
 interface WorkItemSectionProps {
     workspaceId: string;
     onSelectWorkItem: (id: string) => void;
@@ -49,11 +86,10 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const { state, dispatch } = useWorkItems();
     const items = state.workItemsByRepo[workspaceId] || [];
     const pagination = state.paginationByRepo[workspaceId];
-    const hasMore = pagination?.hasMore ?? false;
     const isLoading = state.loading[workspaceId] ?? false;
     const { searchInput, searchQuery, searchInputRef, onSearchChange, onSearchClear } = useWorkItemSearch();
     const prevSearchRef = useRef(searchQuery);
-    const [loadingMore, setLoadingMore] = useState(false);
+    const loadingStatusesRef = useRef(new Set<string>());
 
     // Per-status collapse state; persisted in localStorage (workspace-scoped)
     const storageKey = `coc-wi-categories-${workspaceId}`;
@@ -71,48 +107,63 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         return defaults;
     });
 
-    const fetchWorkItems = useCallback(async (query?: string, offset = 0) => {
-        const isAppend = offset > 0;
-        if (!isAppend) {
-            dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: true });
-        }
+    // Fetch grouped work items (initial load and search)
+    const fetchGroupedWorkItems = useCallback(async (query?: string) => {
+        dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: true });
         try {
             const params = new URLSearchParams();
             params.set('limit', String(PAGE_SIZE));
-            params.set('offset', String(offset));
             if (query) params.set('q', query);
-            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/work-items?${params.toString()}`);
-            if (isAppend) {
-                dispatch({ type: 'APPEND_WORK_ITEMS', repoId: workspaceId, items: data?.items || [], total: data?.total ?? 0, hasMore: data?.hasMore ?? false, offset });
-            } else {
-                dispatch({ type: 'SET_WORK_ITEMS', repoId: workspaceId, items: data?.items || [], total: data?.total ?? 0, hasMore: data?.hasMore ?? false });
-            }
+            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/work-items/grouped?${params.toString()}`);
+            dispatch({ type: 'SET_GROUPED_WORK_ITEMS', repoId: workspaceId, groups: data?.groups || {} });
         } catch {
             // silently fail
         } finally {
-            if (!isAppend) {
-                dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: false });
-            }
-            setLoadingMore(false);
+            dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: false });
         }
     }, [workspaceId, dispatch]);
 
+    // Load more items for a specific status group (per-category infinite scroll)
+    const loadMoreForStatus = useCallback(async (status: string) => {
+        if (loadingStatusesRef.current.has(status)) return;
+        const statusPagination = pagination?.[status];
+        if (!statusPagination?.hasMore) return;
+
+        loadingStatusesRef.current.add(status);
+        try {
+            const params = new URLSearchParams();
+            params.set('status', status);
+            params.set('limit', String(PAGE_SIZE));
+            params.set('offset', String(statusPagination.offset));
+            if (searchQuery) params.set('q', searchQuery);
+
+            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/work-items?${params.toString()}`);
+            dispatch({
+                type: 'APPEND_STATUS_ITEMS',
+                repoId: workspaceId,
+                status,
+                items: data?.items || [],
+                total: data?.total ?? statusPagination.total,
+                hasMore: data?.hasMore ?? false,
+                offset: statusPagination.offset,
+            });
+        } catch {
+            // silently fail
+        } finally {
+            loadingStatusesRef.current.delete(status);
+        }
+    }, [workspaceId, dispatch, searchQuery, pagination]);
+
     // Initial fetch
-    useEffect(() => { fetchWorkItems(); }, [fetchWorkItems]);
+    useEffect(() => { fetchGroupedWorkItems(); }, [fetchGroupedWorkItems]);
 
     // Re-fetch when search query changes
     useEffect(() => {
         if (prevSearchRef.current !== searchQuery) {
             prevSearchRef.current = searchQuery;
-            fetchWorkItems(searchQuery || undefined);
+            fetchGroupedWorkItems(searchQuery || undefined);
         }
-    }, [searchQuery, fetchWorkItems]);
-
-    const handleLoadMore = useCallback(() => {
-        const currentOffset = pagination?.offset ?? items.length;
-        setLoadingMore(true);
-        fetchWorkItems(searchQuery || undefined, currentOffset);
-    }, [fetchWorkItems, searchQuery, pagination, items.length]);
+    }, [searchQuery, fetchGroupedWorkItems]);
 
     if (items.length === 0 && !isLoading && !searchInput) return null;
 
@@ -137,7 +188,9 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         ])
     );
 
-    const totalCount = pagination?.total ?? items.length;
+    const totalCount = pagination
+        ? Object.values(pagination).reduce((sum, p) => sum + (p?.total ?? 0), 0)
+        : items.length;
 
     return (
         <div data-testid="work-items-section">
@@ -182,7 +235,11 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
             <div className="flex flex-col gap-2">
                 {STATUS_ORDER.map(status => {
                     const group = grouped[status] || [];
-                    if (group.length === 0) return null;
+                    const statusPag = pagination?.[status];
+                    const statusTotal = Math.max(statusPag?.total ?? 0, group.length);
+                    const statusHasMore = statusPag?.hasMore ?? false;
+
+                    if (statusTotal === 0) return null;
 
                     const cfg = STATUS_CONFIG[status];
                     const isCollapsed = collapsed[status] ?? false;
@@ -199,7 +256,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                 <span>{cfg.icon}</span>
                                 <span className="font-medium">{cfg.label}</span>
                                 <span className={cn('text-[9px] px-1.5 py-0.5 rounded-full', cfg.badgeColor)}>
-                                    {group.length}
+                                    {statusTotal}
                                 </span>
                             </button>
 
@@ -251,24 +308,18 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                             )}
                                         </Card>
                                     ))}
+                                    {/* Per-status infinite scroll sentinel */}
+                                    <StatusGroupSentinel
+                                        status={status}
+                                        hasMore={statusHasMore}
+                                        onLoadMore={loadMoreForStatus}
+                                    />
                                 </div>
                             )}
                         </div>
                     );
                 })}
             </div>
-
-            {/* Load more button */}
-            {hasMore && (
-                <button
-                    onClick={handleLoadMore}
-                    disabled={loadingMore}
-                    className="w-full mt-2 py-1.5 text-xs text-[#0078d4] hover:text-[#005a9e] dark:text-[#4fc3f7] dark:hover:text-[#81d4fa] bg-transparent border border-[#d0d0d0] dark:border-[#555] rounded hover:bg-[#f5f5f5] dark:hover:bg-[#333] transition-colors disabled:opacity-50"
-                    data-testid="work-items-load-more"
-                >
-                    {loadingMore ? 'Loading…' : `Load more (${totalCount - items.length} remaining)`}
-                </button>
-            )}
         </div>
     );
 }

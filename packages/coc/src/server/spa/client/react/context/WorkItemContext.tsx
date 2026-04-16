@@ -28,12 +28,15 @@ export interface WorkItemContextState {
     loading: Record<string, boolean>;
     selectedWorkItemId: string | null;
     unseenByRepo: Record<string, string[]>;
-    paginationByRepo: Record<string, WorkItemPagination>;
+    /** Per-status pagination: repo → status → pagination state */
+    paginationByRepo: Record<string, Record<string, WorkItemPagination>>;
 }
 
 export type WorkItemAction =
     | { type: 'SET_WORK_ITEMS'; repoId: string; items: WorkItemSummary[]; total: number; hasMore: boolean }
     | { type: 'APPEND_WORK_ITEMS'; repoId: string; items: WorkItemSummary[]; total: number; hasMore: boolean; offset: number }
+    | { type: 'SET_GROUPED_WORK_ITEMS'; repoId: string; groups: Record<string, { items: WorkItemSummary[]; total: number; hasMore: boolean }> }
+    | { type: 'APPEND_STATUS_ITEMS'; repoId: string; status: string; items: WorkItemSummary[]; total: number; hasMore: boolean; offset: number }
     | { type: 'SET_LOADING'; repoId: string; loading: boolean }
     | { type: 'SELECT_WORK_ITEM'; id: string | null }
     | { type: 'WORK_ITEM_ADDED'; repoId: string; item: WorkItemSummary }
@@ -64,7 +67,7 @@ function workItemReducer(state: WorkItemContextState, action: WorkItemAction): W
                 workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: action.items },
                 paginationByRepo: {
                     ...state.paginationByRepo,
-                    [action.repoId]: { total: action.total, hasMore: action.hasMore, offset: action.items.length },
+                    [action.repoId]: { _flat: { total: action.total, hasMore: action.hasMore, offset: action.items.length } },
                 },
             };
         case 'APPEND_WORK_ITEMS': {
@@ -76,7 +79,49 @@ function workItemReducer(state: WorkItemContextState, action: WorkItemAction): W
                 workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: [...existing, ...newItems] },
                 paginationByRepo: {
                     ...state.paginationByRepo,
-                    [action.repoId]: { total: action.total, hasMore: action.hasMore, offset: action.offset + action.items.length },
+                    [action.repoId]: {
+                        ...(state.paginationByRepo[action.repoId] || {}),
+                        _flat: { total: action.total, hasMore: action.hasMore, offset: action.offset + action.items.length },
+                    },
+                },
+            };
+        }
+        case 'SET_GROUPED_WORK_ITEMS': {
+            // Merge all group items into a flat list, replacing any previous items for this repo
+            const allItems: WorkItemSummary[] = [];
+            const pagination: Record<string, WorkItemPagination> = {};
+            for (const [status, group] of Object.entries(action.groups)) {
+                allItems.push(...group.items);
+                pagination[status] = {
+                    total: group.total,
+                    hasMore: group.hasMore,
+                    offset: group.items.length,
+                };
+            }
+            return {
+                ...state,
+                workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: allItems },
+                paginationByRepo: { ...state.paginationByRepo, [action.repoId]: pagination },
+            };
+        }
+        case 'APPEND_STATUS_ITEMS': {
+            const existing = state.workItemsByRepo[action.repoId] || [];
+            const existingIds = new Set(existing.map(i => i.id));
+            const newItems = action.items.filter(i => !existingIds.has(i.id));
+            const repoPagination = state.paginationByRepo[action.repoId] || {};
+            return {
+                ...state,
+                workItemsByRepo: { ...state.workItemsByRepo, [action.repoId]: [...existing, ...newItems] },
+                paginationByRepo: {
+                    ...state.paginationByRepo,
+                    [action.repoId]: {
+                        ...repoPagination,
+                        [action.status]: {
+                            total: action.total,
+                            hasMore: action.hasMore,
+                            offset: action.offset + action.items.length,
+                        },
+                    },
                 },
             };
         }

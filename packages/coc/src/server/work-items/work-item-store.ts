@@ -20,13 +20,14 @@ import type {
     WorkItemIndexEntry,
     WorkItemFilter,
     WorkItemListResult,
+    WorkItemGroupedResult,
     WorkItemPlanVersion,
     WorkItemExecution,
     WorkItemChange,
     WorkItemStore,
     WorkItemStatus,
 } from './types';
-import { toIndexEntry } from './types';
+import { toIndexEntry, WORK_ITEM_STATUSES } from './types';
 
 // ============================================================================
 // Store Implementation
@@ -315,6 +316,50 @@ export class FileWorkItemStore implements WorkItemStore {
         }
 
         return { items: filtered, total };
+    }
+
+    async listWorkItemsGrouped(filter?: WorkItemFilter): Promise<WorkItemGroupedResult> {
+        const repoId = filter?.repoId;
+        let entries: WorkItemIndexEntry[];
+
+        if (repoId) {
+            entries = await this.readIndex(repoId);
+        } else {
+            const repos = await this.listRepoIds();
+            entries = [];
+            for (const repo of repos) {
+                entries.push(...await this.readIndex(repo));
+            }
+        }
+
+        // Apply non-status filters (source, priority, type, tags)
+        const filterWithoutStatus = filter ? { ...filter, status: undefined } : undefined;
+        let filtered = this.applyFilter(entries, filterWithoutStatus);
+
+        // Apply search
+        if (filter?.search) {
+            const q = filter.search.toLowerCase();
+            filtered = filtered.filter(e => {
+                if (e.title.toLowerCase().includes(q)) return true;
+                if (e.description && e.description.toLowerCase().includes(q)) return true;
+                if (e.tags?.some(t => t.toLowerCase().includes(q))) return true;
+                return false;
+            });
+        }
+
+        const limit = filter?.limit ?? 20;
+        const groups: Record<string, WorkItemListResult> = {};
+
+        for (const status of WORK_ITEM_STATUSES) {
+            const statusItems = filtered.filter(e => e.status === status);
+            if (statusItems.length === 0) continue;
+            groups[status] = {
+                items: statusItems.slice(0, limit),
+                total: statusItems.length,
+            };
+        }
+
+        return { groups };
     }
 
     // ── Plan versioning ─────────────────────────────────────────

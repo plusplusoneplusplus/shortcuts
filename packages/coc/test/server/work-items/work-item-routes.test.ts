@@ -380,6 +380,73 @@ describe('Work Item Routes', () => {
         });
     });
 
+    describe('GET /api/workspaces/:id/work-items/grouped', () => {
+        it('returns items grouped by status', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Created 1' });
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Created 2' });
+            const item3 = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Will be planning' });
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${item3.body.id}`, { status: 'planning' });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/grouped`);
+            expect(res.status).toBe(200);
+            expect(res.body.groups).toBeDefined();
+            expect(res.body.groups.created.items).toHaveLength(2);
+            expect(res.body.groups.created.total).toBe(2);
+            expect(res.body.groups.created.hasMore).toBe(false);
+            expect(res.body.groups.planning.items).toHaveLength(1);
+            expect(res.body.groups.planning.total).toBe(1);
+        });
+
+        it('respects limit parameter per group', async () => {
+            for (let i = 0; i < 5; i++) {
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: `Item ${i}` });
+            }
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/grouped?limit=3`);
+            expect(res.status).toBe(200);
+            expect(res.body.groups.created.items).toHaveLength(3);
+            expect(res.body.groups.created.total).toBe(5);
+            expect(res.body.groups.created.hasMore).toBe(true);
+        });
+
+        it('supports search query across groups', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Login fix' });
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Dashboard update' });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/grouped?q=login`);
+            expect(res.status).toBe(200);
+            expect(res.body.groups.created.items).toHaveLength(1);
+            expect(res.body.groups.created.items[0].title).toBe('Login fix');
+        });
+
+        it('returns empty groups when no items match search', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Test item' });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/grouped?q=nonexistent`);
+            expect(res.status).toBe(200);
+            expect(Object.keys(res.body.groups)).toHaveLength(0);
+        });
+
+        it('excludes empty status groups', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Only created' });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/grouped`);
+            expect(res.status).toBe(200);
+            expect(Object.keys(res.body.groups)).toEqual(['created']);
+            expect(res.body.groups.executing).toBeUndefined();
+        });
+
+        it('supports filter params alongside search', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'High item', priority: 'high' });
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Low item', priority: 'low' });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/grouped?priority=high`);
+            expect(res.status).toBe(200);
+            expect(res.body.groups.created.items).toHaveLength(1);
+            expect(res.body.groups.created.total).toBe(1);
+        });
+    });
+
     describe('GET /api/workspaces/:id/work-items/:workItemId', () => {
         it('returns work item detail', async () => {
             const created = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
