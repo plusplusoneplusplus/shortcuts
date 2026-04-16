@@ -20,6 +20,10 @@ tags:
     description: Server log access
   - name: Preferences
     description: Global and per-repo UI preference management.
+  - name: seen-state
+    description: Per-process read/unread (seen/unseen) tracking
+  - name: pin-archive
+    description: Pin and archive management for processes
 
 paths:
   /api/health:
@@ -351,6 +355,222 @@ paths:
                 $ref: '#/components/schemas/SkillUsageResponse'
         '400':
           description: Missing or empty `skillName`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Seen-State ──────────────────────────────────────────────
+
+  /api/workspaces/{id}/seen-state:
+    get:
+      tags: [seen-state]
+      operationId: getSeenState
+      summary: Get full seen-state map for a workspace
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Map of processId → seenAt timestamp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeenStateMap'
+    patch:
+      tags: [seen-state]
+      operationId: batchUpdateSeenState
+      summary: Batch-update seen timestamps
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeenStateBatchUpdate'
+      responses:
+        '200':
+          description: Updated full seen-state map
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeenStateMap'
+        '400':
+          description: Invalid entries array
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/workspaces/{id}/seen-state/count:
+    get:
+      tags: [seen-state]
+      operationId: getUnseenCount
+      summary: Get count of unseen processes in a workspace
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Unseen process count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnseenCountResponse'
+
+  /api/workspaces/{id}/seen-state/{processId}:
+    delete:
+      tags: [seen-state]
+      operationId: markProcessUnseen
+      summary: Mark a single process as unseen
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: processId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Process marked unseen
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+                    enum: [true]
+
+  # ── Pin/Archive ─────────────────────────────────────────────
+
+  /api/workspaces/{id}/pinned:
+    get:
+      tags: [pin-archive]
+      operationId: getPinnedProcesses
+      summary: List pinned processes for a workspace
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Pinned processes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProcessIndexEntry'
+
+  /api/processes/{id}/pin:
+    patch:
+      tags: [pin-archive]
+      operationId: toggleProcessPin
+      summary: Pin or unpin a process
+      description: >-
+        When pinning (pinned: true), the process is also auto-unarchived.
+        When unpinning (pinned: false), pinnedAt is set to null.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pinned]
+              properties:
+                pinned:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated pin state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PinResponse'
+
+  /api/processes/{id}/archive:
+    patch:
+      tags: [pin-archive]
+      operationId: toggleProcessArchive
+      summary: Archive or unarchive a single process
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [archived]
+              properties:
+                archived:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated archive state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchiveResponse'
+
+  /api/processes/archive:
+    post:
+      tags: [pin-archive]
+      operationId: bulkArchiveProcesses
+      summary: Archive multiple processes at once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkArchiveRequest'
+      responses:
+        '200':
+          description: IDs of archived processes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkArchiveResponse'
+        '400':
+          description: Invalid ids array
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/processes/unarchive:
+    post:
+      tags: [pin-archive]
+      operationId: bulkUnarchiveProcesses
+      summary: Unarchive multiple processes at once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkArchiveRequest'
+      responses:
+        '200':
+          description: IDs of unarchived processes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkUnarchiveResponse'
+        '400':
+          description: Invalid ids array
           content:
             application/json:
               schema:
@@ -713,3 +933,138 @@ components:
         timestamp:
           type: string
           format: date-time
+
+    SeenStateMap:
+      type: object
+      description: >-
+        Map of processId → ISO 8601 seenAt timestamp.
+        Keys are process IDs; values are the timestamp when the process was last seen.
+      additionalProperties:
+        type: string
+        format: date-time
+      example:
+        proc-abc123: '2025-01-15T10:30:00.000Z'
+        proc-def456: '2025-01-15T11:00:00.000Z'
+
+    SeenStateBatchUpdate:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            required: [processId, seenAt]
+            properties:
+              processId:
+                type: string
+              seenAt:
+                type: string
+                format: date-time
+
+    UnseenCountResponse:
+      type: object
+      required: [unseenCount]
+      properties:
+        unseenCount:
+          type: integer
+
+    ProcessIndexEntry:
+      type: object
+      required: [id, workspaceId, status, type, startTime, promptPreview]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        status:
+          type: string
+        type:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        promptPreview:
+          type: string
+        error:
+          type: string
+        parentProcessId:
+          type: string
+        title:
+          type: string
+        duration:
+          type: number
+          description: Duration in milliseconds (computed from startTime/endTime)
+        lastEventAt:
+          type: string
+          format: date-time
+          description: Timestamp of the last conversation event
+        pinnedAt:
+          type: string
+          format: date-time
+          description: ISO timestamp when the process was pinned (null = not pinned)
+        archived:
+          type: boolean
+          description: Whether the process is archived
+
+    PinResponse:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        pinnedAt:
+          type: ['string', 'null']
+          format: date-time
+          description: ISO timestamp when pinned; null when unpinned
+        archived:
+          type: boolean
+          description: Present when pinning (auto-unarchives)
+
+    ArchiveResponse:
+      type: object
+      required: [id, archived]
+      properties:
+        id:
+          type: string
+        archived:
+          type: boolean
+
+    BulkArchiveRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+
+    BulkArchiveResponse:
+      type: object
+      required: [archived]
+      properties:
+        archived:
+          type: array
+          items:
+            type: string
+
+    BulkUnarchiveResponse:
+      type: object
+      required: [unarchived]
+      properties:
+        unarchived:
+          type: array
+          items:
+            type: string
+
+  parameters:
+    WorkspaceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: URL-encoded workspace identifier
