@@ -55,6 +55,9 @@ export interface CLIConfig {
     myWork?: {
         enabled?: boolean;
     };
+    myLife?: {
+        enabled?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

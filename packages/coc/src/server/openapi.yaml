@@ -18,6 +18,8 @@ tags:
     description: Provider configuration
   - name: logs
     description: Server log access
+  - name: Preferences
+    description: Global and per-repo UI preference management.
 
 paths:
   /api/health:
@@ -159,6 +161,196 @@ paths:
                 $ref: '#/components/schemas/ProviderConfigResponse'
         '500':
           description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Global preferences ──────────────────────────────────────────
+
+  /api/preferences:
+    get:
+      operationId: getGlobalPreferences
+      summary: Read global preferences
+      tags: [Preferences]
+      responses:
+        '200':
+          description: Current global preferences (empty object if none stored).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlobalPreferences'
+
+    put:
+      operationId: replaceGlobalPreferences
+      summary: Replace global preferences
+      description: >-
+        Replaces the entire global preferences object.
+        Unknown keys are silently dropped during validation.
+      tags: [Preferences]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GlobalPreferences'
+      responses:
+        '200':
+          description: The validated preferences after replacement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlobalPreferences'
+        '400':
+          description: Invalid JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      operationId: patchGlobalPreferences
+      summary: Partially update global preferences
+      description: >-
+        Shallow-merges the provided fields into the existing global preferences.
+        Only supplied keys are overwritten; omitted keys are preserved.
+        Unknown keys are silently dropped during validation.
+      tags: [Preferences]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GlobalPreferences'
+      responses:
+        '200':
+          description: The full merged preferences after the patch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlobalPreferences'
+        '400':
+          description: Invalid JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Per-repo preferences ────────────────────────────────────────
+
+  /api/workspaces/{id}/preferences:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: URL-encoded workspace identifier.
+        schema:
+          type: string
+
+    get:
+      operationId: getRepoPreferences
+      summary: Read per-repo preferences
+      tags: [Preferences]
+      responses:
+        '200':
+          description: Current per-repo preferences (empty object if none stored).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerRepoPreferences'
+
+    put:
+      operationId: replaceRepoPreferences
+      summary: Replace per-repo preferences
+      description: >-
+        Replaces the entire per-repo preferences object.
+        Unknown keys are silently dropped during validation.
+      tags: [Preferences]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerRepoPreferences'
+      responses:
+        '200':
+          description: The validated preferences after replacement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerRepoPreferences'
+        '400':
+          description: Invalid JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      operationId: patchRepoPreferences
+      summary: Partially update per-repo preferences
+      description: >-
+        Shallow-merges supplied fields into existing per-repo preferences.
+        Special deep-merge behavior for nested objects:
+        - `lastSkills`: merges per-mode (task/ask/plan) individually; an empty
+          array for a mode clears that mode.
+        - `lastModels`: merges per-mode (task/ask/plan) individually.
+        - `linkedRepoIds`: sending an empty array `[]` deletes the key entirely.
+        Omitted keys are preserved. Unknown keys are silently dropped.
+      tags: [Preferences]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerRepoPreferences'
+      responses:
+        '200':
+          description: The full merged preferences after the patch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerRepoPreferences'
+        '400':
+          description: Invalid JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Skill usage tracking ────────────────────────────────────────
+
+  /api/workspaces/{id}/preferences/skill-usage:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: URL-encoded workspace identifier.
+        schema:
+          type: string
+
+    patch:
+      operationId: recordSkillUsage
+      summary: Record a skill usage timestamp
+      description: >-
+        Records the current timestamp for the given skill name in the repo's
+        `skillUsageMap`. Used to order skill dropdowns by recency.
+      tags: [Preferences]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillUsageRequest'
+      responses:
+        '200':
+          description: The recorded skill name and timestamp.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillUsageResponse'
+        '400':
+          description: Missing or empty `skillName`.
           content:
             application/json:
               schema:
@@ -351,3 +543,173 @@ components:
             ado:
               $ref: '#/components/schemas/ProviderAdoConfig'
           description: Configured providers (keys present only when configured)
+
+    # ── Preferences helper types ───────────────────────────────────
+
+    LastSkillsByMode:
+      type: object
+      description: Per-mode last-used skill names (arrays support multi-skill combinations).
+      properties:
+        task:
+          type: array
+          items: { type: string }
+        ask:
+          type: array
+          items: { type: string }
+        plan:
+          type: array
+          items: { type: string }
+
+    LastModelsByMode:
+      type: object
+      description: Per-mode last-used AI model names.
+      properties:
+        task: { type: string }
+        ask: { type: string }
+        plan: { type: string }
+
+    ScriptTemplateEntry:
+      type: object
+      description: A saved run-script template.
+      required: [id, name, scriptPath]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+        scriptPath:
+          type: string
+        args:
+          type: string
+        workingDirectory:
+          type: string
+        model:
+          type: string
+        pauseOnFailure:
+          type: boolean
+
+    SkillTemplateEntry:
+      type: object
+      description: A saved skill/model template.
+      required: [id, model, mode, skills]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+        model:
+          type: string
+        mode:
+          type: string
+          enum: [ask, task]
+        skills:
+          type: array
+          items: { type: string }
+
+    # ── Top-level preference objects ──────────────────────────────
+
+    GlobalPreferences:
+      type: object
+      description: Global (cross-repo) UI preferences.
+      properties:
+        theme:
+          type: string
+          enum: [light, dark, auto]
+          description: Persisted dashboard theme.
+        reposSidebarCollapsed:
+          type: boolean
+          description: Whether the repos sidebar (left panel) is collapsed.
+        gitGroupOrder:
+          type: array
+          items: { type: string }
+          description: >-
+            User-defined display order of repository groups.
+            Each entry is a normalizedUrl (for grouped repos) or 'workspace:{id}' (for ungrouped repos).
+        hasSeenWelcome:
+          type: boolean
+          description: Whether the user has dismissed the welcome modal.
+        onboardingProgress:
+          type: object
+          description: Tracks progress through the onboarding checklist steps.
+          properties:
+            hasUsedChat: { type: boolean }
+            hasRunWorkflow: { type: boolean }
+            hasOpenedWiki: { type: boolean }
+            settingsVisited: { type: boolean }
+            dismissed: { type: boolean }
+            hasCompletedTour: { type: boolean }
+        dismissedTips:
+          type: array
+          items: { type: string }
+          description: IDs of contextual tips the user has permanently dismissed.
+
+    PerRepoPreferences:
+      type: object
+      description: Per-repository UI preferences.
+      properties:
+        lastModel:
+          type: string
+          deprecated: true
+          description: 'Deprecated: use lastModels instead. Kept for backward compatibility on read.'
+        lastModels:
+          $ref: '#/components/schemas/LastModelsByMode'
+        lastDepth:
+          type: string
+          enum: [deep, normal]
+          description: Last-selected generation depth in the SPA.
+        lastEffort:
+          type: string
+          enum: [low, medium, high]
+          description: Last-selected effort level in the Generate Task dialog.
+        lastSkills:
+          $ref: '#/components/schemas/LastSkillsByMode'
+        skillUsageMap:
+          type: object
+          additionalProperties: { type: string }
+          description: 'Skill usage timestamps for ordering skill dropdowns (skillName → ISO timestamp).'
+        linkedRepoIds:
+          type: array
+          items: { type: string }
+          description: IDs of workspaces whose skill folders are linked via "Extra Skill Folders".
+        scriptTemplates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScriptTemplateEntry'
+          description: Saved run-script templates from the Run Script dialog.
+        skillTemplates:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillTemplateEntry'
+          description: Saved skill/model templates from the Run Skill dialog.
+        filesViewMode:
+          type: string
+          enum: [flat, tree]
+          description: Preferred file-list display mode across all git views.
+        memoryExtraction:
+          type: object
+          description: Memory extraction settings. Extraction is opt-in per repo (default disabled).
+          required: [enabled]
+          properties:
+            enabled: { type: boolean }
+
+    SkillUsageRequest:
+      type: object
+      description: Request body for recording a skill usage.
+      required: [skillName]
+      properties:
+        skillName:
+          type: string
+          minLength: 1
+
+    SkillUsageResponse:
+      type: object
+      description: Confirmation of a recorded skill usage.
+      required: [skillName, timestamp]
+      properties:
+        skillName:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
