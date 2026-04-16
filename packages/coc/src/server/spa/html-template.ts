@@ -84,6 +84,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         terminalEnabled,
         notesEnabled,
         myWorkEnabled,
+        myLifeEnabled,
         reviewFilePath,
         projectDir,
     } = options;
@@ -120,7 +121,8 @@ ${getBundleCss()}
             hostname: '${escapeHtml(hostname)}'` : ''},
             terminalEnabled: ${!!terminalEnabled},
             notesEnabled: ${!!notesEnabled},
-            myWorkEnabled: ${!!myWorkEnabled}
+            myWorkEnabled: ${!!myWorkEnabled},
+            myLifeEnabled: ${!!myLifeEnabled}
         };
     </script>${reviewFilePath ? `
     <script>

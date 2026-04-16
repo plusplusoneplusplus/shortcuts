@@ -336,6 +336,7 @@ timeout: 300
                 terminal: { enabled: false },
                 notes: { enabled: false },
                 myWork: { enabled: false },
+                myLife: { enabled: false },
                 store: { backend: 'file' },
             };
             const override: CLIConfig = {};
@@ -642,6 +643,8 @@ timeout: 300
                 'notes:',
                 '  enabled: true',
                 'myWork:',
+                '  enabled: true',
+                'myLife:',
                 '  enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);

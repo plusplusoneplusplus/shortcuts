@@ -17,6 +17,8 @@ export interface DashboardOptions {
     notesEnabled?: boolean;
     /** Whether the My Work feature is enabled in server config. */
     myWorkEnabled?: boolean;
+    /** Whether the My Life feature is enabled in server config. */
+    myLifeEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
     reviewFilePath?: string;
     /** Server project directory (for display in review editor). */

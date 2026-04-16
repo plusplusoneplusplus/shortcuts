@@ -84,6 +84,10 @@ export interface CLIConfig {
     myWork?: {
         enabled?: boolean;
     };
+    /** My Life configuration */
+    myLife?: {
+        enabled?: boolean;
+    };
     /** Process store configuration */
     store?: {
         backend?: 'file' | 'sqlite';
@@ -191,6 +195,10 @@ export interface ResolvedCLIConfig {
     myWork: {
         enabled: boolean;
     };
+    /** My Life configuration */
+    myLife: {
+        enabled: boolean;
+    };
     /** Process store configuration */
     store: {
         backend: 'file' | 'sqlite';
@@ -252,6 +260,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     myWork: {
         enabled: false,
     },
+    myLife: {
+        enabled: false,
+    },
     store: {
         backend: 'sqlite',
     },
@@ -284,6 +295,7 @@ export const CONFIG_SOURCE_KEYS = [
     'terminal.enabled',
     'notes.enabled',
     'myWork.enabled',
+    'myLife.enabled',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -427,6 +439,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         myWork: {
             enabled: override.myWork?.enabled ?? base.myWork.enabled,
         },
+        myLife: {
+            enabled: override.myLife?.enabled ?? base.myLife.enabled,
+        },
         store: {
             backend: override.store?.backend ?? base.store.backend,
         },
@@ -495,6 +510,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('myWork.')) {
         const subKey = key.slice('myWork.'.length) as keyof NonNullable<CLIConfig['myWork']>;
         return fileConfig.myWork?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('myLife.')) {
+        const subKey = key.slice('myLife.'.length) as keyof NonNullable<CLIConfig['myLife']>;
+        return fileConfig.myLife?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';

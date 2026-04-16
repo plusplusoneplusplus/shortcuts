@@ -57,12 +57,18 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useMyWorkEnabled', () => 
     useMyWorkEnabled: () => mockMyWorkEnabled,
 }));
 
+let mockMyLifeEnabled = false;
+vi.mock('../../../../src/server/spa/client/react/hooks/useMyLifeEnabled', () => ({
+    useMyLifeEnabled: () => mockMyLifeEnabled,
+}));
+
 describe('TopBar responsive behavior', () => {
     let viewportCleanup: (() => void) | undefined;
 
     beforeEach(() => {
         mockDispatch.mockClear();
         mockMyWorkEnabled = false;
+        mockMyLifeEnabled = false;
     });
 
     afterEach(() => {

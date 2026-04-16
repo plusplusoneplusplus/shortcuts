@@ -10,9 +10,11 @@ import { useApp } from '../context/AppContext';
 import { useRepos } from '../context/ReposContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useMyWorkEnabled } from '../hooks/useMyWorkEnabled';
+import { useMyLifeEnabled } from '../hooks/useMyLifeEnabled';
 import { ReposGrid } from './ReposGrid';
 import { RepoDetail } from './RepoDetail';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
+import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
 
 
 export function ReposView() {
@@ -20,6 +22,7 @@ export function ReposView() {
     const { repos, loading, fetchRepos } = useRepos();
     const { breakpoint } = useBreakpoint();
     const myWorkEnabled = useMyWorkEnabled();
+    const myLifeEnabled = useMyLifeEnabled();
     const isMobile = breakpoint === 'mobile';
     const hasSelection = state.selectedRepoId !== null;
     const heightClass = isMobile
@@ -45,7 +48,7 @@ export function ReposView() {
     // list yet (repo data still loading), keep showing the loading indicator
     // rather than flashing the empty "Select a repository" panel.
     // Exception: my_work is a virtual workspace that won't appear in repos list (only when enabled).
-    if (loading && state.selectedRepoId && !(myWorkEnabled && state.selectedRepoId === MY_WORK_WORKSPACE_ID) && !repos.find(r => r.workspace.id === state.selectedRepoId)) {
+    if (loading && state.selectedRepoId && !(myWorkEnabled && state.selectedRepoId === MY_WORK_WORKSPACE_ID) && !(myLifeEnabled && state.selectedRepoId === MY_LIFE_WORKSPACE_ID) && !repos.find(r => r.workspace.id === state.selectedRepoId)) {
         return (
             <div id="view-repos" className={`flex items-center justify-center ${heightClass} text-sm text-[#848484]`}>
                 Loading repositories...
@@ -56,6 +59,9 @@ export function ReposView() {
     // My Work virtual workspace — dedicated view with notes + toolbar
     const isMyWork = myWorkEnabled && state.selectedRepoId === MY_WORK_WORKSPACE_ID;
 
+    // My Life virtual workspace — personal goals, journal, life admin
+    const isMyLife = myLifeEnabled && state.selectedRepoId === MY_LIFE_WORKSPACE_ID;
+
     const selectedRepo = repos.find(r => r.workspace.id === state.selectedRepoId) || null;
 
     return (
@@ -64,6 +70,11 @@ export function ReposView() {
                 // ── My Work: notes-based workspace with sync/summary toolbar ──
                 <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                     <MyWorkView />
+                </main>
+            ) : isMyLife ? (
+                // ── My Life: personal workspace with goals/journal ──
+                <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
+                    <MyLifeView />
                 </main>
             ) : isMobile ? (
                 // ── Mobile: master-detail ──

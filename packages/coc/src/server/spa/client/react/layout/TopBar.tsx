@@ -9,7 +9,9 @@ import { useTheme } from './ThemeProvider';
 import { NotificationBell } from '../shared/NotificationBell';
 import { RepoTabStrip } from '../repos/RepoTabStrip';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
+import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/useMyWorkEnabled';
+import { useMyLifeEnabled } from '../hooks/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { getHostname } from '../utils/config';
@@ -55,6 +57,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
     const brandTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
     const myWorkEnabled = useMyWorkEnabled();
+    const myLifeEnabled = useMyLifeEnabled();
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -70,6 +73,12 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
         dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
         dispatch({ type: 'SET_SELECTED_REPO', id: MY_WORK_WORKSPACE_ID });
         location.hash = '#repos/' + MY_WORK_WORKSPACE_ID + '/notes';
+    }, [dispatch]);
+
+    const goToMyLife = useCallback(() => {
+        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
+        dispatch({ type: 'SET_SELECTED_REPO', id: MY_LIFE_WORKSPACE_ID });
+        location.hash = '#repos/' + MY_LIFE_WORKSPACE_ID + '/notes';
     }, [dispatch]);
 
     const toggleRepoManagement = useCallback(() => {
@@ -135,6 +144,22 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                         onClick={goToMyWork}
                     >
                         💼
+                    </button>
+                )}
+                {myLifeEnabled && (
+                    <button
+                        id="my-life-toggle"
+                        className={
+                            `h-7 w-7 md:h-8 md:w-8 flex-shrink-0 inline-flex items-center justify-center rounded touch-target ` +
+                            (isOnReposTab && state.selectedRepoId === MY_LIFE_WORKSPACE_ID
+                                ? 'bg-[#0078d4] text-white'
+                                : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                        }
+                        aria-label="My Life"
+                        title="My Life"
+                        onClick={goToMyLife}
+                    >
+                        🏠
                     </button>
                 )}
                 {!isMobile && (

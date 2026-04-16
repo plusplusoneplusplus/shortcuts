@@ -27,6 +27,7 @@ import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
 import { ensureMyWorkWorkspace } from './my-work-workspace';
+import { ensureMyLifeWorkspace } from './my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
@@ -177,6 +178,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const myWorkWorkspace = await ensureMyWorkWorkspace(dataDir, store);
     bridge.registerRepoId(myWorkWorkspace.id, myWorkWorkspace.rootPath);
 
+    const myLifeWorkspace = await ensureMyLifeWorkspace(dataDir, store);
+    bridge.registerRepoId(myLifeWorkspace.id, myLifeWorkspace.rootPath);
+
     const resolvedAiService = options.aiService ?? getCopilotSDKService();
     const aiInvoker = createCLIAIInvoker({ approvePermissions: true });
     cleanupInfra = createCleanupInfrastructure(store, dataDir, queueFacade, aiInvoker);
@@ -197,7 +201,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const rawHostname = os.hostname();
     const displayHostname = resolvedConfig.serve?.serverName || shortenHostname(rawHostname);
     const handler = createRequestHandler({
-        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname, terminalEnabled: resolvedConfig.terminal?.enabled ?? false, notesEnabled: resolvedConfig.notes?.enabled ?? false, myWorkEnabled: resolvedConfig.myWork?.enabled ?? false }),
+        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname, terminalEnabled: resolvedConfig.terminal?.enabled ?? false, notesEnabled: resolvedConfig.notes?.enabled ?? false, myWorkEnabled: resolvedConfig.myWork?.enabled ?? false, myLifeEnabled: resolvedConfig.myLife?.enabled ?? false }),
         store, spaETag: getBundleETag,
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
         getIconSvg: () => generateIconSvg(rawHostname),

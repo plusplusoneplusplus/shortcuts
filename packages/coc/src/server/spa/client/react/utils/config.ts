@@ -10,6 +10,7 @@ interface DashboardConfig {
     terminalEnabled?: boolean;
     notesEnabled?: boolean;
     myWorkEnabled?: boolean;
+    myLifeEnabled?: boolean;
 }
 
 function getConfig(): DashboardConfig {
@@ -42,4 +43,8 @@ export function isNotesEnabled(): boolean {
 
 export function isMyWorkEnabled(): boolean {
     return getConfig().myWorkEnabled === true;
+}
+
+export function isMyLifeEnabled(): boolean {
+    return getConfig().myLifeEnabled === true;
 }

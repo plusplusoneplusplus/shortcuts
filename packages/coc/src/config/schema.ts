@@ -75,6 +75,9 @@ export const CLIConfigSchema = z.object({
     myWork: z.object({
         enabled: z.boolean().optional(),
     }).strict().optional(),
+    myLife: z.object({
+        enabled: z.boolean().optional(),
+    }).strict().optional(),
     store: z.object({
         backend: z.enum(['file', 'sqlite']).optional(),
     }).strict().optional(),

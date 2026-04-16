@@ -29,9 +29,15 @@ vi.mock('../../../src/server/spa/client/react/hooks/useMyWorkEnabled', () => ({
     useMyWorkEnabled: () => mockMyWorkEnabled,
 }));
 
+let mockMyLifeEnabled = false;
+vi.mock('../../../src/server/spa/client/react/hooks/useMyLifeEnabled', () => ({
+    useMyLifeEnabled: () => mockMyLifeEnabled,
+}));
+
 beforeEach(() => {
     location.hash = '';
     mockMyWorkEnabled = false;
+    mockMyLifeEnabled = false;
     Object.defineProperty(window, 'matchMedia', {
         writable: true,
         configurable: true,
@@ -579,6 +585,67 @@ describe('TopBar — My Work icon button', () => {
         renderTopBar();
         const btn = document.getElementById('my-work-toggle')!;
         expect(btn.textContent).toContain('💼');
+    });
+});
+
+// ─── TopBar My Life icon button ──────────────────────────────────
+
+describe('TopBar — My Life icon button', () => {
+    it('does not render my-life-toggle when myLifeEnabled is false', () => {
+        mockMyLifeEnabled = false;
+        renderTopBar();
+        expect(document.getElementById('my-life-toggle')).toBeNull();
+    });
+
+    it('renders my-life-toggle when myLifeEnabled is true', () => {
+        mockMyLifeEnabled = true;
+        renderTopBar();
+        const btn = document.getElementById('my-life-toggle');
+        expect(btn).toBeTruthy();
+        expect(btn!.getAttribute('aria-label')).toBe('My Life');
+        expect(btn!.getAttribute('title')).toBe('My Life');
+    });
+
+    it('my-life-toggle has touch-target class', () => {
+        mockMyLifeEnabled = true;
+        renderTopBar();
+        const btn = document.getElementById('my-life-toggle')!;
+        expect(btn.className).toContain('touch-target');
+    });
+
+    it('clicking my-life-toggle navigates to My Life', () => {
+        mockMyLifeEnabled = true;
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('my-life-toggle')!);
+        });
+        expect(location.hash).toBe('#repos/my_life/notes');
+    });
+
+    it('my-life-toggle is not active by default (no repo selected)', () => {
+        mockMyLifeEnabled = true;
+        renderTopBar();
+        const btn = document.getElementById('my-life-toggle')!;
+        expect(btn.className).not.toContain('bg-[#0078d4]');
+        expect(btn.className).not.toContain('text-white');
+    });
+
+    it('my-life-toggle becomes active after clicking it', () => {
+        mockMyLifeEnabled = true;
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('my-life-toggle')!);
+        });
+        const btn = document.getElementById('my-life-toggle')!;
+        expect(btn.className).toContain('bg-[#0078d4]');
+        expect(btn.className).toContain('text-white');
+    });
+
+    it('contains 🏠 emoji', () => {
+        mockMyLifeEnabled = true;
+        renderTopBar();
+        const btn = document.getElementById('my-life-toggle')!;
+        expect(btn.textContent).toContain('🏠');
     });
 });
 

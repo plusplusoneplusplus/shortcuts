@@ -95,6 +95,10 @@ src/
 │   ├── multi-repo-executor-bridge.ts  # Multi-repo workflow execution — maintains repoId↔rootPath bidirectional maps
 │   ├── multi-repo-queue-persistence.ts # Per-repo queue persistence — uses workspace ID for file naming
 │   ├── global-workspace.ts       # Global workspace bootstrapper — creates ~/.coc/global-workspace/ and registers virtual workspace (GLOBAL_WORKSPACE_ID)
+│   ├── my-work-workspace.ts      # My Work virtual workspace bootstrapper — creates ~/.coc/repos/my_work/ with notes structure (MY_WORK_WORKSPACE_ID)
+│   ├── my-work-handler.ts        # My Work REST API — sync, generate-summary, status endpoints
+│   ├── my-life-workspace.ts      # My Life virtual workspace bootstrapper — creates ~/.coc/repos/my_life/ with goals/journal notes (MY_LIFE_WORKSPACE_ID)
+│   ├── my-life-handler.ts        # My Life REST API — sync, generate-summary, status endpoints
 │   ├── workflows-handler.ts      # Workflow CRUD and listing API
 │   ├── workflow-watcher.ts       # File watcher for workflow changes
 │   ├── tasks-handler.ts          # Task management API — task root at ~/.coc/repos/<workspaceId>/tasks/
