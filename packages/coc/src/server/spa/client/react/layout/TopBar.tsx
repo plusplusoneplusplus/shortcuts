@@ -61,16 +61,16 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
         location.hash = '#' + tab;
     }, [dispatch]);
 
+    const goToRepos = useCallback(() => {
+        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
+        location.hash = '#repos';
+    }, [dispatch]);
+
     const goToMyWork = useCallback(() => {
-        if (!myWorkEnabled) {
-            dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
-            location.hash = '#repos';
-            return;
-        }
         dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
         dispatch({ type: 'SET_SELECTED_REPO', id: MY_WORK_WORKSPACE_ID });
         location.hash = '#repos/' + MY_WORK_WORKSPACE_ID + '/notes';
-    }, [dispatch, myWorkEnabled]);
+    }, [dispatch]);
 
     const toggleRepoManagement = useCallback(() => {
         if (state.activeTab !== 'repos') {
@@ -112,15 +112,31 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     href="#"
                     data-tab-mobile="repos"
                     className={`text-sm font-semibold whitespace-nowrap md:hidden flex-shrink-0 px-2 h-7 transition-colors inline-flex items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:underline'}`}
-                    onClick={e => { e.preventDefault(); goToMyWork(); }}
+                    onClick={e => { e.preventDefault(); goToRepos(); }}
                 >{ brandLabel }</a>
                 <a
                     href="#"
                     data-tab="repos"
                     className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 transition-colors items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'}`}
                     title={brandTooltip}
-                    onClick={e => { e.preventDefault(); goToMyWork(); }}
+                    onClick={e => { e.preventDefault(); goToRepos(); }}
                 >{ brandLabel }</a>
+                {myWorkEnabled && (
+                    <button
+                        id="my-work-toggle"
+                        className={
+                            `h-7 w-7 md:h-8 md:w-8 flex-shrink-0 inline-flex items-center justify-center rounded touch-target ` +
+                            (isOnReposTab && state.selectedRepoId === MY_WORK_WORKSPACE_ID
+                                ? 'bg-[#0078d4] text-white'
+                                : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                        }
+                        aria-label="My Work"
+                        title="My Work"
+                        onClick={goToMyWork}
+                    >
+                        💼
+                    </button>
+                )}
                 {!isMobile && (
                     <RepoTabStrip
                         repos={repos}

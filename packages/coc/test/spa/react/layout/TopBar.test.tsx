@@ -52,11 +52,17 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue({ gitGroupOrder: [] }),
 }));
 
+let mockMyWorkEnabled = false;
+vi.mock('../../../../src/server/spa/client/react/hooks/useMyWorkEnabled', () => ({
+    useMyWorkEnabled: () => mockMyWorkEnabled,
+}));
+
 describe('TopBar responsive behavior', () => {
     let viewportCleanup: (() => void) | undefined;
 
     beforeEach(() => {
         mockDispatch.mockClear();
+        mockMyWorkEnabled = false;
     });
 
     afterEach(() => {
@@ -180,4 +186,68 @@ describe('TopBar responsive behavior', () => {
         expect(desktopLink.className).not.toContain('text-white');
     });
 
+});
+
+describe('TopBar — My Work icon button', () => {
+    let viewportCleanup: (() => void) | undefined;
+
+    beforeEach(() => {
+        mockDispatch.mockClear();
+    });
+
+    afterEach(() => {
+        viewportCleanup?.();
+        viewportCleanup = undefined;
+    });
+
+    it('does not render my-work-toggle when myWorkEnabled is false', () => {
+        mockMyWorkEnabled = false;
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        expect(document.getElementById('my-work-toggle')).toBeNull();
+    });
+
+    it('renders my-work-toggle when myWorkEnabled is true', () => {
+        mockMyWorkEnabled = true;
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        const btn = document.getElementById('my-work-toggle');
+        expect(btn).toBeTruthy();
+        expect(btn!.getAttribute('aria-label')).toBe('My Work');
+        expect(btn!.getAttribute('title')).toBe('My Work');
+    });
+
+    it('my-work-toggle is visible on mobile when enabled', () => {
+        mockMyWorkEnabled = true;
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+        const btn = document.getElementById('my-work-toggle');
+        expect(btn).toBeTruthy();
+        expect(btn!.className).not.toContain('hidden');
+    });
+
+    it('my-work-toggle has touch-target class', () => {
+        mockMyWorkEnabled = true;
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        const btn = document.getElementById('my-work-toggle')!;
+        expect(btn.className).toContain('touch-target');
+    });
+
+    it('my-work-toggle is not active when My Work workspace is not selected', () => {
+        mockMyWorkEnabled = true;
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        const btn = document.getElementById('my-work-toggle')!;
+        expect(btn.className).not.toContain('bg-[#0078d4]');
+        expect(btn.className).not.toContain('text-white');
+    });
+
+    it('contains 💼 emoji', () => {
+        mockMyWorkEnabled = true;
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        const btn = document.getElementById('my-work-toggle')!;
+        expect(btn.textContent).toContain('💼');
+    });
 });

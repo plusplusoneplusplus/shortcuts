@@ -24,8 +24,14 @@ vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
 }));
 
+let mockMyWorkEnabled = false;
+vi.mock('../../../src/server/spa/client/react/hooks/useMyWorkEnabled', () => ({
+    useMyWorkEnabled: () => mockMyWorkEnabled,
+}));
+
 beforeEach(() => {
     location.hash = '';
+    mockMyWorkEnabled = false;
     Object.defineProperty(window, 'matchMedia', {
         writable: true,
         configurable: true,
@@ -512,5 +518,90 @@ describe('TopBar — memory icon button', () => {
         renderTopBar();
         const tabs = TABS.map(t => t.label);
         expect(tabs).not.toContain('Memory');
+    });
+});
+
+// ─── TopBar My Work icon button ──────────────────────────────────
+
+describe('TopBar — My Work icon button', () => {
+    it('does not render my-work-toggle when myWorkEnabled is false', () => {
+        mockMyWorkEnabled = false;
+        renderTopBar();
+        expect(document.getElementById('my-work-toggle')).toBeNull();
+    });
+
+    it('renders my-work-toggle when myWorkEnabled is true', () => {
+        mockMyWorkEnabled = true;
+        renderTopBar();
+        const btn = document.getElementById('my-work-toggle');
+        expect(btn).toBeTruthy();
+        expect(btn!.getAttribute('aria-label')).toBe('My Work');
+        expect(btn!.getAttribute('title')).toBe('My Work');
+    });
+
+    it('my-work-toggle has touch-target class', () => {
+        mockMyWorkEnabled = true;
+        renderTopBar();
+        const btn = document.getElementById('my-work-toggle')!;
+        expect(btn.className).toContain('touch-target');
+    });
+
+    it('clicking my-work-toggle navigates to My Work', () => {
+        mockMyWorkEnabled = true;
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('my-work-toggle')!);
+        });
+        expect(location.hash).toBe('#repos/my_work/notes');
+    });
+
+    it('my-work-toggle is not active by default (no repo selected)', () => {
+        mockMyWorkEnabled = true;
+        renderTopBar();
+        const btn = document.getElementById('my-work-toggle')!;
+        expect(btn.className).not.toContain('bg-[#0078d4]');
+        expect(btn.className).not.toContain('text-white');
+    });
+
+    it('my-work-toggle becomes active after clicking it', () => {
+        mockMyWorkEnabled = true;
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('my-work-toggle')!);
+        });
+        const btn = document.getElementById('my-work-toggle')!;
+        expect(btn.className).toContain('bg-[#0078d4]');
+        expect(btn.className).toContain('text-white');
+    });
+
+    it('contains 💼 emoji', () => {
+        mockMyWorkEnabled = true;
+        renderTopBar();
+        const btn = document.getElementById('my-work-toggle')!;
+        expect(btn.textContent).toContain('💼');
+    });
+});
+
+// ─── TopBar brand label behavior ─────────────────────────────────
+
+describe('TopBar — brand label navigates to repos (not My Work)', () => {
+    it('clicking brand label sets hash to #repos', () => {
+        mockMyWorkEnabled = true;
+        renderTopBar();
+        const brandLink = document.querySelector('[data-tab="repos"]') as HTMLAnchorElement;
+        act(() => {
+            fireEvent.click(brandLink);
+        });
+        expect(location.hash).toBe('#repos');
+    });
+
+    it('clicking brand label does not navigate to My Work workspace', () => {
+        mockMyWorkEnabled = true;
+        renderTopBar();
+        const brandLink = document.querySelector('[data-tab="repos"]') as HTMLAnchorElement;
+        act(() => {
+            fireEvent.click(brandLink);
+        });
+        expect(location.hash).not.toContain('my_work');
     });
 });
