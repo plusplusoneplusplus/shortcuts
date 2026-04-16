@@ -2,13 +2,19 @@
  * WorkItemSection — all work items grouped into collapsible per-status sections.
  * All statuses are shown (including done/failed). Sections with no items are hidden.
  * Done and failed sections start collapsed.
+ *
+ * Uses server-side grouped endpoint for initial load and search.
+ * Per-status infinite scroll auto-loads more items when scrolling to the end of a group.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useWorkItems } from '../context/WorkItemContext';
+import { useWorkItemSearch } from '../hooks/useWorkItemSearch';
 import { formatRelativeTime } from '../utils/format';
+
+const PAGE_SIZE = 20;
 
 interface StatusConfig {
     label: string;
@@ -34,6 +40,42 @@ const STATUS_ORDER = ['created', 'planning', 'readyToExecute', 'executing', 'aiD
 
 const PRIORITY_ICON: Record<string, string> = { high: '🔴', normal: '', low: '🔵' };
 
+/** Per-status infinite scroll sentinel — triggers auto-load when visible. */
+function StatusGroupSentinel({
+    status,
+    hasMore,
+    onLoadMore,
+}: {
+    status: string;
+    hasMore: boolean;
+    onLoadMore: (status: string) => void;
+}) {
+    const sentinelRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel || !hasMore) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0]?.isIntersecting) {
+                    onLoadMore(status);
+                }
+            },
+            { rootMargin: '200px' },
+        );
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [status, hasMore, onLoadMore]);
+
+    if (!hasMore) return null;
+    return (
+        <div ref={sentinelRef} className="flex justify-center py-1" data-testid={`work-items-sentinel-${status}`}>
+            <span className="text-[10px] text-[#848484] dark:text-[#999]">Loading…</span>
+        </div>
+    );
+}
+
 interface WorkItemSectionProps {
     workspaceId: string;
     onSelectWorkItem: (id: string) => void;
@@ -43,7 +85,11 @@ interface WorkItemSectionProps {
 export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkItemId }: WorkItemSectionProps) {
     const { state, dispatch } = useWorkItems();
     const items = state.workItemsByRepo[workspaceId] || [];
+    const pagination = state.paginationByRepo[workspaceId];
     const isLoading = state.loading[workspaceId] ?? false;
+    const { searchInput, searchQuery, searchInputRef, onSearchChange, onSearchClear } = useWorkItemSearch();
+    const prevSearchRef = useRef(searchQuery);
+    const loadingStatusesRef = useRef(new Set<string>());
 
     // Per-status collapse state; persisted in localStorage (workspace-scoped)
     const storageKey = `coc-wi-categories-${workspaceId}`;
@@ -61,11 +107,15 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         return defaults;
     });
 
-    const fetchWorkItems = useCallback(async () => {
+    // Fetch grouped work items (initial load and search)
+    const fetchGroupedWorkItems = useCallback(async (query?: string) => {
         dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: true });
         try {
-            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/work-items`);
-            dispatch({ type: 'SET_WORK_ITEMS', repoId: workspaceId, items: data || [] });
+            const params = new URLSearchParams();
+            params.set('limit', String(PAGE_SIZE));
+            if (query) params.set('q', query);
+            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/work-items/grouped?${params.toString()}`);
+            dispatch({ type: 'SET_GROUPED_WORK_ITEMS', repoId: workspaceId, groups: data?.groups || {} });
         } catch {
             // silently fail
         } finally {
@@ -73,9 +123,49 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         }
     }, [workspaceId, dispatch]);
 
-    useEffect(() => { fetchWorkItems(); }, [fetchWorkItems]);
+    // Load more items for a specific status group (per-category infinite scroll)
+    const loadMoreForStatus = useCallback(async (status: string) => {
+        if (loadingStatusesRef.current.has(status)) return;
+        const statusPagination = pagination?.[status];
+        if (!statusPagination?.hasMore) return;
 
-    if (items.length === 0 && !isLoading) return null;
+        loadingStatusesRef.current.add(status);
+        try {
+            const params = new URLSearchParams();
+            params.set('status', status);
+            params.set('limit', String(PAGE_SIZE));
+            params.set('offset', String(statusPagination.offset));
+            if (searchQuery) params.set('q', searchQuery);
+
+            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/work-items?${params.toString()}`);
+            dispatch({
+                type: 'APPEND_STATUS_ITEMS',
+                repoId: workspaceId,
+                status,
+                items: data?.items || [],
+                total: data?.total ?? statusPagination.total,
+                hasMore: data?.hasMore ?? false,
+                offset: statusPagination.offset,
+            });
+        } catch {
+            // silently fail
+        } finally {
+            loadingStatusesRef.current.delete(status);
+        }
+    }, [workspaceId, dispatch, searchQuery, pagination]);
+
+    // Initial fetch
+    useEffect(() => { fetchGroupedWorkItems(); }, [fetchGroupedWorkItems]);
+
+    // Re-fetch when search query changes
+    useEffect(() => {
+        if (prevSearchRef.current !== searchQuery) {
+            prevSearchRef.current = searchQuery;
+            fetchGroupedWorkItems(searchQuery || undefined);
+        }
+    }, [searchQuery, fetchGroupedWorkItems]);
+
+    if (items.length === 0 && !isLoading && !searchInput) return null;
 
     const toggleGroup = (status: string) =>
         setCollapsed(prev => {
@@ -98,7 +188,9 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         ])
     );
 
-    const totalCount = items.length;
+    const totalCount = pagination
+        ? Object.values(pagination).reduce((sum, p) => sum + (p?.total ?? 0), 0)
+        : items.length;
 
     return (
         <div data-testid="work-items-section">
@@ -110,14 +202,44 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                 </span>
             </div>
 
+            {/* Search input */}
+            <div className="relative mb-2">
+                <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchInput}
+                    onChange={e => onSearchChange(e.target.value)}
+                    placeholder="Search work items… (Ctrl+F)"
+                    className="w-full text-xs px-2 py-1.5 rounded border border-[#d0d0d0] dark:border-[#555] bg-white dark:bg-[#2d2d2d] text-[#333] dark:text-[#ddd] placeholder-[#999] dark:placeholder-[#777] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                    data-testid="work-item-search-input"
+                />
+                {searchInput && (
+                    <button
+                        onClick={onSearchClear}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-[#999] hover:text-[#333] dark:hover:text-[#eee]"
+                        data-testid="work-item-search-clear"
+                    >
+                        ✕
+                    </button>
+                )}
+            </div>
+
             {isLoading && items.length === 0 && (
                 <div className="text-xs text-[#848484] py-2 text-center">Loading work items…</div>
+            )}
+
+            {!isLoading && items.length === 0 && searchInput && (
+                <div className="text-xs text-[#848484] py-2 text-center">No work items match your search.</div>
             )}
 
             <div className="flex flex-col gap-2">
                 {STATUS_ORDER.map(status => {
                     const group = grouped[status] || [];
-                    if (group.length === 0) return null;
+                    const statusPag = pagination?.[status];
+                    const statusTotal = Math.max(statusPag?.total ?? 0, group.length);
+                    const statusHasMore = statusPag?.hasMore ?? false;
+
+                    if (statusTotal === 0) return null;
 
                     const cfg = STATUS_CONFIG[status];
                     const isCollapsed = collapsed[status] ?? false;
@@ -134,7 +256,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                 <span>{cfg.icon}</span>
                                 <span className="font-medium">{cfg.label}</span>
                                 <span className={cn('text-[9px] px-1.5 py-0.5 rounded-full', cfg.badgeColor)}>
-                                    {group.length}
+                                    {statusTotal}
                                 </span>
                             </button>
 
@@ -186,6 +308,12 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                             )}
                                         </Card>
                                     ))}
+                                    {/* Per-status infinite scroll sentinel */}
+                                    <StatusGroupSentinel
+                                        status={status}
+                                        hasMore={statusHasMore}
+                                        onLoadMore={loadMoreForStatus}
+                                    />
                                 </div>
                             )}
                         </div>

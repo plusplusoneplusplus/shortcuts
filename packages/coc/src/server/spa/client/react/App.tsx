@@ -255,15 +255,15 @@ function AppInner() {
             try {
                 const [wsRes, pRes, qRes] = await Promise.all([
                     fetchApi('/workspaces').catch(() => null),
-                    fetchApi('/processes/summaries').catch(() => null),
+                    fetchApi('/processes/summaries?limit=20&offset=0').catch(() => null),
                     fetchApi('/queue').catch(() => null),
                 ]);
                 if (wsRes?.workspaces) appDispatch({ type: 'WORKSPACES_LOADED', workspaces: wsRes.workspaces });
                 else if (Array.isArray(wsRes)) appDispatch({ type: 'WORKSPACES_LOADED', workspaces: wsRes });
 
-                if (pRes?.summaries && Array.isArray(pRes.summaries)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.summaries });
-                else if (pRes?.processes && Array.isArray(pRes.processes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.processes });
-                else if (Array.isArray(pRes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes });
+                if (pRes?.summaries && Array.isArray(pRes.summaries)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.summaries, total: pRes.total ?? pRes.summaries.length });
+                else if (pRes?.processes && Array.isArray(pRes.processes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.processes, total: pRes.total ?? pRes.processes.length });
+                else if (Array.isArray(pRes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes, total: pRes.length });
 
                 if (qRes && Array.isArray(qRes.queued) && Array.isArray(qRes.running)) {
                     queueDispatch({ type: 'SEED_QUEUE', queue: qRes });

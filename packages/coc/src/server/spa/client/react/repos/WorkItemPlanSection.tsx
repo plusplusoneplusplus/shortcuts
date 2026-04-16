@@ -260,6 +260,24 @@ export function WorkItemPlanSection({
         }
     }, [planComments, workspaceId, workItemId, plan?.content, onNavigateToTasksTab, onError]);
 
+    // Enqueue an AI run session to resolve a single plan comment.
+    // Intentionally does NOT call onNavigateToTasksTab — user stays on the work item page.
+    const handleResolveSingleComment = useCallback(async (commentId: string) => {
+        const taskPath = planCommentPath(workItemId);
+        try {
+            await fetchApi(
+                `/comments/${encodeURIComponent(workspaceId)}/${encodeURIComponent(taskPath)}/batch-resolve`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ documentContent: plan?.content ?? '', singleCommentId: commentId }),
+                },
+            );
+        } catch (err: any) {
+            onError(err.message || 'Failed to enqueue plan comment resolve task');
+        }
+    }, [workspaceId, workItemId, plan?.content, onError]);
+
     // ── Inline selection handling ──────────────────────────────────────────
 
     // Capture text selections in the preview div
@@ -560,7 +578,7 @@ export function WorkItemPlanSection({
                         compact
                         showHeader
                         showFilters={false}
-                        onResolve={resolveComment}
+                        onResolve={handleResolveSingleComment}
                         onUnresolve={unresolveComment}
                         onDelete={deleteComment}
                         onEdit={(id, text) => updateComment(id, { comment: text })}
@@ -621,7 +639,7 @@ export function WorkItemPlanSection({
                     comment={activePopoverComment}
                     position={popoverPos}
                     onClose={() => setActivePopoverComment(null)}
-                    onResolve={(id) => { resolveComment(id); setActivePopoverComment(null); }}
+                    onResolve={(id) => { handleResolveSingleComment(id); setActivePopoverComment(null); }}
                     onUnresolve={(id) => { unresolveComment(id); setActivePopoverComment(null); }}
                     onDelete={(id) => { deleteComment(id); setActivePopoverComment(null); }}
                     onEdit={(id, text) => { updateComment(id, { comment: text }); setActivePopoverComment(null); }}

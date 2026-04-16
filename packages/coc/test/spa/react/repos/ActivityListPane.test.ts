@@ -1443,3 +1443,172 @@ describe('session category badge rendering', () => {
         expect(badgeInstances!.length).toBeGreaterThanOrEqual(1);
     });
 });
+
+// ── Chat search ───────────────────────────────────────────────────────────────
+
+import { taskMatchesSearch } from '../../../../src/server/spa/client/react/repos/ActivityListPane';
+
+describe('ActivityListPane: chat search', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(ACTIVITY_LIST_PATH, 'utf-8');
+    });
+
+    describe('search bar renders on chats tab', () => {
+        it('search bar is not gated behind activeTab === tasks', () => {
+            expect(source).not.toContain("activeTab === 'tasks' && searchVisible && (");
+        });
+
+        it('search bar uses a ternary to decide visibility per tab', () => {
+            expect(source).toContain("activeTab === 'tasks' ? searchVisible : true");
+        });
+
+        it('search bar is always visible on chats tab (no searchVisible gate)', () => {
+            // On chats tab the ternary evaluates to `true`, so the search bar always shows
+            const startIdx = source.indexOf("activeTab === 'tasks' ? searchVisible : true");
+            const searchBarBlock = source.substring(startIdx, startIdx + 1200);
+            expect(searchBarBlock).toContain('queue-search-input');
+        });
+    });
+
+    describe('chatAllItems respects searchQuery', () => {
+        it('chatAllItems uses filteredRunning instead of raw running', () => {
+            const memo = source.substring(
+                source.indexOf('chatAllItems = useMemo'),
+                source.indexOf('chatAllItems = useMemo') + 400,
+            );
+            expect(memo).toContain('filteredRunning.filter(isChat)');
+            expect(memo).not.toContain('running.filter(isChat)');
+        });
+
+        it('chatAllItems uses filteredHistory instead of raw history', () => {
+            const memo = source.substring(
+                source.indexOf('chatAllItems = useMemo'),
+                source.indexOf('chatAllItems = useMemo') + 400,
+            );
+            expect(memo).toContain('filteredHistory.filter(isChat)');
+            expect(memo).not.toContain('history.filter(isChat)');
+        });
+
+        it('chatAllItems useMemo dependencies include filteredRunning', () => {
+            const depsLine = source.substring(
+                source.indexOf('chatAllItems = useMemo'),
+                source.indexOf('chatAllItems = useMemo') + 1500,
+            );
+            // Find the closing dependency array
+            const closingIdx = depsLine.lastIndexOf('], [');
+            const deps = depsLine.substring(closingIdx);
+            expect(deps).toContain('filteredRunning');
+        });
+
+        it('chatAllItems useMemo dependencies include filteredHistory', () => {
+            const depsLine = source.substring(
+                source.indexOf('chatAllItems = useMemo'),
+                source.indexOf('chatAllItems = useMemo') + 1500,
+            );
+            const closingIdx = depsLine.lastIndexOf('], [');
+            const deps = depsLine.substring(closingIdx);
+            expect(deps).toContain('filteredHistory');
+        });
+    });
+
+    describe('search match count on chats tab', () => {
+        it('shows chat-specific match count when on chats tab', () => {
+            expect(source).toContain("activeTab === 'chats'");
+            expect(source).toContain('chatAllItems.pinned.length + chatAllItems.unpinned.length + chatAllItems.archived.length');
+        });
+
+        it('renders search-match-count data-testid', () => {
+            expect(source).toContain('data-testid="search-match-count"');
+        });
+    });
+
+    describe('search-aware empty state', () => {
+        it('renders chat-search-empty-state when search yields no results', () => {
+            expect(source).toContain('data-testid="chat-search-empty-state"');
+        });
+
+        it('shows "No chats matching" message with query text', () => {
+            expect(source).toContain("No chats matching");
+            expect(source).toContain('{searchQuery}');
+        });
+
+        it('empty state checks all three sections are empty when search is active', () => {
+            const emptyBlock = source.substring(
+                source.indexOf('chat-search-empty-state') - 300,
+                source.indexOf('chat-search-empty-state') + 50,
+            );
+            expect(emptyBlock).toContain('chatAllItems.unpinned.length === 0');
+            expect(emptyBlock).toContain('chatAllItems.pinned.length === 0');
+            expect(emptyBlock).toContain('chatAllItems.archived.length === 0');
+            expect(emptyBlock).toContain('searchQuery');
+        });
+
+        it('generic empty state only shows when searchQuery is empty', () => {
+            const genericEmpty = source.substring(
+                source.indexOf('No chat sessions yet') - 100,
+                source.indexOf('No chat sessions yet') + 30,
+            );
+            expect(genericEmpty).toContain('!searchQuery');
+        });
+    });
+
+    describe('Ctrl+F activates search on chats tab', () => {
+        it('Ctrl+F handler does not gate on activeTab', () => {
+            const ctrlFBlock = source.substring(
+                source.indexOf("e.key === 'f'") - 100,
+                source.indexOf("e.key === 'f'") + 300,
+            );
+            // The Ctrl+F handler should set searchVisible and focus — no activeTab check
+            expect(ctrlFBlock).toContain('setSearchVisible(true)');
+            expect(ctrlFBlock).not.toContain("activeTab === 'tasks'");
+        });
+    });
+
+    describe('close button behavior per tab', () => {
+        it('close button only hides search bar on tasks tab', () => {
+            const closeBlock = source.substring(
+                source.indexOf('queue-search-close') - 200,
+                source.indexOf('queue-search-close'),
+            );
+            expect(closeBlock).toContain("if (activeTab === 'tasks') setSearchVisible(false)");
+        });
+    });
+});
+
+describe('taskMatchesSearch unit tests', () => {
+    it('returns true when query is empty', () => {
+        expect(taskMatchesSearch({ displayName: 'Test' }, '')).toBe(true);
+    });
+
+    it('matches on displayName', () => {
+        expect(taskMatchesSearch({ displayName: 'Fix login bug' }, 'login')).toBe(true);
+        expect(taskMatchesSearch({ displayName: 'Fix login bug' }, 'signup')).toBe(false);
+    });
+
+    it('matches on title fallback', () => {
+        expect(taskMatchesSearch({ title: 'Refactor auth' }, 'auth')).toBe(true);
+    });
+
+    it('matches on prompt field', () => {
+        expect(taskMatchesSearch({ prompt: 'Explain the cache layer' }, 'cache')).toBe(true);
+    });
+
+    it('matches on payload.promptContent', () => {
+        expect(taskMatchesSearch({ payload: { promptContent: 'Deploy to staging' } }, 'staging')).toBe(true);
+    });
+
+    it('matches on payload.prompt', () => {
+        expect(taskMatchesSearch({ payload: { prompt: 'Run migrations' } }, 'migration')).toBe(true);
+    });
+
+    it('is case-insensitive', () => {
+        expect(taskMatchesSearch({ displayName: 'Fix Login Bug' }, 'fix login')).toBe(true);
+        expect(taskMatchesSearch({ displayName: 'FIX LOGIN BUG' }, 'fix login')).toBe(true);
+    });
+
+    it('returns false when neither title nor prompt match', () => {
+        expect(taskMatchesSearch({ displayName: 'Deploy', prompt: 'Ship it' }, 'refactor')).toBe(false);
+    });
+});

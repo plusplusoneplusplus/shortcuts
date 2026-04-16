@@ -201,8 +201,8 @@ describe('WorkItemPlanSection — inline review', () => {
         expect(src).toContain('data-testid="work-item-plan-comment-sidebar"');
     });
 
-    it('CommentSidebar wires onResolve/onUnresolve/onDelete', () => {
-        expect(src).toContain('onResolve={resolveComment}');
+    it('CommentSidebar wires onResolve to handleResolveSingleComment, onUnresolve, and onDelete', () => {
+        expect(src).toContain('onResolve={handleResolveSingleComment}');
         expect(src).toContain('onUnresolve={unresolveComment}');
         expect(src).toContain('onDelete={deleteComment}');
     });
@@ -233,6 +233,31 @@ describe('WorkItemPlanSection — inline review', () => {
 
     it('passes onResolveAllWithAI to CommentSidebar', () => {
         expect(src).toContain('onResolveAllWithAI={openCommentCount > 0 ? handleResolveAllWithAI : undefined}');
+    });
+
+    // ── Single comment resolve via AI ─────────────────────────────────────────
+
+    it('implements handleResolveSingleComment', () => {
+        expect(src).toContain('handleResolveSingleComment');
+    });
+
+    it('handleResolveSingleComment posts to batch-resolve with singleCommentId', () => {
+        expect(src).toContain('singleCommentId: commentId');
+        expect(src).toContain('batch-resolve');
+    });
+
+    it('handleResolveSingleComment does not call onNavigateToTasksTab', () => {
+        // The single-comment resolve callback must not reference onNavigateToTasksTab
+        const fn = src.match(/handleResolveSingleComment[\s\S]*?}\s*,\s*\[/)?.[0] ?? '';
+        expect(fn).not.toContain('onNavigateToTasksTab');
+    });
+
+    it('CommentSidebar onResolve is wired to handleResolveSingleComment', () => {
+        expect(src).toContain('onResolve={handleResolveSingleComment}');
+    });
+
+    it('CommentPopover onResolve uses handleResolveSingleComment', () => {
+        expect(src).toContain('handleResolveSingleComment(id)');
     });
 
     // ── Backward compat: existing features preserved ──────────────────────────

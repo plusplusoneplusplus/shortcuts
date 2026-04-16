@@ -31,13 +31,16 @@ export function ProcessFilters() {
 
     const onWorkspaceChange = useCallback(async (workspaceId: string) => {
         dispatch({ type: 'SET_WORKSPACE_FILTER', value: workspaceId });
-        const path = workspaceId === '__all' ? '/processes' : '/processes?workspace=' + encodeURIComponent(workspaceId);
+        const wsParam = workspaceId === '__all' ? '' : '&workspace=' + encodeURIComponent(workspaceId);
+        const path = '/processes/summaries?limit=20&offset=0' + wsParam;
         try {
             const data = await fetchApi(path);
-            if (data?.processes && Array.isArray(data.processes)) {
-                dispatch({ type: 'SET_PROCESSES', processes: data.processes });
+            if (data?.summaries && Array.isArray(data.summaries)) {
+                dispatch({ type: 'SET_PROCESSES', processes: data.summaries, total: data.total ?? data.summaries.length });
+            } else if (data?.processes && Array.isArray(data.processes)) {
+                dispatch({ type: 'SET_PROCESSES', processes: data.processes, total: data.total ?? data.processes.length });
             } else if (Array.isArray(data)) {
-                dispatch({ type: 'SET_PROCESSES', processes: data });
+                dispatch({ type: 'SET_PROCESSES', processes: data, total: data.length });
             }
             dispatch({ type: 'SELECT_PROCESS', id: null });
         } catch { /* ignore */ }

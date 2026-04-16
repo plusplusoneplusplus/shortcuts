@@ -70,6 +70,11 @@ vi.mock('../../src/server/create-bug-tool', () => ({
     createBugTool: (...args: any[]) => mockCreateBugTool(...args),
 }));
 
+const mockUpdateWorkItemTool = vi.fn(() => ({ tool: { name: 'update_work_item' } }));
+vi.mock('../../src/server/update-work-item-tool', () => ({
+    createUpdateWorkItemTool: (...args: any[]) => mockUpdateWorkItemTool(...args),
+}));
+
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
@@ -473,6 +478,8 @@ describe('buildCreateWorkItemAddon', () => {
     beforeEach(() => {
         mockCreateWorkItemTool.mockReset();
         mockCreateWorkItemTool.mockReturnValue({ tool: { name: 'create_work_item' } });
+        mockUpdateWorkItemTool.mockReset();
+        mockUpdateWorkItemTool.mockReturnValue({ tool: { name: 'update_work_item' } });
     });
 
     it('returns empty tools and suffix when dataDir is undefined', () => {
@@ -497,17 +504,20 @@ describe('buildCreateWorkItemAddon', () => {
 
     it('returns tool and suffix when dataDir and repoId are provided', () => {
         const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.tools).toHaveLength(2);
+        expect(result.tools).toHaveLength(3);
         expect(result.tools[0]).toEqual({ name: 'create_work_item' });
         expect(result.tools[1]).toEqual({ name: 'create_bug' });
+        expect(result.tools[2]).toEqual({ name: 'update_work_item' });
         expect(result.suffix).toContain('create_work_item');
         expect(result.suffix).toContain('create_bug');
+        expect(result.suffix).toContain('update_work_item');
     });
 
     it('passes dataDir and repoId to createWorkItemTool', () => {
         buildCreateWorkItemAddon('/my/data', 'my-repo');
         expect(mockCreateWorkItemTool).toHaveBeenCalledWith('/my/data', 'my-repo', undefined);
         expect(mockCreateBugTool).toHaveBeenCalledWith('/my/data', 'my-repo', undefined);
+        expect(mockUpdateWorkItemTool).toHaveBeenCalledWith('/my/data', 'my-repo', undefined);
     });
 
     it('passes broadcastFn to createWorkItemTool when provided', () => {
@@ -515,6 +525,7 @@ describe('buildCreateWorkItemAddon', () => {
         buildCreateWorkItemAddon('/data', 'repo-1', broadcast);
         expect(mockCreateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
         expect(mockCreateBugTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
+        expect(mockUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
     });
 
     it('creates tool exactly once when called with valid args', () => {

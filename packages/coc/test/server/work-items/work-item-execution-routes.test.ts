@@ -99,7 +99,7 @@ describe('Work Item Execution Routes', () => {
                 title: 'Execute me',
             });
             const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
-            const id = list.body[0].id;
+            const id = list.body.items[0].id;
 
             // Transition to readyToExecute
             await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
@@ -115,7 +115,7 @@ describe('Work Item Execution Routes', () => {
                 title: 'Not ready',
             });
             const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
-            const id = list.body[0].id;
+            const id = list.body.items[0].id;
 
             const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {});
             expect(res.status).toBe(400);
