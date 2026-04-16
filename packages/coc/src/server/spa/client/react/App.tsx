@@ -261,25 +261,20 @@ function AppInner() {
     useEffect(() => {
         async function bootstrap() {
             try {
-                const prefRes = await fetchApi('/preferences').catch(() => null);
+                const [wsRes, pRes, qRes] = await Promise.all([
+                    fetchApi('/workspaces').catch(() => null),
+                    fetchApi('/processes/summaries?limit=20&offset=0').catch(() => null),
+                    fetchApi('/queue').catch(() => null),
+                ]);
+                if (wsRes?.workspaces) appDispatch({ type: 'WORKSPACES_LOADED', workspaces: wsRes.workspaces });
+                else if (Array.isArray(wsRes)) appDispatch({ type: 'WORKSPACES_LOADED', workspaces: wsRes });
 
-                // Populate welcome/onboarding state from server preferences
-                if (prefRes) {
-                    appDispatch({
-                        type: 'SET_WELCOME_PREFERENCES',
-                        payload: {
-                            hasSeenWelcome: prefRes.hasSeenWelcome,
-                            onboardingProgress: prefRes.onboardingProgress,
-                            dismissedTips: prefRes.dismissedTips,
-                        },
-                    });
-                    if (typeof prefRes.reposSidebarCollapsed === 'boolean') {
-                        appDispatch({ type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: prefRes.reposSidebarCollapsed });
-                        try { localStorage.setItem('coc-repos-sidebar-collapsed', String(prefRes.reposSidebarCollapsed)); } catch { /* SSR / test */ }
-                    }
-                } else {
-                    // Even on fetch failure, mark preferences as loaded so UI doesn't wait forever
-                    appDispatch({ type: 'SET_WELCOME_PREFERENCES', payload: {} });
+                if (pRes?.summaries && Array.isArray(pRes.summaries)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.summaries, total: pRes.total ?? pRes.summaries.length });
+                else if (pRes?.processes && Array.isArray(pRes.processes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.processes, total: pRes.total ?? pRes.processes.length });
+                else if (Array.isArray(pRes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes, total: pRes.length });
+
+                if (qRes && Array.isArray(qRes.queued) && Array.isArray(qRes.running)) {
+                    queueDispatch({ type: 'SEED_QUEUE', queue: qRes });
                 }
             } catch { /* ignore */ }
             connect();

@@ -12,6 +12,9 @@ import { AppProvider, useApp, appReducer, type AppContextState, type AppAction, 
 function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
     return {
         processes: [],
+        processesTotal: 0,
+        processesOffset: 0,
+        processesLoading: false,
         selectedId: null,
         workspace: '__all',
         statusFilter: '__all',

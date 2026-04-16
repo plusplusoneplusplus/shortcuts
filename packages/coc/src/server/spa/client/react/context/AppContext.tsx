@@ -34,6 +34,9 @@ export interface OnboardingProgress {
 
 export interface AppContextState {
     processes: any[];
+    processesTotal: number;
+    processesOffset: number;
+    processesLoading: boolean;
     selectedId: string | null;
     workspace: string;
     statusFilter: string;
@@ -95,6 +98,9 @@ export interface AppContextState {
 
 const initialState: AppContextState = {
     processes: [],
+    processesTotal: 0,
+    processesOffset: 0,
+    processesLoading: false,
     selectedId: null,
     workspace: '__all',
     statusFilter: '__all',
@@ -159,7 +165,9 @@ export type AppAction =
     | { type: 'PROCESS_UPDATED'; process: any }
     | { type: 'PROCESS_REMOVED'; processId: string }
     | { type: 'PROCESSES_CLEARED' }
-    | { type: 'SET_PROCESSES'; processes: any[] }
+    | { type: 'SET_PROCESSES'; processes: any[]; total?: number }
+    | { type: 'APPEND_PROCESSES'; processes: any[]; total: number }
+    | { type: 'SET_PROCESSES_LOADING'; loading: boolean }
     | { type: 'WORKSPACES_LOADED'; workspaces: any[] }
     | { type: 'WORKSPACE_REGISTERED'; workspace: any }
     | { type: 'SELECT_PROCESS'; id: string | null }
@@ -228,7 +236,12 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'PROCESS_ADDED': {
             const exists = state.processes.some(p => p.id === action.process.id);
             if (exists) return state;
-            return { ...state, processes: [...state.processes, action.process] };
+            return {
+                ...state,
+                processes: [...state.processes, action.process],
+                processesTotal: state.processesTotal + 1,
+                processesOffset: state.processesOffset + 1,
+            };
         }
         case 'PROCESS_UPDATED': {
             const idx = state.processes.findIndex(p => p.id === action.process.id);
@@ -240,15 +253,49 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'PROCESS_REMOVED': {
             const filtered = state.processes.filter(p => p.id !== action.processId);
             const newSelectedId = state.selectedId === action.processId ? null : state.selectedId;
-            return { ...state, processes: filtered, selectedId: newSelectedId };
+            return {
+                ...state,
+                processes: filtered,
+                selectedId: newSelectedId,
+                processesTotal: Math.max(0, state.processesTotal - 1),
+                processesOffset: filtered.length,
+            };
         }
         case 'PROCESSES_CLEARED': {
             const remaining = state.processes.filter(p => p.status !== 'completed');
+            const removed = state.processes.length - remaining.length;
             const stillSelected = remaining.some(p => p.id === state.selectedId);
-            return { ...state, processes: remaining, selectedId: stillSelected ? state.selectedId : null };
+            return {
+                ...state,
+                processes: remaining,
+                selectedId: stillSelected ? state.selectedId : null,
+                processesTotal: Math.max(0, state.processesTotal - removed),
+                processesOffset: remaining.length,
+            };
         }
         case 'SET_PROCESSES':
-            return { ...state, processes: action.processes };
+            return {
+                ...state,
+                processes: action.processes,
+                processesTotal: action.total ?? action.processes.length,
+                processesOffset: action.processes.length,
+                processesLoading: false,
+            };
+        case 'APPEND_PROCESSES': {
+            // Deduplicate: skip any processes already in the list
+            const existingIds = new Set(state.processes.map(p => p.id));
+            const newItems = action.processes.filter(p => !existingIds.has(p.id));
+            const merged = [...state.processes, ...newItems];
+            return {
+                ...state,
+                processes: merged,
+                processesTotal: action.total,
+                processesOffset: merged.length,
+                processesLoading: false,
+            };
+        }
+        case 'SET_PROCESSES_LOADING':
+            return { ...state, processesLoading: action.loading };
         case 'WORKSPACES_LOADED':
             return { ...state, workspaces: action.workspaces };
         case 'WORKSPACE_REGISTERED': {

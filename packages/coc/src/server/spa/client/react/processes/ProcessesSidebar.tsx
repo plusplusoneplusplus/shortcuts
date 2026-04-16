@@ -16,6 +16,7 @@ import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '..
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { getApiBase } from '../utils/config';
+import { fetchApi } from '../hooks/useApi';
 
 export interface TypeFilterOptions {
     includeTypes?: string[];
@@ -194,27 +195,40 @@ export function ProcessesSidebar() {
 
     const isEmpty = filteredRunning.length === 0 && filteredQueued.length === 0 && filteredLegacy.length === 0;
 
-    // When search results are active (non-null), render search results view
-    if (state.searchResults !== null) {
-        return (
-            <div className="flex flex-col gap-3 min-h-0 p-2">
-                <SearchResultsView
-                    results={state.searchResults}
-                    loading={state.searchLoading}
-                    onSelectProcess={(processId: string) => {
-                        const nextHash = '#process/' + encodeURIComponent(processId);
-                        if (location.hash !== nextHash) {
-                            location.hash = nextHash;
-                        } else {
-                            dispatch({ type: 'SELECT_PROCESS', id: processId });
-                            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
-                        }
-                    }}
-                    selectedId={state.selectedId}
-                />
-            </div>
+    const hasMoreProcesses = state.processesOffset < state.processesTotal;
+    const sentinelRef = useRef<HTMLDivElement>(null);
+    const loadingRef = useRef(false);
+
+    const loadMoreProcesses = useCallback(async () => {
+        if (loadingRef.current || !hasMoreProcesses) return;
+        loadingRef.current = true;
+        dispatch({ type: 'SET_PROCESSES_LOADING', loading: true });
+        try {
+            const wsParam = state.workspace !== '__all' ? '&workspace=' + encodeURIComponent(state.workspace) : '';
+            const data = await fetchApi(`/processes/summaries?limit=20&offset=${state.processesOffset}${wsParam}`);
+            if (data?.summaries && Array.isArray(data.summaries)) {
+                dispatch({ type: 'APPEND_PROCESSES', processes: data.summaries, total: data.total ?? state.processesTotal });
+            }
+        } catch { /* ignore */ } finally {
+            loadingRef.current = false;
+        }
+    }, [dispatch, hasMoreProcesses, state.processesOffset, state.workspace, state.processesTotal]);
+
+    // IntersectionObserver for infinite scroll
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0]?.isIntersecting) {
+                    loadMoreProcesses();
+                }
+            },
+            { rootMargin: '200px' },
         );
-    }
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [loadMoreProcesses]);
 
     return (
         <div className="flex flex-col gap-3 min-h-0 p-2">
@@ -375,6 +389,17 @@ export function ProcessesSidebar() {
                             </Card>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Infinite scroll sentinel + loading indicator */}
+            {hasMoreProcesses && (
+                <div ref={sentinelRef} data-testid="load-more-sentinel" className="flex justify-center py-2">
+                    {state.processesLoading ? (
+                        <span className="text-xs text-[#848484]" data-testid="load-more-spinner">Loading more…</span>
+                    ) : (
+                        <span className="text-xs text-[#848484]">Scroll for more</span>
+                    )}
                 </div>
             )}
 
