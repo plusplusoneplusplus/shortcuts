@@ -8,6 +8,7 @@ import { CommentsSidebar } from './notes/CommentsSidebar';
 import { useComments } from './notes/useComments';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './notes/commentAnchoring';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useApp } from '../context/AppContext';
 import { buildNoteHash } from '../layout/Router';
 
@@ -22,6 +23,24 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [noteViewMode, setNoteViewMode] = useState<NoteViewMode>('rich');
     const { isMobile } = useBreakpoint();
+
+    // ── Resizable panels ────────────────────────────────────────────────────
+
+    const sidebarResize = useResizablePanel({
+        initialWidth: 280,
+        minWidth: 160,
+        maxWidth: 480,
+        storageKey: 'coc.notesView.sidebarWidth',
+        direction: 'left',
+    });
+
+    const commentsPanelResize = useResizablePanel({
+        initialWidth: 288,
+        minWidth: 180,
+        maxWidth: 480,
+        storageKey: 'coc.notesView.commentsPanelWidth',
+        direction: 'right',
+    });
 
     // ── Comments state ──────────────────────────────────────────────────────
 
@@ -191,14 +210,21 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
 
     // ── Render ──────────────────────────────────────────────────────────────
 
+    const isResizing = !isMobile && (sidebarResize.isDragging || commentsPanelResize.isDragging);
+    const commentsVisible = commentsPanelOpen && !!selectedPath && noteViewMode === 'rich';
+
     return (
-        <div className="flex h-full" data-testid="notes-view">
+        <div
+            className={`flex h-full${isResizing ? ' select-none' : ''}`}
+            data-testid="notes-view"
+        >
             {/* Left: notes tree sidebar */}
             <ResponsiveSidebar
-                width={280}
-                tabletWidth={220}
+                width={sidebarResize.width}
+                tabletWidth={sidebarResize.width}
                 isOpen={sidebarOpen}
                 onClose={() => setSidebarOpen(false)}
+                noBorderRight={!isMobile}
             >
                 <NotesSidebar
                     workspaceId={workspaceId}
@@ -209,6 +235,20 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                     onNoteDeleted={handleNoteDeleted}
                 />
             </ResponsiveSidebar>
+
+            {/* Sidebar resize handle (desktop/tablet only) */}
+            {!isMobile && (
+                <div
+                    className={`w-1 self-stretch flex-shrink-0 cursor-col-resize bg-[#e0e0e0] dark:bg-[#3c3c3c] hover:bg-[#007acc]/40 active:bg-[#007acc]/60 transition-colors${sidebarResize.isDragging ? ' bg-[#007acc]/60' : ''}`}
+                    onMouseDown={sidebarResize.handleMouseDown}
+                    onTouchStart={sidebarResize.handleTouchStart}
+                    data-testid="notes-sidebar-resize-handle"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize notes sidebar"
+                    tabIndex={0}
+                />
+            )}
 
             {/* Center: editor */}
             <div className="flex-1 flex flex-col min-w-0" data-testid="notes-content">
@@ -249,33 +289,46 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                 />
             </div>
 
-            {/* Right: comments panel (collapsible, hidden in source mode) */}
-            {commentsPanelOpen && selectedPath && noteViewMode === 'rich' && (
-                <div
-                    className="w-72 border-l border-[#e0e0e0] dark:border-[#333] flex-shrink-0 overflow-y-auto bg-white dark:bg-[#1e1e1e]"
-                    data-testid="comments-panel"
-                >
-                    <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                        <span className="text-xs font-semibold text-[#616161] dark:text-[#ccc] uppercase tracking-wide">
-                            Comments
-                        </span>
-                        <button
-                            className="text-xs text-[#888] hover:text-[#333] dark:hover:text-white"
-                            onClick={() => setCommentsPanelOpen(false)}
-                            data-testid="comments-panel-close"
-                            aria-label="Close comments panel"
-                        >
-                            ✕
-                        </button>
-                    </div>
-                    <CommentsSidebar
-                        workspaceId={workspaceId}
-                        notePath={selectedPath}
-                        selectedThreadId={activeCommentId}
-                        onThreadSelect={handleThreadSelect}
-                        comments={wrappedComments}
+            {/* Comments panel resize handle + panel (collapsible, hidden in source mode) */}
+            {commentsVisible && (
+                <>
+                    <div
+                        className={`w-1 self-stretch flex-shrink-0 cursor-col-resize bg-[#e0e0e0] dark:bg-[#3c3c3c] hover:bg-[#007acc]/40 active:bg-[#007acc]/60 transition-colors${commentsPanelResize.isDragging ? ' bg-[#007acc]/60' : ''}`}
+                        onMouseDown={commentsPanelResize.handleMouseDown}
+                        onTouchStart={commentsPanelResize.handleTouchStart}
+                        data-testid="notes-comments-resize-handle"
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize comments panel"
+                        tabIndex={0}
                     />
-                </div>
+                    <div
+                        style={{ width: commentsPanelResize.width, minWidth: commentsPanelResize.width }}
+                        className="flex-shrink-0 overflow-y-auto bg-white dark:bg-[#1e1e1e]"
+                        data-testid="comments-panel"
+                    >
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                            <span className="text-xs font-semibold text-[#616161] dark:text-[#ccc] uppercase tracking-wide">
+                                Comments
+                            </span>
+                            <button
+                                className="text-xs text-[#888] hover:text-[#333] dark:hover:text-white"
+                                onClick={() => setCommentsPanelOpen(false)}
+                                data-testid="comments-panel-close"
+                                aria-label="Close comments panel"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <CommentsSidebar
+                            workspaceId={workspaceId}
+                            notePath={selectedPath}
+                            selectedThreadId={activeCommentId}
+                            onThreadSelect={handleThreadSelect}
+                            comments={wrappedComments}
+                        />
+                    </div>
+                </>
             )}
         </div>
     );

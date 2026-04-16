@@ -11,8 +11,9 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
     useApp: () => ({ dispatch: mockDispatch }),
 }));
 
+const mockUseBreakpoint = vi.fn(() => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const }));
 vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
-    useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
+    useBreakpoint: () => mockUseBreakpoint(),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/layout/Router', () => ({
@@ -53,6 +54,17 @@ vi.mock('../../../../src/server/spa/client/react/repos/notes/NoteEditor', () => 
 // Mock NotesSidebar
 vi.mock('../../../../src/server/spa/client/react/repos/notes/NotesSidebar', () => ({
     NotesSidebar: () => <div data-testid="notes-sidebar" />,
+}));
+
+// Mock useResizablePanel
+vi.mock('../../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+    useResizablePanel: ({ initialWidth }: { initialWidth?: number } = {}) => ({
+        width: initialWidth ?? 320,
+        isDragging: false,
+        handleMouseDown: vi.fn(),
+        handleTouchStart: vi.fn(),
+        resetWidth: vi.fn(),
+    }),
 }));
 
 // Mock ResponsiveSidebar
@@ -122,6 +134,7 @@ describe('NotesView — comments integration', () => {
         capturedOnEditorReady = undefined;
         mockFindAnchorInDoc.mockReturnValue({ from: 1, to: 5 });
         mockApplyCommentMark.mockClear();
+        mockUseBreakpoint.mockReturnValue({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const });
         localStorage.clear();
     });
 
@@ -242,13 +255,16 @@ describe('NotesView — comments integration', () => {
         expect(screen.queryByTestId('comments-panel-toggle')).not.toBeInTheDocument();
     });
 
-    it('comments panel has correct width and border styling', () => {
+    it('comments panel has default width and no legacy w-72/border-l classes', () => {
         localStorage.setItem('coc-notes-comments-panel-open', 'true');
         render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
 
         const panel = screen.getByTestId('comments-panel');
-        expect(panel.className).toContain('w-72');
-        expect(panel.className).toContain('border-l');
+        // Width is now applied via inline style (288px default)
+        expect(panel.style.width).toBe('288px');
+        // No legacy Tailwind classes
+        expect(panel.className).not.toContain('w-72');
+        expect(panel.className).not.toContain('border-l');
     });
 
     it('close button has correct aria-label', () => {
@@ -363,5 +379,46 @@ describe('NotesView — comments integration', () => {
 
         expect(mockCommentsReturn.deleteThread).toHaveBeenCalledWith('thread-5');
         // Should not throw
+    });
+
+    // ── Resize handles ──────────────────────────────────────────────────────
+
+    it('renders sidebar resize handle on desktop', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+
+        const handle = screen.getByTestId('notes-sidebar-resize-handle');
+        expect(handle).toBeInTheDocument();
+        expect(handle.getAttribute('aria-label')).toBe('Resize notes sidebar');
+        expect(handle.getAttribute('aria-orientation')).toBe('vertical');
+    });
+
+    it('does not render sidebar resize handle on mobile', () => {
+        mockUseBreakpoint.mockReturnValue({ isMobile: true, isTablet: false, isDesktop: false, breakpoint: 'mobile' as const });
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+
+        expect(screen.queryByTestId('notes-sidebar-resize-handle')).not.toBeInTheDocument();
+    });
+
+    it('renders comments panel resize handle when panel is open', () => {
+        localStorage.setItem('coc-notes-comments-panel-open', 'true');
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+
+        const handle = screen.getByTestId('notes-comments-resize-handle');
+        expect(handle).toBeInTheDocument();
+        expect(handle.getAttribute('aria-label')).toBe('Resize comments panel');
+        expect(handle.getAttribute('aria-orientation')).toBe('vertical');
+    });
+
+    it('does not render comments panel resize handle when panel is closed', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+
+        expect(screen.queryByTestId('notes-comments-resize-handle')).not.toBeInTheDocument();
+    });
+
+    it('does not render comments panel resize handle when no note is selected', () => {
+        localStorage.setItem('coc-notes-comments-panel-open', 'true');
+        render(<NotesView workspaceId="ws1" />);
+
+        expect(screen.queryByTestId('notes-comments-resize-handle')).not.toBeInTheDocument();
     });
 });

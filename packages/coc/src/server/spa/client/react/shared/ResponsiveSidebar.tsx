@@ -21,6 +21,8 @@ export interface ResponsiveSidebarProps {
     tabletWidth?: number;
     /** Extra classes forwarded to the outer element. */
     className?: string;
+    /** When true, suppresses the default border-r so a custom drag handle can serve as the divider. */
+    noBorderRight?: boolean;
 }
 
 export function ResponsiveSidebar({
@@ -30,6 +32,7 @@ export function ResponsiveSidebar({
     width = 320,
     tabletWidth = 260,
     className,
+    noBorderRight = false,
 }: ResponsiveSidebarProps) {
     const { isMobile, isTablet } = useBreakpoint();
 
@@ -48,7 +51,7 @@ export function ResponsiveSidebar({
             data-testid="responsive-sidebar"
             className={cn(
                 'shrink-0 min-h-0 flex flex-col overflow-hidden',
-                'border-r border-[#e0e0e0] dark:border-[#3c3c3c]',
+                !noBorderRight && 'border-r border-[#e0e0e0] dark:border-[#3c3c3c]',
                 'bg-[#f3f3f3] dark:bg-[#252526]',
                 'transition-[width,min-width] duration-150 ease-out',
                 className
