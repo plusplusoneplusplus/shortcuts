@@ -182,6 +182,7 @@ describe('Work Item Types', () => {
                 id: 'wi-001',
                 repoId: 'repo-1',
                 title: 'Test work item',
+                description: 'A test work item',
                 status: 'created',
                 source: 'manual',
                 priority: 'high',
@@ -204,14 +205,14 @@ describe('Work Item Types', () => {
             expect(entry.completedAt).toBeUndefined();
         });
 
-        it('does not include full description or execution history', () => {
+        it('includes description but not execution history', () => {
             const item = makeWorkItem({
                 description: 'A very long description...',
                 executionHistory: [{ taskId: 't-1', startedAt: '2026-01-01T00:00:00.000Z', status: 'completed' }],
             });
 
             const entry = toIndexEntry(item);
-            expect(entry).not.toHaveProperty('description');
+            expect(entry.description).toBe('A very long description...');
             expect(entry).not.toHaveProperty('executionHistory');
         });
 

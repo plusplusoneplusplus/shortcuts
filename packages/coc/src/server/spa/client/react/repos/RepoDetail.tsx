@@ -155,10 +155,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
     useEffect(() => {
         if (workItemState.workItemsByRepo[ws.id] !== undefined) return;
-        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/work-items`)
+        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/work-items?limit=20`)
             .then(data => {
                 if (data) {
-                    workItemDispatch({ type: 'SET_WORK_ITEMS', repoId: ws.id, items: data });
+                    workItemDispatch({ type: 'SET_WORK_ITEMS', repoId: ws.id, items: data.items || [], total: data.total ?? 0, hasMore: data.hasMore ?? false });
                     const ids = loadUnseenWorkItemIds(ws.id);
                     workItemDispatch({ type: 'LOAD_UNSEEN_WORK_ITEMS', repoId: ws.id, ids });
                 }
