@@ -19,6 +19,7 @@ import type {
     WorkItem,
     WorkItemIndexEntry,
     WorkItemFilter,
+    WorkItemListResult,
     WorkItemPlanVersion,
     WorkItemExecution,
     WorkItemChange,
@@ -276,7 +277,7 @@ export class FileWorkItemStore implements WorkItemStore {
         return removed;
     }
 
-    async listWorkItems(filter?: WorkItemFilter): Promise<WorkItemIndexEntry[]> {
+    async listWorkItems(filter?: WorkItemFilter): Promise<WorkItemListResult> {
         const repoId = filter?.repoId;
         let entries: WorkItemIndexEntry[];
 
@@ -291,7 +292,29 @@ export class FileWorkItemStore implements WorkItemStore {
             }
         }
 
-        return this.applyFilter(entries, filter);
+        let filtered = this.applyFilter(entries, filter);
+
+        // Apply search (case-insensitive substring match against title, description, tags)
+        if (filter?.search) {
+            const q = filter.search.toLowerCase();
+            filtered = filtered.filter(e => {
+                if (e.title.toLowerCase().includes(q)) return true;
+                if (e.description && e.description.toLowerCase().includes(q)) return true;
+                if (e.tags?.some(t => t.toLowerCase().includes(q))) return true;
+                return false;
+            });
+        }
+
+        const total = filtered.length;
+
+        // Apply pagination
+        if (filter?.offset !== undefined || filter?.limit !== undefined) {
+            const offset = filter.offset ?? 0;
+            const limit = filter.limit ?? filtered.length;
+            filtered = filtered.slice(offset, offset + limit);
+        }
+
+        return { items: filtered, total };
     }
 
     // ── Plan versioning ─────────────────────────────────────────

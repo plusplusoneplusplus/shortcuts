@@ -180,33 +180,35 @@ describe('Work Item Routes', () => {
         it('lists all work items for a repo', async () => {
             const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
             expect(res.status).toBe(200);
-            expect(res.body).toHaveLength(2);
+            expect(res.body.items).toHaveLength(2);
+            expect(res.body.total).toBe(2);
         });
 
         it('filters by status', async () => {
             const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?status=created`);
             expect(res.status).toBe(200);
-            expect(res.body).toHaveLength(2); // both are 'created'
+            expect(res.body.items).toHaveLength(2); // both are 'created'
         });
 
         it('filters by source', async () => {
             const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?source=chat`);
             expect(res.status).toBe(200);
-            expect(res.body).toHaveLength(1);
-            expect(res.body[0].title).toBe('Item B');
+            expect(res.body.items).toHaveLength(1);
+            expect(res.body.items[0].title).toBe('Item B');
         });
 
         it('filters by priority', async () => {
             const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?priority=high`);
             expect(res.status).toBe(200);
-            expect(res.body).toHaveLength(1);
-            expect(res.body[0].title).toBe('Item A');
+            expect(res.body.items).toHaveLength(1);
+            expect(res.body.items[0].title).toBe('Item A');
         });
 
         it('returns empty for unknown repo', async () => {
             const res = await request('GET', `/api/workspaces/unknown-repo/work-items`);
             expect(res.status).toBe(200);
-            expect(res.body).toEqual([]);
+            expect(res.body.items).toEqual([]);
+            expect(res.body.total).toBe(0);
         });
 
         it('filters by type', async () => {
@@ -216,13 +218,165 @@ describe('Work Item Routes', () => {
 
             const bugs = await request('GET', `/api/workspaces/${REPO_ID}/work-items?type=bug`);
             expect(bugs.status).toBe(200);
-            expect(bugs.body).toHaveLength(1);
-            expect(bugs.body[0].title).toBe('Bug item');
+            expect(bugs.body.items).toHaveLength(1);
+            expect(bugs.body.items[0].title).toBe('Bug item');
 
             const workItems = await request('GET', `/api/workspaces/${REPO_ID}/work-items?type=work-item`);
             expect(workItems.status).toBe(200);
             // Item A and Item B have no type, so they default to 'work-item'
-            expect(workItems.body).toHaveLength(2);
+            expect(workItems.body.items).toHaveLength(2);
+        });
+
+        describe('pagination and search', () => {
+            it('respects limit parameter', async () => {
+                // Parent beforeEach creates 2 items; add 3 more for 5 total
+                for (let i = 1; i <= 3; i++) {
+                    await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                        title: `Extra ${i}`,
+                    });
+                }
+
+                const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?limit=2`);
+                expect(res.status).toBe(200);
+                expect(res.body.items).toHaveLength(2);
+                expect(res.body.total).toBe(5);
+                expect(res.body.hasMore).toBe(true);
+            });
+
+            it('respects offset parameter', async () => {
+                // Parent creates 2; add 3 more for 5 total
+                for (let i = 1; i <= 3; i++) {
+                    await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                        title: `Extra ${i}`,
+                    });
+                }
+
+                const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?offset=3&limit=2`);
+                expect(res.status).toBe(200);
+                expect(res.body.items).toHaveLength(2);
+                expect(res.body.total).toBe(5);
+                expect(res.body.hasMore).toBe(false);
+            });
+
+            it('returns hasMore=false when no more items', async () => {
+                // Parent creates 2; add 1 more for 3 total
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Extra 1',
+                });
+
+                const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?limit=5`);
+                expect(res.status).toBe(200);
+                expect(res.body.items).toHaveLength(3);
+                expect(res.body.hasMore).toBe(false);
+            });
+
+            it('defaults to all items when no pagination params', async () => {
+                // Parent creates 2; add 1 more for 3 total
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Extra 1',
+                });
+
+                const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+                expect(res.status).toBe(200);
+                expect(res.body.items).toHaveLength(3);
+                expect(res.body.total).toBe(3);
+                expect(res.body.hasMore).toBe(false);
+            });
+
+            it('searches by title (case-insensitive)', async () => {
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Fix login bug',
+                });
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Add payment page',
+                });
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Update login UI',
+                });
+
+                const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?q=login`);
+                expect(res.status).toBe(200);
+                expect(res.body.items).toHaveLength(2);
+                expect(res.body.total).toBe(2);
+            });
+
+            it('searches by tags', async () => {
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'UI task',
+                    tags: ['frontend'],
+                });
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Server task',
+                    tags: ['backend'],
+                });
+
+                const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?q=frontend`);
+                expect(res.status).toBe(200);
+                expect(res.body.items).toHaveLength(1);
+                expect(res.body.items[0].title).toBe('UI task');
+            });
+
+            it('search combined with pagination', async () => {
+                // Parent creates Item A, Item B (neither contains 'login')
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Login page fix' });
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Payment feature' });
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Login form update' });
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Dashboard redesign' });
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Login error handling' });
+
+                // First page: 2 of 3 login matches
+                const page1 = await request('GET', `/api/workspaces/${REPO_ID}/work-items?q=login&limit=2&offset=0`);
+                expect(page1.status).toBe(200);
+                expect(page1.body.items).toHaveLength(2);
+                expect(page1.body.total).toBe(3);
+                expect(page1.body.hasMore).toBe(true);
+
+                // Second page: 1 remaining match
+                const page2 = await request('GET', `/api/workspaces/${REPO_ID}/work-items?q=login&limit=2&offset=2`);
+                expect(page2.status).toBe(200);
+                expect(page2.body.items).toHaveLength(1);
+                expect(page2.body.total).toBe(3);
+                expect(page2.body.hasMore).toBe(false);
+            });
+
+            it('search combined with existing filters', async () => {
+                // Parent creates Item A, Item B (both status 'created', no 'login' in title)
+                const created = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Login planning task',
+                });
+                await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${created.body.id}`, {
+                    status: 'planning',
+                });
+                await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                    title: 'Login created task',
+                });
+
+                // Filter by status=created AND q=login
+                const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?status=created&q=login`);
+                expect(res.status).toBe(200);
+                // Only 'Login created task' matches both filters
+                expect(res.body.items).toHaveLength(1);
+                expect(res.body.items[0].title).toBe('Login created task');
+            });
+
+            it('returns empty results for non-matching search', async () => {
+                const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items?q=nonexistent`);
+                expect(res.status).toBe(200);
+                expect(res.body.items).toEqual([]);
+                expect(res.body.total).toBe(0);
+                expect(res.body.hasMore).toBe(false);
+            });
+
+            it('ignores invalid offset/limit values', async () => {
+                // Parent creates 2 items; invalid params should be ignored
+                const res1 = await request('GET', `/api/workspaces/${REPO_ID}/work-items?offset=-1`);
+                expect(res1.status).toBe(200);
+                expect(res1.body.items).toHaveLength(2);
+
+                const res2 = await request('GET', `/api/workspaces/${REPO_ID}/work-items?offset=abc`);
+                expect(res2.status).toBe(200);
+                expect(res2.body.items).toHaveLength(2);
+            });
         });
     });
 
@@ -399,7 +553,7 @@ describe('Work Item Routes', () => {
 
             const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
             expect(res.status).toBe(200);
-            expect(res.body[0].workItemNumber).toBe(1);
+            expect(res.body.items[0].workItemNumber).toBe(1);
         });
 
         it('includes workItemNumber in detail response', async () => {

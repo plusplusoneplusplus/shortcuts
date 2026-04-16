@@ -70,9 +70,21 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (typeof query.type === 'string' && VALID_TYPES.has(query.type)) {
                 filter.type = query.type as WorkItemType;
             }
+            if (typeof query.q === 'string' && query.q.trim()) {
+                filter.search = query.q.trim();
+            }
+            if (typeof query.offset === 'string') {
+                const n = parseInt(query.offset, 10);
+                if (!isNaN(n) && n >= 0) filter.offset = n;
+            }
+            if (typeof query.limit === 'string') {
+                const n = parseInt(query.limit, 10);
+                if (!isNaN(n) && n > 0) filter.limit = n;
+            }
 
-            const entries = await workItemStore.listWorkItems(filter);
-            sendJSON(res, 200, entries);
+            const result = await workItemStore.listWorkItems(filter);
+            const hasMore = (filter.offset ?? 0) + result.items.length < result.total;
+            sendJSON(res, 200, { items: result.items, total: result.total, hasMore });
         },
     });
 
