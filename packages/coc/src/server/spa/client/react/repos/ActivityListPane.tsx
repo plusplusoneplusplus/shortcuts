@@ -308,8 +308,8 @@ export function ActivityListPane({
     // Chats tab: merge running chats + history chats into a single sorted list
     const chatAllItems = useMemo(() => {
         if (activeTab !== 'chats') return { pinned: [] as any[], unpinned: [] as any[], archived: [] as any[] };
-        const runningChats = running.filter(isChat);
-        const historyChats = history.filter(isChat);
+        const runningChats = filteredRunning.filter(isChat);
+        const historyChats = filteredHistory.filter(isChat);
         const all = [...runningChats, ...historyChats];
         // Deduplicate by processId — running tasks take priority (appear first)
         const seenProcessIds = new Set<string>();
@@ -342,7 +342,7 @@ export function ActivityListPane({
             }
         }
         return { pinned, unpinned, archived };
-    }, [activeTab, running, history, pinnedChatIds, archivedChatIds]);
+    }, [activeTab, filteredRunning, filteredHistory, pinnedChatIds, archivedChatIds]);
 
     const [showRunning, setShowRunning] = useState(true);
     const [showQueued, setShowQueued] = useState(true);
@@ -800,7 +800,7 @@ export function ActivityListPane({
                 </div>
                 )}
 
-                {activeTab === 'tasks' && searchVisible && (
+                {(activeTab === 'tasks' ? searchVisible : true) && (
                     <div className="flex items-center gap-1.5 px-1 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] text-xs">
                         <span className="text-[#848484]">🔍</span>
                         <input
@@ -813,13 +813,15 @@ export function ActivityListPane({
                             data-testid="queue-search-input"
                         />
                         {searchQuery && (
-                            <span className="text-[#848484] tabular-nums">
-                                {filteredRunning.length + filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length + filteredHistory.length}
+                            <span className="text-[#848484] tabular-nums" data-testid="search-match-count">
+                                {activeTab === 'chats'
+                                    ? chatAllItems.pinned.length + chatAllItems.unpinned.length + chatAllItems.archived.length
+                                    : filteredRunning.length + filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length + filteredHistory.length}
                             </span>
                         )}
                         <button
                             className="text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] leading-none"
-                            onClick={() => { setSearchQuery(''); setSearchVisible(false); }}
+                            onClick={() => { setSearchQuery(''); if (activeTab === 'tasks') setSearchVisible(false); }}
                             data-testid="queue-search-close"
                         >✕</button>
                     </div>
@@ -1226,7 +1228,10 @@ export function ActivityListPane({
                         </div>
                         </div>
                     )}
-                    {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && (
+                    {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && chatAllItems.archived.length === 0 && searchQuery && (
+                        <div className="text-center text-xs text-[#848484] py-4" data-testid="chat-search-empty-state">No chats matching &apos;{searchQuery}&apos;</div>
+                    )}
+                    {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && !searchQuery && (
                         <div className="text-center text-xs text-[#848484] py-4">No chat sessions yet</div>
                     )}
                     {chatAllItems.archived.length > 0 && (
