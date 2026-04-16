@@ -618,4 +618,83 @@ describe('FileWorkItemStore', () => {
             expect(result.total).toBe(0);
         });
     });
+
+    describe('listWorkItemsGrouped', () => {
+        it('groups items by status', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'g1', title: 'Item 1', status: 'created' }));
+            await store.addWorkItem(makeWorkItem({ id: 'g2', title: 'Item 2', status: 'created' }));
+            await store.addWorkItem(makeWorkItem({ id: 'g3', title: 'Item 3', status: 'executing' }));
+            await store.addWorkItem(makeWorkItem({ id: 'g4', title: 'Item 4', status: 'done' }));
+
+            const result = await store.listWorkItemsGrouped({ repoId: 'test-repo' });
+            expect(Object.keys(result.groups)).toHaveLength(3);
+            expect(result.groups['created'].items).toHaveLength(2);
+            expect(result.groups['created'].total).toBe(2);
+            expect(result.groups['executing'].items).toHaveLength(1);
+            expect(result.groups['executing'].total).toBe(1);
+            expect(result.groups['done'].items).toHaveLength(1);
+            expect(result.groups['done'].total).toBe(1);
+        });
+
+        it('respects per-group limit', async () => {
+            for (let i = 0; i < 5; i++) {
+                await store.addWorkItem(makeWorkItem({ id: `gl-${i}`, title: `Item ${i}`, status: 'created' }));
+            }
+            await store.addWorkItem(makeWorkItem({ id: 'gl-done', title: 'Done item', status: 'done' }));
+
+            const result = await store.listWorkItemsGrouped({ repoId: 'test-repo', limit: 3 });
+            expect(result.groups['created'].items).toHaveLength(3);
+            expect(result.groups['created'].total).toBe(5);
+            expect(result.groups['done'].items).toHaveLength(1);
+            expect(result.groups['done'].total).toBe(1);
+        });
+
+        it('applies search across all groups', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'gs1', title: 'Login fix', status: 'created' }));
+            await store.addWorkItem(makeWorkItem({ id: 'gs2', title: 'Login test', status: 'done' }));
+            await store.addWorkItem(makeWorkItem({ id: 'gs3', title: 'Dashboard update', status: 'created' }));
+
+            const result = await store.listWorkItemsGrouped({ repoId: 'test-repo', search: 'login' });
+            expect(Object.keys(result.groups)).toHaveLength(2);
+            expect(result.groups['created'].items).toHaveLength(1);
+            expect(result.groups['created'].items[0].id).toBe('gs1');
+            expect(result.groups['done'].items).toHaveLength(1);
+            expect(result.groups['done'].items[0].id).toBe('gs2');
+        });
+
+        it('applies non-status filters', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'gf1', title: 'High item', status: 'created', priority: 'high' }));
+            await store.addWorkItem(makeWorkItem({ id: 'gf2', title: 'Low item', status: 'created', priority: 'low' }));
+            await store.addWorkItem(makeWorkItem({ id: 'gf3', title: 'High done', status: 'done', priority: 'high' }));
+
+            const result = await store.listWorkItemsGrouped({ repoId: 'test-repo', priority: 'high' });
+            expect(Object.keys(result.groups)).toHaveLength(2);
+            expect(result.groups['created'].items).toHaveLength(1);
+            expect(result.groups['done'].items).toHaveLength(1);
+        });
+
+        it('excludes empty groups', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'ge1', title: 'Item', status: 'created' }));
+
+            const result = await store.listWorkItemsGrouped({ repoId: 'test-repo' });
+            expect(Object.keys(result.groups)).toEqual(['created']);
+            expect(result.groups['executing']).toBeUndefined();
+        });
+
+        it('returns empty groups object when no items', async () => {
+            const result = await store.listWorkItemsGrouped({ repoId: 'test-repo' });
+            expect(result.groups).toEqual({});
+        });
+
+        it('combines search with filter and limit', async () => {
+            for (let i = 0; i < 5; i++) {
+                await store.addWorkItem(makeWorkItem({ id: `gcf-${i}`, title: `Fix bug ${i}`, status: 'created', priority: 'high' }));
+            }
+            await store.addWorkItem(makeWorkItem({ id: 'gcf-low', title: 'Fix bug low', status: 'created', priority: 'low' }));
+
+            const result = await store.listWorkItemsGrouped({ repoId: 'test-repo', search: 'fix', priority: 'high', limit: 3 });
+            expect(result.groups['created'].items).toHaveLength(3);
+            expect(result.groups['created'].total).toBe(5);
+        });
+    });
 });

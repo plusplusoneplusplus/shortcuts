@@ -274,6 +274,12 @@ export interface WorkItemListResult {
     total: number;
 }
 
+/** Per-status grouped result from listWorkItemsGrouped. */
+export interface WorkItemGroupedResult {
+    /** Items and totals keyed by status. Only statuses with at least one item are included. */
+    groups: Record<string, WorkItemListResult>;
+}
+
 /** Abstract store interface for work item persistence. */
 export interface WorkItemStore {
     // CRUD
@@ -282,6 +288,8 @@ export interface WorkItemStore {
     updateWorkItem(id: string, updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>): Promise<WorkItem | undefined>;
     removeWorkItem(id: string): Promise<boolean>;
     listWorkItems(filter?: WorkItemFilter): Promise<WorkItemListResult>;
+    /** List work items grouped by status with per-group pagination. */
+    listWorkItemsGrouped(filter?: WorkItemFilter): Promise<WorkItemGroupedResult>;
 
     // Plan versioning
     getPlanVersions(workItemId: string): Promise<WorkItemPlanVersion[]>;

@@ -200,3 +200,123 @@ describe('loadUnseenWorkItemIds', () => {
         expect(loadUnseenWorkItemIds('repo-1')).toEqual([]);
     });
 });
+
+describe('WorkItemContext: grouped actions', () => {
+    beforeEach(() => localStorage.clear());
+    afterEach(() => localStorage.clear());
+
+    it('SET_GROUPED_WORK_ITEMS populates items and per-status pagination', () => {
+        renderWithProvider();
+        act(() => {
+            testDispatch({
+                type: 'SET_GROUPED_WORK_ITEMS',
+                repoId: 'repo-1',
+                groups: {
+                    created: {
+                        items: [makeItem('w1', 'created'), makeItem('w2', 'created')],
+                        total: 5,
+                        hasMore: true,
+                    },
+                    done: {
+                        items: [makeItem('w3', 'done')],
+                        total: 1,
+                        hasMore: false,
+                    },
+                },
+            });
+        });
+        expect(screen.getByTestId('item-count').textContent).toBe('3');
+    });
+
+    it('SET_GROUPED_WORK_ITEMS replaces previous items', () => {
+        renderWithProvider();
+        act(() => {
+            testDispatch({ type: 'SET_WORK_ITEMS', repoId: 'repo-1', items: [makeItem('old1'), makeItem('old2')], total: 2, hasMore: false });
+        });
+        expect(screen.getByTestId('item-count').textContent).toBe('2');
+
+        act(() => {
+            testDispatch({
+                type: 'SET_GROUPED_WORK_ITEMS',
+                repoId: 'repo-1',
+                groups: {
+                    created: { items: [makeItem('new1', 'created')], total: 1, hasMore: false },
+                },
+            });
+        });
+        expect(screen.getByTestId('item-count').textContent).toBe('1');
+    });
+
+    it('APPEND_STATUS_ITEMS appends items for a specific status', () => {
+        renderWithProvider();
+        act(() => {
+            testDispatch({
+                type: 'SET_GROUPED_WORK_ITEMS',
+                repoId: 'repo-1',
+                groups: {
+                    created: { items: [makeItem('w1', 'created')], total: 3, hasMore: true },
+                },
+            });
+        });
+        expect(screen.getByTestId('item-count').textContent).toBe('1');
+
+        act(() => {
+            testDispatch({
+                type: 'APPEND_STATUS_ITEMS',
+                repoId: 'repo-1',
+                status: 'created',
+                items: [makeItem('w2', 'created'), makeItem('w3', 'created')],
+                total: 3,
+                hasMore: false,
+                offset: 1,
+            });
+        });
+        expect(screen.getByTestId('item-count').textContent).toBe('3');
+    });
+
+    it('APPEND_STATUS_ITEMS deduplicates items', () => {
+        renderWithProvider();
+        act(() => {
+            testDispatch({
+                type: 'SET_GROUPED_WORK_ITEMS',
+                repoId: 'repo-1',
+                groups: {
+                    created: { items: [makeItem('w1', 'created')], total: 2, hasMore: true },
+                },
+            });
+        });
+
+        act(() => {
+            testDispatch({
+                type: 'APPEND_STATUS_ITEMS',
+                repoId: 'repo-1',
+                status: 'created',
+                items: [makeItem('w1', 'created'), makeItem('w2', 'created')],
+                total: 2,
+                hasMore: false,
+                offset: 1,
+            });
+        });
+        expect(screen.getByTestId('item-count').textContent).toBe('2');
+    });
+
+    it('WebSocket WORK_ITEM_ADDED works alongside grouped state', () => {
+        renderWithProvider();
+        act(() => {
+            testDispatch({
+                type: 'SET_GROUPED_WORK_ITEMS',
+                repoId: 'repo-1',
+                groups: {
+                    created: { items: [makeItem('w1', 'created')], total: 1, hasMore: false },
+                },
+            });
+        });
+        expect(screen.getByTestId('item-count').textContent).toBe('1');
+
+        act(() => {
+            testDispatch({ type: 'WORK_ITEM_ADDED', repoId: 'repo-1', item: makeItem('w2', 'created') });
+        });
+        expect(screen.getByTestId('item-count').textContent).toBe('2');
+        expect(screen.getByTestId('unseen-count').textContent).toBe('1');
+    });
+});

@@ -19,9 +19,8 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
-import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority, WorkItemType } from '../work-items/types';
+import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority, WorkItemType, WorkItem } from '../work-items/types';
 import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, isValidTransition } from '../work-items/types';
-import type { WorkItem } from '../work-items/types';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../websocket';
 
@@ -85,6 +84,50 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             const result = await workItemStore.listWorkItems(filter);
             const hasMore = (filter.offset ?? 0) + result.items.length < result.total;
             sendJSON(res, 200, { items: result.items, total: result.total, hasMore });
+        },
+    });
+
+    // GET /api/workspaces/:id/work-items/grouped — List grouped by status with per-group pagination
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/grouped$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            const repoId = decodeURIComponent(match![1]);
+            const parsed = url.parse(req.url || '/', true);
+            const query = parsed.query;
+
+            const filter: WorkItemFilter = { repoId };
+            if (typeof query.source === 'string' && VALID_SOURCES.has(query.source)) {
+                filter.source = query.source as WorkItemSource;
+            }
+            if (typeof query.priority === 'string' && VALID_PRIORITIES.has(query.priority)) {
+                filter.priority = query.priority as WorkItemPriority;
+            }
+            if (typeof query.tags === 'string' && query.tags) {
+                filter.tags = query.tags.split(',');
+            }
+            if (typeof query.type === 'string' && VALID_TYPES.has(query.type)) {
+                filter.type = query.type as WorkItemType;
+            }
+            if (typeof query.q === 'string' && query.q.trim()) {
+                filter.search = query.q.trim();
+            }
+            if (typeof query.limit === 'string') {
+                const n = parseInt(query.limit, 10);
+                if (!isNaN(n) && n > 0) filter.limit = n;
+            }
+
+            const result = await workItemStore.listWorkItemsGrouped(filter);
+            // Add hasMore to each group
+            const groups: Record<string, { items: any[]; total: number; hasMore: boolean }> = {};
+            for (const [status, group] of Object.entries(result.groups)) {
+                groups[status] = {
+                    items: group.items,
+                    total: group.total,
+                    hasMore: group.items.length < group.total,
+                };
+            }
+            sendJSON(res, 200, { groups });
         },
     });
 
