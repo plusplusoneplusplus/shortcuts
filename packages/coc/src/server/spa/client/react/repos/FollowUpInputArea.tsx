@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { Button, SuggestionChips, SendButton } from '../shared';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { PastePreview } from '../shared/PastePreview';
+import { AttachedContextPreviews } from '../shared/AttachedContextPreviews';
 import { cn } from '../shared/cn';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
@@ -10,6 +11,7 @@ import { useModifierKey } from '../hooks/useModifierKey';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
+import type { AttachedContextItem } from '../hooks/useAttachedContext';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -34,6 +36,8 @@ export interface FollowUpInputAreaProps {
         onTextPaste: (e: React.ClipboardEvent) => void;
         clearPaste: () => void;
     } | null;
+    attachedContext?: AttachedContextItem[];
+    onRemoveAttachedContext?: (id: string) => void;
     task: any;
     slashCommands: {
         handleInputChange: (val: string, cursor: number) => void;
@@ -72,6 +76,8 @@ export function FollowUpInputArea({
     onImagePaste,
     onImageRemove,
     pastePreview,
+    attachedContext,
+    onRemoveAttachedContext,
     task,
     slashCommands,
     hideModeSelector = false,
@@ -133,6 +139,9 @@ export function FollowUpInputArea({
                     }}
                     disabled={inputDisabled}
                 />
+            )}
+            {attachedContext && onRemoveAttachedContext && (
+                <AttachedContextPreviews items={attachedContext} onRemove={onRemoveAttachedContext} />
             )}
             <ImagePreviews images={images} onRemove={onImageRemove} />
             {pastePreview && pastePreview.charCount > 0 && (

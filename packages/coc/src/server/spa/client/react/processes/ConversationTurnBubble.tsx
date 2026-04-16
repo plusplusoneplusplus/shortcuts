@@ -1,9 +1,11 @@
 /**
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { cn, ImageGallery, Spinner } from '../shared';
 import type { ClientConversationTurn, ClientTokenUsage } from '../types/dashboard';
+import { ContextMenu } from '../tasks/comments/ContextMenu';
+import type { ContextMenuItem } from '../tasks/comments/ContextMenu';
 import { MarkdownView } from './MarkdownView';
 import { ToolCallView } from './ToolCallView';
 import { JsonResponseView } from './JsonResponseView';
@@ -105,6 +107,8 @@ interface ConversationTurnBubbleProps {
     wsId?: string;
     /** Index of this turn in the conversation, emitted as data-turn-index for snapshot selection. */
     turnIndex?: number;
+    /** Called when user selects "Attach as context" from the right-click menu. */
+    onAttachContext?: (turnIndex: number, role: 'user' | 'assistant', snippet: string) => void;
 }
 
 interface RenderToolCall {
@@ -592,7 +596,7 @@ function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === 'run-script';
     const assistantRender = !isUser ? buildAssistantRender(turn, wsId) : null;
@@ -601,7 +605,51 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
     const [copiedHtml, setCopiedHtml] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
+
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+    }, []);
+
+    const contextMenuItems = useMemo((): ContextMenuItem[] => {
+        const items: ContextMenuItem[] = [];
+        if (onAttachContext && turnIndex != null) {
+            items.push({
+                label: 'Attach as context',
+                icon: '📎',
+                onClick: () => {
+                    const selection = window.getSelection();
+                    const selectedText = selection && selection.toString().trim();
+                    const snippet = selectedText || turn.content || '';
+                    if (snippet) {
+                        onAttachContext(turnIndex, turn.role as 'user' | 'assistant', snippet);
+                    }
+                },
+            });
+            items.push({ label: '', separator: true, onClick: () => {} });
+        }
+        items.push({
+            label: 'Copy',
+            icon: '📋',
+            onClick: async () => {
+                const text = showRaw ? buildRawContent(turn) : (turn.content || '');
+                try { await copyToClipboard(text); } catch {}
+            },
+        });
+        items.push({
+            label: 'Copy as HTML',
+            icon: '📄',
+            onClick: async () => {
+                try {
+                    const html = chatMarkdownToHtml(turn.content || '', wsId);
+                    await copyHtmlToClipboard(html);
+                } catch {}
+            },
+        });
+        return items;
+    }, [onAttachContext, turnIndex, turn, showRaw, wsId]);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {
@@ -742,7 +790,15 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
         )}
             {...(wsId ? { 'data-ws-id': wsId } : {})}
             {...(turnIndex != null ? { 'data-turn-index': turnIndex } : {})}
+            onContextMenu={handleContextMenu}
         >
+            {contextMenu && (
+                <ContextMenu
+                    position={contextMenu}
+                    items={contextMenuItems}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
             <div
                 className={cn(
                     'group w-full max-w-[95%] rounded-lg border px-3 py-2 shadow-sm',

@@ -38,6 +38,8 @@ export interface ConversationAreaProps {
     onCopySelected?: () => void;
     /** Called to exit selection mode. */
     onCancelSelection?: () => void;
+    /** Called when user selects "Attach as context" from a bubble's context menu. */
+    onAttachContext?: (turnIndex: number, role: 'user' | 'assistant', snippet: string) => void;
 }
 
 export function ConversationArea({
@@ -63,6 +65,7 @@ export function ConversationArea({
     onTurnClick,
     onCopySelected,
     onCancelSelection,
+    onAttachContext,
 }: ConversationAreaProps) {
     // Escape key exits selection mode
     useEffect(() => {
@@ -135,7 +138,7 @@ export function ConversationArea({
                                             </div>
                                         )}
                                         <div className="flex-1 min-w-0">
-                                            <ConversationTurnBubble turn={turn} taskId={taskId} wsId={wsId} turnIndex={idx} />
+                                            <ConversationTurnBubble turn={turn} taskId={taskId} wsId={wsId} turnIndex={idx} onAttachContext={onAttachContext} />
                                         </div>
                                     </div>
                                 );

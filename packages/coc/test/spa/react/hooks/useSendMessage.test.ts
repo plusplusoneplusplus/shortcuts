@@ -486,4 +486,91 @@ describe('useSendMessage', () => {
             expect(clearPaste).toHaveBeenCalled();
         });
     });
+
+    describe('attached context integration', () => {
+        it('prepends context block to rawContent when attached context items exist', async () => {
+            fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+            const getAttachedContext = vi.fn().mockReturnValue([
+                { id: 'ctx-1', turnIndex: 3, role: 'assistant', snippet: 'Snippet text', preview: 'Snippet text' },
+            ]);
+            const clearAttachedContext = vi.fn();
+            const opts = makeOptions({ getAttachedContext, clearAttachedContext });
+            opts.followUpInputRef.current = 'my follow-up';
+
+            const { result } = renderHook(() => useSendMessage(opts));
+            await act(async () => { await result.current.sendFollowUp(); });
+
+            expect(fetchMock).toHaveBeenCalled();
+            const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+            expect(body.content).toContain('<context from="assistant" turn="3">');
+            expect(body.content).toContain('Snippet text');
+            expect(body.content).toContain('my follow-up');
+        });
+
+        it('clears attached context after successful send (idle path)', async () => {
+            fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+            const clearAttachedContext = vi.fn();
+            const opts = makeOptions({
+                getAttachedContext: () => [{ id: 'ctx-1', turnIndex: 1, role: 'user', snippet: 'x', preview: 'x' }],
+                clearAttachedContext,
+            });
+            opts.followUpInputRef.current = 'hello';
+
+            const { result } = renderHook(() => useSendMessage(opts));
+            await act(async () => { await result.current.sendFollowUp(); });
+            expect(clearAttachedContext).toHaveBeenCalled();
+        });
+
+        it('clears attached context after send while AI is running', async () => {
+            fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+            const clearAttachedContext = vi.fn();
+            const opts = makeOptions({
+                sending: true,
+                getAttachedContext: () => [{ id: 'ctx-1', turnIndex: 1, role: 'user', snippet: 'x', preview: 'x' }],
+                clearAttachedContext,
+            });
+            opts.followUpInputRef.current = 'msg';
+
+            const { result } = renderHook(() => useSendMessage(opts));
+            await act(async () => { await result.current.sendFollowUp('msg', 'enqueue'); });
+            expect(clearAttachedContext).toHaveBeenCalled();
+        });
+
+        it('sends normally when no attached context is provided', async () => {
+            fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+            const opts = makeOptions();
+            opts.followUpInputRef.current = 'plain message';
+
+            const { result } = renderHook(() => useSendMessage(opts));
+            await act(async () => { await result.current.sendFollowUp(); });
+
+            const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+            expect(body.content).toBe('plain message');
+            expect(body.content).not.toContain('<context');
+        });
+
+        it('combines attached context with pasted content', async () => {
+            fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+            const opts = makeOptions({
+                getAttachedContext: () => [{
+                    id: 'ctx-1',
+                    turnIndex: 2,
+                    role: 'assistant',
+                    snippet: 'context snippet',
+                    preview: 'context snippet',
+                }],
+                clearAttachedContext: vi.fn(),
+                getPastedContent: () => 'pasted content',
+            });
+            opts.followUpInputRef.current = 'user text';
+
+            const { result } = renderHook(() => useSendMessage(opts));
+            await act(async () => { await result.current.sendFollowUp(); });
+
+            const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+            // Context should come first, then user text + pasted content
+            expect(body.content.indexOf('<context')).toBeLessThan(body.content.indexOf('user text'));
+            expect(body.content).toContain('pasted content');
+        });
+    });
 });

@@ -16,6 +16,7 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { useTextPaste } from '../hooks/useTextPaste';
+import { useAttachedContext } from '../hooks/useAttachedContext';
 import { useSlashCommands } from './useSlashCommands';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
@@ -110,6 +111,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const textPaste = useTextPaste();
+    const attachedContext = useAttachedContext();
     const { isMobile } = useBreakpoint();
     const selection = useConversationSelection();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
@@ -267,6 +269,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         getPastedContent: () => textPaste.pastedContent,
         lastFailedMessageRef,
         setTask,
+        getAttachedContext: attachedContext.getItems,
+        clearAttachedContext: attachedContext.clear,
     });
 
     const { stopStreaming } = useChatSSE({
@@ -667,6 +671,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     onTurnClick={selection.handleTurnClick}
                     onCopySelected={handleCopySelected}
                     onCancelSelection={selection.stopSelecting}
+                    onAttachContext={attachedContext.add}
                 />
                 {variant !== 'floating' && !isMobile && (
                     <ConversationMiniMap
@@ -708,6 +713,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                         onTextPaste: textPaste.addFromPaste,
                         clearPaste: textPaste.clearPaste,
                     }}
+                    attachedContext={attachedContext.items}
+                    onRemoveAttachedContext={attachedContext.remove}
                     task={task}
                     slashCommands={slashCommands}
                     hideModeSelector={hideModeSelector}

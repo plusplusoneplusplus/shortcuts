@@ -3,6 +3,8 @@ import { getApiBase } from '../utils/config';
 import { clearDraft } from './useDraftStore';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
+import { formatAttachedContext } from './useAttachedContext';
+import type { AttachedContextItem } from './useAttachedContext';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 
@@ -36,6 +38,10 @@ export interface UseSendMessageOptions {
     getPastedContent?: () => string | null;
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
+    /** Returns the currently attached context items. */
+    getAttachedContext?: () => AttachedContextItem[];
+    /** Clears attached context after send. */
+    clearAttachedContext?: () => void;
 }
 
 export function useSendMessage({
@@ -62,6 +68,8 @@ export function useSendMessage({
     getPastedContent,
     lastFailedMessageRef,
     setTask,
+    getAttachedContext,
+    clearAttachedContext,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     closeFollowUpStream: () => void;
@@ -110,9 +118,12 @@ export function useSendMessage({
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue') => {
         const userText = (overrideContent ?? followUpInputRef.current).trim();
         const pastedContent = getPastedContent?.() ?? null;
-        const rawContent = pastedContent
+        const contextItems = getAttachedContext?.() ?? [];
+        const contextPrefix = formatAttachedContext(contextItems);
+        const baseContent = pastedContent
             ? (userText ? userText + '\n\n' + pastedContent : pastedContent)
             : userText;
+        const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
         if (!rawContent || !processId || inputDisabled) return;
 
         if (archivedChatIds.has(taskId)) {
@@ -161,6 +172,7 @@ export function useSendMessage({
 
             clearImages();
             clearPaste();
+            clearAttachedContext?.();
             return;
         }
 
@@ -211,6 +223,7 @@ export function useSendMessage({
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
             clearImages();
             clearPaste();
+            clearAttachedContext?.();
             await waitForSendCompletion(processId);
         } catch (err: any) {
             setError(err?.message || 'Failed to send follow-up message.');

@@ -1,0 +1,139 @@
+/**
+ * Tests for ConversationTurnBubble — right-click context menu with "Attach as context".
+ */
+
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { ConversationTurnBubble } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
+
+// Mock useDisplaySettings
+vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+    useDisplaySettings: () => ({ showReportIntent: false, toolCompactness: 0, groupSingleLineMessages: false }),
+}));
+
+// Mock markdown renderer
+vi.mock('../../../src/server/spa/client/react/processes/MarkdownView', () => ({
+    MarkdownView: ({ html }: { html: string }) => <div data-testid="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />,
+}));
+
+vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
+    renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
+}));
+
+// Mock useBreakpoint for ContextMenu
+vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => ({ isMobile: false, isDesktop: true }),
+}));
+
+function makeTurn(overrides: Partial<ClientConversationTurn> = {}): ClientConversationTurn {
+    return {
+        role: 'user',
+        content: 'Hello world',
+        timestamp: '2026-01-15T10:30:00Z',
+        streaming: false,
+        timeline: [],
+        ...overrides,
+    };
+}
+
+describe('ConversationTurnBubble — context menu', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('shows context menu on right click', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn()}
+                turnIndex={0}
+                onAttachContext={vi.fn()}
+            />,
+        );
+        const bubble = container.querySelector('.chat-message')!;
+        fireEvent.contextMenu(bubble);
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
+
+    it('shows "Attach as context" menu item when onAttachContext is provided', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn()}
+                turnIndex={0}
+                onAttachContext={vi.fn()}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        expect(screen.getByText('Attach as context')).toBeTruthy();
+    });
+
+    it('does not show "Attach as context" when onAttachContext is not provided', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn()} turnIndex={0} />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        expect(screen.queryByText('Attach as context')).toBeNull();
+    });
+
+    it('calls onAttachContext with turn content when "Attach as context" is clicked', () => {
+        const onAttach = vi.fn();
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'assistant', content: 'Test snippet' })}
+                turnIndex={5}
+                onAttachContext={onAttach}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        fireEvent.click(screen.getByText('Attach as context'));
+        expect(onAttach).toHaveBeenCalledWith(5, 'assistant', 'Test snippet');
+    });
+
+    it('always shows Copy and Copy as HTML items', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn()} turnIndex={0} />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        expect(screen.getByText('Copy')).toBeTruthy();
+        expect(screen.getByText('Copy as HTML')).toBeTruthy();
+    });
+
+    it('attaches selected text instead of full content when text is selected', () => {
+        const onAttach = vi.fn();
+        // Mock window.getSelection to return selected text
+        const mockSelection = {
+            toString: () => 'selected portion',
+        };
+        vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as any);
+
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: 'Full content here' })}
+                turnIndex={2}
+                onAttachContext={onAttach}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        fireEvent.click(screen.getByText('Attach as context'));
+        expect(onAttach).toHaveBeenCalledWith(2, 'user', 'selected portion');
+    });
+
+    it('falls back to full content when selection is empty', () => {
+        const onAttach = vi.fn();
+        vi.spyOn(window, 'getSelection').mockReturnValue({
+            toString: () => '',
+        } as any);
+
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'assistant', content: 'Full content' })}
+                turnIndex={1}
+                onAttachContext={onAttach}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        fireEvent.click(screen.getByText('Attach as context'));
+        expect(onAttach).toHaveBeenCalledWith(1, 'assistant', 'Full content');
+    });
+});
