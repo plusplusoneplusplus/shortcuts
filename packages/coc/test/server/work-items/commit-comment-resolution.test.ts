@@ -224,6 +224,59 @@ describe('WorkItem type — autoResolveAndReExecute', () => {
 });
 
 // ============================================================================
+// autoExecute triggers re-execution after comment resolution
+// ============================================================================
+
+describe('autoExecute triggers re-execution after comment resolution', () => {
+    let store: FileWorkItemStore;
+
+    beforeEach(() => {
+        store = new FileWorkItemStore({ dataDir: tmpDir });
+    });
+
+    it('stores and retrieves autoExecute flag', async () => {
+        const item = makeWorkItem({ id: 'wi-ae-1', autoExecute: true });
+        await store.addWorkItem(item);
+
+        const retrieved = await store.getWorkItem('wi-ae-1', 'test-repo');
+        expect(retrieved!.autoExecute).toBe(true);
+    });
+
+    it('executeWorkItem succeeds for items with autoExecute enabled', async () => {
+        const item = makeWorkItem({
+            id: 'wi-ae-exec-1',
+            status: 'readyToExecute',
+            autoExecute: true,
+            plan: { version: 1, content: 'Fix bugs', updatedAt: '' },
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-ae-1');
+        await executeWorkItem('wi-ae-exec-1', store, enqueue, { autoReExecuted: true });
+
+        const updated = await store.getWorkItem('wi-ae-exec-1', 'test-repo');
+        expect(updated!.status).toBe('executing');
+        expect(updated!.executionHistory).toHaveLength(1);
+        expect(updated!.executionHistory![0].autoReExecuted).toBe(true);
+    });
+
+    it('routes/index.ts auto-execute guard includes item.autoExecute', async () => {
+        const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'routes', 'index.ts');
+        const src = await fs.readFile(srcPath, 'utf-8');
+        expect(src).toContain('!item.autoExecute');
+        // Ensure autoExecute is part of the same guard as autoResolveAndReExecute
+        expect(src).toContain('!item.autoResolveAndReExecute && !resolveCtx.autoReExecute && !item.autoExecute');
+    });
+
+    it('WorkItemDetail.tsx passes autoReExecute when autoExecute is enabled', async () => {
+        const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'WorkItemDetail.tsx');
+        const src = await fs.readFile(srcPath, 'utf-8');
+        // handleAutoResolveChange should conditionally pass autoReExecute: true
+        expect(src).toContain('item.autoExecute ? { autoReExecute: true }');
+    });
+});
+
+// ============================================================================
 // WorkItemDetail layout — new UI elements
 // ============================================================================
 

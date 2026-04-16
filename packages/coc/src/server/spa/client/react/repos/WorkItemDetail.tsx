@@ -302,6 +302,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         newRef: commit.sha,
                         workItemId: item.id,
                         sourceRunIndex,
+                        ...(item.autoExecute ? { autoReExecute: true } : {}),
                     }),
                 });
             }

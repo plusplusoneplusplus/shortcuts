@@ -263,8 +263,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             try {
                 const item = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
                 if (!item) return;
-                // Auto re-execute when: global toggle is on, OR the per-request autoReExecute flag is set
-                if (!item.autoResolveAndReExecute && !resolveCtx.autoReExecute) return;
+                // Auto re-execute when: global toggle is on, OR the per-request autoReExecute flag is set, OR autoExecute is enabled
+                if (!item.autoResolveAndReExecute && !resolveCtx.autoReExecute && !item.autoExecute) return;
                 if (item.status !== 'aiDone') return;
 
                 // Loop guard: max N cycles
