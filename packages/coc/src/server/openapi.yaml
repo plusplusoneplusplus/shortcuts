@@ -6,4 +6,348 @@ info:
 servers:
   - url: /
     description: Local server
-paths: {}
+
+tags:
+  - name: health
+    description: Server health and diagnostics
+  - name: admin
+    description: Administrative endpoints
+  - name: models
+    description: AI model registry
+  - name: providers
+    description: Provider configuration
+  - name: logs
+    description: Server log access
+
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      tags: [health]
+      summary: Server health check
+      description: Returns server status, uptime in seconds, and total process count.
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/openapi.json:
+    get:
+      operationId: getOpenApiSpec
+      tags: [health]
+      summary: OpenAPI specification (JSON)
+      description: Returns the OpenAPI spec parsed from the bundled YAML file and serialized as JSON.
+      responses:
+        '200':
+          description: The OpenAPI specification document
+          content:
+            application/json:
+              schema:
+                type: object
+                description: OpenAPI 3.1.0 specification document
+        '404':
+          description: Spec file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/docs:
+    get:
+      operationId: getSwaggerUi
+      tags: [health]
+      summary: Swagger UI
+      description: Serves an HTML page embedding Swagger UI, pointed at /api/openapi.json.
+      responses:
+        '200':
+          description: Swagger UI HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/admin/heap:
+    get:
+      operationId: getHeapSnapshot
+      tags: [admin]
+      summary: V8 heap memory snapshot
+      description: Returns current V8 heap statistics for memory-pressure monitoring.
+      responses:
+        '200':
+          description: Heap statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeapSnapshot'
+
+  /api/logs/sources:
+    get:
+      operationId: getLogSources
+      tags: [logs]
+      summary: Configured log sources
+      description: Lists available log sources and whether file-based logging is configured.
+      responses:
+        '200':
+          description: Log sources list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogSourcesResponse'
+
+  /api/models:
+    get:
+      operationId: listModels
+      tags: [models]
+      summary: List available AI models
+      description: >-
+        Returns all known AI models. When server config is available, each model
+        includes an `enabled` boolean. Falls back to the static model registry if
+        the live model store is empty.
+      responses:
+        '200':
+          description: Array of model info objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModelInfo'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/models/enabled:
+    get:
+      operationId: getEnabledModels
+      tags: [models]
+      summary: List enabled model IDs
+      description: Returns the list of model IDs that are currently enabled in the server configuration.
+      responses:
+        '200':
+          description: Enabled model IDs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnabledModelsResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/providers/config:
+    get:
+      operationId: getProviderConfig
+      tags: [providers]
+      summary: Get sanitized provider configuration
+      description: >-
+        Returns provider configuration with credentials redacted. GitHub shows
+        only `hasToken` (boolean); ADO shows only `orgUrl`.
+      responses:
+        '200':
+          description: Sanitized provider configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderConfigResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+
+    HealthResponse:
+      type: object
+      required: [status, uptime, processCount]
+      properties:
+        status:
+          type: string
+          description: Server status (always "ok" when reachable)
+          examples: ['ok']
+        uptime:
+          type: number
+          description: Server uptime in seconds
+        processCount:
+          type: integer
+          description: Total number of stored processes
+
+    HeapSnapshot:
+      type: object
+      required: [usedHeapMB, totalHeapMB, heapLimitMB, usagePercent, externalMB, timestamp]
+      properties:
+        usedHeapMB:
+          type: number
+          description: Used heap size in megabytes
+        totalHeapMB:
+          type: number
+          description: Total allocated heap size in megabytes
+        heapLimitMB:
+          type: number
+          description: V8 heap size limit in megabytes
+        usagePercent:
+          type: number
+          description: 'Heap usage as a percentage (0–100)'
+        externalMB:
+          type: number
+          description: External memory usage in megabytes
+        timestamp:
+          type: number
+          description: Snapshot timestamp (epoch milliseconds from Date.now())
+
+    LogSource:
+      type: object
+      required: [id, label, description, active, fileConfigured]
+      properties:
+        id:
+          type: string
+          description: Unique source identifier
+          examples: ['in-process']
+        label:
+          type: string
+          description: Human-readable label
+          examples: ['In-process (live)']
+        description:
+          type: string
+          description: Source description
+        active:
+          type: boolean
+          description: Whether this source is currently active
+        fileConfigured:
+          type: boolean
+          description: Whether this source reads from a log file
+
+    LogSourcesResponse:
+      type: object
+      required: [sources, logDir]
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogSource'
+        logDir:
+          type:
+            - string
+            - 'null'
+          description: Log directory path, or null if not configured
+
+    ModelCapabilitiesSupports:
+      type: object
+      required: [vision, reasoningEffort]
+      properties:
+        vision:
+          type: boolean
+        reasoningEffort:
+          type: boolean
+
+    ModelCapabilitiesLimits:
+      type: object
+      required: [max_context_window_tokens]
+      properties:
+        max_context_window_tokens:
+          type: integer
+          description: Maximum context window size in tokens
+        max_prompt_tokens:
+          type: integer
+          description: Maximum prompt tokens (optional)
+
+    ModelCapabilities:
+      type: object
+      required: [supports, limits]
+      properties:
+        supports:
+          $ref: '#/components/schemas/ModelCapabilitiesSupports'
+        limits:
+          $ref: '#/components/schemas/ModelCapabilitiesLimits'
+
+    ModelPolicy:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          description: 'Policy state (e.g. "enabled", "disabled")'
+
+    ModelBilling:
+      type: object
+      properties:
+        multiplier:
+          type: number
+          description: Billing multiplier
+
+    ModelInfo:
+      type: object
+      required: [id, name, capabilities]
+      properties:
+        id:
+          type: string
+          description: Model identifier
+          examples: ['claude-sonnet-4']
+        name:
+          type: string
+          description: Human-readable model name
+        capabilities:
+          $ref: '#/components/schemas/ModelCapabilities'
+        policy:
+          $ref: '#/components/schemas/ModelPolicy'
+        billing:
+          $ref: '#/components/schemas/ModelBilling'
+        enabled:
+          type: boolean
+          description: Whether the model is enabled in server config (present only when config is available)
+
+    EnabledModelsResponse:
+      type: object
+      required: [enabledModels]
+      properties:
+        enabledModels:
+          type: array
+          items:
+            type: string
+          description: List of enabled model IDs
+
+    ProviderGitHubConfig:
+      type: object
+      required: [hasToken]
+      properties:
+        hasToken:
+          type: boolean
+          description: Whether a GitHub token is configured
+
+    ProviderAdoConfig:
+      type: object
+      required: [orgUrl]
+      properties:
+        orgUrl:
+          type: string
+          description: Azure DevOps organization URL
+
+    ProviderConfigResponse:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: object
+          properties:
+            github:
+              $ref: '#/components/schemas/ProviderGitHubConfig'
+            ado:
+              $ref: '#/components/schemas/ProviderAdoConfig'
+          description: Configured providers (keys present only when configured)
