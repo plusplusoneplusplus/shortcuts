@@ -7,6 +7,8 @@ export interface NoteEditorToolbarProps {
     commentsPanelOpen?: boolean;
     onToggleCommentsPanel?: () => void;
     commentCount?: number;
+    chatPanelOpen?: boolean;
+    onToggleChatPanel?: () => void;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -227,7 +229,7 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, chatPanelOpen, onToggleChatPanel }: NoteEditorToolbarProps) {
     if (!editor || hidden) return null;
 
     const c = editor.chain().focus.bind(editor.chain());
@@ -312,6 +314,27 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                                 {commentCount}
                             </span>
                         )}
+                    </button>
+                </>
+            )}
+
+            {/* Chat panel toggle */}
+            {onToggleChatPanel && (
+                <>
+                    {!onToggleCommentsPanel && <div className="ml-auto" />}
+                    <button
+                        type="button"
+                        className={
+                            'text-xs px-2 py-0.5 rounded ml-1 ' +
+                            (chatPanelOpen
+                                ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
+                                : 'text-[#888] hover:text-[#333] dark:hover:text-white')
+                        }
+                        onClick={onToggleChatPanel}
+                        data-testid="chat-panel-toggle"
+                        aria-label={chatPanelOpen ? 'Hide AI chat' : 'Show AI chat'}
+                    >
+                        🤖
                     </button>
                 </>
             )}

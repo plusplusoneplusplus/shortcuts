@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Read the current schema version from the database.
@@ -260,6 +260,22 @@ export function initializeDatabase(db: Database.Database): void {
                 ON commit_chat_bindings(workspace_id);
         `);
 
+        // ── note_chat_bindings ──────────────────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS note_chat_bindings (
+                workspace_id  TEXT NOT NULL,
+                note_path     TEXT NOT NULL,
+                task_id       TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, note_path)
+            )
+        `);
+
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_note_chat_bindings_workspace
+                ON note_chat_bindings(workspace_id);
+        `);
+
         // ── incremental migrations for existing databases ───────────
         if (versionBefore >= 1 && versionBefore < 2) {
             migrateV1toV2(db);
@@ -275,6 +291,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore >= 1 && versionBefore < 6) {
             migrateV5toV6(db);
+        }
+        if (versionBefore >= 1 && versionBefore < 7) {
+            migrateV6toV7(db);
         }
 
         // Stamp the schema version
@@ -336,4 +355,13 @@ function migrateV5toV6(db: Database.Database): void {
     if (!cols.some(c => c.name === 'pinned_at')) {
         db.exec('ALTER TABLE processes ADD COLUMN pinned_at TEXT');
     }
+}
+
+/**
+ * V6 → V7: add `note_chat_bindings` table.
+ * The CREATE TABLE IF NOT EXISTS above handles fresh databases;
+ * this migration is a no-op but keeps the version chain explicit.
+ */
+function migrateV6toV7(_db: Database.Database): void {
+    // Table already created by the idempotent DDL above.
 }

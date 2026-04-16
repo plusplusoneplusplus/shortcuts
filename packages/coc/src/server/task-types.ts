@@ -83,6 +83,11 @@ export interface ChatContext {
         commitHash: string;
         commitMessage?: string;
     };
+    /** Note-chat preset (side-by-side chat anchored to a specific note). */
+    noteChat?: {
+        notePath: string;
+        noteTitle?: string;
+    };
     /** Schedule-specific metadata. */
     scheduleId?: string;
     scheduleParams?: Record<string, string>;
@@ -205,4 +210,9 @@ export function hasReplicationContext(payload: Record<string, unknown>): boolean
 /** Check whether a chat payload carries commit-chat context. */
 export function hasCommitChatContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.commitChat;
+}
+
+/** Check whether a chat payload carries note-chat context. */
+export function hasNoteChatContext(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && !!payload.context?.noteChat;
 }

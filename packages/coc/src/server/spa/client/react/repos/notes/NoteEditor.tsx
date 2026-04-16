@@ -40,6 +40,8 @@ export interface NoteEditorProps {
     commentsPanelOpen?: boolean;
     onToggleCommentsPanel?: () => void;
     commentCount?: number;
+    chatPanelOpen?: boolean;
+    onToggleChatPanel?: () => void;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -58,6 +60,8 @@ export function NoteEditor({
     commentsPanelOpen,
     onToggleCommentsPanel,
     commentCount,
+    chatPanelOpen,
+    onToggleChatPanel,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -542,6 +546,8 @@ export function NoteEditor({
                         commentsPanelOpen={commentsPanelOpen}
                         onToggleCommentsPanel={onToggleCommentsPanel}
                         commentCount={commentCount}
+                        chatPanelOpen={chatPanelOpen}
+                        onToggleChatPanel={onToggleChatPanel}
                     />
                 </>
             )}

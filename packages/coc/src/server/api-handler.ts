@@ -30,6 +30,7 @@ import { registerApiGitRoutes } from './routes/api-git-routes';
 import { registerApiProcessRoutes } from './routes/api-process-routes';
 import { registerApiFsRoutes } from './routes/api-fs-routes';
 import { registerCommitChatRoutes } from './routes/api-commit-chat-routes';
+import { registerNoteChatRoutes } from './routes/api-note-chat-routes';
 import type { ApiRouteContext } from './routes/api-shared';
 
 /**
@@ -249,6 +250,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         registerApiFsRoutes(routes, { dataDir: dataDir ?? undefined });
         registerApiProcessRoutes(ctx);
         registerCommitChatRoutes(ctx);
+        registerNoteChatRoutes(ctx);
 
         // Register global skill routes first so /skills/all is matched
         // before the catch-all /skills/:name pattern in repo skill routes
