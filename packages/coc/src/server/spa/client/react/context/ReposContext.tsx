@@ -154,8 +154,10 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             // Fetch per-repo unseen counts from server
             refreshUnseenCounts(enriched.map(r => r.workspace.id));
 
-            // Clear selection if repo was removed
-            if (selectedRepoIdRef.current && !enriched.find(r => r.workspace.id === selectedRepoIdRef.current)) {
+            // Clear selection if repo was removed.
+            // Check against the full workspaces list (not enriched) so virtual
+            // workspaces like My Work / My Life don't get deselected on refresh.
+            if (selectedRepoIdRef.current && !workspaces.find((ws: any) => ws.id === selectedRepoIdRef.current)) {
                 dispatch({ type: 'SET_SELECTED_REPO', id: null });
             }
 

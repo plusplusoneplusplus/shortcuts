@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { useRef, useLayoutEffect, type ReactNode } from 'react';
 
 // Mock heavy dependencies before importing the context
 vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
@@ -25,7 +25,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useUnseenActivity', () =>
 
 import { fetchApi } from '../../../../src/server/spa/client/react/hooks/useApi';
 import { ReposProvider, useRepos } from '../../../../src/server/spa/client/react/context/ReposContext';
-import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider, useApp } from '../../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
 
 afterEach(() => {
@@ -76,6 +76,48 @@ function ProviderWithConsumer() {
                 <ReposConsumer />
             </ReposProvider>
         </Wrapper>
+    );
+}
+
+/**
+ * Helper that pre-selects a repo via dispatch before ReposProvider mounts,
+ * then renders ReposConsumer showing the current selectedRepoId.
+ */
+function ProviderWithPreselectedRepo({ repoId }: { repoId: string }) {
+    return (
+        <Wrapper>
+            <PreSelector repoId={repoId}>
+                <ReposProvider>
+                    <SelectedRepoConsumer />
+                </ReposProvider>
+            </PreSelector>
+        </Wrapper>
+    );
+}
+
+function PreSelector({ repoId, children }: { repoId: string; children: ReactNode }) {
+    const { dispatch } = useApp();
+    const dispatched = useRef(false);
+    useLayoutEffect(() => {
+        if (!dispatched.current) {
+            dispatched.current = true;
+            dispatch({ type: 'SET_SELECTED_REPO', id: repoId });
+        }
+    }, [repoId, dispatch]);
+    return <>{children}</>;
+}
+
+function SelectedRepoConsumer() {
+    const { repos, loading } = useRepos();
+    const { state } = useApp();
+    return (
+        <div>
+            <div data-testid="selected-repo">{state.selectedRepoId ?? 'none'}</div>
+            <div data-testid="repo-loading">{String(loading)}</div>
+            {repos.map(r => (
+                <div key={r.workspace.id} data-testid={`repo-${r.workspace.id}`}>{r.workspace.name}</div>
+            ))}
+        </div>
     );
 }
 
@@ -173,5 +215,47 @@ describe('ReposContext', () => {
             expect(screen.getByTestId('repo-ws-1')).toBeTruthy();
         });
         expect(screen.getByTestId('has-refresh').textContent).toBe('function');
+    });
+
+    it('does not deselect a virtual workspace (e.g. my_work) on refresh', async () => {
+        // Regression: fetchRepos() used to check the filtered `enriched` list
+        // (which excludes virtual workspaces) to decide whether to clear selection.
+        // Virtual workspaces like my_work were never in that list, so every
+        // refresh would dispatch SET_SELECTED_REPO(null).
+        (fetchApi as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(makeWorkspacesResponse([
+                makeWorkspace('real-ws'),
+                { ...makeWorkspace('my_work', 'My Work'), virtual: true },
+            ]))
+            .mockResolvedValue(null);
+
+        render(<ProviderWithPreselectedRepo repoId="my_work" />);
+
+        // Wait for repos to load
+        await waitFor(() => {
+            expect(screen.getByTestId('repo-loading').textContent).toBe('false');
+        });
+
+        // The virtual workspace should still be selected
+        expect(screen.getByTestId('selected-repo').textContent).toBe('my_work');
+    });
+
+    it('clears selection when a non-virtual repo is removed', async () => {
+        // The guard should still clear selection for repos that genuinely disappear
+        (fetchApi as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(makeWorkspacesResponse([
+                makeWorkspace('remaining-ws'),
+                // 'removed-ws' is NOT in the response — it was unregistered
+            ]))
+            .mockResolvedValue(null);
+
+        render(<ProviderWithPreselectedRepo repoId="removed-ws" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('repo-loading').textContent).toBe('false');
+        });
+
+        // Selection should have been cleared because 'removed-ws' is gone
+        expect(screen.getByTestId('selected-repo').textContent).toBe('none');
     });
 });
