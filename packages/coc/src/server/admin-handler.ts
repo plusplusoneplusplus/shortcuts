@@ -224,7 +224,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -297,6 +297,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('myWork.enabled' in body) {
                 if (typeof body['myWork.enabled'] !== 'boolean') {
                     errors.push('myWork.enabled must be a boolean');
+                }
+            }
+            if ('myLife.enabled' in body) {
+                if (typeof body['myLife.enabled'] !== 'boolean') {
+                    errors.push('myLife.enabled must be a boolean');
                 }
             }
 
@@ -375,6 +380,12 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('myWork.enabled' in body) {
                 if (!existing.myWork) { existing.myWork = {}; }
                 existing.myWork.enabled = body['myWork.enabled'] as boolean;
+            }
+
+            // Handle nested myLife.enabled field
+            if ('myLife.enabled' in body) {
+                if (!existing.myLife) { existing.myLife = {}; }
+                existing.myLife.enabled = body['myLife.enabled'] as boolean;
             }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);
