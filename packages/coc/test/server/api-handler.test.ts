@@ -1178,7 +1178,7 @@ describe('API Handler', () => {
             expect(body.byStatus.cancelled).toBe(1);
             expect(body.byStatus.queued).toBe(0);
 
-            const nonGlobalWorkspaces = body.byWorkspace.filter((w: any) => w.workspaceId !== 'global-workspace-00');
+            const nonGlobalWorkspaces = body.byWorkspace.filter((w: any) => !['global-workspace-00', 'my_work', 'my_life'].includes(w.workspaceId));
             expect(nonGlobalWorkspaces).toHaveLength(2);
             const ws1 = nonGlobalWorkspaces.find((w: any) => w.workspaceId === 'ws-1');
             const ws2 = nonGlobalWorkspaces.find((w: any) => w.workspaceId === 'ws-2');
@@ -1195,7 +1195,7 @@ describe('API Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.totalProcesses).toBe(0);
             expect(body.byStatus.running).toBe(0);
-            const nonGlobalWorkspaces = body.byWorkspace.filter((w: any) => w.workspaceId !== 'global-workspace-00');
+            const nonGlobalWorkspaces = body.byWorkspace.filter((w: any) => !['global-workspace-00', 'my_work', 'my_life'].includes(w.workspaceId));
             expect(nonGlobalWorkspaces).toEqual([]);
         });
     });

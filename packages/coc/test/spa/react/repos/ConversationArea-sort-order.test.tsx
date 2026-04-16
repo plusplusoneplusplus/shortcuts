@@ -28,8 +28,14 @@ describe('ConversationArea: turn ordering', () => {
     });
 
     it('uses turnIndex as React key instead of array index', () => {
-        // Using turnIndex as key ensures React reconciles correctly even when order changes
-        expect(CONVERSATION_AREA_SOURCE).toMatch(/key=\{turn\.turnIndex/);
+        // Using turnIndex as key ensures React reconciles correctly even when order changes.
+        // The key may be passed via a local variable (e.g. `const idx = turn.turnIndex ?? i`)
+        // and then used as `key={idx}`, which is functionally equivalent.
+        const usesDirectKey = /key=\{turn\.turnIndex/.test(CONVERSATION_AREA_SOURCE);
+        const usesIdxVariable =
+            /const idx = turn\.turnIndex/.test(CONVERSATION_AREA_SOURCE) &&
+            /key=\{idx\}/.test(CONVERSATION_AREA_SOURCE);
+        expect(usesDirectKey || usesIdxVariable).toBe(true);
     });
 
     it('sorts turns without turnIndex to the end, not the beginning', () => {

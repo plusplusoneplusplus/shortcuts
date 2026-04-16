@@ -56,7 +56,7 @@ vi.mock('../../src/server/suggest-follow-ups-tool', () => ({
 }));
 
 const mockCreateUpdateTaskStatusTool = vi.fn(() => ({ tool: { name: 'update_task_status' } }));
-vi.mock('../../src/server/update-task-status-tool', () => ({
+vi.mock('../../src/server/llm-tools/update-task-status-tool', () => ({
     createUpdateTaskStatusTool: () => mockCreateUpdateTaskStatusTool(),
 }));
 

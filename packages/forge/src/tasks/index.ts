@@ -127,3 +127,9 @@ export {
     DiscoveryScope,
     DiscoveredItem,
 } from './discovery-prompt-builder';
+
+export {
+    // TaskManager facade (deprecated — use standalone functions above)
+    TaskManager,
+    TaskManagerOptions,
+} from './task-manager';

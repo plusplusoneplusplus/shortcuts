@@ -179,10 +179,23 @@ describe('POST /api/queue/:id/resume-chat', () => {
         const taskId = await enqueueChatTask(srv);
         const processId = `queue_${taskId}`;
 
-        // Wait for task to be picked up, then force the process back to 'running'
-        // to simulate an active session
+        // Wait for task to be picked up, then force the process to 'running' status
+        // to simulate an active session. Create the record directly if the task
+        // failed before the lifecycle runner could persist it (e.g. no mock aiService).
         await new Promise(r => setTimeout(r, 500));
-        await store.updateProcess(processId, { status: 'running' });
+        const existing = await store.getProcess(processId);
+        if (existing) {
+            await store.updateProcess(processId, { status: 'running' });
+        } else {
+            await store.addProcess({
+                id: processId,
+                type: 'chat',
+                status: 'running',
+                startTime: new Date(),
+                promptPreview: 'Hello world',
+                fullPrompt: 'Hello world',
+            } as any);
+        }
 
         const res = await postJSON(`${srv.url}/api/queue/${encodeURIComponent(taskId)}/resume-chat`);
         expect(res.status).toBe(400);
@@ -197,10 +210,16 @@ describe('POST /api/queue/:id/resume-chat', () => {
         // Wait for the task to be picked up, then force the process to a completed state without turns
         await new Promise(r => setTimeout(r, 500));
 
-        // Directly update process to simulate expired state with no turns
+        // Directly update process to simulate expired state with no turns.
+        // Fall back to a minimal record if the lifecycle runner didn't persist it
+        // (e.g. no mock aiService caused the task to fail before addProcess).
         const existing1 = await store.getProcess(processId);
+        const baseProcess1 = existing1 ?? {
+            id: processId, type: 'chat', startTime: new Date(),
+            promptPreview: 'Hello world', fullPrompt: 'Hello world',
+        };
         await store.addProcess({
-            ...existing1!,
+            ...baseProcess1,
             status: 'failed',
             conversationTurns: [],
             sdkSessionId: 'expired-session',
@@ -220,9 +239,15 @@ describe('POST /api/queue/:id/resume-chat', () => {
         // Wait for task execution, then simulate completed + expired state
         await new Promise(r => setTimeout(r, 1000));
 
+        // Fall back to a minimal record if the lifecycle runner didn't persist it
+        // (e.g. no mock aiService caused the task to fail before addProcess).
         const existing2 = await store.getProcess(processId);
+        const baseProcess2 = existing2 ?? {
+            id: processId, type: 'chat', startTime: new Date(),
+            promptPreview: 'Hello world', fullPrompt: 'Hello world',
+        };
         await store.addProcess({
-            ...existing2!,
+            ...baseProcess2,
             status: 'completed',
             sdkSessionId: 'dead-session-id',
             conversationTurns: [

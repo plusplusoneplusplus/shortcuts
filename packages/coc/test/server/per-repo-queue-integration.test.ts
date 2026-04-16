@@ -266,8 +266,8 @@ describe('Per-Repo Queue Integration', () => {
             const res = await postJSON(`${baseUrl}/api/queue`, makeTask(undefined));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            // repoId should be undefined (not set)
-            expect(body.task.repoId).toBeUndefined();
+            // Tasks without a working directory are routed to the global workspace
+            expect(body.task.repoId).toBe('global-workspace-00');
         });
     });
 
@@ -706,8 +706,8 @@ describe('Per-Repo Queue Integration', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
             expect(body.task.id).toBeDefined();
-            // repoId should be undefined
-            expect(body.task.repoId).toBeUndefined();
+            // Tasks without a working directory are routed to the global workspace
+            expect(body.task.repoId).toBe('global-workspace-00');
         });
 
         it('should reject task with invalid type regardless of repoId', async () => {
@@ -728,8 +728,8 @@ describe('Per-Repo Queue Integration', () => {
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            // Empty/whitespace repoId should not be set
-            expect(body.task.repoId).toBeUndefined();
+            // Tasks without a working directory are routed to the global workspace
+            expect(body.task.repoId).toBe('global-workspace-00');
         });
 
         it('should cancel task from one repo without affecting another', async () => {
