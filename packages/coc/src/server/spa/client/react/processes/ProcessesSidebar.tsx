@@ -4,13 +4,14 @@
  * enqueue button, and collapsible history in a single scrollable section.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { Card, Badge, Button, cn } from '../shared';
 import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '../utils/format';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import { getApiBase } from '../utils/config';
+import { fetchApi } from '../hooks/useApi';
 
 export interface TypeFilterOptions {
     includeTypes?: string[];
@@ -161,6 +162,41 @@ export function ProcessesSidebar() {
 
     const isEmpty = filteredRunning.length === 0 && filteredQueued.length === 0 && filteredLegacy.length === 0;
 
+    const hasMoreProcesses = state.processesOffset < state.processesTotal;
+    const sentinelRef = useRef<HTMLDivElement>(null);
+    const loadingRef = useRef(false);
+
+    const loadMoreProcesses = useCallback(async () => {
+        if (loadingRef.current || !hasMoreProcesses) return;
+        loadingRef.current = true;
+        dispatch({ type: 'SET_PROCESSES_LOADING', loading: true });
+        try {
+            const wsParam = state.workspace !== '__all' ? '&workspace=' + encodeURIComponent(state.workspace) : '';
+            const data = await fetchApi(`/processes/summaries?limit=20&offset=${state.processesOffset}${wsParam}`);
+            if (data?.summaries && Array.isArray(data.summaries)) {
+                dispatch({ type: 'APPEND_PROCESSES', processes: data.summaries, total: data.total ?? state.processesTotal });
+            }
+        } catch { /* ignore */ } finally {
+            loadingRef.current = false;
+        }
+    }, [dispatch, hasMoreProcesses, state.processesOffset, state.workspace, state.processesTotal]);
+
+    // IntersectionObserver for infinite scroll
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0]?.isIntersecting) {
+                    loadMoreProcesses();
+                }
+            },
+            { rootMargin: '200px' },
+        );
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [loadMoreProcesses]);
+
     return (
         <div className="flex flex-col gap-3 min-h-0 p-2">
             {/* Drain banner */}
@@ -310,6 +346,17 @@ export function ProcessesSidebar() {
                             </Card>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Infinite scroll sentinel + loading indicator */}
+            {hasMoreProcesses && (
+                <div ref={sentinelRef} data-testid="load-more-sentinel" className="flex justify-center py-2">
+                    {state.processesLoading ? (
+                        <span className="text-xs text-[#848484]" data-testid="load-more-spinner">Loading more…</span>
+                    ) : (
+                        <span className="text-xs text-[#848484]">Scroll for more</span>
+                    )}
                 </div>
             )}
 
