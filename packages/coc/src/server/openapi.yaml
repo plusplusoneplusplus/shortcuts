@@ -24,6 +24,8 @@ tags:
     description: Per-process read/unread (seen/unseen) tracking
   - name: pin-archive
     description: Pin and archive management for processes
+  - name: stats
+    description: Token usage statistics
 
 paths:
   /api/health:
@@ -147,6 +149,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: setEnabledModels
+      summary: Set enabled models
+      description: Replace the list of enabled model IDs. Persists to the server config file.
+      tags:
+        - models
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabledModels
+              properties:
+                enabledModels:
+                  type: array
+                  items:
+                    type: string
+                  description: Model IDs to enable
+      responses:
+        '200':
+          description: Updated enabled models list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - enabledModels
+                properties:
+                  enabledModels:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Validation error (enabledModels must be an array of strings)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/providers/config:
     get:
@@ -165,6 +213,52 @@ paths:
                 $ref: '#/components/schemas/ProviderConfigResponse'
         '500':
           description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: updateProviderConfig
+      summary: Update provider credentials
+      description: >-
+        Validate and persist provider credentials. Accepts GitHub token and/or
+        Azure DevOps org URL. Returns 204 No Content on success.
+      tags:
+        - providers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                github:
+                  type: object
+                  properties:
+                    token:
+                      type: string
+                      description: GitHub personal access token (non-empty string)
+                  required:
+                    - token
+                ado:
+                  type: object
+                  properties:
+                    orgUrl:
+                      type: string
+                      description: Azure DevOps organization URL (non-empty string)
+                  required:
+                    - orgUrl
+      responses:
+        '204':
+          description: Provider config saved successfully
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -575,6 +669,164 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stats/token-usage:
+    get:
+      operationId: getTokenUsageStats
+      summary: Get token usage statistics
+      description: >-
+        Aggregates per-day, per-model token consumption across all persisted
+        processes. Optionally filtered to the last N days.
+      tags:
+        - stats
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: >-
+            Limit results to the last N days. Only processes whose start time
+            falls within the window are included. Omit for all-time stats.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Aggregated token usage stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenUsageStatsResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/logs/history:
+    get:
+      operationId: getLogHistory
+      summary: Query buffered log entries
+      description: >-
+        Returns structured log entries from the in-memory ring buffer (max 1000
+        entries). Results are returned newest-first. Supports filtering by level,
+        component, session, time, and free-text search.
+      tags:
+        - logs
+      parameters:
+        - name: level
+          in: query
+          required: false
+          description: >-
+            Minimum log level to include. Only entries at this level or above
+            are returned.
+          schema:
+            type: string
+            enum: [trace, debug, info, warn, error, fatal]
+        - name: component
+          in: query
+          required: false
+          description: Only include entries from this source component
+          schema:
+            type: string
+        - name: sessionId
+          in: query
+          required: false
+          description: Only include entries from this AI session
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: >-
+            Maximum number of entries to return (default 200, max 1000).
+            Values above 1000 are clamped.
+          schema:
+            type: integer
+            default: 200
+            minimum: 1
+            maximum: 1000
+        - name: before
+          in: query
+          required: false
+          description: >-
+            ISO 8601 timestamp cursor — return only entries with ts before this
+            value. Used for pagination.
+          schema:
+            type: string
+            format: date-time
+        - name: search
+          in: query
+          required: false
+          description: >-
+            Free-text search string. Case-insensitive match against msg,
+            component, and sessionId fields.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Log entries matching the query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogHistoryResponse'
+
+  /api/logs/stream:
+    get:
+      operationId: streamLogs
+      summary: Stream live log entries (SSE)
+      description: >-
+        Opens a Server-Sent Events stream for real-time log entries. On
+        connection, replays up to 200 buffered history entries as a single
+        `history` event (oldest-first), then emits individual `log-entry`
+        events as they occur. A `heartbeat` event is sent every 15 seconds.
+        
+        SSE event types:
+        - `history` — JSON array of LogEntry objects (initial replay)
+        - `log-entry` — single LogEntry object
+        - `heartbeat` — empty object `{}`
+      tags:
+        - logs
+      parameters:
+        - name: level
+          in: query
+          required: false
+          description: >-
+            Minimum log level filter. Only entries at this level or above
+            are streamed.
+          schema:
+            type: string
+            enum: [trace, debug, info, warn, error, fatal]
+        - name: sessionId
+          in: query
+          required: false
+          description: Only stream entries from this AI session
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SSE stream of log entries
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-cache
+            Connection:
+              schema:
+                type: string
+                example: keep-alive
+            X-Accel-Buffering:
+              schema:
+                type: string
+                example: 'no'
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >-
+                  Server-Sent Events stream. Each event has `event:` and
+                  `data:` fields. Event types: history (LogEntry[]),
+                  log-entry (LogEntry), heartbeat ({}).
 
 components:
   schemas:
@@ -1059,6 +1311,132 @@ components:
           type: array
           items:
             type: string
+
+    TokenUsage:
+      type: object
+      description: Aggregated token consumption counters
+      required:
+        - inputTokens
+        - outputTokens
+        - cacheReadTokens
+        - cacheWriteTokens
+        - totalTokens
+        - turnCount
+      properties:
+        inputTokens:
+          type: integer
+          description: Total input tokens consumed
+        outputTokens:
+          type: integer
+          description: Total output tokens generated
+        cacheReadTokens:
+          type: integer
+          description: Total cache-read tokens
+        cacheWriteTokens:
+          type: integer
+          description: Total cache-write tokens
+        totalTokens:
+          type: integer
+          description: Sum of inputTokens + outputTokens
+        cost:
+          type: number
+          description: Cumulative cost (present only if reported by the SDK)
+        duration:
+          type: number
+          description: Cumulative duration in ms (present only if reported by the SDK)
+        turnCount:
+          type: integer
+          description: Number of assistant.usage events received (one per turn)
+
+    TokenUsageStatsEntry:
+      type: object
+      description: Token usage aggregated for a single UTC day
+      required:
+        - date
+        - byModel
+        - dayTotal
+      properties:
+        date:
+          type: string
+          description: "UTC date in YYYY-MM-DD format"
+          example: "2025-01-15"
+        byModel:
+          type: object
+          description: "Model name → aggregated TokenUsage for that day"
+          additionalProperties:
+            $ref: '#/components/schemas/TokenUsage'
+        dayTotal:
+          $ref: '#/components/schemas/TokenUsage'
+
+    TokenUsageStatsResponse:
+      type: object
+      description: Aggregated token usage statistics across all processes
+      required:
+        - entries
+        - models
+        - generatedAt
+        - totalDays
+      properties:
+        entries:
+          type: array
+          description: Per-day usage entries sorted by date descending
+          items:
+            $ref: '#/components/schemas/TokenUsageStatsEntry'
+        models:
+          type: array
+          description: Sorted deduplicated list of all model names seen
+          items:
+            type: string
+        generatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the stats were generated
+        totalDays:
+          type: integer
+          description: Number of entries (days with data)
+
+    LogEntry:
+      type: object
+      description: A single structured log entry
+      required:
+        - ts
+        - level
+        - msg
+      properties:
+        ts:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+        level:
+          type: string
+          enum: [trace, debug, info, warn, error, fatal]
+          description: Log severity level
+        component:
+          type: string
+          description: "Source component (http, websocket, queue, ai-service, coc-service, …)"
+        sessionId:
+          type: string
+          description: AI session identifier (present on SDK wrapper logs)
+        msg:
+          type: string
+          description: Log message text
+      additionalProperties: true
+
+    LogHistoryResponse:
+      type: object
+      description: Paginated log history result
+      required:
+        - entries
+        - total
+      properties:
+        entries:
+          type: array
+          description: Log entries in newest-first order
+          items:
+            $ref: '#/components/schemas/LogEntry'
+        total:
+          type: integer
+          description: Number of entries returned (equals entries.length)
 
   parameters:
     WorkspaceId:
