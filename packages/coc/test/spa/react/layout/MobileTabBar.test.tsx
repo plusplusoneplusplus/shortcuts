@@ -72,17 +72,17 @@ describe('MobileTabBar: basic render', () => {
         expect(screen.queryByTestId('mobile-tab-more-btn')).toBeNull();
     });
 
-    it('nav has fixed bottom-0 classes', () => {
+    it('nav is in normal document flow (not fixed)', () => {
         renderBar();
         const nav = screen.getByTestId('mobile-tab-bar');
-        expect(nav.className).toContain('fixed');
-        expect(nav.className).toContain('bottom-0');
+        expect(nav.className).not.toContain('fixed');
+        expect(nav.className).not.toContain('bottom-0');
     });
 
-    it('nav has z-[8000] class', () => {
+    it('nav uses border-b instead of border-t', () => {
         renderBar();
         const nav = screen.getByTestId('mobile-tab-bar');
-        expect(nav.className).toContain('z-[8000]');
+        expect(nav.className).toContain('border-b');
     });
 
     it('nav has aria-label "Repo tab navigation"', () => {

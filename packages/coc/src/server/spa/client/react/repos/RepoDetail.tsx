@@ -480,7 +480,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         <RepoActivityTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />
                     </div>
                 ) : (
-                    <div className={cn("h-full min-w-0", isMobile && "pb-12", activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                         <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
