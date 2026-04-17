@@ -61,7 +61,7 @@ export interface ActivityChatDetailProps {
     hideModeSelector?: boolean;
 }
 
-export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false }: ActivityChatDetailProps) {
+export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = true }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -577,6 +577,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         onBack?.();
     };
 
+    const handleStop = async () => {
+        if (!processId) return;
+        setSending(false);
+        try {
+            await fetchApi(`/processes/${encodeURIComponent(processId)}/cancel`, { method: 'POST' });
+        } catch { /* best-effort */ }
+    };
+
     const handleMoveToTop = async () => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(bareTaskId) + '/move-to-top', { method: 'POST' });
         queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
@@ -699,6 +707,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     setSelectedMode={setSelectedMode}
                     onSend={sendFollowUp}
                     onRetry={retryLastMessage}
+                    onStop={handleStop}
                     skills={skills}
                     attachments={attachments}
                     onAttachmentPaste={addFromPaste}
