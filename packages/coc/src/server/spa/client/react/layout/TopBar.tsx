@@ -91,7 +91,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
 
     const selectRepo = useCallback((id: string) => {
         dispatch({ type: 'SET_SELECTED_REPO', id });
-        const subTab = state.repoTabState[id] ?? 'settings';
+        const subTab = state.repoTabState[id] ?? 'chats';
         const suffix = subTab === 'settings'
             ? `/${subTab}/${state.settingsSection}`
             : `/${subTab}`;

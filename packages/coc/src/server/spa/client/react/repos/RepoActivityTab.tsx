@@ -26,13 +26,14 @@ import { isQueueProcessId, toQueueProcessId, toTaskId } from '../utils/queue-pro
 
 export interface RepoActivityTabProps {
     workspaceId: string;
+    mode?: 'chats' | 'tasks';
 }
 
 function getActiveProcessIds(tasks: any[]): string[] {
     return tasks.map((task: any) => task.processId ?? toQueueProcessId(task.id));
 }
 
-export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
+export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
     const [history, setHistory] = useState<ProcessHistoryItem[]>([]);
