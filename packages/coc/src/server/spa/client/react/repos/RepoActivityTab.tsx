@@ -393,6 +393,23 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
             fetchQueue={fetchQueue}
             pauseReason={pauseReason}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={handleLoadMore}
+            searchResults={searchResults}
+            searchLoading={searchLoading}
+            searchTotal={searchTotal}
+            searchHasMore={searchHasMore}
+            searchLoadingMore={searchLoadingMore}
+            onSearchQueryChange={handleSearchQueryChange}
+            onLoadMoreSearchResults={searchLoadMore}
+            activeTab={mode}
+            onNewChat={() => {
+                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+                setSelectedTask(null);
+                selectedTaskRef.current = null;
+                if (isMobile) setMobileShowDetail(true);
+            }}
         />
     );
 

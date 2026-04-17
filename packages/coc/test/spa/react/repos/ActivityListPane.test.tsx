@@ -239,9 +239,9 @@ describe('ActivityListPane', () => {
             expect(screen.getByText('Queue is paused')).toBeTruthy();
         });
 
-        it('shows "Queue Task" button when not paused', () => {
+        it('shows empty state text when not paused', () => {
             renderPane();
-            expect(screen.getByTestId('repo-queue-task-btn-empty')).toBeTruthy();
+            expect(screen.getByText(/No tasks in queue/)).toBeTruthy();
         });
 
         it('shows refreshing indicator when isRefreshing and empty', () => {

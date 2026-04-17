@@ -7,22 +7,27 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Badge, Card, Button, cn, FilterDropdown } from '../shared';
+import { Card, Button, cn, FilterDropdown } from '../shared';
 import type { FilterItem } from '../shared';
 import { getApiBase } from '../utils/config';
 import { copyToClipboard, formatDuration, formatRelativeTime } from '../utils/format';
+import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { buildRows } from '../processes/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
+import { RenameDialog } from '../shared/RenameDialog';
+import { fetchApi } from '../hooks/useApi';
 import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 import { getDraft } from '../hooks/useDraftStore';
 import { useLongPress } from '../hooks/useLongPress';
 import { useChatPrefs } from '../context/ChatPreferencesContext';
+import { useQueue } from '../context/QueueContext';
+import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
-
-export type ActivityTabMode = 'chats' | 'tasks';
+import { groupHistoryByPlanFile, type HistoryGroup } from './history-grouping';
+import { HistoryGroupHeader } from './HistoryGroupHeader';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -38,17 +43,25 @@ const CHAT_MODE_LABELS: Record<string, string> = {
     'autopilot': 'Autopilot',
 };
 
+export type ActivityTabMode = 'chats' | 'tasks';
+
 /** Session category labels for display and filtering. */
 export const SESSION_CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
     'generating-code': { label: 'Generating Code', icon: '⚙️', color: 'text-blue-600 dark:text-blue-400' },
-    'resolve-plan-comments': { label: 'Resolve Plan', icon: '📝', color: 'text-purple-600 dark:text-purple-400' },
-    'resolve-commit-comments': { label: 'Resolve Commit', icon: '🔧', color: 'text-amber-600 dark:text-amber-400' },
+    'resolve-plan-comments': { label: 'Resolve Plan', icon: '📥', color: 'text-purple-600 dark:text-purple-400' },
+    'resolve-commit-comments': { label: 'Resolve Commit', icon: '🔺', color: 'text-amber-600 dark:text-amber-400' },
 };
 
 /** Extract session category from a task's payload. */
 export function getSessionCategory(task: any): string | undefined {
     return task.payload?.sessionCategory as string | undefined;
 }
+
+/** Returns true if a task belongs to the Chats tab (any chat mode, not a work-item execution). */
+export function isChatTask(task: any): boolean {
+    return task.type === 'chat' && !task.payload?.workItemId;
+}
+const isChat = isChatTask;
 
 export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolean {
     if (excludedTypes.size === 0) return true;
@@ -58,7 +71,7 @@ export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolea
     // Parent 'chat' exclusion hides all chat tasks (including those with modes)
     if (task.type === 'chat') {
         if (excludedTypes.has('chat')) return false;
-        const mode = task.payload?.mode as string | undefined;
+        const mode = (task.payload?.mode ?? task.mode) as string | undefined;
         if (mode) return !excludedTypes.has(mode);
         return true;
     }
@@ -69,19 +82,29 @@ export function taskMatchesSearch(task: any, query: string): boolean {
     if (!query) return true;
     const q = query.toLowerCase();
     const title = (task.displayName || task.title || '').toLowerCase();
-    const prompt = (task.prompt || task.payload?.promptContent || task.payload?.prompt || '').toLowerCase();
+    const prompt = (task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '').toLowerCase();
     return title.includes(q) || prompt.includes(q);
 }
 
-
-/** Returns true if a task belongs to the Chats tab (any chat mode, not a work-item execution). */
-export function isChatTask(task: any): boolean {
-    return task.type === 'chat' && !task.payload?.workItemId;
+/** Return a type-specific icon for a task, matching the chat mode selector icons. */
+export function getTaskTypeIcon(task: any): string {
+    const type = task.type as string;
+    const payload = task.payload || {};
+    const mode = payload.mode ?? task.mode;
+    if (payload.scheduleId || task.scheduleId) return '📅';
+    if (type === 'chat') {
+        if (mode === 'ask') return '💡';
+        if (mode === 'plan') return '📋';
+        return '🤖';
+    }
+    if (type === 'run-workflow') return '▶️';
+    if (type === 'run-script') return '🛠️';
+    return '🤖';
 }
 
 /** Extract a short preview of the user prompt from the task payload. */
 export function getTaskPromptPreview(task: any): string {
-    const text = task.prompt || task.payload?.promptContent || task.payload?.prompt || '';
+    const text = task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '';
     if (!text || /^Use the \S+ skill\.$/.test(text)) return '';
     return text.length > 60 ? text.substring(0, 57) + '…' : text;
 }
@@ -97,10 +120,8 @@ export interface ActivityListPaneProps {
     isMobile: boolean;
     now: number;
     workspaceId?: string;
-    activeTab: ActivityTabMode;
-    onTabChange: (tab: ActivityTabMode) => void;
-    /** Set of task IDs with unseen activity (bold + dot indicator). */
-    unseenTaskIds?: Set<string>;
+    /** Set of process IDs with unseen activity (bold + dot indicator). */
+    unseenProcessIds?: Set<string>;
     /** Mark all completed tasks as read (receives the currently-filtered task list). */
     onMarkAllRead?: (tasks: any[]) => void;
     /** Mark a single completed task as read. */
@@ -117,11 +138,33 @@ export interface ActivityListPaneProps {
     onPauseResumeAutopilot?: () => void;
     onRefresh: () => void;
     onOpenDialog: () => void;
-    /** Deselect the current task so the inline NewChatArea is shown. */
-    onNewChat?: () => void;
     fetchQueue: () => Promise<void>;
     /** Reason for the current pause (present when auto-paused due to task failure). */
     pauseReason?: { taskId: string; displayName: string; failedAt: string };
+    /** True when there are more completed tasks to load from the server. */
+    hasMore?: boolean;
+    /** True while a "Load more" request is in-flight. */
+    loadingMore?: boolean;
+    /** Callback to load the next page of completed tasks. */
+    onLoadMore?: () => void;
+    /** Server-side FTS5 search results (null = not searching, [] = no results). */
+    searchResults?: any[] | null;
+    /** True while server search is in-flight. */
+    searchLoading?: boolean;
+    /** Total number of server-side search matches. */
+    searchTotal?: number;
+    /** Whether there are more search results to load. */
+    searchHasMore?: boolean;
+    /** True while loading more search results. */
+    searchLoadingMore?: boolean;
+    /** Callback when user types in search — drives server-side search from parent. */
+    onSearchQueryChange?: (query: string) => void;
+    /** Callback to load more server-side search results. */
+    onLoadMoreSearchResults?: () => void;
+    /** Active tab mode — 'chats' shows a flat time-sorted chat list; 'tasks' shows queue-style sections. */
+    activeTab?: ActivityTabMode;
+    /** Deselect the current task so the inline NewChatArea is shown. */
+    onNewChat?: () => void;
 }
 
 function formatMetadataText(task: any): string {
@@ -139,7 +182,7 @@ export function ActivityListPane({
     isMobile,
     now,
     workspaceId,
-    unseenTaskIds,
+    unseenProcessIds,
     onMarkAllRead,
     onMarkRead,
     onMarkUnread,
@@ -148,30 +191,61 @@ export function ActivityListPane({
     isAutopilotPaused,
     isAutopilotPauseLoading,
     onPauseResumeAutopilot,
-    activeTab,
-    onTabChange,
     onRefresh,
     onOpenDialog,
-    onNewChat,
     fetchQueue,
     pauseReason,
+    hasMore,
+    loadingMore,
+    onLoadMore,
+    searchResults,
+    searchLoading,
+    searchTotal,
+    searchHasMore,
+    searchLoadingMore,
+    onSearchQueryChange,
+    onLoadMoreSearchResults,
+    activeTab,
+    onNewChat,
 }: ActivityListPaneProps) {
+    const { state: queueState } = useQueue();
+    const isTaskSubmitting = queueState.isTaskSubmitting;
+
+    /** Check if a task is the currently selected one (processId-aware). */
+    const isSelected = useCallback((taskId: string): boolean => {
+        if (!selectedTaskId) return false;
+        if (taskId === selectedTaskId) return true;
+        // selectedTaskId is a processId; check if bare taskId matches via prefix
+        if (!isQueueProcessId(taskId) && toQueueProcessId(taskId) === selectedTaskId) return true;
+        return false;
+    }, [selectedTaskId]);
     const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
+
+    const setSearchQuery = useCallback((q: string) => {
+        setSearchQueryRaw(q);
+        onSearchQueryChange?.(q);
+    }, [onSearchQueryChange]);
+
+    const isServerSearchActive = searchResults != null;
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed'; bulkIds?: string[] } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
     const [summarizeDialogOpen, setSummarizeDialogOpen] = useState(false);
     const [summarizeDialogIds, setSummarizeDialogIds] = useState<string[]>([]);
+    const [renameTarget, setRenameTarget] = useState<{ taskId: string; title: string } | null>(null);
 
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
+    const { taskCardDensity, historyGrouping } = useDisplaySettings();
+    const isDense = taskCardDensity === 'dense';
 
     useEffect(() => {
         setExcludedTypes(new Set());
-        setSearchQuery('');
+        setSearchQueryRaw('');
+        onSearchQueryChange?.('');
         setSearchVisible(false);
     }, [workspaceId]);
 
@@ -218,23 +292,13 @@ export function ActivityListPane({
             if (!types.has(type)) continue;
             if (type === 'chat') {
                 const chatTasks = allTasks.filter((t: any) => t.type === 'chat');
-                const modes = new Set(chatTasks.map((t: any) => t.payload?.mode as string).filter(Boolean));
+                const modes = new Set(chatTasks.map((t: any) => (t.payload?.mode ?? t.mode) as string).filter(Boolean));
                 const children = Object.entries(CHAT_MODE_LABELS)
                     .filter(([mode]) => modes.has(mode))
                     .map(([mode, modeLabel]) => ({ value: mode, label: modeLabel }));
                 opts.push({ value: type, label, ...(children.length > 0 && { children }) });
             } else {
                 opts.push({ value: type, label });
-            }
-        }
-        // Add session category filter group when categories are present
-        const categories = new Set(allTasks.map(getSessionCategory).filter(Boolean));
-        if (categories.size > 0) {
-            const catChildren = Object.entries(SESSION_CATEGORY_LABELS)
-                .filter(([cat]) => categories.has(cat))
-                .map(([cat, { label, icon }]) => ({ value: `cat:${cat}`, label: `${icon} ${label}` }));
-            if (catChildren.length > 0) {
-                opts.push({ value: 'session-category', label: 'Session Category', children: catChildren });
             }
         }
         return opts;
@@ -247,38 +311,24 @@ export function ActivityListPane({
     );
     const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [history, excludedTypes, searchQuery]);
 
-    // Tab-aware filtering:
-    //   chats = type === 'chat' (interactive sessions), excluding work item executions
-    //   tasks = everything else, including work item execution tasks (identified by payload.workItemId)
-    const isChat = isChatTask;
-    const tabFilteredRunning = useMemo(() =>
-        activeTab === 'chats' ? filteredRunning.filter(isChat) : filteredRunning.filter(t => !isChat(t)),
-        [filteredRunning, activeTab]
-    );
-    const tabFilteredQueued = useMemo(
-        () => activeTab === 'chats'
-            ? filteredQueued.filter(t => t.kind === 'pause-marker' || isChat(t))
-            : filteredQueued.filter(t => t.kind === 'pause-marker' || !isChat(t)),
-        [filteredQueued, activeTab]
-    );
-    const tabFilteredHistory = useMemo(
-        () => activeTab === 'chats' ? filteredHistory.filter(isChat) : filteredHistory.filter(t => !isChat(t)),
-        [filteredHistory, activeTab]
-    );
+    // Tab-aware filtered arrays for empty state detection
+    const tabFilteredRunning = useMemo(() => activeTab === 'chats' ? filteredRunning.filter(isChat) : filteredRunning, [activeTab, filteredRunning]);
+    const tabFilteredQueued = useMemo(() => activeTab === 'chats' ? [] : filteredQueued, [activeTab, filteredQueued]);
+    const tabFilteredHistory = useMemo(() => activeTab === 'chats' ? filteredHistory.filter(isChat) : filteredHistory, [activeTab, filteredHistory]);
 
     // Separate archived from non-archived history
     const { activeHistory, filteredArchived } = useMemo(() => {
         if (!archivedChatIds || archivedChatIds.size === 0) {
-            return { activeHistory: tabFilteredHistory, filteredArchived: [] };
+            return { activeHistory: filteredHistory, filteredArchived: [] };
         }
         const active: any[] = [];
         const archived: any[] = [];
-        for (const task of tabFilteredHistory) {
+        for (const task of filteredHistory) {
             if (archivedChatIds.has(task.id)) archived.push(task);
             else active.push(task);
         }
         return { activeHistory: active, filteredArchived: archived };
-    }, [tabFilteredHistory, archivedChatIds]);
+    }, [filteredHistory, archivedChatIds]);
 
     // Split active history into pinned and non-pinned, preserving pin order
     const { filteredPinned, filteredUnpinned } = useMemo(() => {
@@ -299,19 +349,13 @@ export function ActivityListPane({
         return { filteredPinned: pinned, filteredUnpinned: unpinned };
     }, [activeHistory, pinnedChatIds]);
 
-    // Count pinned tasks that are still running (not yet in history)
-    const pinnedRunningCount = useMemo(() => {
-        if (!pinnedChatIds) return 0;
-        return tabFilteredRunning.filter(t => pinnedChatIds.has(t.id)).length;
-    }, [tabFilteredRunning, pinnedChatIds]);
-
-    // Chats tab: merge running chats + history chats into a single sorted list
+    // Chats tab: merge running chats + history chats into a single time-sorted list
     const chatAllItems = useMemo(() => {
         if (activeTab !== 'chats') return { pinned: [] as any[], unpinned: [] as any[], archived: [] as any[] };
         const runningChats = filteredRunning.filter(isChat);
         const historyChats = filteredHistory.filter(isChat);
         const all = [...runningChats, ...historyChats];
-        // Deduplicate by processId — running tasks take priority (appear first)
+        // Deduplicate by processId — running tasks take priority
         const seenProcessIds = new Set<string>();
         const deduped = all.filter(t => {
             const key = t.processId || t.id;
@@ -319,7 +363,6 @@ export function ActivityListPane({
             seenProcessIds.add(key);
             return true;
         });
-        // Sort by most recent activity (running first via startedAt, then completedAt)
         deduped.sort((a, b) => {
             const timeA = a.completedAt || a.startedAt || a.createdAt || 0;
             const timeB = b.completedAt || b.startedAt || b.createdAt || 0;
@@ -334,7 +377,6 @@ export function ActivityListPane({
             if (pinnedChatIds?.has(t.id)) { pinnedById.set(t.id, t); continue; }
             unpinned.push(t);
         }
-        // Preserve pin order
         if (pinnedChatIds) {
             for (const id of pinnedChatIds) {
                 const t = pinnedById.get(id);
@@ -343,6 +385,48 @@ export function ActivityListPane({
         }
         return { pinned, unpinned, archived };
     }, [activeTab, filteredRunning, filteredHistory, pinnedChatIds, archivedChatIds]);
+
+    // Group unpinned history by plan file (when grouping is enabled)
+    const groupedUnpinned = useMemo(
+        () => historyGrouping ? groupHistoryByPlanFile(filteredUnpinned, unseenProcessIds) : null,
+        [filteredUnpinned, unseenProcessIds, historyGrouping],
+    );
+
+    // Expand/collapse state for plan-file groups
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    const toggleGroup = useCallback((planFilePath: string) => {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            next.has(planFilePath) ? next.delete(planFilePath) : next.add(planFilePath);
+            return next;
+        });
+    }, []);
+
+    // Auto-collapse groups where all children are seen (on group list change)
+    const prevGroupKeysRef = useRef<string>('');
+    useEffect(() => {
+        if (!groupedUnpinned) return;
+        const groupKeys = groupedUnpinned
+            .filter((e): e is HistoryGroup => e.kind === 'group')
+            .map(g => g.planFilePath)
+            .sort()
+            .join('\0');
+        if (groupKeys === prevGroupKeysRef.current) return;
+        prevGroupKeysRef.current = groupKeys;
+        const toCollapse = new Set<string>();
+        for (const entry of groupedUnpinned) {
+            if (entry.kind === 'group' && !entry.hasUnseen) {
+                toCollapse.add(entry.planFilePath);
+            }
+        }
+        if (toCollapse.size > 0) setCollapsedGroups(toCollapse);
+    }, [groupedUnpinned]);
+
+    // Count pinned tasks that are still running (not yet in history)
+    const pinnedRunningCount = useMemo(() => {
+        if (!pinnedChatIds) return 0;
+        return filteredRunning.filter(t => pinnedChatIds.has(t.id)).length;
+    }, [filteredRunning, pinnedChatIds]);
 
     const [showRunning, setShowRunning] = useState(true);
     const [showQueued, setShowQueued] = useState(true);
@@ -356,7 +440,10 @@ export function ActivityListPane({
     };
 
     const deleteChatDirect = async (taskId: string) => {
-        const res = await fetch(getApiBase() + '/queue/history/' + encodeURIComponent(taskId), { method: 'DELETE' });
+        const url = workspaceId
+            ? getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/history/' + encodeURIComponent(taskId)
+            : getApiBase() + '/queue/history/' + encodeURIComponent(taskId);
+        const res = await fetch(url, { method: 'DELETE' });
         if (res.ok) {
             fetchQueue();
         }
@@ -392,9 +479,16 @@ export function ActivityListPane({
         fetchQueue();
     };
 
+    const [isAdmitting, setIsAdmitting] = useState(false);
+
     const handleAdmit = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/admit', { method: 'POST' });
-        fetchQueue();
+        setIsAdmitting(true);
+        try {
+            await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/admit', { method: 'POST' });
+            await fetchQueue();
+        } finally {
+            setIsAdmitting(false);
+        }
     };
 
     const handleUnadmit = async (taskId: string) => {
@@ -436,47 +530,19 @@ export function ActivityListPane({
     const activeDropTargetIndex = dropTargetIndex ?? touchDrag.dropTargetIndex;
     const activeDropPosition = dropPosition || touchDrag.dropPosition;
 
-    // ── History/archived long-press (shared refs — only one touch at a time) ──
-    const historyLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const historyLongPressFired = useRef(false);
-    const historyTouchStartPos = useRef({ x: 0, y: 0 });
+    // ── History/archived long-press via shared useLongPress hook ──
+    const historyLongPressTaskRef = useRef<string>('');
 
-    const cancelHistoryLongPress = useCallback(() => {
-        if (historyLongPressTimer.current !== null) {
-            clearTimeout(historyLongPressTimer.current);
-            historyLongPressTimer.current = null;
-        }
-    }, []);
-
-    const handleHistoryTouchStart = useCallback((e: React.TouchEvent, taskId: string) => {
-        historyLongPressFired.current = false;
-        if (e.touches.length !== 1) return;
-        const touch = e.touches[0];
-        historyTouchStartPos.current = { x: touch.clientX, y: touch.clientY };
-        const x = touch.clientX;
-        const y = touch.clientY;
-        cancelHistoryLongPress();
-        historyLongPressTimer.current = setTimeout(() => {
-            historyLongPressFired.current = true;
-            historyLongPressTimer.current = null;
+    const historyLongPress = useLongPress(
+        (x: number, y: number) => {
+            const taskId = historyLongPressTaskRef.current;
             const bulkIds =
                 selectedHistoryIds.size >= 2 && selectedHistoryIds.has(taskId)
                     ? Array.from(selectedHistoryIds)
                     : undefined;
             setContextMenu({ x, y, taskId, taskStatus: 'completed', bulkIds });
-        }, 500);
-    }, [cancelHistoryLongPress, selectedHistoryIds]);
-
-    const handleHistoryTouchMove = useCallback((e: React.TouchEvent) => {
-        if (historyLongPressTimer.current === null) return;
-        const touch = e.touches[0];
-        if (!touch) { cancelHistoryLongPress(); return; }
-        const dx = touch.clientX - historyTouchStartPos.current.x;
-        const dy = touch.clientY - historyTouchStartPos.current.y;
-        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-            cancelHistoryLongPress();
-        }
-    }, [cancelHistoryLongPress]);
+        },
+    );
 
     // Clean up stale selection when the filtered list changes
     useEffect(() => {
@@ -540,6 +606,20 @@ export function ActivityListPane({
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
+    const handleRenameConfirm = useCallback(async (newTitle: string) => {
+        if (!renameTarget) return;
+        const processId = ensureQueueProcessId(renameTarget.taskId);
+        setRenameTarget(null);
+        try {
+            await fetchApi(`/processes/${encodeURIComponent(processId)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: newTitle }),
+            });
+            fetchQueue();
+        } catch { /* WS will sync eventually */ }
+    }, [renameTarget, fetchQueue]);
+
     const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!contextMenu) return [];
         const { taskId, taskStatus } = contextMenu;
@@ -547,8 +627,8 @@ export function ActivityListPane({
         // Bulk context menu for multi-selected completed tasks
         if (contextMenu.bulkIds) {
             const ids = contextMenu.bulkIds;
-            const anyUnseen   = ids.some(id => unseenTaskIds?.has(id));
-            const anySeen     = ids.some(id => !unseenTaskIds?.has(id));
+            const anyUnseen   = ids.some(id => unseenProcessIds?.has(id));
+            const anySeen     = ids.some(id => !unseenProcessIds?.has(id));
             const anyPinned   = ids.some(id => pinnedChatIds?.has(id));
             const anyUnpinned = ids.some(id => !pinnedChatIds?.has(id));
             const anyArchived   = ids.some(id => archivedChatIds?.has(id));
@@ -583,6 +663,14 @@ export function ActivityListPane({
                         closeContextMenu();
                     },
                 },
+                // Rename available only for single-item selection
+                ...(ids.length === 1 ? [{
+                    label: 'Rename', icon: '✏️', onClick: () => {
+                        const task = history.find(t => t.id === ids[0]);
+                        setRenameTarget({ taskId: ids[0], title: task?.displayName || task?.title || task?.type || '' });
+                        closeContextMenu();
+                    },
+                }] : []),
                 { label: '', icon: '', separator: true, onClick: () => {} },
                 { label: `Delete ${ids.length} chats…`, icon: '🗑', onClick: () => {
                     if (confirm(`Delete ${ids.length} chats? This cannot be undone.`)) {
@@ -609,14 +697,19 @@ export function ActivityListPane({
             ];
         }
         if (taskStatus === 'completed') {
-            const isUnseen = unseenTaskIds?.has(taskId) ?? false;
+            const isUnseen = unseenProcessIds?.has(taskId) ?? false;
             const isPinned = pinnedChatIds?.has(taskId) ?? false;
             const isArchived = archivedChatIds?.has(taskId) ?? false;
+            const task = history.find(t => t.id === taskId);
             return [
                 ...(isPinned && onUnpinChat ? [{ label: 'Unpin', icon: '📌', onClick: () => onUnpinChat(taskId) }] : []),
                 ...(!isPinned && onPinChat ? [{ label: 'Pin to top', icon: '📌', onClick: () => onPinChat(taskId) }] : []),
                 ...(isUnseen && onMarkRead ? [{ label: 'Mark as Read', icon: '✓', onClick: () => onMarkRead(taskId) }] : []),
                 ...(!isUnseen && onMarkUnread ? [{ label: 'Mark as Unread', icon: '●', onClick: () => onMarkUnread(taskId) }] : []),
+                { label: 'Rename', icon: '✏️', onClick: () => {
+                    setRenameTarget({ taskId, title: task?.displayName || task?.title || task?.type || '' });
+                    closeContextMenu();
+                }},
                 ...(isArchived && onUnarchiveChat ? [{ label: 'Unarchive', icon: '📤', onClick: () => onUnarchiveChat(taskId) }] : []),
                 ...(!isArchived && onArchiveChat ? [{ label: 'Archive', icon: '📦', onClick: () => onArchiveChat(taskId) }] : []),
                 { label: '', icon: '', separator: true, onClick: () => {} },
@@ -644,59 +737,226 @@ export function ActivityListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, running, history, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
+    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
 
-    if (tabFilteredRunning.length === 0 && tabFilteredQueued.length === 0 && tabFilteredHistory.length === 0) {
+    /** Render a single history card (shared between flat and grouped layouts). */
+    const renderHistoryCard = useCallback((task: any) => {
+        const isUnseen = unseenProcessIds?.has(task.id) ?? false;
+        const hasDraft = !!getDraft(task.id);
+        const isHistorySelected = selectedHistoryIds.has(task.id);
         return (
-            <div className="relative flex-1 flex flex-col overflow-hidden">
-                <div className="p-4 text-center text-sm text-[#848484] flex-1" data-testid="queue-empty-state">
-                    {isRefreshing && (
-                        <div className="mb-2 animate-pulse" data-testid="queue-refreshing-indicator">Refreshing…</div>
-                    )}
-                    {activeTab === 'chats' ? (
-                        <div>No chats yet</div>
-                    ) : isPaused ? (
-                        <>
-                            <div className="mb-2">Queue is paused</div>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled={isPauseResumeLoading}
-                                onClick={onPauseResume}
-                                data-testid="repo-pause-resume-btn-empty"
-                            >
-                                ▶ Resume
-                            </Button>
-                        </>
-                    ) : (
-                        <div>{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
-                    )}
+            <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
+            <Card
+                className={cn(
+                    isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
+                    isHistorySelected
+                        ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
+                        : isSelected(task.id) && "ring-2 ring-[#0078d4]",
+                    selectedHistoryIds.size > 0 && "select-none"
+                )}
+                onClick={e => {
+                    if (historyLongPress.didLongPress()) return;
+                    handleHistoryItemClick(e, task, filteredUnpinned);
+                }}
+                onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                onTouchEnd={historyLongPress.onTouchEnd}
+                onTouchMove={historyLongPress.onTouchMove}
+                data-task-id={task.id}
+                data-unseen={isUnseen || undefined}
+                data-selected={isHistorySelected || undefined}
+            >
+                <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                    <span className="flex items-center gap-1 min-w-0 truncate">
+                        {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
+                        {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
+                        <span className="shrink-0">
+                            {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                        </span>
+                        <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.title || task.type || 'Task'}>
+                            {task.displayName || task.title || task.type || 'Task'}
+                        </span>
+                        {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                    </span>
+                    <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
+                        {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
+                    </span>
                 </div>
-                {isMobile && onNewChat && (
-                    <button
-                        className="mobile-fab"
-                        onClick={onNewChat}
-                        data-testid="mobile-new-chat-fab"
-                        aria-label="New chat"
-                    >
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-                        </svg>
-                    </button>
+                {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
+                {!isDense && task.error && (
+                    <div className="text-[10px] text-red-500 mt-0.5 truncate">
+                        {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
+                    </div>
+                )}
+            </Card>
+            </SwipeableHistoryItem>
+        );
+    }, [unseenProcessIds, selectedHistoryIds, isDense, isMobile, isSelected, handleHistoryItemClick, handleTaskContextMenu, filteredUnpinned, onArchiveChat, onUnarchiveChat]);
+
+    if (running.length === 0 && queued.length === 0 && history.length === 0) {
+        return (
+            <div className="p-4 text-center text-sm text-[#848484]" data-testid="queue-empty-state">
+                {isRefreshing && (
+                    <div className="mb-2 animate-pulse" data-testid="queue-refreshing-indicator">Refreshing…</div>
+                )}
+                {activeTab === 'chats' ? (
+                    <div>No chats yet</div>
+                ) : isPaused ? (
+                    <>
+                        <div className="mb-2">Queue is paused</div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isPauseResumeLoading}
+                            onClick={onPauseResume}
+                            data-testid="repo-pause-resume-btn-empty"
+                        >
+                            ▶ Resume
+                        </Button>
+                    </>
+                ) : (
+                    <div className="mb-2">{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
                 )}
             </div>
         );
     }
 
     return (
-        <div className="relative flex-1 flex flex-col overflow-hidden">
+        <>
             <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+                {/* ── Chats tab: flat time-sorted list ── */}
                 {activeTab === 'chats' && (
-                    <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
-                        💬 New Chat
-                    </Button>
+                    <>
+                        <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
+                            💬 New Chat
+                        </Button>
+                        {chatAllItems.pinned.length > 0 && (
+                            <div>
+                                <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">📌 Pinned</div>
+                                <div className="flex flex-col gap-1">
+                                    {chatAllItems.pinned.map(task => {
+                                        const isUnseen = unseenProcessIds?.has(task.id) ?? false;
+                                        const hasDraft = !!getDraft(task.id);
+                                        const isRunning = running.some(t => t.id === task.id);
+                                        return (
+                                            <Card
+                                                key={task.id}
+                                                className={cn(
+                                                    'p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500',
+                                                    isSelected(task.id) && 'ring-2 ring-[#0078d4]'
+                                                )}
+                                                onClick={() => onSelectTask(task.id, task)}
+                                                onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
+                                                data-task-id={task.id}
+                                                data-pinned="true"
+                                            >
+                                                <div className="flex items-center justify-between gap-1.5 text-xs">
+                                                    <span className="flex items-center gap-1 min-w-0 truncate">
+                                                        {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
+                                                        {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
+                                                        <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                        {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                                                        {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
+                                                    </span>
+                                                    <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                        {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />Thinking</span> : task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                    </span>
+                                                </div>
+                                                {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                        {chatAllItems.unpinned.length > 0 && (
+                            <div>
+                                <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">💬 Recently</div>
+                                <div className="flex flex-col gap-1">
+                                    {chatAllItems.unpinned.map(task => {
+                                        const isUnseen = unseenProcessIds?.has(task.id) ?? false;
+                                        const hasDraft = !!getDraft(task.id);
+                                        const isRunning = running.some(t => t.id === task.id);
+                                        return (
+                                            <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
+                                            <Card
+                                                className={cn(
+                                                    'p-2 cursor-pointer',
+                                                    isSelected(task.id) && 'ring-2 ring-[#0078d4]'
+                                                )}
+                                                onClick={() => onSelectTask(task.id, task)}
+                                                onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
+                                                data-task-id={task.id}
+                                            >
+                                                <div className="flex items-center justify-between gap-1.5 text-xs">
+                                                    <span className="flex items-center gap-1 min-w-0 truncate">
+                                                        {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
+                                                        {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
+                                                        <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                        {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
+                                                        {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
+                                                    </span>
+                                                    <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                        {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />Thinking</span> : task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                    </span>
+                                                </div>
+                                                {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}
+                                            </Card>
+                                            </SwipeableHistoryItem>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                        {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && !searchQuery && (
+                            <div className="text-center text-xs text-[#848484] py-4">No chat sessions yet</div>
+                        )}
+                        {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && chatAllItems.archived.length === 0 && searchQuery && (
+                            <div className="text-center text-xs text-[#848484] py-4" data-testid="chat-search-empty-state">No chats matching &ldquo;{searchQuery}&rdquo;</div>
+                        )}
+                        {chatAllItems.archived.length > 0 && (
+                            <div>
+                                <button
+                                    className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
+                                    onClick={() => setShowArchived(!showArchived)}
+                                    data-testid="chat-archived-toggle"
+                                >
+                                    {showArchived ? '▼' : '▶'} 📦 Archived ({chatAllItems.archived.length})
+                                </button>
+                                {showArchived && (
+                                    <div className="flex flex-col gap-1">
+                                        {chatAllItems.archived.map(task => (
+                                            <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
+                                            <Card
+                                                className={cn('p-2 cursor-pointer opacity-60', isSelected(task.id) && 'ring-2 ring-[#0078d4]')}
+                                                onClick={() => onSelectTask(task.id, task)}
+                                                onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                                                data-task-id={task.id}
+                                                data-archived="true"
+                                            >
+                                                <div className="flex items-center justify-between gap-1.5 text-xs">
+                                                    <span className="flex items-center gap-1 min-w-0 truncate">
+                                                        <span className="truncate" title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                        {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
+                                                    </span>
+                                                    <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                        {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                    </span>
+                                                </div>
+                                                {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
+                                            </Card>
+                                            </SwipeableHistoryItem>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </>
                 )}
-                {activeTab === 'tasks' && isPaused && (
+
+                {/* ── Tasks tab: queue-style sections ── */}
+                {activeTab !== 'chats' && (<>
+                {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">
                             {pauseReason
@@ -719,7 +979,7 @@ export function ActivityListPane({
                         </Button>
                     </div>
                 )}
-                {activeTab === 'tasks' && isAutopilotPaused && (
+                {isAutopilotPaused && (
                     <div
                         className="rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 px-3 py-1.5 text-xs flex items-center gap-2"
                         data-testid="autopilot-paused-banner"
@@ -736,9 +996,7 @@ export function ActivityListPane({
                         </Button>
                     </div>
                 )}
-                {activeTab === 'tasks' && (
                 <div className={cn('flex items-center gap-2 mb-3')}>
-                    {isPaused && <Badge status="warning" title={pauseReason ? `${pauseReason.displayName} failed` : undefined}>Paused</Badge>}
                     {availableFilters.length >= 1 && (
                         <FilterDropdown
                             items={availableFilters}
@@ -757,7 +1015,11 @@ export function ActivityListPane({
                         title="Refresh queue"
                         data-testid="queue-refresh-btn"
                     >
-                        {!isRefreshing && '↺'}
+                        {!isRefreshing && (
+                            <span className={(isAdmitting || isTaskSubmitting) ? 'inline-block animate-spin' : 'inline-block'}>
+                                ↺
+                            </span>
+                        )}
                     </Button>
                     <div
                         className="flex items-center text-xs rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden"
@@ -798,56 +1060,60 @@ export function ActivityListPane({
                         )}
                     </div>
                 </div>
-                )}
 
-                {(activeTab === 'tasks' ? searchVisible : true) && (
+                {((!activeTab || activeTab === 'tasks') ? searchVisible : true) && (
                     <div className="flex items-center gap-1.5 px-1 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] text-xs">
                         <span className="text-[#848484]">🔍</span>
                         <input
                             ref={searchInputRef}
                             type="text"
-                            placeholder="Search title, prompt…"
+                            placeholder="Search all conversations…"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             className="flex-1 bg-transparent outline-none text-xs placeholder:text-[#848484]"
                             data-testid="queue-search-input"
                         />
-                        {searchQuery && (
-                            <span className="text-[#848484] tabular-nums" data-testid="search-match-count">
+                        {searchLoading && (
+                            <span className="text-[#848484] animate-pulse" data-testid="search-loading-indicator">⏳</span>
+                        )}
+                        {searchQuery && !searchLoading && (
+                            <span className="text-[#848484] tabular-nums" data-testid={activeTab === 'chats' ? 'search-match-count' : 'search-result-count'}>
                                 {activeTab === 'chats'
                                     ? chatAllItems.pinned.length + chatAllItems.unpinned.length + chatAllItems.archived.length
-                                    : filteredRunning.length + filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length + filteredHistory.length}
+                                    : isServerSearchActive
+                                        ? searchTotal ?? 0
+                                        : filteredRunning.length + filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length + filteredHistory.length}
                             </span>
                         )}
                         <button
                             className="text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] leading-none"
-                            onClick={() => { setSearchQuery(''); if (activeTab === 'tasks') setSearchVisible(false); }}
+                            onClick={() => { setSearchQuery(''); if (!activeTab || activeTab === 'tasks') setSearchVisible(false); }}
                             data-testid="queue-search-close"
                         >✕</button>
                     </div>
                 )}
-
-                {activeTab === 'tasks' && (<>
-                {tabFilteredRunning.length > 0 && (
+
+                {filteredRunning.length > 0 && (
                     <div>
                         <button
                             className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
                             onClick={() => setShowRunning(!showRunning)}
                             data-testid="running-tasks-section-toggle"
                         >
-                            {showRunning ? '▼' : '▶'} Running Tasks <span className="text-[10px]">({tabFilteredRunning.length})</span>
+                            {showRunning ? '▼' : '▶'} Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
                         </button>
                         {showRunning && (
-                            <div className="flex flex-col gap-1">
-                                {tabFilteredRunning.map(task => (
+                            <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
+                                {filteredRunning.map(task => (
                                     <QueueTaskItem
                                         key={task.id}
                                         task={task}
                                         status="running"
                                         now={now}
-                                        selected={selectedTaskId === task.id}
+                                        selected={isSelected(task.id)}
                                         isPinned={pinnedChatIds?.has(task.id) ?? false}
                                         isAutopilotPaused={isAutopilotPaused}
+                                        dense={isDense}
                                         onClick={() => onSelectTask(task.id, task)}
                                         onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
                                         onLongPress={(x, y) => handleTaskContextMenu({ clientX: x, clientY: y, preventDefault: () => {}, stopPropagation: () => {}, shiftKey: false } as any, task.id, 'running')}
@@ -858,17 +1124,17 @@ export function ActivityListPane({
                     </div>
                 )}
 
-                {tabFilteredQueued.length > 0 && (
+                {filteredQueued.length > 0 && (
                     <div>
                         <button
                             className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
                             onClick={() => setShowQueued(!showQueued)}
                             data-testid="queued-tasks-section-toggle"
                         >
-                            {showQueued ? '▼' : '▶'} Queued Tasks <span className="text-[10px]">({tabFilteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
+                            {showQueued ? '▼' : '▶'} Queued Tasks <span className="text-[10px]">({filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
                         </button>
                         {showQueued && (
-                            <div className="flex flex-col gap-1">
+                            <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                                 {!isMobile && (
                                     <PauseInsertZone
                                         index={-1}
@@ -878,7 +1144,7 @@ export function ActivityListPane({
                                         onClick={() => handleInsertPauseMarker(-1)}
                                     />
                                 )}
-                                {tabFilteredQueued.map((item: any, index: number) => {
+                                {filteredQueued.map((item: any, index: number) => {
                                     const globalIndex = queued.findIndex((q: any) => q.id === item.id);
                                     if (item.kind === 'pause-marker') {
                                         return (
@@ -912,13 +1178,13 @@ export function ActivityListPane({
                                                     task={item}
                                                     status="queued"
                                                     now={now}
-                                                    selected={selectedTaskId === item.id}
+                                                    selected={isSelected(item.id)}
                                                     isAutopilotPaused={isAutopilotPaused}
+                                                    dense={isDense}
                                                     onClick={() => onSelectTask(item.id, item)}
                                                     onContextMenu={e => handleTaskContextMenu(e, item.id, 'queued')}
                                                     onLongPress={(x, y) => handleTaskContextMenu({ clientX: x, clientY: y, preventDefault: () => {}, stopPropagation: () => {}, shiftKey: false } as any, item.id, 'queued')}
                                                     cancelLongPress={!!activeDraggedTaskId}
-                                                    onRemove={() => handleCancel(item.id)}
                                                 />
                                             </div>
                                             {!isMobile && (
@@ -938,61 +1204,148 @@ export function ActivityListPane({
                     </div>
                 )}
 
+                {isServerSearchActive ? (
+                    /* ── Server-side search results ── */
+                    <div>
+                        <div className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">
+                            🔍 Search Results
+                            <span className="text-[10px]">({searchResults!.length}{searchTotal != null && searchTotal > searchResults!.length ? ` of ${searchTotal}` : ''})</span>
+                        </div>
+                        {searchQuery.length === 1 && (
+                            <div className="text-[10px] text-[#848484] dark:text-[#bbb] italic" data-testid="search-min-chars-hint">
+                                Type 2+ characters to search all conversations
+                            </div>
+                        )}
+                        {searchResults!.length === 0 && !searchLoading && (
+                            <div className="text-[10px] text-[#848484] dark:text-[#bbb]" data-testid="search-no-results">
+                                No matching conversations found
+                            </div>
+                        )}
+                        <div className={cn("flex flex-col mt-1", isDense ? "gap-0.5" : "gap-1")}>
+                            {searchResults!.map(task => (
+                                <Card
+                                    key={task.id}
+                                    className={cn(
+                                        isDense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer",
+                                        isSelected(task.id) && "ring-2 ring-[#0078d4]"
+                                    )}
+                                    onClick={() => onSelectTask(task.id, task)}
+                                    data-task-id={task.id}
+                                    data-testid="search-result-item"
+                                >
+                                    <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                                        <span className="flex items-center gap-1 min-w-0 truncate">
+                                            <span className="shrink-0">
+                                                {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                                            </span>
+                                            <span className="truncate" title={task.displayName || task.title || task.type || 'Task'}>
+                                                {task.displayName || task.title || task.type || 'Task'}
+                                            </span>
+                                        </span>
+                                        <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
+                                            {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
+                                        </span>
+                                    </div>
+                                    {!isDense && task._searchSnippet && (
+                                        <div
+                                            className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb] [&_mark]:bg-yellow-200 [&_mark]:dark:bg-yellow-700/50 [&_mark]:text-inherit [&_mark]:rounded-sm [&_mark]:px-px"
+                                            data-testid="search-snippet"
+                                            dangerouslySetInnerHTML={{ __html: task._searchSnippet }}
+                                        />
+                                    )}
+                                    {!isDense && !task._searchSnippet && (() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#bbb]" title={p}>{p}</div> : null; })()}
+                                </Card>
+                            ))}
+                        </div>
+                        {searchHasMore && onLoadMoreSearchResults && (
+                            <div className="px-4 py-2">
+                                <button
+                                    onClick={onLoadMoreSearchResults}
+                                    disabled={searchLoadingMore}
+                                    className="w-full text-xs text-[#848484] dark:text-[#858585] hover:text-[#3c3c3c] dark:hover:text-[#cccccc] disabled:opacity-50 disabled:cursor-not-allowed py-1"
+                                    data-testid="search-load-more-btn"
+                                >
+                                    {searchLoadingMore ? 'Loading…' : 'Load more results'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    /* ── Normal history view (pinned + unpinned + archived + load more) ── */
+                    <>
                 {(filteredPinned.length > 0 || pinnedRunningCount > 0) && (
                     <div>
-                        <button
-                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
-                            onClick={() => setShowPinned(!showPinned)}
-                            data-testid="pinned-chats-section-toggle"
-                        >
-                            {showPinned ? '▼' : '▶'} 📌 Pinned ({filteredPinned.length + pinnedRunningCount})
-                        </button>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                                className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
+                                onClick={() => setShowPinned(!showPinned)}
+                                data-testid="pinned-chats-section-toggle"
+                            >
+                                {showPinned ? '▼' : '▶'} 📌 Pinned ({filteredPinned.length + pinnedRunningCount})
+                                {unseenProcessIds && (() => {
+                                    const count = filteredPinned.filter(t => unseenProcessIds.has(t.id)).length;
+                                    return count > 0 ? (
+                                        <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-pinned-count-badge">{count}</span>
+                                    ) : null;
+                                })()}
+                            </button>
+                            {onMarkAllRead && unseenProcessIds && filteredPinned.some(t => unseenProcessIds.has(t.id)) && (
+                                <button
+                                    className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
+                                    onClick={() => onMarkAllRead(filteredPinned)}
+                                    data-testid="mark-all-read-pinned-btn"
+                                >
+                                    Mark all read
+                                </button>
+                            )}
+                        </div>
                         {showPinned && (
-                            <div className="flex flex-col gap-1">
+                            <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                                 {filteredPinned.map(task => {
-                                    const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                    const isUnseen = unseenProcessIds?.has(task.id) ?? false;
                                     const hasPinnedDraft = !!getDraft(task.id);
                                     const isHistorySelected = selectedHistoryIds.has(task.id);
                                     return (
                                         <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
                                         <Card
                                             className={cn(
-                                                "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
+                                                isDense ? "px-2 py-2.5 md:py-1 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500" : "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
                                                 isHistorySelected
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
-                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
+                                                    : isSelected(task.id) && "ring-2 ring-[#0078d4]",
                                                 selectedHistoryIds.size > 0 && "select-none"
                                             )}
                                             onClick={e => {
-                                                if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
+                                                if (historyLongPress.didLongPress()) return;
                                                 handleHistoryItemClick(e, task, filteredPinned);
                                             }}
                                             onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
-                                            onTouchStart={e => handleHistoryTouchStart(e, task.id)}
-                                            onTouchEnd={cancelHistoryLongPress}
-                                            onTouchMove={handleHistoryTouchMove}
+                                            onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                                            onTouchEnd={historyLongPress.onTouchEnd}
+                                            onTouchMove={historyLongPress.onTouchMove}
                                             data-task-id={task.id}
                                             data-pinned="true"
                                             data-unseen={isUnseen || undefined}
                                             data-selected={isHistorySelected || undefined}
                                         >
-                                            <div className="flex items-center justify-between gap-1.5 text-xs">
+                                            <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                                                 <span className="flex items-center gap-1 min-w-0 truncate">
                                                     {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
                                                     {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
-                                                    {task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
-                                                        {task.displayName || task.type || 'Task'}
+                                                    <span className="shrink-0">
+                                                        {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                                     </span>
-                                                    {hasPinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
-                                                    {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
+                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.title || task.type || 'Task'}>
+                                                        {task.displayName || task.title || task.type || 'Task'}
+                                                    </span>
+                                                    {hasPinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                                                 </span>
-                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                    {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
+                                                    {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
                                                 </span>
                                             </div>
-                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
-                                            {task.error && (
+                                            {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
+                                            {!isDense && task.error && (
                                                 <div className="text-[10px] text-red-500 mt-0.5 truncate">
                                                     {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
                                                 </div>
@@ -1014,14 +1367,14 @@ export function ActivityListPane({
                                 onClick={() => { setShowHistory(!showHistory); setSelectedHistoryIds(new Set()); setAnchorHistoryId(null); }}
                             >
                                 {showHistory ? '▼' : '▶'} Completed Tasks ({filteredUnpinned.length})
-                                {unseenTaskIds && (() => {
-                                    const count = filteredUnpinned.filter(t => unseenTaskIds.has(t.id)).length;
+                                {unseenProcessIds && (() => {
+                                    const count = filteredUnpinned.filter(t => unseenProcessIds.has(t.id)).length;
                                     return count > 0 ? (
                                         <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-count-badge">{count}</span>
                                     ) : null;
                                 })()}
                             </button>
-                            {onMarkAllRead && unseenTaskIds && filteredUnpinned.some(t => unseenTaskIds.has(t.id)) && (
+                            {onMarkAllRead && unseenProcessIds && filteredUnpinned.some(t => unseenProcessIds.has(t.id)) && (
                                 <button
                                     className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
                                     onClick={() => onMarkAllRead(filteredUnpinned)}
@@ -1038,106 +1391,103 @@ export function ActivityListPane({
                             )}
                         </div>
                         {showHistory && (
-                            <div className="flex flex-col gap-1 mt-1">
-                                {filteredUnpinned.map(task => {
-                                    const isUnseen = unseenTaskIds?.has(task.id) ?? false;
-                                    const hasUnpinnedDraft = !!getDraft(task.id);
-                                    const isHistorySelected = selectedHistoryIds.has(task.id);
-                                    return (
-                                        <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
-                                        <Card
-                                            className={cn(
-                                                "p-2 cursor-pointer",
-                                                isHistorySelected
-                                                    ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
-                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
-                                                selectedHistoryIds.size > 0 && "select-none"
-                                            )}
-                                            onClick={e => {
-                                                if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
-                                                handleHistoryItemClick(e, task, filteredUnpinned);
-                                            }}
-                                            onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
-                                            onTouchStart={e => handleHistoryTouchStart(e, task.id)}
-                                            onTouchEnd={cancelHistoryLongPress}
-                                            onTouchMove={handleHistoryTouchMove}
-                                            data-task-id={task.id}
-                                            data-unseen={isUnseen || undefined}
-                                            data-selected={isHistorySelected || undefined}
-                                        >
-                                            <div className="flex items-center justify-between gap-1.5 text-xs">
-                                                <span className="flex items-center gap-1 min-w-0 truncate">
-                                                    {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
-                                                    {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
-                                                    {task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
-                                                        {task.displayName || task.type || 'Task'}
-                                                    </span>
-                                                    {hasUnpinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
-                                                    {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
-                                                </span>
-                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                    {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
-                                                </span>
+                            <div className={cn("flex flex-col mt-1", isDense ? "gap-0.5" : "gap-1")}>
+                                {groupedUnpinned ? groupedUnpinned.map(entry => {
+                                    if (entry.kind === 'group') {
+                                        // Expanded by default if group has unseen items; user toggle overrides
+                                        const expanded = !collapsedGroups.has(entry.planFilePath);
+                                        return (
+                                            <div key={entry.planFilePath} data-testid="history-group">
+                                                <HistoryGroupHeader
+                                                    group={entry}
+                                                    isExpanded={expanded}
+                                                    onToggle={() => toggleGroup(entry.planFilePath)}
+                                                    onContextMenu={e => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        const ids = entry.children.map(c => c.id);
+                                                        setSelectedHistoryIds(new Set(ids));
+                                                        setContextMenu({ x: e.clientX, y: e.clientY, taskId: ids[0], taskStatus: 'completed', bulkIds: ids });
+                                                    }}
+                                                    isDense={isDense}
+                                                />
+                                                {expanded && (
+                                                    <div className={cn("flex flex-col pl-4 border-l-2 border-gray-200 dark:border-gray-700 ml-1", isDense ? "gap-0.5 mt-0.5" : "gap-1 mt-1")}>
+                                                        {entry.children.map(task => renderHistoryCard(task))}
+                                                    </div>
+                                                )}
                                             </div>
-                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
-                                            {task.error && (
-                                                <div className="text-[10px] text-red-500 mt-0.5 truncate">
-                                                    {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
-                                                </div>
-                                            )}
-                                        </Card>
-                                        </SwipeableHistoryItem>
-                                    );
-                                })}
+                                        );
+                                    }
+                                    return renderHistoryCard(entry);
+                                }) : filteredUnpinned.map(task => renderHistoryCard(task))}
                             </div>
                         )}
                     </div>
                 )}
             {filteredArchived.length > 0 && (
                 <div>
-                    <button
-                        className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
-                        onClick={() => setShowArchived(!showArchived)}
-                        data-testid="archived-chats-section-toggle"
-                    >
-                        {showArchived ? '▼' : '▶'} 📦 Archived ({filteredArchived.length})
-                    </button>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
+                            onClick={() => setShowArchived(!showArchived)}
+                            data-testid="archived-chats-section-toggle"
+                        >
+                            {showArchived ? '▼' : '▶'} 📦 Archived ({filteredArchived.length})
+                            {unseenProcessIds && (() => {
+                                const count = filteredArchived.filter(t => unseenProcessIds.has(t.id)).length;
+                                return count > 0 ? (
+                                    <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-archived-count-badge">{count}</span>
+                                ) : null;
+                            })()}
+                        </button>
+                        {onMarkAllRead && unseenProcessIds && filteredArchived.some(t => unseenProcessIds.has(t.id)) && (
+                            <button
+                                className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
+                                onClick={() => onMarkAllRead(filteredArchived)}
+                                data-testid="mark-all-read-archived-btn"
+                            >
+                                Mark all read
+                            </button>
+                        )}
+                    </div>
                     {showArchived && (
-                        <div className="flex flex-col gap-1">
+                        <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
                             {filteredArchived.map(task => {
-                                const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                const isUnseen = unseenProcessIds?.has(task.id) ?? false;
                                 return (
                                     <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
                                     <Card
                                         className={cn(
-                                            "p-2 cursor-pointer opacity-60",
-                                            selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                            isDense ? "px-2 py-2.5 md:py-1 cursor-pointer opacity-70" : "p-2 cursor-pointer opacity-70",
+                                            isSelected(task.id) && "ring-2 ring-[#0078d4]"
                                         )}
                                         onClick={() => {
-                                            if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
+                                            if (historyLongPress.didLongPress()) return;
                                             onSelectTask(task.id, task);
                                         }}
                                         onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
-                                        onTouchStart={e => handleHistoryTouchStart(e, task.id)}
-                                        onTouchEnd={cancelHistoryLongPress}
-                                        onTouchMove={handleHistoryTouchMove}
+                                        onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                                        onTouchEnd={historyLongPress.onTouchEnd}
+                                        onTouchMove={historyLongPress.onTouchMove}
                                         data-task-id={task.id}
                                         data-archived="true"
                                     >
-                                        <div className="flex items-center justify-between gap-1.5 text-xs">
+                                        <div className="flex items-center justify-between gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                                             <span className="flex items-center gap-1 min-w-0 truncate">
-                                                {task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
-                                                    {task.displayName || task.type || 'Task'}
+                                                {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
+                                                <span className="shrink-0">
+                                                    {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                                 </span>
-                                                {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
+                                                <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.title || task.type || 'Task'}>
+                                                    {task.displayName || task.title || task.type || 'Task'}
+                                                </span>
                                             </span>
-                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                            <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
+                                                {(task.completedAt ?? task.endTime) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime).toISOString()) : ''}
                                             </span>
                                         </div>
-                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
+                                        {!isDense && (() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#bbb]")} title={p}>{p}</div> : null; })()}
                                     </Card>
                                     </SwipeableHistoryItem>
                                 );
@@ -1146,131 +1496,20 @@ export function ActivityListPane({
                     )}
                 </div>
             )}
-                </>)}
-
-                {/* Chats tab: flat list sorted by last activity, no filters/refresh/pause */}
-                {activeTab === 'chats' && (<>
-                    {chatAllItems.pinned.length > 0 && (
-                        <div>
-                            <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">📌 Pinned</div>
-                            <div className="flex flex-col gap-1">
-                                {chatAllItems.pinned.map(task => {
-                                    const isUnseen = unseenTaskIds?.has(task.id) ?? false;
-                                    const hasDraft = !!getDraft(task.id);
-                                    const isRunning = running.some(t => t.id === task.id);
-                                    return (
-                                        <Card
-                                            key={task.id}
-                                            className={cn(
-                                                'p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500',
-                                                selectedTaskId === task.id && 'ring-2 ring-[#0078d4]'
-                                            )}
-                                            onClick={() => onSelectTask(task.id, task)}
-                                            onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
-                                            data-task-id={task.id}
-                                            data-pinned="true"
-                                        >
-                                            <div className="flex items-center justify-between gap-1.5 text-xs">
-                                                <span className="flex items-center gap-1 min-w-0 truncate">
-                                                    {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
-                                                    {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                    <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
-                                                    {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft">✏️</span>}
-                                                    {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
-                                                </span>
-                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                    {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />Thinking</span> : task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
-                                                </span>
-                                            </div>
-                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}
-                                        </Card>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                    {chatAllItems.unpinned.length > 0 && (
-                        <div>
-                            <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-1">🕐 Recently</div>
-                            <div className="flex flex-col gap-1">
-                            {chatAllItems.unpinned.map(task => {
-                                const isUnseen = unseenTaskIds?.has(task.id) ?? false;
-                                const hasDraft = !!getDraft(task.id);
-                                const isRunning = running.some(t => t.id === task.id);
-                                return (
-                                    <SwipeableHistoryItem key={task.id} isMobile={isMobile} onArchive={() => onArchiveChat(task.id)} onUnarchive={() => onUnarchiveChat(task.id)}>
-                                    <Card
-                                        className={cn(
-                                            'p-2 cursor-pointer',
-                                            selectedTaskId === task.id && 'ring-2 ring-[#0078d4]'
-                                        )}
-                                        onClick={() => onSelectTask(task.id, task)}
-                                        onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
-                                        data-task-id={task.id}
-                                    >
-                                        <div className="flex items-center justify-between gap-1.5 text-xs">
-                                            <span className="flex items-center gap-1 min-w-0 truncate">
-                                                {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
-                                                {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
-                                                {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft">✏️</span>}
-                                                {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
-                                            </span>
-                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />Thinking</span> : task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
-                                            </span>
-                                        </div>
-                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}
-                                    </Card>
-                                    </SwipeableHistoryItem>
-                                );
-                            })}
-                        </div>
-                        </div>
-                    )}
-                    {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && chatAllItems.archived.length === 0 && searchQuery && (
-                        <div className="text-center text-xs text-[#848484] py-4" data-testid="chat-search-empty-state">No chats matching &apos;{searchQuery}&apos;</div>
-                    )}
-                    {chatAllItems.unpinned.length === 0 && chatAllItems.pinned.length === 0 && !searchQuery && (
-                        <div className="text-center text-xs text-[#848484] py-4">No chat sessions yet</div>
-                    )}
-                    {chatAllItems.archived.length > 0 && (
-                        <div>
-                            <button
-                                className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
-                                onClick={() => setShowArchived(!showArchived)}
-                                data-testid="chat-archived-toggle"
-                            >
-                                {showArchived ? '▼' : '▶'} 📦 Archived ({chatAllItems.archived.length})
-                            </button>
-                            {showArchived && (
-                                <div className="flex flex-col gap-1">
-                                    {chatAllItems.archived.map(task => (
-                                        <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
-                                        <Card
-                                            className={cn('p-2 cursor-pointer opacity-60', selectedTaskId === task.id && 'ring-2 ring-[#0078d4]')}
-                                            onClick={() => onSelectTask(task.id, task)}
-                                            onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
-                                            data-task-id={task.id}
-                                            data-archived="true"
-                                        >
-                                            <div className="flex items-center justify-between gap-1.5 text-xs">
-                                                <span className="flex items-center gap-1 min-w-0 truncate">
-                                                    <span className="truncate" title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
-                                                    {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
-                                                </span>
-                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                    {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
-                                                </span>
-                                            </div>
-                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
-                                        </Card>
-                                        </SwipeableHistoryItem>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
+            {hasMore && onLoadMore && (
+                <div className="px-4 py-2">
+                    <button
+                        onClick={onLoadMore}
+                        disabled={loadingMore}
+                        className="w-full text-xs text-[#848484] dark:text-[#858585] hover:text-[#3c3c3c] dark:hover:text-[#cccccc] disabled:opacity-50 disabled:cursor-not-allowed py-1"
+                        data-testid="activity-load-more-btn"
+                    >
+                        {loadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                </div>
+            )}
+                    </>
+                )}
                 </>)}
         </div>
         {contextMenu && (
@@ -1302,37 +1541,31 @@ export function ActivityListPane({
                 fetchQueue();
             }}
         />
-        {isMobile && onNewChat && (
-            <button
-                className="mobile-fab"
-                onClick={onNewChat}
-                data-testid="mobile-new-chat-fab"
-                aria-label="New chat"
-            >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-                </svg>
-            </button>
-        )}
-    </div>
+        <RenameDialog
+            open={!!renameTarget}
+            currentTitle={renameTarget?.title ?? ''}
+            onConfirm={handleRenameConfirm}
+            onCancel={() => setRenameTarget(null)}
+        />
+    </>
     );
 }
 
-export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopilotPaused, onClick, onContextMenu, onLongPress, cancelLongPress, onRemove }: {
+export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopilotPaused, dense, onClick, onContextMenu, onLongPress, cancelLongPress }: {
     task: any;
     status: 'running' | 'queued';
     now: number;
     selected?: boolean;
     isPinned?: boolean;
     isAutopilotPaused?: boolean;
+    dense?: boolean;
     onClick?: () => void;
     onContextMenu?: (e: React.MouseEvent) => void;
     onLongPress?: (x: number, y: number) => void;
     cancelLongPress?: boolean;
-    /** For queued tasks: removes/cancels the task immediately without confirmation. */
-    onRemove?: () => void;
 }){
     const name = task.displayName || task.type || 'Task';
+    const icon = getTaskTypeIcon(task);
     const promptPreview = getTaskPromptPreview(task);
     const showProgress = task.type === 'run-workflow' && status === 'running';
     const progress = useWorkflowProgress(showProgress ? (task.processId || task.id) : null);
@@ -1364,7 +1597,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
 
     return (
         <Card
-            className={cn("p-2 cursor-pointer group", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60", isAdmitted && !isPinned && "border-l-2 border-l-green-500 dark:border-l-green-400")}
+            className={cn(dense ? "px-2 py-2.5 md:py-1 cursor-pointer" : "p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60", isAdmitted && !isPinned && "border-l-2 border-l-green-500 dark:border-l-green-400")}
             onClick={handleClick}
             onContextMenu={onContextMenu}
             onTouchStart={longPress.onTouchStart}
@@ -1374,7 +1607,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
         >
             <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
-                    <span className="shrink-0">{task.frozen ? '❄️' : isAdmitted ? '🚀' : isHeld ? '🤖⏸' : ''}</span>
+                    <span className="shrink-0">{task.frozen ? '❄️' : isAdmitted ? '🚀' : isHeld ? '🤖⏸' : icon}</span>
                     <span className="truncate" title={name}>{name}</span>
                     {isPinned && <span className="shrink-0 text-[10px]" data-testid="running-pin-badge">📌</span>}
                     {isHeld && (
@@ -1393,36 +1626,18 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
                             [scheduled]
                         </span>
                     )}
-                    {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
-                    {(() => {
-                        const cat = getSessionCategory(task);
-                        const meta = cat ? SESSION_CATEGORY_LABELS[cat] : undefined;
-                        return meta ? <span className={cn("shrink-0 text-[10px] font-medium", meta.color)} data-testid="session-category-badge">{meta.icon} {meta.label}</span> : null;
-                    })()}
+                    {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#bbb]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                    {elapsed && (
-                        <span className="text-[10px] text-[#848484] dark:text-[#999] whitespace-nowrap tabular-nums">
-                            {elapsed}
-                        </span>
-                    )}
-                    {status === 'queued' && onRemove && (
-                        <button
-                            type="button"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-[#848484] hover:text-[#f14c4c] hover:bg-[#f14c4c]/10 leading-none"
-                            onClick={e => { e.stopPropagation(); onRemove(); }}
-                            title="Remove from queue"
-                            data-testid="queue-task-remove-btn"
-                        >
-                            ✕
-                        </button>
-                    )}
-                </div>
+                {elapsed && (
+                    <span className="text-[10px] text-[#848484] dark:text-[#bbb] shrink-0 whitespace-nowrap tabular-nums">
+                        {elapsed}
+                    </span>
+                )}
             </div>
-            {promptPreview && (
-                <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5 truncate" title={promptPreview}>{promptPreview}</div>
+            {!dense && promptPreview && (
+                <div className="text-[10px] text-[#848484] dark:text-[#bbb] mt-0.5 truncate" title={promptPreview}>{promptPreview}</div>
             )}
-            {showProgress && progress && progress.total > 0 && (
+            {!dense && showProgress && progress && progress.total > 0 && (
                 <div className="mt-1" data-testid="workflow-progress-indicator">
                     <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff]">
                         ▶ Map: {progress.completed}/{progress.total}
