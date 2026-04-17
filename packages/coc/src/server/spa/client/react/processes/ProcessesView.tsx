@@ -139,7 +139,7 @@ export function ProcessesView() {
     }, [selectedTaskId, isMobile]);
 
     const selectTask = useCallback((id: string, task?: any) => {
-        if (task?.type === 'run-workflow') {
+        if (task?.type === 'run-workflow' && !task?.payload?.workItemId) {
             const repoId = task.repoId || task.workingDirectory || task.payload?.workingDirectory;
             if (repoId) {
                 const processId = task.processId || task.id;

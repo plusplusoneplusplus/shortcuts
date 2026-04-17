@@ -344,7 +344,7 @@ export function ProcessDetail() {
                                     {model}
                                 </span>
                             )}
-                            {(metadataProcess?.metadata?.workflowName || metadataProcess?.type === 'run-workflow') && wsId && (
+                            {(metadataProcess?.metadata?.workflowName || metadataProcess?.type === 'run-workflow') && !metadataProcess?.metadata?.workItemId && wsId && (
                                 <Button
                                     variant="secondary"
                                     size="sm"

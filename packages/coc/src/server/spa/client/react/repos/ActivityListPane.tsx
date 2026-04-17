@@ -59,7 +59,7 @@ export function getSessionCategory(task: any): string | undefined {
 
 /** Returns true if a task belongs to the Chats tab (any chat mode, not a work-item execution). */
 export function isChatTask(task: any): boolean {
-    return task.type === 'chat' && !task.payload?.workItemId && !task.metadata?.workItemId && !task.workItemId;
+    return task.type === 'chat';
 }
 const isChat = isChatTask;
 
@@ -107,7 +107,7 @@ export function getTaskTypeIcon(task: any): string {
         if (mode === 'plan') return '📋';
         return '🤖';
     }
-    if (type === 'run-workflow') return '▶️';
+    if (type === 'run-workflow') return payload.workItemId ? '📦' : '▶️';
     if (type === 'run-script') return '🛠️';
     return '🤖';
 }
@@ -1591,7 +1591,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
     const name = task.displayName || task.type || 'Task';
     const icon = getTaskTypeIcon(task);
     const promptPreview = getTaskPromptPreview(task);
-    const showProgress = task.type === 'run-workflow' && status === 'running';
+    const showProgress = task.type === 'run-workflow' && status === 'running' && !task.payload?.workItemId;
     const progress = useWorkflowProgress(showProgress ? (task.processId || task.id) : null);
     const hasDraft = !!getDraft(task.id);
     const isHeld = isAutopilotPaused === true

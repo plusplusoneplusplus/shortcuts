@@ -279,7 +279,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
     }, [rawMarkUnseen, scheduleUnseenRefresh]);
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
-        if (task?.type === 'run-workflow') {
+        if (task?.type === 'run-workflow' && !task?.payload?.workItemId && !task?.workItemId) {
             const processId = task.processId || task.id;
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflow/' + encodeURIComponent(processId);
             return;

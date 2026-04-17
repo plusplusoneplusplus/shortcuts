@@ -77,7 +77,7 @@ describe('executeWorkItem', () => {
         expect(enqueue).toHaveBeenCalledOnce();
 
         const call = enqueue.mock.calls[0][0];
-        expect(call.type).toBe('chat');
+        expect(call.type).toBe('run-workflow');
         expect(call.priority).toBe('high');
         expect(call.payload.kind).toBe('chat');
         expect(call.payload.mode).toBe('autopilot');

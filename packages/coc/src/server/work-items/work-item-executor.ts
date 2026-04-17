@@ -86,7 +86,7 @@ export async function executeWorkItem(
     const runNumber = (item.executionHistory?.length ?? 0) + 1;
 
     const taskId = await enqueue({
-        type: 'chat',
+        type: 'run-workflow',
         priority: item.priority ?? 'normal',
         payload: {
             kind: 'chat',
@@ -94,7 +94,6 @@ export async function executeWorkItem(
             prompt,
             workspaceId: item.repoId,
             sessionCategory: 'generating-code' satisfies SessionCategory,
-            // Link back to work item for status tracking
             workItemId: item.id,
         },
         config: {
