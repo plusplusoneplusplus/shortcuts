@@ -15,6 +15,7 @@ import { createMockProcessStore } from '../../helpers/mock-process-store';
 import { TaskWatcher } from '../../../src/server/task-watcher';
 import { WorkflowWatcher } from '../../../src/server/workflow-watcher';
 import { TemplateWatcher } from '../../../src/server/template-watcher';
+import { NotesWatcher } from '../../../src/server/notes-watcher';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,7 +58,7 @@ describe('createWatcherInfrastructure', () => {
         }
     });
 
-    it('returns TaskWatcher, WorkflowWatcher and TemplateWatcher instances', async () => {
+    it('returns TaskWatcher, WorkflowWatcher, TemplateWatcher and NotesWatcher instances', async () => {
         const store = createMockProcessStore();
         const wsServer = makeMockWsServer();
         const bridge = makeMockBridge();
@@ -67,6 +68,7 @@ describe('createWatcherInfrastructure', () => {
         expect(result.taskWatcher).toBeInstanceOf(TaskWatcher);
         expect(result.pipelineWatcher).toBeInstanceOf(WorkflowWatcher);
         expect(result.templateWatcher).toBeInstanceOf(TemplateWatcher);
+        expect(result.notesWatcher).toBeInstanceOf(NotesWatcher);
     });
 
     it('bootstraps watchers for pre-existing workspaces', async () => {
@@ -108,18 +110,20 @@ describe('createWatcherInfrastructure', () => {
         const wsServer = makeMockWsServer();
         const bridge = makeMockBridge();
 
-        const { taskWatcher, pipelineWatcher, templateWatcher } =
+        const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
             await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
         const unwatchTask = vi.spyOn(taskWatcher, 'unwatchWorkspace');
         const unwatchPipeline = vi.spyOn(pipelineWatcher, 'unwatchWorkspace');
         const unwatchTemplate = vi.spyOn(templateWatcher, 'unwatchWorkspace');
+        const unwatchNotes = vi.spyOn(notesWatcher, 'unwatchWorkspace');
 
         await store.removeWorkspace!('ws-gone');
 
         expect(unwatchTask).toHaveBeenCalledWith('ws-gone');
         expect(unwatchPipeline).toHaveBeenCalledWith('ws-gone');
         expect(unwatchTemplate).toHaveBeenCalledWith('ws-gone');
+        expect(unwatchNotes).toHaveBeenCalledWith('ws-gone');
     });
 
     it('delegates to original store.registerWorkspace before wiring watchers', async () => {
@@ -196,6 +200,24 @@ describe('createWatcherInfrastructure', () => {
 
         expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(
             expect.objectContaining({ type: 'templates-changed', workspaceId: 'test-ws' }),
+        );
+    });
+
+    it('broadcasts notes-changed event via wsServer callback', async () => {
+        const store = createMockProcessStore();
+        const wsServer = makeMockWsServer();
+        const bridge = makeMockBridge();
+
+        const { notesWatcher } = await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
+
+        (notesWatcher as any).onNotesChanged('test-ws', ['/path/to/note.md']);
+
+        expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'notes-changed',
+                workspaceId: 'test-ws',
+                changedPaths: ['/path/to/note.md'],
+            }),
         );
     });
 });

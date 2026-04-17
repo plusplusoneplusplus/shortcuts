@@ -56,6 +56,7 @@ interface CloseHandlerDeps {
     taskWatcher: { closeAll(): void };
     pipelineWatcher: { closeAll(): void };
     templateWatcher: { closeAll(): void };
+    notesWatcher: { closeAll(): void };
     wikiManager: { disposeAll(): void } | undefined;
     scheduleManager: { dispose(): void };
     scheduleInfraDispose: () => void;
@@ -70,7 +71,7 @@ interface CloseHandlerDeps {
 
 function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) => Promise<{ drainOutcome?: 'completed' | 'timeout' }> {
     return async (closeOptions) => {
-        const { staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher,
+        const { staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
                 wikiManager, scheduleManager, bridge, queuePersistence, wsServer, activeSockets, server } = deps;
 
         staleDetector.dispose();
@@ -80,6 +81,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         taskWatcher.closeAll();
         pipelineWatcher.closeAll();
         templateWatcher.closeAll();
+        notesWatcher.closeAll();
         wikiManager?.disposeAll();
         scheduleManager.dispose();
         deps.scheduleInfraDispose();
@@ -212,7 +214,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     terminalInfra = createTerminalInfrastructure(store, resolvedConfig);
 
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalInfra?.terminalWsServer);
-    const { taskWatcher, pipelineWatcher, templateWatcher } =
+    const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
@@ -232,7 +234,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     return {
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
-            staleDetector, outputPruner, extractionSweep, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher,
+            staleDetector, outputPruner, extractionSweep, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
             wikiManager, scheduleManager, scheduleInfraDispose, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,

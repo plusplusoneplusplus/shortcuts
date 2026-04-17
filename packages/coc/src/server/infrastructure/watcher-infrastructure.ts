@@ -15,9 +15,11 @@
 import { TaskWatcher } from '../task-watcher';
 import { WorkflowWatcher } from '../workflow-watcher';
 import { TemplateWatcher } from '../template-watcher';
+import { NotesWatcher } from '../notes-watcher';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from '../task-migration';
 import { taskCache } from '../task-cache';
+import { getRepoDataPath } from '../paths';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../websocket';
 import type { MultiRepoQueueExecutorBridge } from '../multi-repo-executor-bridge';
@@ -30,6 +32,7 @@ export interface WatcherInfrastructure {
     taskWatcher: TaskWatcher;
     pipelineWatcher: WorkflowWatcher;
     templateWatcher: TemplateWatcher;
+    notesWatcher: NotesWatcher;
 }
 
 // ============================================================================
@@ -62,6 +65,9 @@ export async function createWatcherInfrastructure(
     const templateWatcher = new TemplateWatcher((workspaceId) => {
         wsServer.broadcastProcessEvent({ type: 'templates-changed', workspaceId, timestamp: Date.now() });
     });
+    const notesWatcher = new NotesWatcher((workspaceId, changedPaths) => {
+        wsServer.broadcastProcessEvent({ type: 'notes-changed', workspaceId, changedPaths, timestamp: Date.now() });
+    });
 
     // Bootstrap watchers for workspaces that already exist (server restart scenario)
     const existingWorkspaces = await store.getWorkspaces();
@@ -75,6 +81,7 @@ export async function createWatcherInfrastructure(
         taskWatcher.watchWorkspace(ws.id, resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath);
         pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
         templateWatcher.watchWorkspace(ws.id, ws.rootPath);
+        notesWatcher.watchWorkspace(ws.id, getRepoDataPath(dataDir, ws.id, 'notes'));
         bridge.registerRepoId(ws.id, ws.rootPath);
     }
 
@@ -93,6 +100,7 @@ export async function createWatcherInfrastructure(
         taskWatcher.watchWorkspace(workspace.id, resolveTaskRoot({ dataDir, rootPath: workspace.rootPath, workspaceId: workspace.id }).absolutePath);
         pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);
+        notesWatcher.watchWorkspace(workspace.id, getRepoDataPath(dataDir, workspace.id, 'notes'));
         bridge.registerRepoId(workspace.id, workspace.rootPath);
     };
 
@@ -100,8 +108,9 @@ export async function createWatcherInfrastructure(
         taskWatcher.unwatchWorkspace(id);
         pipelineWatcher.unwatchWorkspace(id);
         templateWatcher.unwatchWorkspace(id);
+        notesWatcher.unwatchWorkspace(id);
         return originalRemove(id);
     };
 
-    return { taskWatcher, pipelineWatcher, templateWatcher };
+    return { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher };
 }

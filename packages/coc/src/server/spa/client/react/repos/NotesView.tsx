@@ -61,6 +61,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
     });
     const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
     const editorRef = useRef<Editor | null>(null);
+    const flushSaveRef = useRef<(() => Promise<void>) | null>(null);
 
     useEffect(() => {
         try { localStorage.setItem('coc-notes-comments-panel-open', String(commentsPanelOpen)); }
@@ -298,6 +299,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
                     commentsPanelOpen={commentsPanelOpen}
                     onToggleCommentsPanel={() => setCommentsPanelOpen((v) => !v)}
                     commentCount={wrappedComments.totalCount}
+                    onFlushSave={(fn) => { flushSaveRef.current = fn; }}
                 />
             </div>
 
@@ -366,6 +368,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false,
                             notePath={selectedPath}
                             noteTitle={selectedPath?.split('/').pop()?.replace(/\.md$/, '')}
                             onClose={() => onToggleChatPanel?.()}
+                            onBeforeSend={async () => { await flushSaveRef.current?.(); }}
                         />
                     </div>
                 </>

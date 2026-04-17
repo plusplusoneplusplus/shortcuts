@@ -765,4 +765,151 @@ describe('NoteEditor', () => {
             });
         });
     });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Auto-reload via notes-changed window event
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('auto-reload on notes-changed', () => {
+        it('reloads content when notes-changed event matches current notePath', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Original', path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>'));
+
+            // Reset to track the reload
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# Updated by AI', path: 'page.md' });
+
+            // Dispatch notes-changed event
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('notes-changed', {
+                    detail: { wsId: 'ws1', changedPaths: ['page.md'] },
+                }));
+            });
+
+            await waitFor(() => {
+                expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md');
+                expect(mockSetContent).toHaveBeenCalledWith('<p># Updated by AI</p>');
+            });
+        });
+
+        it('ignores notes-changed event for different workspace', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('notes-changed', {
+                    detail: { wsId: 'ws-other', changedPaths: ['page.md'] },
+                }));
+            });
+
+            // Should not reload
+            expect(mockLoadContent).not.toHaveBeenCalled();
+        });
+
+        it('ignores notes-changed event for different file', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('notes-changed', {
+                    detail: { wsId: 'ws1', changedPaths: ['other.md'] },
+                }));
+            });
+
+            expect(mockLoadContent).not.toHaveBeenCalled();
+        });
+
+        it('does not reload when editor has pending unsaved content', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            // Make an edit (sets pendingContentRef)
+            act(() => { capturedOnChange?.(mockEditor); });
+
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('notes-changed', {
+                    detail: { wsId: 'ws1', changedPaths: ['page.md'] },
+                }));
+            });
+
+            // Should not reload because there are unsaved edits
+            expect(mockLoadContent).not.toHaveBeenCalled();
+        });
+
+        it('does not listen when notePath is null', () => {
+            const addSpy = vi.spyOn(window, 'addEventListener');
+
+            render(<NoteEditor workspaceId="ws1" notePath={null} io={mockIo} />);
+
+            const notesCalls = addSpy.mock.calls.filter(c => c[0] === 'notes-changed');
+            // The effect should not have added a listener (it returns early)
+            expect(notesCalls).toHaveLength(0);
+
+            addSpy.mockRestore();
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // onFlushSave callback
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('onFlushSave', () => {
+        it('calls onFlushSave with the flushSave function', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+            const onFlushSave = vi.fn();
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} onFlushSave={onFlushSave} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            expect(onFlushSave).toHaveBeenCalledWith(expect.any(Function));
+        });
+
+        it('exposed flushSave triggers save of pending content', async () => {
+            mockLoadContent.mockResolvedValue({ content: '', path: 'p.md' });
+            mockIOSaveContent.mockResolvedValue({ path: 'p.md', updated: true });
+            let capturedFlush: (() => Promise<void>) | null = null;
+            const onFlushSave = vi.fn((fn: () => Promise<void>) => { capturedFlush = fn; });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="p.md" io={mockIo} onFlushSave={onFlushSave} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            // Make an edit to create pending content
+            act(() => { capturedOnChange?.(mockEditor); });
+
+            expect(capturedFlush).not.toBeNull();
+            await act(async () => { await capturedFlush!(); });
+
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content');
+        });
+    });
 });

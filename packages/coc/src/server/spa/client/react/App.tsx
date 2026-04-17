@@ -198,6 +198,11 @@ function AppInner() {
             case 'templates-changed':
                 window.dispatchEvent(new CustomEvent('templates-changed', { detail: msg }));
                 break;
+            case 'notes-changed':
+                if (msg.workspaceId) {
+                    window.dispatchEvent(new CustomEvent('notes-changed', { detail: { wsId: msg.workspaceId, changedPaths: (msg as any).changedPaths ?? [] } }));
+                }
+                break;
             case 'wiki-reload':
                 if (msg.wiki) appDispatch({ type: 'WIKI_RELOAD', wiki: msg.wiki });
                 break;

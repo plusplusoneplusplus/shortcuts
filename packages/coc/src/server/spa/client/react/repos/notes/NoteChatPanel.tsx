@@ -11,9 +11,11 @@ export interface NoteChatPanelProps {
     notePath: string | null;
     noteTitle?: string;
     onClose: () => void;
+    /** Called before creating a new chat to flush pending editor saves. */
+    onBeforeSend?: () => Promise<void>;
 }
 
-export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose }: NoteChatPanelProps) {
+export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend }: NoteChatPanelProps) {
     const { taskId, createChat, resetChat } = useNotesChat({ workspaceId, notePath, noteTitle });
     const [input, setInput] = useState('');
     const richTextRef = useRef<RichTextInputHandle>(null);
@@ -32,6 +34,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose }: Not
 
         setInput('');
         richTextRef.current?.setValue('');
+        await onBeforeSend?.();
         await createChat(text);
     };
 

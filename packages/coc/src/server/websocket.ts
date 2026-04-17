@@ -106,6 +106,7 @@ export type ServerMessage =
     | { type: 'tasks-changed'; workspaceId: string; timestamp: number }
     | { type: 'workflows-changed'; workspaceId: string; timestamp: number }
     | { type: 'templates-changed'; workspaceId: string; timestamp: number }
+    | { type: 'notes-changed'; workspaceId: string; changedPaths: string[]; timestamp: number }
     | { type: 'wiki-reload'; wikiId: string; components: string[] }
     | { type: 'wiki-rebuilding'; wikiId: string; components: string[] }
     | { type: 'wiki-error'; wikiId: string; message: string }
@@ -423,6 +424,7 @@ export class ProcessWebSocketServer {
             message.type === 'tasks-changed' ||
             message.type === 'workflows-changed' ||
             message.type === 'templates-changed' ||
+            message.type === 'notes-changed' ||
             message.type === 'git-changed' ||
             message.type === 'diff-comment-updated'
         ) {

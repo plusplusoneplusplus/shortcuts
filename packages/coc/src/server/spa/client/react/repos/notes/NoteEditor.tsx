@@ -40,6 +40,8 @@ export interface NoteEditorProps {
     commentsPanelOpen?: boolean;
     onToggleCommentsPanel?: () => void;
     commentCount?: number;
+    /** Called with the flushSave function so the parent can trigger a save before sending chat messages. */
+    onFlushSave?: (flush: () => Promise<void>) => void;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -58,6 +60,7 @@ export function NoteEditor({
     commentsPanelOpen,
     onToggleCommentsPanel,
     commentCount,
+    onFlushSave,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -476,6 +479,38 @@ export function NoteEditor({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // ── Expose flushSave to parent (for save-before-send) ────────────────
+
+    useEffect(() => {
+        onFlushSave?.(flushSave);
+    }, [onFlushSave, flushSave]);
+
+    // ── Auto-reload on notes-changed WS event ────────────────────────────
+
+    useEffect(() => {
+        if (!notePath) return;
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail as { wsId: string; changedPaths: string[] } | undefined;
+            if (!detail || detail.wsId !== workspaceIdRef.current) return;
+            const normalizedNotePath = notePath.replace(/\\/g, '/');
+            const match = detail.changedPaths.some(p => p.replace(/\\/g, '/') === normalizedNotePath);
+            if (!match) return;
+            // Skip reload if user has unsaved edits
+            if (pendingContentRef.current !== null) return;
+            ioRef.current.loadContent(workspaceIdRef.current, notePath).then(({ content }) => {
+                let html = markdownToHtml(content);
+                html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
+                const ed = editorRef.current;
+                if (ed && !ed.isDestroyed) {
+                    ed.commands.setContent(html);
+                    setDirty(false);
+                }
+                setRawMarkdown(content);
+            }).catch(() => { /* non-fatal */ });
+        };
+        window.addEventListener('notes-changed', handler);
+        return () => window.removeEventListener('notes-changed', handler);
+    }, [notePath]);
     // ── Ctrl+S / Cmd+S: suppress browser dialog & flush save ──────────────
 
     useEffect(() => {

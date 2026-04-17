@@ -120,4 +120,27 @@ describe('NoteChatPanel', () => {
             expect(source).not.toContain('fetchApi');
         });
     });
+
+    describe('save-before-send', () => {
+        it('accepts onBeforeSend prop', () => {
+            expect(source).toContain('onBeforeSend');
+        });
+
+        it('calls onBeforeSend before createChat in handleSend', () => {
+            // Verify the call order: onBeforeSend appears before createChat in handleSend
+            const sendIdx = source.indexOf('await onBeforeSend?.()');
+            const createIdx = source.indexOf('await createChat(text)');
+            expect(sendIdx).toBeGreaterThan(-1);
+            expect(createIdx).toBeGreaterThan(-1);
+            expect(sendIdx).toBeLessThan(createIdx);
+        });
+
+        it('does not call onBeforeSend for /new or /clear commands', () => {
+            // The /new and /clear branch returns early before onBeforeSend
+            const newClearIdx = source.indexOf('resetChat()');
+            const beforeSendIdx = source.indexOf('await onBeforeSend?.()');
+            // resetChat return happens before the onBeforeSend call
+            expect(newClearIdx).toBeLessThan(beforeSendIdx);
+        });
+    });
 });
