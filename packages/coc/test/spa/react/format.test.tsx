@@ -152,7 +152,7 @@ describe('statusIcon', () => {
 
 describe('statusLabel', () => {
     it('returns label for known statuses', () => {
-        expect(statusLabel('running')).toBe('Running');
+        expect(statusLabel('running')).toBe('Thinking');
         expect(statusLabel('completed')).toBe('Completed');
         expect(statusLabel('failed')).toBe('Failed');
     });

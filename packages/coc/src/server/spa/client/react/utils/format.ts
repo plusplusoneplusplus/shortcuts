@@ -95,7 +95,7 @@ export function statusIcon(status: string): string {
 }
 
 export function statusLabel(status: string): string {
-    const map: Record<string, string> = { running: 'Running', cancelling: 'Cancelling…', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', queued: 'Queued' };
+    const map: Record<string, string> = { running: 'Thinking', cancelling: 'Cancelling…', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', queued: 'Queued' };
     return map[status] || status || '';
 }
 
