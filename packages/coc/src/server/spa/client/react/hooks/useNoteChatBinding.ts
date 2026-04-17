@@ -59,7 +59,7 @@ export function useNoteChatBinding(opts: UseNoteChatBindingOptions): UseNoteChat
                     priority: 'normal',
                     payload: {
                         kind: 'chat',
-                        mode: 'ask',
+                        mode: 'autopilot',
                         prompt,
                         workspaceId,
                         context: {

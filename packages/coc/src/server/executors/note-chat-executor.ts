@@ -20,10 +20,8 @@ import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
-    buildModeSystemMessage,
     appendAutoFolderBlock,
     appendMemoryContext,
-    withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
 } from './prompt-builder';
@@ -64,11 +62,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
 
         let systemMessage = appendAutoFolderBlock(
             appendMemoryContext(
-                await withRepoInstructions(
-                    buildModeSystemMessage('ask'),
-                    workingDirectory,
-                    'ask',
-                ),
+                undefined,
                 this.dataDir,
                 wsId,
             ),
@@ -95,7 +89,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         const toolSuffix = followUp.suffix + searchConversations.suffix;
 
         return {
-            agentMode: 'interactive' as AgentMode,
+            agentMode: 'autopilot' as AgentMode,
             systemMessage,
             tools,
             effectivePrompt: prompt + toolSuffix,
