@@ -30,7 +30,7 @@ export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId }: Acti
     const { floatingChats, unfloatChat } = useFloatingChats();
 
     if (!selectedTaskId) {
-        return <NewChatArea workspaceId={workspaceId} />;
+        return <NewChatArea workspaceId={workspaceId} onBack={onBack} />;
     }
 
     if (poppedOutTasks.has(selectedTaskId)) {

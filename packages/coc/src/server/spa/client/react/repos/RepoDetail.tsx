@@ -8,7 +8,6 @@ import type { AppContextState } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { useWorkItems, loadUnseenWorkItemIds } from '../context/WorkItemContext';
 import { Button, cn } from '../shared';
-import { BottomSheet } from '../shared/BottomSheet';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { TemplatesTab } from './TemplatesTab';
@@ -88,7 +87,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { isMobile } = useBreakpoint();
     const [editOpen, setEditOpen] = useState(false);
-    const [moreMenuOpen, setMoreMenuOpen] = useState(false);
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
@@ -164,7 +162,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isLaunchingCli, setIsLaunchingCli] = useState(false);
     const tabStripRef = useRef<HTMLDivElement>(null);
-    const moreMenuRef = useRef<HTMLDivElement>(null);
     const [tabScrollState, setTabScrollState] = useState<{ canScrollLeft: boolean; canScrollRight: boolean }>({ canScrollLeft: false, canScrollRight: false });
 
     // Track tab strip scroll state for gradient affordance
@@ -189,18 +186,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             ro?.disconnect();
         };
     }, [updateTabScrollState]);
-
-    // Close more-menu when clicking outside
-    useEffect(() => {
-        if (!moreMenuOpen || isMobile) return;
-        const handler = (e: MouseEvent) => {
-            if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-                setMoreMenuOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [moreMenuOpen]);
 
     // Auto-scroll active tab into view when sub-tab changes
     useEffect(() => {
@@ -277,9 +262,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 isMobile ? 'flex flex-col' : 'flex flex-row items-center'
             )}>
                 {isMobile ? (
-                    // Mobile: title + buttons in one row
+                    // Mobile: compact title row (actions moved to MobileTabBar)
                     <div className="flex gap-3 items-center py-1">
-                        {/* Title row */}
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                             <span
                                 className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
@@ -296,45 +280,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                                 </svg>
                             </button>
-                        </div>
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                            {(activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused && (
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    disabled={isPauseResumeLoading}
-                                    onClick={handleResumeQueue}
-                                    data-testid="repo-header-resume-btn"
-                                >
-                                    ▶ Resume Queue
-                                </Button>
-                            )}
-                            <div className="relative" ref={moreMenuRef} data-testid="repo-more-menu-container">
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => setMoreMenuOpen(prev => !prev)}
-                                    data-testid="repo-more-menu-btn"
-                                    title="More actions"
-                                >
-                                    ⋯
-                                </Button>
-                                {moreMenuOpen && (
-                                    <BottomSheet isOpen onClose={() => setMoreMenuOpen(false)} title="Actions">
-                                        <div className="flex flex-col" data-testid="repo-more-menu-items">
-                                            <button
-                                                className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                                data-testid="repo-more-run-script"
-                                                onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
-                                            >
-                                                🛠️ Run Script
-                                            </button>
-
-                                        </div>
-                                    </BottomSheet>
-                                )}
-                            </div>
                         </div>
                     </div>
                 ) : (
@@ -468,6 +413,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
+                    actions={[
+                        { label: 'Run Script', icon: '🛠️', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
+                        ...((activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused
+                            ? [{ label: 'Resume Queue', icon: '▶', onClick: handleResumeQueue }]
+                            : []),
+                    ]}
                 />
             )}
 

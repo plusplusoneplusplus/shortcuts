@@ -79,6 +79,9 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         storageKey: 'activity-left-panel-width',
     });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
+    // Ref to signal that mobileShowDetail=true was set intentionally for the new-chat flow,
+    // so the selectedTaskId=null reset effect does not immediately clear it.
+    const mobileNewChatRef = useRef(false);
 
     const repoQueue = queueState.repoQueueMap[workspaceId];
 
@@ -232,9 +235,15 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         selectedTaskRef.current = found;
     }, [selectedTaskId, running, queued, history]);
 
-    // Reset mobile detail view when selection is cleared
+    // Reset mobile detail view when selection is cleared, unless the new-chat flow set it
     useEffect(() => {
-        if (!selectedTaskId) setMobileShowDetail(false);
+        if (!selectedTaskId) {
+            if (mobileNewChatRef.current) {
+                mobileNewChatRef.current = false;
+                return;
+            }
+            setMobileShowDetail(false);
+        }
     }, [selectedTaskId]);
 
     // Track unseen activity across all state changes (queued→running→completed etc.)
@@ -405,6 +414,10 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             onLoadMoreSearchResults={searchLoadMore}
             activeTab={mode}
             onNewChat={() => {
+                if (isMobile) {
+                    mobileNewChatRef.current = true;
+                    setMobileShowDetail(true);
+                }
                 queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
                 setSelectedTask(null);
                 selectedTaskRef.current = null;
@@ -418,7 +431,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             <ChatPreferencesProvider workspaceId={workspaceId}>
                 <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <div className="flex flex-col h-full overflow-hidden" data-testid="activity-split-panel">
-                    {mobileShowDetail && selectedTaskId ? (
+                    {mobileShowDetail ? (
                         <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel" data-pane="detail">
                             <ActivityDetailPane
                                 selectedTaskId={selectedTaskId}
