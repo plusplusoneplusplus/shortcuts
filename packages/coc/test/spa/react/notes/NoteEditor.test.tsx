@@ -873,6 +873,41 @@ describe('NoteEditor', () => {
 
             addSpy.mockRestore();
         });
+
+        it('skips auto-reload when notes-changed arrives shortly after save', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+            mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            vi.useFakeTimers();
+
+            // Trigger an edit + debounce save
+            act(() => { capturedOnChange?.(mockEditor); });
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            // Flush the save promise
+            await act(async () => { await Promise.resolve(); });
+
+            expect(mockIOSaveContent).toHaveBeenCalledTimes(1);
+
+            // Reset tracking for the reload path
+            mockLoadContent.mockClear();
+            mockSetContent.mockClear();
+
+            // Fire the echo notes-changed event right after save (within 1s)
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('notes-changed', {
+                    detail: { wsId: 'ws1', changedPaths: ['page.md'] },
+                }));
+            });
+
+            // Should NOT reload — the event is an echo of our own save
+            expect(mockLoadContent).not.toHaveBeenCalled();
+            expect(mockSetContent).not.toHaveBeenCalled();
+        });
     });
 
     // ══════════════════════════════════════════════════════════════════════

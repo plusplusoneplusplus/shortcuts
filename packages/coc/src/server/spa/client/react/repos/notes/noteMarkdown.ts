@@ -161,7 +161,16 @@ turndown.addRule('tableRow', {
         const row = `${content}|\n`;
         const isInThead = node.parentNode && node.parentNode.nodeName === 'THEAD';
         const thCells = Array.from(node.querySelectorAll('th'));
-        if (isInThead || thCells.length > 0) {
+
+        let needsSeparator = isInThead || thCells.length > 0;
+
+        // td-only tables (e.g. pasted content): first row still needs a GFM separator
+        if (!needsSeparator && node.parentNode) {
+            const firstTr = Array.from(node.parentNode.childNodes).find(c => c.nodeName === 'TR');
+            needsSeparator = firstTr === node;
+        }
+
+        if (needsSeparator) {
             const cells = thCells.length > 0 ? thCells : Array.from(node.querySelectorAll('td'));
             const separators = cells.map((cell) => {
                 const style = (cell as Element).getAttribute('style') ?? '';

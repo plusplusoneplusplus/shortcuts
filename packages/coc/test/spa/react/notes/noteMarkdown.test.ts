@@ -431,6 +431,47 @@ describe('noteMarkdown', () => {
             expect(rt).toContain('| x | y |');
             expect(rt).toContain('Outro paragraph');
         });
+
+        it('htmlToMarkdown — td-only table (no th, no thead) emits separator', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><td>A</td><td>B</td></tr>' +
+                '<tr><td>1</td><td>2</td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('| A | B |');
+            expect(md).toContain('| --- |');
+            expect(md).toContain('| 1 | 2 |');
+        });
+
+        it('round-trip — td-only table survives save/reload cycle', () => {
+            // Start from the markdown that a td-only table would produce
+            const html =
+                '<table><tbody>' +
+                '<tr><td>Name</td><td>Value</td></tr>' +
+                '<tr><td>foo</td><td>bar</td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            const reloadedHtml = markdownToHtml(md);
+            // Must come back as a table, not paragraphs
+            expect(reloadedHtml).toContain('<table>');
+            expect(reloadedHtml).toContain('Name');
+            expect(reloadedHtml).toContain('bar');
+            expect(reloadedHtml).not.toMatch(/<p>\|/);
+        });
+
+        it('round-trip — pasted table (td-only) renders back as table', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><td>X</td><td>Y</td></tr>' +
+                '<tr><td>1</td><td>2</td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            const reloadedHtml = markdownToHtml(md);
+            expect(reloadedHtml).toContain('<table>');
+            expect(reloadedHtml).toContain('<th');
+            expect(reloadedHtml).not.toContain('<p>| X');
+        });
     });
 
     // ── Image resize serialization ──────────────────────────────────────

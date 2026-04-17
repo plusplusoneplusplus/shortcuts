@@ -160,6 +160,7 @@ export function NoteEditor({
     const sourceSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingContentRef = useRef<string | null>(null);
     const pendingSourceContentRef = useRef<string | null>(null);
+    const lastSaveAtRef = useRef(0);
     const notePathRef = useRef(notePath);
     const workspaceIdRef = useRef(workspaceId);
     const ioRef = useRef(io);
@@ -255,6 +256,7 @@ export function NoteEditor({
         setSaveState('saving');
         try {
             await ioRef.current.saveContent(workspaceIdRef.current, path, content);
+            lastSaveAtRef.current = Date.now();
             setSaveState('saved');
             setDirty(false);
             setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
@@ -299,6 +301,7 @@ export function NoteEditor({
         setSaveState('saving');
         try {
             await ioRef.current.saveContent(workspaceIdRef.current, path, content);
+            lastSaveAtRef.current = Date.now();
             setSaveState('saved');
             setSourceDirty(false);
             setDirty(false);
@@ -619,6 +622,8 @@ export function NoteEditor({
             const normalizedNotePath = notePath.replace(/\\/g, '/');
             const match = detail.changedPaths.some(p => p.replace(/\\/g, '/') === normalizedNotePath);
             if (!match) return;
+            // Skip reload when it's an echo of our own save
+            if (Date.now() - lastSaveAtRef.current < 1000) return;
             // Skip reload if user has unsaved edits
             if (pendingContentRef.current !== null) return;
             ioRef.current.loadContent(workspaceIdRef.current, notePath).then(({ content }) => {
