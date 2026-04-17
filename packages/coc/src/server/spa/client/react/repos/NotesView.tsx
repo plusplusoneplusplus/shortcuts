@@ -12,7 +12,6 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useApp } from '../context/AppContext';
 import { buildNoteHash } from '../layout/Router';
-import { fetchApi } from '../hooks/useApi';
 
 export interface NotesViewProps {
     workspaceId: string;
@@ -211,16 +210,7 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
             dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: updated });
             updateHash(updated);
         }
-        // Rebind chat binding for renamed note
-        fetchApi(
-            `/workspaces/${encodeURIComponent(workspaceId)}/note-chat-bindings/rebind`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ oldPath, newPath }),
-            },
-        ).catch(() => { /* no binding to rebind — harmless */ });
-    }, [selectedPath, dispatch, updateHash, workspaceId]);
+    }, [selectedPath, dispatch, updateHash]);
 
     const handleNoteCreated = useCallback((path: string) => {
         setSelectedPath(path);
@@ -234,18 +224,13 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
             dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: null });
             updateHash(null);
         }
-        // Unbind chat binding for deleted note
-        fetchApi(
-            `/workspaces/${encodeURIComponent(workspaceId)}/note-chat-bindings?path=${encodeURIComponent(path)}`,
-            { method: 'DELETE' },
-        ).catch(() => { /* no binding — harmless */ });
-    }, [selectedPath, dispatch, updateHash, workspaceId]);
+    }, [selectedPath, dispatch, updateHash]);
 
     // ── Render ──────────────────────────────────────────────────────────────
 
     const isResizing = !isMobile && (sidebarResize.isDragging || commentsPanelResize.isDragging || chatPanelResize.isDragging);
     const commentsVisible = commentsPanelOpen && !!selectedPath && noteViewMode === 'rich';
-    const chatVisible = chatPanelOpen && !!selectedPath;
+    const chatVisible = chatPanelOpen;
 
     return (
         <div
@@ -305,15 +290,13 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                                 💬
                             </button>
                         )}
-                        {selectedPath && (
-                            <button
-                                className="text-xs text-[#0078d4] hover:underline ml-2"
-                                onClick={() => setChatPanelOpen((v) => !v)}
-                                data-testid="notes-mobile-chat-btn"
-                            >
-                                🤖
-                            </button>
-                        )}
+                        <button
+                            className="text-xs text-[#0078d4] hover:underline ml-2"
+                            onClick={() => setChatPanelOpen((v) => !v)}
+                            data-testid="notes-mobile-chat-btn"
+                        >
+                            🤖
+                        </button>
                     </div>
                 )}
                 {/* Desktop/tablet comments toggle — now merged into NoteEditorToolbar */}
@@ -396,7 +379,7 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                     >
                         <NoteChatPanel
                             workspaceId={workspaceId}
-                            notePath={selectedPath!}
+                            notePath={selectedPath}
                             noteTitle={selectedPath?.split('/').pop()?.replace(/\.md$/, '')}
                             onClose={() => setChatPanelOpen(false)}
                         />

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useNoteChatBinding } from '../../hooks/useNoteChatBinding';
+import { useNotesChat } from '../../hooks/useNotesChat';
 import { ActivityChatDetail } from '../ActivityChatDetail';
 import { ChatPreferencesProvider } from '../../context/ChatPreferencesContext';
 import { RichTextInput } from '../../shared/RichTextInput';
@@ -7,13 +7,14 @@ import type { RichTextInputHandle } from '../../shared/RichTextInput';
 
 export interface NoteChatPanelProps {
     workspaceId: string;
-    notePath: string;
+    /** Currently selected note path — used as context for the initial message */
+    notePath: string | null;
     noteTitle?: string;
     onClose: () => void;
 }
 
 export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose }: NoteChatPanelProps) {
-    const { taskId, loading, error, createChat, resetBinding } = useNoteChatBinding({ workspaceId, notePath, noteTitle });
+    const { taskId, createChat, resetChat } = useNotesChat({ workspaceId, notePath, noteTitle });
     const [input, setInput] = useState('');
     const richTextRef = useRef<RichTextInputHandle>(null);
 
@@ -25,7 +26,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose }: Not
         if (/^\/(new|clear)$/i.test(text)) {
             setInput('');
             richTextRef.current?.setValue('');
-            await resetBinding();
+            resetChat();
             return;
         }
 
@@ -34,56 +35,30 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose }: Not
         await createChat(text);
     };
 
-    const displayTitle = noteTitle || notePath.split('/').pop() || 'Note';
-
     return (
         <div className="flex flex-col bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden h-full w-full"
              data-testid="note-chat-panel">
 
-            {/* Header — always visible for chat title + New Chat button */}
-            {!taskId && (
-                <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">🤖 Note Chat</span>
-                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[#e8e8e8] dark:bg-[#333] text-blue-600 dark:text-blue-400 truncate max-w-[120px]"
-                              title={notePath}>
-                            {displayTitle}
-                        </span>
-                    </div>
-                    <button onClick={onClose} className="text-xs px-1 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-white"
-                            data-testid="note-chat-close-btn" title="Close">✕</button>
-                </div>
-            )}
-
-            {/* Loading state */}
-            {loading && (
-                <div className="flex-1 flex items-center justify-center">
-                    <div className="text-sm text-[#848484]">Loading...</div>
-                </div>
-            )}
-
-            {/* Error state */}
-            {error && !loading && (
-                <div className="flex-1 flex items-center justify-center">
-                    <div className="text-sm text-[#f14c4c]">{error}</div>
-                </div>
-            )}
-
             {/* Empty state — no chat yet */}
-            {!taskId && !loading && !error && (
+            {!taskId && (
                 <>
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">🤖 Notes Chat</span>
+                        <button onClick={onClose} className="text-xs px-1 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-white"
+                                data-testid="note-chat-close-btn" title="Close">✕</button>
+                    </div>
                     <div className="flex-1 flex items-center justify-center">
                         <div className="text-center text-[#848484]">
                             <div className="text-3xl mb-2">🤖</div>
-                            <div className="text-sm font-medium mb-1">Chat about this note</div>
-                            <div className="text-xs">Ask questions about the content</div>
+                            <div className="text-sm font-medium mb-1">Notes Chat</div>
+                            <div className="text-xs">Ask about your notes — one chat per workspace</div>
                         </div>
                     </div>
                     <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                         <div className="flex items-center gap-2">
                             <RichTextInput
                                 ref={richTextRef}
-                                placeholder="Ask about this note..."
+                                placeholder="Ask about your notes..."
                                 className="flex-1 min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm"
                                 onChange={setInput}
                                 onKeyDown={(e) => {
@@ -102,15 +77,13 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose }: Not
                 </>
             )}
 
-            {/* Active chat — delegate entirely to ActivityChatDetail */}
-            {taskId && !loading && (
+            {/* Active chat */}
+            {taskId && (
                 <ChatPreferencesProvider workspaceId={workspaceId}>
                     <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0">
-                        <span className="text-[10px] text-[#848484] truncate" title={notePath}>
-                            🤖 {displayTitle}
-                        </span>
+                        <span className="text-[10px] text-[#848484]">🤖 Notes Chat</span>
                         <button
-                            onClick={resetBinding}
+                            onClick={resetChat}
                             className="text-[10px] px-1.5 py-0.5 rounded text-[#0078d4] hover:bg-[#e8e8e8] dark:hover:bg-[#333]"
                             data-testid="note-chat-new-btn"
                             title="Start a new chat (current chat is kept in history)"
@@ -123,7 +96,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose }: Not
                         workspaceId={workspaceId}
                         variant="floating"
                         standalone
-                        title={`Note Chat · ${displayTitle}`}
+                        title="Notes Chat"
                         hideModeSelector
                         onBack={onClose}
                     />

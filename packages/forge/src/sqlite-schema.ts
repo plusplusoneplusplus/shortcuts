@@ -260,22 +260,6 @@ export function initializeDatabase(db: Database.Database): void {
                 ON commit_chat_bindings(workspace_id);
         `);
 
-        // ── note_chat_bindings ──────────────────────────────────────────
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS note_chat_bindings (
-                workspace_id  TEXT NOT NULL,
-                note_path     TEXT NOT NULL,
-                task_id       TEXT NOT NULL,
-                created_at    TEXT NOT NULL,
-                PRIMARY KEY (workspace_id, note_path)
-            )
-        `);
-
-        db.exec(`
-            CREATE INDEX IF NOT EXISTS idx_note_chat_bindings_workspace
-                ON note_chat_bindings(workspace_id);
-        `);
-
         // ── incremental migrations for existing databases ───────────
         if (versionBefore >= 1 && versionBefore < 2) {
             migrateV1toV2(db);
@@ -358,10 +342,8 @@ function migrateV5toV6(db: Database.Database): void {
 }
 
 /**
- * V6 → V7: add `note_chat_bindings` table.
- * The CREATE TABLE IF NOT EXISTS above handles fresh databases;
- * this migration is a no-op but keeps the version chain explicit.
+ * V6 → V7: drop `note_chat_bindings` table (replaced by localStorage-based single-chat model).
  */
-function migrateV6toV7(_db: Database.Database): void {
-    // Table already created by the idempotent DDL above.
+function migrateV6toV7(db: Database.Database): void {
+    db.exec('DROP TABLE IF EXISTS note_chat_bindings');
 }

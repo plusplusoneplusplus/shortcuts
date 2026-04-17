@@ -31,7 +31,6 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('queue_tasks');
         expect(tables).toContain('queue_repo_state');
         expect(tables).toContain('commit_chat_bindings');
-        expect(tables).toContain('note_chat_bindings');
     });
 
     it('creates all expected indexes', () => {
@@ -58,7 +57,6 @@ describe('sqlite-schema', () => {
             'idx_schedule_runs_repo_id',
             'idx_schedule_runs_status',
             'idx_commit_chat_bindings_workspace',
-            'idx_note_chat_bindings_workspace',
         ];
 
         for (const name of expected) {
@@ -479,7 +477,6 @@ describe('sqlite-schema', () => {
                 .all()
                 .map((r: any) => r.name);
             expect(tables).toContain('conversation_search');
-            expect(tables).toContain('note_chat_bindings');
 
             const triggers = db
                 .prepare("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")

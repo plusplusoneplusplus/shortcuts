@@ -123,7 +123,6 @@ src/
 │   ├── data-wiper.ts             # Data cleanup/reset
 │   ├── diff-comments-handler.ts  # Git diff view comment CRUD API
 │   ├── commit-chat-binding-store.ts # SQLite store mapping commitHash → taskId for commit-chat
-│   ├── note-chat-binding-store.ts   # SQLite store mapping notePath → taskId for note-chat
 │   ├── image-blob-store.ts       # Externalizes base64 images from queue persistence into JSON files
 │   ├── replicate-apply-handler.ts # Applies ReplicateResult changes to disk (idempotent)
 │   ├── llm-tools/                # AI tool factories for chat executors
