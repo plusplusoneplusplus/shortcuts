@@ -17,6 +17,7 @@ import type {
     ProcessStore,
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
+import type { ProcessWebSocketServer } from '../websocket';
 import type { ChatPayload } from '../task-types';
 import {
     buildModeSystemMessage,
@@ -25,6 +26,7 @@ import {
     withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
+    buildSearchConversationsAddon,
     buildCreateWorkItemAddon,
 } from './prompt-builder';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
@@ -34,11 +36,16 @@ import { ChatBaseExecutor } from './chat-base-executor';
 // ChatExecutor
 // ============================================================================
 
-export type ChatExecutorOptions = ChatModeExecutorOptions;
+export interface ChatExecutorOptions extends ChatModeExecutorOptions {
+    getWsServer?: () => ProcessWebSocketServer | undefined;
+}
 
 export class ChatExecutor extends ChatBaseExecutor {
+    private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
+
     constructor(store: ProcessStore, options: ChatExecutorOptions, dataDir?: string) {
         super(store, options, dataDir);
+        this.getWsServerFn = options.getWsServer;
     }
 
     protected async buildModeOptions(
@@ -75,6 +82,7 @@ export class ChatExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.count,
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
+        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId);
         const createWorkItem = buildCreateWorkItemAddon(
             this.dataDir,
             payload.workspaceId,
@@ -86,8 +94,8 @@ export class ChatExecutor extends ChatBaseExecutor {
         return {
             agentMode: 'interactive' as AgentMode,
             systemMessage,
-            tools: [...followUp.tools, ...updateStatus.tools, ...createWorkItem.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + createWorkItem.suffix,
+            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...createWorkItem.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + createWorkItem.suffix,
         };
     }
 }
