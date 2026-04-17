@@ -11,7 +11,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { DEFAULT_SKILLS_SETTINGS, getBundledSkillsPath } from '@plusplusoneplusplus/forge';
+import {
+    DEFAULT_SKILLS_SETTINGS,
+    getBundledSkillsPath,
+    resolvePathForHostFilesystem,
+    resolvePathInExecutionContext,
+    resolveWorkspaceExecutionContext,
+    translatePathForExecution,
+} from '@plusplusoneplusplus/forge';
 
 export async function resolveSkillConfig(
     store: ProcessStore,
@@ -106,6 +113,16 @@ export async function resolveSkillConfig(
                 // Non-fatal: skip extra skill folders when path translation fails
             }
         }
+    }
+
+    // Bundled skills (lowest priority — shipped with forge)
+    const bundledDir = getBundledSkillsPath();
+    try {
+        if (await fs.promises.access(bundledDir).then(() => true).catch(() => false)) {
+            dirs.push(bundledDir);
+        }
+    } catch {
+        // Non-fatal
     }
 
     return {
