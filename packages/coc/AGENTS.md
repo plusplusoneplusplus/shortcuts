@@ -137,6 +137,7 @@ src/
 │   ├── startup-process-migration.ts # Auto-migrates file-based process histories to SQLite on startup (renames processes/ → processes.migrated/)
 │   ├── template-watcher.ts       # Watches .vscode/templates/ for file changes
 │   ├── templates-handler.ts      # Template CRUD API (list, read, create, update, delete)
+│   ├── notes-watcher.ts          # File watcher for notes directories — debounced, .md-only, broadcasts notes-changed WS events
 │   ├── wiki/                     # Wiki integration
 │   │   ├── index.ts              # Wiki module exports
 │   │   ├── types.ts              # Wiki types
