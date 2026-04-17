@@ -216,4 +216,10 @@ describe('NoteEditorToolbar — highlight controls', () => {
         const btn = screen.getByLabelText('Highlight');
         expect(btn.className).toContain('font-bold');
     });
+
+    it('does not render a chat panel toggle (chat toggle lives in MyWorkView header)', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByTestId('chat-panel-toggle')).toBeNull();
+    });
 });

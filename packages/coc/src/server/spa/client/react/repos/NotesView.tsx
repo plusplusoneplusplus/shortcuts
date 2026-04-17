@@ -16,9 +16,11 @@ import { buildNoteHash } from '../layout/Router';
 export interface NotesViewProps {
     workspaceId: string;
     initialNotePath?: string | null;
+    chatPanelOpen?: boolean;
+    onToggleChatPanel?: () => void;
 }
 
-export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
+export function NotesView({ workspaceId, initialNotePath, chatPanelOpen = false, onToggleChatPanel }: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPath, setSelectedPath] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -57,10 +59,6 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
         try { return localStorage.getItem('coc-notes-comments-panel-open') === 'true'; }
         catch { return false; }
     });
-    const [chatPanelOpen, setChatPanelOpen] = useState(() => {
-        try { return localStorage.getItem('coc-notes-chat-panel-open') === 'true'; }
-        catch { return false; }
-    });
     const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
     const editorRef = useRef<Editor | null>(null);
 
@@ -68,11 +66,6 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
         try { localStorage.setItem('coc-notes-comments-panel-open', String(commentsPanelOpen)); }
         catch { /* ignore */ }
     }, [commentsPanelOpen]);
-
-    useEffect(() => {
-        try { localStorage.setItem('coc-notes-chat-panel-open', String(chatPanelOpen)); }
-        catch { /* ignore */ }
-    }, [chatPanelOpen]);
 
     const comments = useComments({
         workspaceId,
@@ -290,13 +283,6 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                                 💬
                             </button>
                         )}
-                        <button
-                            className="text-xs text-[#0078d4] hover:underline ml-2"
-                            onClick={() => setChatPanelOpen((v) => !v)}
-                            data-testid="notes-mobile-chat-btn"
-                        >
-                            🤖
-                        </button>
                     </div>
                 )}
                 {/* Desktop/tablet comments toggle — now merged into NoteEditorToolbar */}
@@ -312,8 +298,6 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                     commentsPanelOpen={commentsPanelOpen}
                     onToggleCommentsPanel={() => setCommentsPanelOpen((v) => !v)}
                     commentCount={wrappedComments.totalCount}
-                    chatPanelOpen={chatPanelOpen}
-                    onToggleChatPanel={() => setChatPanelOpen((v) => !v)}
                 />
             </div>
 
@@ -381,7 +365,7 @@ export function NotesView({ workspaceId, initialNotePath }: NotesViewProps) {
                             workspaceId={workspaceId}
                             notePath={selectedPath}
                             noteTitle={selectedPath?.split('/').pop()?.replace(/\.md$/, '')}
-                            onClose={() => setChatPanelOpen(false)}
+                            onClose={() => onToggleChatPanel?.()}
                         />
                     </div>
                 </>

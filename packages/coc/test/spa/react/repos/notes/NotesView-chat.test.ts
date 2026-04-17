@@ -1,6 +1,6 @@
 /**
- * Tests for NotesView — verifies binding-related code was removed
- * and chat panel is always available (single-chat-per-workspace model).
+ * Tests for NotesView — verifies chat panel state is lifted to parent
+ * and per-note binding code was removed (single-chat-per-workspace model).
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -32,25 +32,45 @@ describe('NotesView (notes chat refactor)', () => {
         });
     });
 
-    describe('chat panel availability', () => {
-        it('chat panel visibility is not gated on selectedPath', () => {
-            expect(source).toContain('const chatVisible = chatPanelOpen;');
+    describe('chat state lifted to parent', () => {
+        it('accepts chatPanelOpen as a prop', () => {
+            expect(source).toContain('chatPanelOpen?: boolean');
         });
 
-        it('mobile chat button is not gated on selectedPath', () => {
-            // The 🤖 button should not be wrapped in {selectedPath && ...}
-            const mobileChatBtnArea = source.substring(
-                source.indexOf('notes-mobile-chat-btn') - 200,
-                source.indexOf('notes-mobile-chat-btn') + 50
-            );
-            expect(mobileChatBtnArea).not.toContain('selectedPath && (');
+        it('accepts onToggleChatPanel as a prop', () => {
+            expect(source).toContain('onToggleChatPanel?: () => void');
+        });
+
+        it('does not own chatPanelOpen state internally', () => {
+            expect(source).not.toContain("useState(() => {\n        try { return localStorage.getItem('coc-notes-chat-panel-open')");
+        });
+
+        it('does not sync chatPanelOpen to localStorage', () => {
+            expect(source).not.toContain("localStorage.setItem('coc-notes-chat-panel-open'");
+        });
+
+        it('chat panel visibility uses the prop', () => {
+            expect(source).toContain('const chatVisible = chatPanelOpen;');
+        });
+    });
+
+    describe('chat toggle not in per-note toolbar', () => {
+        it('does not pass chatPanelOpen to NoteEditor', () => {
+            expect(source).not.toContain('chatPanelOpen={chatPanelOpen}');
+        });
+
+        it('does not pass onToggleChatPanel to NoteEditor', () => {
+            expect(source).not.toContain('onToggleChatPanel=');
+        });
+
+        it('does not render a mobile chat button', () => {
+            expect(source).not.toContain('notes-mobile-chat-btn');
         });
     });
 
     describe('NoteChatPanel receives nullable notePath', () => {
         it('passes selectedPath (which can be null) to NoteChatPanel', () => {
             expect(source).toContain('notePath={selectedPath}');
-            // Not `notePath={selectedPath!}` — no non-null assertion
             expect(source).not.toContain('notePath={selectedPath!}');
         });
     });

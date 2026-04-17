@@ -28,10 +28,15 @@ vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
 
-// Stub NotesView — just render a marker div
+// Stub NotesView — render a marker div that captures props
 vi.mock('../../../../../src/server/spa/client/react/repos/NotesView', () => ({
     NotesView: (props: any) => (
-        <div data-testid="notes-view" data-workspace-id={props.workspaceId} />
+        <div
+            data-testid="notes-view"
+            data-workspace-id={props.workspaceId}
+            data-chat-panel-open={String(!!props.chatPanelOpen)}
+            data-has-toggle={String(typeof props.onToggleChatPanel === 'function')}
+        />
     ),
 }));
 
@@ -172,5 +177,35 @@ describe('MyWorkView', () => {
 
     it('exports MY_WORK_WORKSPACE_ID constant', () => {
         expect(MY_WORK_WORKSPACE_ID).toBe('my_work');
+    });
+
+    describe('chat toggle button', () => {
+        it('renders the 🤖 Chat toggle button in the header', () => {
+            renderView();
+            expect(screen.getByTestId('my-work-chat-toggle')).toBeTruthy();
+        });
+
+        it('clicking the toggle toggles chatPanelOpen', () => {
+            renderView();
+            const toggle = screen.getByTestId('my-work-chat-toggle');
+            const notesView = screen.getByTestId('notes-view');
+
+            // Initially false
+            expect(notesView.getAttribute('data-chat-panel-open')).toBe('false');
+
+            // Click to open
+            fireEvent.click(toggle);
+            expect(screen.getByTestId('notes-view').getAttribute('data-chat-panel-open')).toBe('true');
+
+            // Click to close
+            fireEvent.click(toggle);
+            expect(screen.getByTestId('notes-view').getAttribute('data-chat-panel-open')).toBe('false');
+        });
+
+        it('passes onToggleChatPanel callback to NotesView', () => {
+            renderView();
+            const notesView = screen.getByTestId('notes-view');
+            expect(notesView.getAttribute('data-has-toggle')).toBe('true');
+        });
     });
 });
