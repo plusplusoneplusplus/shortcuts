@@ -24,7 +24,7 @@ export function AttachedContextPreviews({ items, onRemove, className, ...props }
                 >
                     <span className="shrink-0">📎</span>
                     <span className="shrink-0 font-medium text-[10px] uppercase tracking-wide text-[#848484]">
-                        {item.role === 'user' ? 'You' : 'Assistant'} #{item.turnIndex}
+                        {item.role === 'user' ? 'You' : 'Assistant'}
                     </span>
                     <span className="flex-1 min-w-0 truncate text-[#1e1e1e] dark:text-[#cccccc]">
                         {item.preview}

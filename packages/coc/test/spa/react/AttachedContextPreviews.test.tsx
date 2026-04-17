@@ -33,14 +33,14 @@ describe('AttachedContextPreviews', () => {
         expect(chips).toHaveLength(2);
     });
 
-    it('displays the role label and turn index', () => {
+    it('displays the role label', () => {
         render(
             <AttachedContextPreviews
                 items={[makeItem({ turnIndex: 5, role: 'assistant' })]}
                 onRemove={vi.fn()}
             />,
         );
-        expect(screen.getByText(/Assistant #5/)).toBeTruthy();
+        expect(screen.getByText('Assistant')).toBeTruthy();
     });
 
     it('displays "You" label for user role', () => {
@@ -50,7 +50,7 @@ describe('AttachedContextPreviews', () => {
                 onRemove={vi.fn()}
             />,
         );
-        expect(screen.getByText(/You #2/)).toBeTruthy();
+        expect(screen.getByText('You')).toBeTruthy();
     });
 
     it('displays the preview text', () => {
