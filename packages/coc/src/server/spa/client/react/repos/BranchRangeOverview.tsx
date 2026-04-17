@@ -43,7 +43,6 @@ export interface BranchRangeOverviewProps {
     onFileSelect?: (filePath: string) => void;
     onAllCommentsClick?: () => void;
     onAskAI?: () => void;
-    onQueueTask?: () => void;
     isPopOut?: boolean;
     /** When set, scrolls the file list to the given file. */
     scrollToFilePath?: string | null;
@@ -93,7 +92,7 @@ function FocusedBranchFileDiff({ workspaceId, filePath }: { workspaceId: string;
     );
 }
 
-export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask, isPopOut, scrollToFilePath, focusedFilePath, onClearFocus }: BranchRangeOverviewProps) {
+export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, isPopOut, scrollToFilePath, focusedFilePath, onClearFocus }: BranchRangeOverviewProps) {
     const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
     const [isDragging, setIsDragging] = useState(false);
     const [branchCommentCount, setBranchCommentCount] = useState(0);
@@ -198,7 +197,6 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
                     onAllCommentsClick={onAllCommentsClick}
                     commentCount={branchCommentCount}
                     onAskAI={onAskAI}
-                    onQueueTask={onQueueTask}
                 />
             </div>
 

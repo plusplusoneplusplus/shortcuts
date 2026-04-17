@@ -1200,14 +1200,6 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
                 },
             });
-            items.push({
-                label: 'Queue Task',
-                icon: '🤖',
-                onClick: () => {
-                    const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
-                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
-                },
-            });
         }
 
         if (contextMenu.type === 'multi-commit' && contextMenu.commits?.length) {
@@ -1234,11 +1226,6 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
                 },
             });
-            items.push({
-                label: 'Queue Task', icon: '🤖', onClick: () => {
-                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
-                },
-            });
         }
 
         if (contextMenu.type === 'branch-range') {
@@ -1246,11 +1233,6 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 label: 'Ask AI',
                 icon: '💡',
                 onClick: () => { void handleBranchAskAI('ask'); },
-            });
-            items.push({
-                label: 'Queue Task',
-                icon: '🤖',
-                onClick: () => { void handleBranchAskAI('task'); },
             });
         }
 
@@ -1384,7 +1366,6 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             onFileSelect={handleFileSelect}
             onAllCommentsClick={handleAllBranchCommentsClick}
             onAskAI={() => { void handleBranchAskAI('ask'); }}
-            onQueueTask={() => { void handleBranchAskAI('task'); }}
         />
     ) : rightPanelView?.type === 'branch-file' ? (
         <FileDiffPanel

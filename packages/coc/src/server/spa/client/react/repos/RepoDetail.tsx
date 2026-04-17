@@ -26,7 +26,6 @@ import { NotesView } from './NotesView';
 import { AddRepoDialog } from './AddRepoDialog';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 
-import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
@@ -90,11 +89,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { isMobile } = useBreakpoint();
     const [editOpen, setEditOpen] = useState(false);
     const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-    const [generateDialog, setGenerateDialog] = useState<{
-        open: boolean;
-        minimized: boolean;
-        targetFolder: string | undefined;
-    }>({ open: false, minimized: false, targetFolder: undefined });
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
@@ -267,10 +261,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId: ws.id });
     }, [ws.id, queueDispatch]);
 
-    const handleOpenGenerateDialog = useCallback((targetFolder?: string) => {
-        setGenerateDialog({ open: true, minimized: false, targetFolder });
-    }, []);
-
     const handleRemove = async () => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
         await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(ws.id), { method: 'DELETE' });
@@ -320,15 +310,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     ▶ Resume Queue
                                 </Button>
                             )}
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
-                                title="Ask AI a question (read-only)"
-                                data-testid="repo-ask-btn"
-                            >
-                                💡 Ask
-                            </Button>
                             <div className="relative" ref={moreMenuRef} data-testid="repo-more-menu-container">
                                 <Button
                                     variant="secondary"
@@ -344,24 +325,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                         <div className="flex flex-col" data-testid="repo-more-menu-items">
                                             <button
                                                 className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                                data-testid="repo-more-queue-task"
-                                                onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }); }}
-                                            >
-                                                🤖 Queue Task (Alt+Q)
-                                            </button>
-                                            <button
-                                                className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                                 data-testid="repo-more-run-script"
                                                 onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
                                             >
                                                 🛠️ Run Script
-                                            </button>
-                                            <button
-                                                className="w-full text-left px-4 py-2 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                                data-testid="repo-more-generate"
-                                                onClick={() => { setMoreMenuOpen(false); handleOpenGenerateDialog(); }}
-                                            >
-                                                📋 Generate Plan
                                             </button>
 
                                         </div>
@@ -486,21 +453,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             >
                                 🛠️ Run Script
                             </Button>
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
-                                title="Ask AI a question (read-only)"
-                                data-testid="repo-ask-btn"
-                            >
-                                💡 Ask
-                            </Button>
-                            <Button variant="primary" size="sm" id="repo-generate-btn"data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
-                                📋 Generate Plan
-                                {generateDialog.open && generateDialog.minimized && (
-                                    <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
-                                )}
-                            </Button>
 
                         </div>
                     </>
@@ -563,21 +515,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     </div>
                 )}
             </div>
-
-            {/* Generate Task with AI dialog */}
-            {generateDialog.open && (
-                <GenerateTaskDialog
-                    wsId={ws.id}
-                    initialFolder={generateDialog.targetFolder}
-                    minimized={generateDialog.minimized}
-                    onMinimize={() => setGenerateDialog(prev => ({ ...prev, minimized: true }))}
-                    onRestore={() => setGenerateDialog(prev => ({ ...prev, minimized: false }))}
-                    onClose={() => setGenerateDialog({ open: false, minimized: false, targetFolder: undefined })}
-                    onSuccess={() => {
-                        setGenerateDialog({ open: false, minimized: false, targetFolder: undefined });
-                    }}
-                />
-            )}
 
             {/* Edit dialog */}
             <AddRepoDialog

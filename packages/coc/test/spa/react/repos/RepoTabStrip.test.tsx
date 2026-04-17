@@ -619,7 +619,7 @@ describe('RepoTabStrip', () => {
             vi.restoreAllMocks();
         });
 
-        it('context menu contains Queue Task, Ask, and Generate Plan items', () => {
+        it('context menu contains Run Script item', () => {
             render(
                 <RepoTabStrip
                     repos={[makeRepo('r1', 'Alpha')]}
@@ -630,44 +630,7 @@ describe('RepoTabStrip', () => {
                 />
             );
             fireEvent.contextMenu(screen.getByTestId('repo-tab'));
-            expect(screen.getByTestId('repo-tab-context-queue-task')).toBeDefined();
-            expect(screen.getByTestId('repo-tab-context-ask')).toBeDefined();
             expect(screen.getByTestId('repo-tab-context-run-script')).toBeDefined();
-            expect(screen.getByTestId('repo-tab-context-generate-plan')).toBeDefined();
-        });
-
-        it('clicking Queue Task dispatches OPEN_DIALOG with workspaceId and closes menu', () => {
-            mockQueueDispatch.mockClear();
-            render(
-                <RepoTabStrip
-                    repos={[makeRepo('r1', 'Alpha')]}
-                    selectedRepoId={null}
-                    onSelect={vi.fn()}
-                    unseenCounts={{}}
-                    onRefresh={vi.fn()}
-                />
-            );
-            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
-            fireEvent.click(screen.getByTestId('repo-tab-context-queue-task'));
-            expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'r1' });
-            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
-        });
-
-        it('clicking Ask dispatches OPEN_DIALOG with workspaceId and mode=ask and closes menu', () => {
-            mockQueueDispatch.mockClear();
-            render(
-                <RepoTabStrip
-                    repos={[makeRepo('r1', 'Alpha')]}
-                    selectedRepoId={null}
-                    onSelect={vi.fn()}
-                    unseenCounts={{}}
-                    onRefresh={vi.fn()}
-                />
-            );
-            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
-            fireEvent.click(screen.getByTestId('repo-tab-context-ask'));
-            expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'r1', mode: 'ask' });
-            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
         });
 
         it('clicking Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId and closes menu', () => {
@@ -687,27 +650,6 @@ describe('RepoTabStrip', () => {
             expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
         });
 
-        it('clicking Generate Plan opens GenerateTaskDialog for the right-clicked repo and closes menu', () => {
-            render(
-                <RepoTabStrip
-                    repos={[makeRepo('r1', 'Alpha')]}
-                    selectedRepoId={null}
-                    onSelect={vi.fn()}
-                    unseenCounts={{}}
-                    onRefresh={vi.fn()}
-                />
-            );
-            expect(screen.queryByTestId('generate-task-dialog')).toBeNull();
-            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
-            fireEvent.click(screen.getByTestId('repo-tab-context-generate-plan'));
-            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
-            const dialog = screen.getByTestId('generate-task-dialog');
-            expect(dialog).toBeDefined();
-            expect(dialog.getAttribute('data-ws-id')).toBe('r1');
-            // targetFolder must be undefined so the dialog defaults to AUTO_FOLDER_SENTINEL
-            expect(dialog.getAttribute('data-folder')).toBe('');
-        });
-
         it('actions target the right-clicked repo, not the selected one', () => {
             mockQueueDispatch.mockClear();
             render(
@@ -722,8 +664,8 @@ describe('RepoTabStrip', () => {
             const tabs = screen.getAllByTestId('repo-tab');
             // Right-click on the second tab (Beta, r2) while r1 is selected
             fireEvent.contextMenu(tabs[1]);
-            fireEvent.click(screen.getByTestId('repo-tab-context-queue-task'));
-            expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'r2' });
+            fireEvent.click(screen.getByTestId('repo-tab-context-run-script'));
+            expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: 'r2' });
         });
     });
 

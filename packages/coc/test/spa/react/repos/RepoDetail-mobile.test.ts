@@ -38,10 +38,10 @@ describe('RepoDetail mobile: header layout', () => {
         // On desktop, the tab strip container appears before the action buttons
         const tabStripIdx = REPO_DETAIL_SOURCE.indexOf('repo-sub-tab-strip-container');
         const splitterIdx = REPO_DETAIL_SOURCE.indexOf('repo-header-splitter');
-        const generateBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
+        const scriptBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
         expect(tabStripIdx).toBeGreaterThan(-1);
         expect(splitterIdx).toBeGreaterThan(tabStripIdx);
-        expect(generateBtnIdx).toBeGreaterThan(splitterIdx);
+        expect(scriptBtnIdx).toBeGreaterThan(splitterIdx);
     });
 
     it('renders a vertical splitter between tabs and action buttons on desktop', () => {
@@ -78,12 +78,8 @@ describe('RepoDetail mobile: overflow menu', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<BottomSheet isOpen onClose=');
     });
 
-    it('overflow menu has Queue Task action', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-queue-task"');
-    });
-
-    it('overflow menu has Generate Plan action', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-generate"');
+    it('overflow menu has Run Script action', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-run-script"');
     });
 
     it('overflow menu does not have Edit action (removed from menu)', () => {
@@ -100,15 +96,6 @@ describe('RepoDetail mobile: overflow menu', () => {
 
     it('overflow menu items container has data-testid', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-menu-items"');
-    });
-
-    it('Queue Task and Generate buttons are only rendered on non-mobile', () => {
-        // These desktop-only buttons appear inside the !isMobile branch
-        const desktopBranch = REPO_DETAIL_SOURCE.substring(
-            REPO_DETAIL_SOURCE.indexOf('repo-more-menu-container'),
-            REPO_DETAIL_SOURCE.indexOf('repo-generate-btn')
-        );
-        expect(desktopBranch).toContain(') : (');
     });
 
     it('moreMenuOpen state controls overflow menu visibility', () => {

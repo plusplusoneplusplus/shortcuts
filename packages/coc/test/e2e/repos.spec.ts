@@ -1060,46 +1060,6 @@ test.describe('Sub-tab Badges', () => {
 });
 
 // ================================================================
-// Queue Task / Ask Buttons (014-queue-task-btn)
-// ================================================================
-
-test.describe('Queue Task and Ask Buttons', () => {
-    test('Queue Task button opens the enqueue dialog', async ({ page, serverUrl }) => {
-        await seedWorkspace(serverUrl, 'ws-qt-1', 'queue-task-repo');
-
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-        // Click the Queue Task button
-        await page.click('[data-testid="repo-queue-task-btn"]');
-
-        // The floating enqueue dialog should appear
-        await expect(page.getByTestId('floating-dialog-panel')).toBeVisible({ timeout: 5000 });
-    });
-
-    test('Ask button opens the enqueue dialog in ask mode', async ({ page, serverUrl }) => {
-        await seedWorkspace(serverUrl, 'ws-ask-1', 'ask-repo');
-
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-        // Click the Ask button
-        await page.click('[data-testid="repo-ask-btn"]');
-
-        // The floating dialog should appear
-        await expect(page.getByTestId('floating-dialog-panel')).toBeVisible({ timeout: 5000 });
-    });
-});
-
-// ================================================================
 // Workflows Tab — Add Workflow Dialog (015-add-workflow-dialog)
 // ================================================================
 

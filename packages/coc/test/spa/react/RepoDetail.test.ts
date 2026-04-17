@@ -123,59 +123,6 @@ describe('RepoDetail: Chat/Queue tabs removed', () => {
     });
 });
 
-describe('RepoDetail Generate button in header', () => {
-    it('imports GenerateTaskDialog', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog'");
-    });
-
-    it('renders generate button in the header row', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-generate-btn"');
-    });
-
-    it('generate button is present but edit button is removed', () => {
-        const genIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
-        expect(genIdx).toBeGreaterThan(-1);
-        expect(REPO_DETAIL_SOURCE).not.toContain('repo-edit-btn');
-    });
-
-    it('generate button uses primary variant', () => {
-        const line = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('repo-generate-btn'));
-        expect(line).toContain('variant="primary"');
-    });
-
-    it('passes onOpenGenerateDialog to TasksPanel', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('onOpenGenerateDialog={handleOpenGenerateDialog}');
-    });
-
-    it('renders GenerateTaskDialog when generateDialog.open is true', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('generateDialog.open');
-        expect(REPO_DETAIL_SOURCE).toContain('<GenerateTaskDialog');
-    });
-
-    it('does not switch tabs when generate button is clicked (modal is tab-independent)', () => {
-        const handler = REPO_DETAIL_SOURCE.match(/const handleOpenGenerateDialog = useCallback\([^)]*\) => \{([\s\S]*?)\}, \[/);
-        expect(handler).toBeTruthy();
-        const body = handler![1];
-        expect(body).not.toContain("switchSubTab");
-    });
-
-    it('generateDialog state includes minimized boolean', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('minimized: boolean');
-        expect(REPO_DETAIL_SOURCE).toContain('minimized: false');
-    });
-
-    it('passes minimized, onMinimize, and onRestore props to GenerateTaskDialog', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('minimized={generateDialog.minimized}');
-        expect(REPO_DETAIL_SOURCE).toContain('onMinimize={');
-        expect(REPO_DETAIL_SOURCE).toContain('onRestore={');
-    });
-
-    it('renders minimized badge on generate button when dialog is minimized', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="generate-minimized-badge"');
-        expect(REPO_DETAIL_SOURCE).toContain('generateDialog.open && generateDialog.minimized');
-    });
-});
-
 describe('RepoDetail Activity badge wiring', () => {
     it('imports useRepoQueueStats from hooks', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { useRepoQueueStats } from '../hooks/useRepoQueueStats'");
@@ -261,13 +208,6 @@ describe('RepoDetail Activity badge wiring', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="chat-pending-badge"');
     });
 
-    it('Queue Task button tooltip includes Alt+Q hint', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('title="Queue a new task (Alt+Q)"');
-    });
-
-    it('mobile menu Queue Task label includes Alt+Q hint', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('Queue Task (Alt+Q)');
-    });
 });
 
 describe('RepoDetail Resume Queue button in header', () => {
@@ -278,14 +218,6 @@ describe('RepoDetail Resume Queue button in header', () => {
     it('shows resume button when activeSubTab is activity and isRepoPaused', () => {
         expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
         expect(REPO_DETAIL_SOURCE).toContain('isRepoPaused');
-    });
-
-    it('resume button appears before Queue Task button', () => {
-        const resumeIdx = REPO_DETAIL_SOURCE.indexOf('repo-header-resume-btn');
-        const queueTaskIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
-        expect(resumeIdx).toBeGreaterThan(-1);
-        expect(queueTaskIdx).toBeGreaterThan(-1);
-        expect(resumeIdx).toBeLessThan(queueTaskIdx);
     });
 
     it('uses secondary variant for resume button', () => {
@@ -332,71 +264,6 @@ describe('RepoDetail Resume Queue button in header', () => {
     });
 });
 
-describe('RepoDetail Queue Task button in header', () => {
-    it('renders + Queue Task button in header', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-queue-task-btn"');
-    });
-
-    it('dispatches OPEN_DIALOG with workspaceId on click', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })");
-    });
-
-    it('button appears before generate button in the header', () => {
-        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
-        const genBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
-        expect(queueBtnIdx).toBeLessThan(genBtnIdx);
-    });
-
-    it('uses primary variant', () => {
-        const idx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
-        expect(block).toContain('variant="primary"');
-    });
-});
-
-describe('RepoDetail Ask button in header', () => {
-    it('renders Ask button with data-testid', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-ask-btn"');
-    });
-
-    it('dispatches OPEN_DIALOG with mode ask on click', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })");
-    });
-
-    it('Ask button appears after Queue Task button in desktop toolbar', () => {
-        const desktopSection = REPO_DETAIL_SOURCE.substring(REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn'));
-        const queueBtnIdx = desktopSection.indexOf('repo-queue-task-btn');
-        const askBtnIdx = desktopSection.indexOf('repo-ask-btn');
-        expect(queueBtnIdx).toBeGreaterThan(-1);
-        expect(askBtnIdx).toBeGreaterThan(-1);
-        expect(askBtnIdx).toBeGreaterThan(queueBtnIdx);
-    });
-
-    it('Ask button appears before Generate Plan button', () => {
-        const askBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
-        const genBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
-        expect(askBtnIdx).toBeLessThan(genBtnIdx);
-    });
-
-    it('uses primary variant in desktop toolbar', () => {
-        const desktopSection = REPO_DETAIL_SOURCE.substring(REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn'));
-        const idx = desktopSection.indexOf('repo-ask-btn');
-        const block = desktopSection.substring(Math.max(0, idx - 300), idx);
-        expect(block).toContain('variant="primary"');
-    });
-
-    it('mobile header includes Ask button (not in overflow)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-ask-btn"');
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-ask"');
-    });
-
-    it('mobile Ask button dispatches OPEN_DIALOG with mode ask', () => {
-        const askIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, askIdx - 300), askIdx + 200);
-        expect(block).toContain("mode: 'ask'");
-    });
-});
-
 describe('RepoDetail Run Script button in header', () => {
     it('renders Run Script button with data-testid', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-run-script-btn"');
@@ -406,19 +273,12 @@ describe('RepoDetail Run Script button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id })");
     });
 
-    it('Run Script button appears after Queue Task button', () => {
-        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+    it('Run Script button appears after Launch CLI button', () => {
+        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn');
         const scriptBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
         expect(queueBtnIdx).toBeGreaterThan(-1);
         expect(scriptBtnIdx).toBeGreaterThan(-1);
         expect(scriptBtnIdx).toBeGreaterThan(queueBtnIdx);
-    });
-
-    it('Run Script button appears before Ask button in desktop toolbar', () => {
-        const desktopSection = REPO_DETAIL_SOURCE.substring(REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn'));
-        const scriptBtnIdx = desktopSection.indexOf('repo-run-script-btn');
-        const askBtnIdx = desktopSection.indexOf('repo-ask-btn');
-        expect(scriptBtnIdx).toBeLessThan(askBtnIdx);
     });
 
     it('uses primary variant', () => {
@@ -433,18 +293,6 @@ describe('RepoDetail Run Script button in header', () => {
 
     it('mobile overflow menu includes Run Script option', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-run-script"');
-    });
-
-    it('mobile Run Script option appears after Queue Task in overflow', () => {
-        const queueIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-queue-task');
-        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
-        expect(queueIdx).toBeGreaterThan(-1);
-        expect(scriptIdx).toBeGreaterThan(-1);
-        expect(scriptIdx).toBeGreaterThan(queueIdx);
-    });
-
-    it('mobile overflow menu does not include Ask (Ask is a top-level button)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-ask"');
     });
 
     it('mobile Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId', () => {
@@ -569,12 +417,12 @@ describe('RepoDetail Launch CLI button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('title="Open CLI in terminal"');
     });
 
-    it('button appears before Queue Task button', () => {
+    it('button appears before Run Script button', () => {
         const launchIdx = REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn');
-        const queueTaskIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        const scriptBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
         expect(launchIdx).toBeGreaterThan(-1);
-        expect(queueTaskIdx).toBeGreaterThan(-1);
-        expect(launchIdx).toBeLessThan(queueTaskIdx);
+        expect(scriptBtnIdx).toBeGreaterThan(-1);
+        expect(launchIdx).toBeLessThan(scriptBtnIdx);
     });
 
     it('button is disabled during loading', () => {

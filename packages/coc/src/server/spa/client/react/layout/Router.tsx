@@ -542,7 +542,6 @@ export function Router() {
 
     // Keyboard shortcuts for repo sub-tabs:
     //   Alt+<letter> → switches to the corresponding sub-tab (see REPO_TAB_SHORTCUTS)
-    //   Alt+Q → opens the Queue Task dialog for the selected repo
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement;
@@ -551,11 +550,6 @@ export function Router() {
 
             if (e.altKey && !e.ctrlKey && !e.metaKey) {
                 const letter = e.code.replace('Key', '').toLowerCase();
-                if (letter === 'q') {
-                    e.preventDefault();
-                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId: state.selectedRepoId });
-                    return;
-                }
                 const tab = REPO_TAB_SHORTCUTS[letter];
                 if (tab) {
                     if (tab === 'terminal' && !isTerminalEnabled()) return;
