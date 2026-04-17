@@ -111,6 +111,7 @@ export interface ProcessHistoryItem {
     model?: string;
     workspaceId: string;
     planFilePath?: string;
+    workItemId?: string;
     turnCount: number;
     lastActivityAt?: number;
     seenAt?: string;

@@ -59,7 +59,7 @@ export function getSessionCategory(task: any): string | undefined {
 
 /** Returns true if a task belongs to the Chats tab (any chat mode, not a work-item execution). */
 export function isChatTask(task: any): boolean {
-    return task.type === 'chat' && !task.payload?.workItemId && !task.metadata?.workItemId;
+    return task.type === 'chat' && !task.payload?.workItemId && !task.metadata?.workItemId && !task.workItemId;
 }
 const isChat = isChatTask;
 
