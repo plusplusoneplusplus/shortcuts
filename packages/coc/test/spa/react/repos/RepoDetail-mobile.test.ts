@@ -238,12 +238,13 @@ describe('RepoDetail mobile: MobileTabBar integration', () => {
     });
 
     it('passes visibleSubTabs list to MobileTabBar', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('tabs={visibleSubTabs}');
+        expect(REPO_DETAIL_SOURCE).toContain('tabs={VISIBLE_SUB_TABS}');
     });
 
     it('passes badge counts to MobileTabBar', () => {
         expect(REPO_DETAIL_SOURCE).toContain('taskCount={taskCount}');
         expect(REPO_DETAIL_SOURCE).toContain('activityCount={');
+        expect(REPO_DETAIL_SOURCE).toContain('workItemCount={');
     });
 
     it('hides top tab strip on mobile', () => {

@@ -9,7 +9,7 @@ import { BottomSheet } from '../shared/BottomSheet';
 import { cn } from '../shared';
 import type { RepoSubTab } from '../types/dashboard';
 
-const DEFAULT_PINNED: RepoSubTab[] = ['activity', 'git', 'tasks'];
+const DEFAULT_PINNED: RepoSubTab[] = ['chats', 'work-items', 'git'];
 
 export interface MobileTabBarProps {
     activeTab: RepoSubTab;
@@ -18,6 +18,7 @@ export interface MobileTabBarProps {
     pinnedTabs?: RepoSubTab[];
     taskCount?: number;
     activityCount?: number;
+    workItemCount?: number;
     gitPendingCount?: number;
 }
 
@@ -28,6 +29,7 @@ export function MobileTabBar({
     pinnedTabs = DEFAULT_PINNED,
     taskCount = 0,
     activityCount = 0,
+    workItemCount = 0,
     gitPendingCount = 0,
 }: MobileTabBarProps){
     const [moreOpen, setMoreOpen] = useState(false);
@@ -38,7 +40,8 @@ export function MobileTabBar({
 
     const getBadgeCount = (key: RepoSubTab): number => {
         if (key === 'tasks') return taskCount;
-        if (key === 'activity') return activityCount;
+        if (key === 'chats') return activityCount;
+        if (key === 'work-items') return workItemCount;
         if (key === 'git') return gitPendingCount;
         return 0;
     };

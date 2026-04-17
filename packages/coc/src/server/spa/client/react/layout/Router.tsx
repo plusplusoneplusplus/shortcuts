@@ -175,7 +175,7 @@ export function parsePrDetailTab(hash: string): PrDetailTab {
 export function parseActivityDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'activity' && parts[3]) {
+    if (parts[0] === 'repos' && parts[1] && (parts[2] === 'chats' || parts[2] === 'activity') && parts[3]) {
         return decodeURIComponent(parts[3]);
     }
     return null;
@@ -210,9 +210,9 @@ export function buildNoteHash(wsId: string, notePath: string): string {
     return '#repos/' + encodeURIComponent(wsId) + '/notes/' + encodedPath;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'templates', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests', 'terminal', 'notes']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'templates', 'workflows', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'chats', 'work-items', 'pull-requests', 'terminal', 'notes']);
 
-export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions', 'memory', 'tasks']);
+export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions', 'memory', 'run-script-template', 'tasks']);
 /** @deprecated Use VALID_SETTINGS_SECTIONS */
 export const VALID_COPILOT_SECTIONS: Set<string> = VALID_SETTINGS_SECTIONS;
 
@@ -232,16 +232,15 @@ export function parseCopilotSection(hash: string): SettingsSection {
 
 const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     g: 'git',
-    t: 'terminal',
-    n: 'notes',
     e: 'explorer',
-    p: 'tasks',
+    t: 'tasks',
     r: 'pull-requests',
     a: 'chats',
     w: 'workflows',
     s: 'schedules',
     c: 'settings',
-    i: 'wiki',
+    i: 'work-items',
+    n: 'notes',
 };
 
 export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
@@ -332,51 +331,64 @@ export function Router() {
                 if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
                     const repoId = decodeURIComponent(parts[1]);
                     dispatch({ type: 'SET_SELECTED_REPO', id: repoId });
-                    // Redirect legacy #repos/:id/workflows deep-links to templates tab
-                    if (parts[2] === 'workflows') {
-                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'templates' as RepoSubTab });
-                        const suffix = parts.slice(3).map(encodeURIComponent).join('/');
-                        location.replace('#repos/' + parts[1] + '/templates' + (suffix ? '/' + suffix : ''));
+                    // Redirect legacy #repos/:id/activity deep-links to chats
+                    if (parts[2] === 'activity') {
+                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' as RepoSubTab });
+                        const suffix = parts.slice(3).join('/');
+                        if (suffix) {
+                            const rawId = decodeURIComponent(parts[3]);
+                            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
+                        }
+                        location.replace('#repos/' + parts[1] + '/chats' + (suffix ? '/' + suffix : ''));
                         return;
                     }
-                    // Redirect legacy #repos/:id/settings/run-script-template to templates tab
+                    // Redirect legacy #repos/:id/workflows deep-links to workflows tab
+                    if (parts[2] === 'workflows') {
+                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' as RepoSubTab });
+                    }
+                    // Redirect legacy #repos/:id/templates deep-links to workflows tab
+                    if (parts[2] === 'templates') {
+                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' as RepoSubTab });
+                        const suffix = parts.slice(3).map(encodeURIComponent).join('/');
+                        location.replace('#repos/' + parts[1] + '/workflows' + (suffix ? '/' + suffix : ''));
+                        return;
+                    }
+                    // Redirect legacy #repos/:id/settings/run-script-template to workflows tab
                     if (parts[2] === 'settings' && parts[3] === 'run-script-template') {
-                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'templates' as RepoSubTab });
-                        location.replace('#repos/' + parts[1] + '/templates');
+                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' as RepoSubTab });
+                        location.replace('#repos/' + parts[1] + '/workflows');
                         return;
                     }
                     if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                         dispatch({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab });
                     }
                     // Workflow deep-link handling
-                    if (parts[2] === 'templates' && parts[3] === 'script-template' && parts[4]) {
-                        // Script template deep-link: #repos/:id/templates/script-template/:templateId
+                    if (parts[2] === 'workflows' && parts[3] === 'script-template' && parts[4]) {
                         dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: decodeURIComponent(parts[4]) });
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
                         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
-                    } else if (parts[2] === 'templates' && parts[3] === 'chat-template' && parts[4]) {
-                        // Chat template deep-link: #repos/:id/templates/chat-template/:templateId
+                    } else if (parts[2] === 'workflows' && parts[3] === 'chat-template' && parts[4]) {
                         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: decodeURIComponent(parts[4]) });
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
                         dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
-                    } else if (parts[2] === 'templates' && parts[3]) {
+                    } else if (parts[2] === 'workflows' && parts[3]) {
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: decodeURIComponent(parts[3]) });
                         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
                         dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
-                        // Workflow run detail: #repos/:id/templates/:name/run/:processId
+                        // Workflow run detail: #repos/:id/workflows/:name/run/:processId
                         if (parts[4] === 'run' && parts[5]) {
                             dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: decodeURIComponent(parts[5]) });
                         } else {
                             dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                         }
-                    } else if (parts[2] === 'templates') {
+                    } else if (parts[2] === 'workflows') {
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                         dispatch({ type: 'SET_SELECTED_SKILL_TEMPLATE', id: null });
                         dispatch({ type: 'SET_SELECTED_SCRIPT_TEMPLATE', id: null });
-                    } else if (parts[2] && parts[2] !== 'templates') {
+                    } else if (parts[2] && parts[2] !== 'workflows') {
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                     }
@@ -386,27 +398,11 @@ export function Router() {
                     } else if (parts[2] === 'schedules') {
                         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
                     }
-                    // Backward compat: redirect old #repos/{id}/activity → chats
-                    if (parts[2] === 'activity') {
-                        const suffix = parts[3] ? '/' + parts[3] : '';
-                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-                        location.replace('#repos/' + parts[1] + '/chats' + suffix);
-                        return;
-                    }
-                    // Chats deep-link handling — select queue task when task ID present
+                    // Chats deep-link handling — select task when ID present
                     if (parts[2] === 'chats' && parts[3]) {
                         const rawId = decodeURIComponent(parts[3]);
-                        const taskId = rawId.startsWith('queue_') ? rawId.substring('queue_'.length) : rawId;
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId });
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
                     } else if (parts[2] === 'chats') {
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
-                    }
-                    // Tasks deep-link handling
-                    if (parts[2] === 'tasks' && parts[3]) {
-                        const rawId = decodeURIComponent(parts[3]);
-                        const taskId = rawId.startsWith('queue_') ? rawId.substring('queue_'.length) : rawId;
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId });
-                    } else if (parts[2] === 'tasks') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
                     }
                     // Git commit deep-link handling

@@ -60,19 +60,19 @@ describe('RepoDetail deep-link redirect guards', () => {
 
     // ── Redirect still dispatches SET_REPO_SUB_TAB for feature disable ──────
 
-    it('terminal redirect dispatches SET_REPO_SUB_TAB to activity', () => {
+    it('terminal redirect dispatches SET_REPO_SUB_TAB to chats', () => {
         const terminalBlock = source.slice(
             source.indexOf('activeSubTab === \'terminal\''),
             source.indexOf('prevTerminalEnabled.current = terminalEnabled') + 50
         );
-        expect(terminalBlock).toContain("tab: 'activity'");
+        expect(terminalBlock).toContain("tab: 'chats'");
     });
 
-    it('notes redirect dispatches SET_REPO_SUB_TAB to activity', () => {
+    it('notes redirect dispatches SET_REPO_SUB_TAB to chats', () => {
         const notesBlock = source.slice(
             source.indexOf('activeSubTab === \'notes\' && !notesEnabled'),
             source.indexOf('prevNotesEnabled.current = notesEnabled') + 50
         );
-        expect(notesBlock).toContain("tab: 'activity'");
+        expect(notesBlock).toContain("tab: 'chats'");
     });
 });
