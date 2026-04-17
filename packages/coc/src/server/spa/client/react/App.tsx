@@ -6,7 +6,6 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
-import { WorkItemProvider, useWorkItems } from './context/WorkItemContext';
 import { ReposProvider } from './context/ReposContext';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
 import { ToastProvider } from './context/ToastContext';
@@ -22,7 +21,7 @@ import { Router } from './layout/Router';
 import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
-import { ToastContainer, useToast, ErrorBoundary } from './shared';
+import { ToastContainer, useToast } from './shared';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
@@ -99,7 +98,6 @@ function toTaskRelativePath(fullPath: string, workspaceRoot: string): string | n
 function AppInner() {
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
-    const { dispatch: workItemDispatch } = useWorkItems();
     const { addNotification } = useNotifications();
     const { toasts, addToast, removeToast } = useToast();
     const prevWsStatusRef = useRef(appState.wsStatus);
@@ -137,11 +135,7 @@ function AppInner() {
                     appDispatch({ type: 'PROCESS_UPDATED', process: msg.process });
                     const terminalStatuses = ['completed', 'failed', 'cancelled'];
                     if (terminalStatuses.includes(msg.process.status)) {
-                        // Cache is keyed by taskId (e.g. "abc123") but process.id is the
-                        // full process ID (e.g. "queue_abc123"). Derive the taskId to
-                        // ensure invalidation actually clears the stale cache entry.
-                        const derivedTaskId = msg.process.id.startsWith('queue_') ? msg.process.id.slice(6) : msg.process.id;
-                        appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: derivedTaskId });
+                        appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
                         if (!seenProcessIdsRef.current.has(msg.process.id)) {
                             seenProcessIdsRef.current.add(msg.process.id);
                             // Resolve workspace for both display name and ID.
@@ -218,17 +212,8 @@ function AppInner() {
                     detail: msg.error || '',
                 });
                 break;
-            case 'work-item-added':
-                if (msg.item) workItemDispatch({ type: 'WORK_ITEM_ADDED', repoId: msg.workspaceId, item: msg.item });
-                break;
-            case 'work-item-updated':
-                if (msg.item) workItemDispatch({ type: 'WORK_ITEM_UPDATED', repoId: msg.workspaceId, item: msg.item });
-                break;
-            case 'work-item-removed':
-                if (msg.itemId) workItemDispatch({ type: 'WORK_ITEM_REMOVED', repoId: msg.workspaceId, id: msg.itemId });
-                break;
         }
-    }, [appDispatch, queueDispatch, workItemDispatch, appState.workspaces, addNotification]);
+    }, [appDispatch, queueDispatch, appState.workspaces, addNotification]);
 
     const { connect, status: wsStatus } = useWebSocket({ onMessage, onConnect: handleConnect });
 
@@ -407,7 +392,7 @@ function AppInner() {
             <ReposProvider>
                 <div className="flex flex-col h-full">
                     <TopBar onAdminOpen={handleAdminOpen} onLogsOpen={handleLogsOpen} />
-                    <main className="flex-1 overflow-hidden min-h-0 pt-[var(--bottom-nav-height,0px)] md:pt-0">
+                    <main className="flex-1 overflow-hidden min-h-0 pb-12 md:pb-0">
                         <Router />
                     </main>
                 </div>

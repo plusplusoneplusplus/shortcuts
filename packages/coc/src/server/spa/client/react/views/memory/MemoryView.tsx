@@ -37,7 +37,7 @@ export function MemoryView() {
                     <button
                         key={id}
                         className={cn(
-                            'min-h-[44px] px-3 rounded-t text-sm transition-colors border-b-2',
+                            'h-8 px-3 rounded-t text-sm transition-colors border-b-2',
                             activeSubTab === id
                                 ? 'border-[#0078d4] text-[#0078d4] font-medium'
                                 : 'border-transparent text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',

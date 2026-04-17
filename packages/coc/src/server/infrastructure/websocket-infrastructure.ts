@@ -113,8 +113,6 @@ export function createWebSocketInfrastructure(
             planFilePath: (t.payload as any)?.planFilePath,
             filePath: (t.payload as any)?.filePath,
             workingDirectory: (t.payload as any)?.workingDirectory,
-            workItemId: (t.payload as any)?.workItemId,
-            workspaceId: (t.payload as any)?.workspaceId,
             context: (t.payload as any)?.context?.files
                 ? { files: (t.payload as any).context.files }
                 : undefined,

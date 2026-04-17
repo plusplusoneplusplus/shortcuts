@@ -133,103 +133,14 @@ describe('useChatSSE', () => {
         expect(refreshConversation).toHaveBeenCalledWith('proc-1');
     });
 
-    it('does NOT call refreshConversation twice in the happy path (done event)', async () => {
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
-        await act(async () => {
-            MockEventSource.latest().emit('done', {});
-            await new Promise(r => setTimeout(r, 0));
-        });
-        // Only one call from finish() — no fetchTaskStatus path fires
-        expect(refreshConversation).toHaveBeenCalledTimes(1);
-    });
-
     it('closes EventSource and calls refreshConversation on error', async () => {
         const refreshConversation = vi.fn().mockResolvedValue(undefined);
         const setIsStreaming = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ refreshConversation, setIsStreaming })));
         const es = MockEventSource.latest();
         act(() => { es.triggerError(); });
-        // onerror is deferred via setTimeout(0) — wait for it
-        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
         expect(es.closed).toBe(true);
         expect(refreshConversation).toHaveBeenCalledWith('proc-1');
-    });
-
-    it('calls onSendComplete on error so sending state and Stop button reset', async () => {
-        const onSendComplete = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ onSendComplete })));
-        act(() => { MockEventSource.latest().triggerError(); });
-        // onerror is deferred via setTimeout(0) — wait for it
-        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-        expect(onSendComplete).toHaveBeenCalled();
-    });
-
-    it('fetches queue task and calls setTask on error to clear running status', async () => {
-        const setTask = vi.fn();
-        const fetchedTask = { id: 'task-1', status: 'completed' };
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ task: fetchedTask }),
-        }));
-        renderHook(() => useChatSSE(makeOptions({ setTask })));
-        act(() => { MockEventSource.latest().triggerError(); });
-        // Wait for the deferred onerror handler and the fetch to resolve
-        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-        const taskUpdater = setTask.mock.calls.find(call => typeof call[0] === 'function')?.[0];
-        const prev = { id: 'task-1', status: 'running' };
-        expect(taskUpdater?.(prev)).toMatchObject({ status: 'completed' });
-        vi.unstubAllGlobals();
-    });
-
-    it('re-fetches conversation after fetchTaskStatus confirms terminal status on SSE error', async () => {
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        const fetchedTask = { id: 'task-1', status: 'completed' };
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ task: fetchedTask }),
-        }));
-        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
-        act(() => { MockEventSource.latest().triggerError(); });
-        // Wait for deferred onerror
-        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-        // Wait for fetch to resolve
-        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-        // refreshConversation should be called twice: once immediately in onerror,
-        // and once more after fetchTaskStatus confirms terminal status
-        expect(refreshConversation).toHaveBeenCalledTimes(2);
-        expect(refreshConversation).toHaveBeenCalledWith('proc-1');
-        vi.unstubAllGlobals();
-    });
-
-    it('does NOT re-fetch conversation when fetchTaskStatus finds still-running status', async () => {
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        // Simulate server still reporting running
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ task: { id: 'task-1', status: 'running' } }),
-        }));
-        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
-        act(() => { MockEventSource.latest().triggerError(); });
-        // Wait for deferred onerror + first fetch attempt
-        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-        await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-        // Only the immediate refreshConversation from onerror — no extra call
-        // because fetchTaskStatus sees 'running' and schedules a retry instead
-        // of entering the terminal-status branch.
-        expect(refreshConversation).toHaveBeenCalledTimes(1);
-        vi.unstubAllGlobals();
-    });
-
-    it('calls onSendComplete on "done" event', async () => {
-        const onSendComplete = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ onSendComplete })));
-        await act(async () => {
-            MockEventSource.latest().emit('done', {});
-            await new Promise(r => setTimeout(r, 0));
-        });
-        expect(onSendComplete).toHaveBeenCalled();
     });
 
     it('stopStreaming() closes the EventSource and sets isStreaming false', () => {
@@ -254,15 +165,13 @@ describe('useChatSSE', () => {
         act(() => {
             MockEventSource.latest().emit('conversation-snapshot', { turns: [{ role: 'user', content: 'hi' }] });
         });
-        expect(setTurnsAndRef).toHaveBeenCalledWith(expect.any(Function));
-        const updater = setTurnsAndRef.mock.calls[0][0];
-        expect(updater([])).toEqual([{ role: 'user', content: 'hi' }]);
+        expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
     });
 
-    it('calls setTask to mark completed on "done" event', async () => {
+    it('calls setTask to mark completed on "done" event', () => {
         const setTask = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setTask })));
-        await act(async () => { MockEventSource.latest().emit('done', {}); });
+        act(() => { MockEventSource.latest().emit('done', {}); });
         expect(setTask).toHaveBeenCalled();
     });
 });

@@ -168,6 +168,54 @@ vi.mock('../../../../src/server/spa/client/react/context/FloatingChatsContext', 
     }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+    useQueue: () => ({ state: {}, dispatch: vi.fn() }),
+}));
+
+// Mock heavy ChatHeader dependencies to prevent timeout during dynamic import
+vi.mock('../../../../src/server/spa/client/react/hooks/useContainerWidth', () => ({
+    useContainerWidth: () => 800,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/shared/ReferencesDropdown', () => ({
+    ReferencesDropdown: () => null,
+    ReferenceList: () => null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/shared/BottomSheet', () => ({
+    BottomSheet: () => null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/processes/ConversationMetadataPopover', () => ({
+    ConversationMetadataPopover: () => null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/components/ContextWindowIndicator', () => ({
+    ContextWindowIndicator: () => null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
+    copyToClipboard: vi.fn().mockResolvedValue(undefined),
+    copyHtmlToClipboard: vi.fn().mockResolvedValue(undefined),
+    formatConversationAsText: vi.fn().mockReturnValue('text'),
+    formatConversationAsHtml: vi.fn().mockReturnValue('<html>'),
+    formatDuration: (ms: number) => `${ms}ms`,
+    statusIcon: (s: string) => s === 'completed' ? '✅' : '⏳',
+    statusLabel: (s: string) => s,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/processes/ConversationTurnBubble', () => ({
+    chatMarkdownToHtml: vi.fn().mockReturnValue('<p>html</p>'),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
+    cn: (...args: any[]) => args.filter(Boolean).join(' '),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/ChatHeaderOverflowMenu', () => ({
+    ChatHeaderOverflowMenu: () => null,
+}));
+
 describe('ChatHeader — mobile rendering', () => {
     let cleanup: (() => void) | undefined;
 

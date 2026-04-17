@@ -70,7 +70,7 @@ async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
         </Wrap>,
     );
     await waitFor(() => {
-        expect(screen.queryByText('Loading jobs...')).toBeNull();
+        expect(screen.queryByText('Loading schedules...')).toBeNull();
     });
     return result;
 }
@@ -161,7 +161,7 @@ describe('Schedule edit mode', () => {
         fireEvent.click(screen.getByTestId('edit-btn'));
 
         await waitFor(() => {
-            expect(screen.getByText('Edit Job')).toBeTruthy();
+            expect(screen.getByText('Edit Schedule')).toBeTruthy();
         });
 
         // Name should be pre-populated
@@ -180,7 +180,7 @@ describe('Schedule edit mode', () => {
         fireEvent.click(screen.getByTestId('edit-btn'));
 
         await waitFor(() => {
-            expect(screen.getByText('Edit Job')).toBeTruthy();
+            expect(screen.getByText('Edit Schedule')).toBeTruthy();
         });
         expect(screen.queryByTestId('template-picker')).toBeNull();
     });
@@ -191,12 +191,12 @@ describe('Schedule edit mode', () => {
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('edit-btn'));
 
-        await waitFor(() => expect(screen.getByText('Edit Job')).toBeTruthy());
+        await waitFor(() => expect(screen.getByText('Edit Schedule')).toBeTruthy());
 
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
         await waitFor(() => {
-            expect(screen.queryByText('Edit Job')).toBeNull();
+            expect(screen.queryByText('Edit Schedule')).toBeNull();
             expect(screen.getByTestId('edit-btn')).toBeTruthy();
         });
     });
@@ -209,7 +209,7 @@ describe('Schedule edit mode', () => {
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('edit-btn'));
 
-        await waitFor(() => expect(screen.getByText('Edit Job')).toBeTruthy());
+        await waitFor(() => expect(screen.getByText('Edit Schedule')).toBeTruthy());
 
         // Change the name
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
@@ -254,7 +254,7 @@ describe('Schedule edit mode', () => {
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('edit-btn'));
 
-        await waitFor(() => expect(screen.getByText('Edit Job')).toBeTruthy());
+        await waitFor(() => expect(screen.getByText('Edit Schedule')).toBeTruthy());
 
         const cronBtn = screen.getByText('Cron');
         expect(cronBtn.className).toContain('bg-[#0078d4]');
@@ -278,7 +278,7 @@ describe('Schedule duplicate', () => {
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 
         await waitFor(() => {
-            expect(screen.getByText('New Job')).toBeTruthy();
+            expect(screen.getByText('New Schedule')).toBeTruthy();
         });
 
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
@@ -291,7 +291,7 @@ describe('Schedule duplicate', () => {
         await waitFor(() => expect(screen.getByTestId('duplicate-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 
-        await waitFor(() => expect(screen.getByText('New Job')).toBeTruthy());
+        await waitFor(() => expect(screen.getByText('New Schedule')).toBeTruthy());
 
         // Target should be pre-populated (no template selected → prompt textarea)
         const targetInput = screen.getByPlaceholderText(/Prompt/) as HTMLTextAreaElement;
@@ -330,7 +330,7 @@ describe('Schedule duplicate', () => {
         await waitFor(() => expect(screen.getByTestId('duplicate-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 
-        await waitFor(() => expect(screen.getByText('New Job')).toBeTruthy());
+        await waitFor(() => expect(screen.getByText('New Schedule')).toBeTruthy());
 
         const createBtn = screen.getByRole('button', { name: 'Create' });
         fireEvent.click(createBtn);
@@ -411,7 +411,7 @@ describe('Schedule selection state', () => {
         // Click Edit on the first schedule
         fireEvent.click(screen.getByTestId('edit-btn'));
         await waitFor(() => {
-            expect(screen.getByText('Edit Job')).toBeTruthy();
+            expect(screen.getByText('Edit Schedule')).toBeTruthy();
         });
 
         // Click second schedule row
@@ -419,7 +419,7 @@ describe('Schedule selection state', () => {
 
         // Edit form should be gone
         await waitFor(() => {
-            expect(screen.queryByText('Edit Job')).toBeNull();
+            expect(screen.queryByText('Edit Schedule')).toBeNull();
         });
     });
 });

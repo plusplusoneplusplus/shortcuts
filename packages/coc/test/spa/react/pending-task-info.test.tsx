@@ -71,14 +71,15 @@ function SeededActivityChatDetail({ task }: { task: any }) {
 function makePendingTask(overrides?: Partial<any>): any {
     return {
         id: 'task-123',
-        type: 'run-script',
+        type: 'chat',
         status: 'queued',
         displayName: 'My Task',
         createdAt: '2025-01-15T10:00:00Z',
         priority: 'normal',
         repoId: 'repo-abc',
         payload: {
-            kind: 'script',
+            kind: 'chat',
+            mode: 'autopilot',
             prompt: 'Please implement the feature.',
             workingDirectory: '/home/user/project',
         },
@@ -196,17 +197,8 @@ describe('PendingTaskInfoPanel', () => {
     });
 
     it('renders resolve-comments payload with document, comments, and prompt', async () => {
-        // PendingTaskPayload's resolve-comments section requires type === 'chat'.
-        // Since chat tasks now skip PendingTaskInfoPanel in the full flow,
-        // test the panel component directly.
-        const { PendingTaskInfoPanel } = await import('../../../src/server/spa/client/react/queue/PendingTaskInfoPanel');
-        const task = {
-            id: 'task-rc',
+        const task = makePendingTask({
             type: 'chat',
-            status: 'queued',
-            displayName: 'Resolve Comments',
-            createdAt: '2025-01-15T10:00:00Z',
-            priority: 'normal',
             payload: {
                 kind: 'chat',
                 mode: 'autopilot',
@@ -221,12 +213,12 @@ describe('PendingTaskInfoPanel', () => {
                     },
                 },
             },
-        };
+        });
         setupFetchForTask(task);
 
         render(
             <Wrap>
-                <PendingTaskInfoPanel task={task} onCancel={vi.fn()} onMoveToTop={vi.fn()} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 
@@ -242,17 +234,8 @@ describe('PendingTaskInfoPanel', () => {
     });
 
     it('renders context files and mode for chat task', async () => {
-        // PendingTaskPayload's mode/files section requires type === 'chat'.
-        // Since chat tasks now skip PendingTaskInfoPanel in the full flow,
-        // test the panel component directly.
-        const { PendingTaskInfoPanel } = await import('../../../src/server/spa/client/react/queue/PendingTaskInfoPanel');
-        const task = {
-            id: 'task-ctx',
+        const task = makePendingTask({
             type: 'chat',
-            status: 'queued',
-            displayName: 'Context Files',
-            createdAt: '2025-01-15T10:00:00Z',
-            priority: 'normal',
             payload: {
                 kind: 'chat',
                 mode: 'ask',
@@ -262,12 +245,12 @@ describe('PendingTaskInfoPanel', () => {
                     files: ['/home/user/project/src/auth.ts'],
                 },
             },
-        };
+        });
         setupFetchForTask(task);
 
         render(
             <Wrap>
-                <PendingTaskInfoPanel task={task} onCancel={vi.fn()} onMoveToTop={vi.fn()} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 

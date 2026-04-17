@@ -131,14 +131,6 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('activity')).toBe(true);
     });
 
-    it('includes "chats"', () => {
-        expect(VALID_REPO_SUB_TABS.has('chats')).toBe(true);
-    });
-
-    it('includes "work-items"', () => {
-        expect(VALID_REPO_SUB_TABS.has('work-items')).toBe(true);
-    });
-
     it('includes "pull-requests"', () => {
         expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
     });
@@ -1236,9 +1228,9 @@ describe('Bare W key no longer navigates to wiki', () => {
         expect(dispatches).toHaveLength(0);
     });
 
-    it('Alt+I dispatches work-items navigation (not wiki)', () => {
+    it('Alt+I does NOT dispatch wiki navigation (wiki tab hidden)', () => {
         const dispatches = simulateKeyHandler({ key: 'i', code: 'KeyI', altKey: true }, repoState);
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'work-items' });
+        expect(dispatches).toHaveLength(0);
     });
 });
 
@@ -1283,20 +1275,19 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
     it.each([
         ['g', 'KeyG', 'git'],
         ['e', 'KeyE', 'explorer'],
-        ['t', 'KeyT', 'tasks'],
+        ['p', 'KeyP', 'tasks'],
         ['r', 'KeyR', 'pull-requests'],
         ['a', 'KeyA', 'activity'],
         ['w', 'KeyW', 'templates'],
         ['s', 'KeyS', 'schedules'],
         ['c', 'KeyC', 'settings'],
-        ['i', 'KeyI', 'work-items'],
     ] as [string, string, string][])('Alt+%s dispatches SET_REPO_SUB_TAB %s', (letter, code, tab) => {
         const dispatches = simulateAltKeyHandler({ key: letter, code, altKey: true }, repoState);
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab });
     });
 
     it.each([
-        ['å', 'KeyA', 'chats'],
+        ['å', 'KeyA', 'activity'],
         ['ê', 'KeyE', 'explorer'],
         ['©', 'KeyC', 'settings'],
     ] as [string, string, string][])('macOS Option+key: e.key="%s" e.code="%s" dispatches SET_REPO_SUB_TAB %s', (key, code, tab) => {
@@ -1797,8 +1788,8 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).toContain("e.code.replace('Key', '').toLowerCase()");
     });
 
-    it('dispatches chats sub-tab via Alt+A', () => {
-        expect(ROUTER_SOURCE).toContain("a: 'chats'");
+    it('dispatches activity sub-tab via Alt+A', () => {
+        expect(ROUTER_SOURCE).toContain("a: 'activity'");
     });
 
     it('dispatches templates sub-tab via Alt+W', () => {
@@ -1809,9 +1800,9 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).not.toContain("e.key === 'w' || e.key === 'W'");
     });
 
-    it('Alt+I maps to work-items (not wiki) in REPO_TAB_SHORTCUTS', () => {
-        expect(ROUTER_SOURCE).toContain("i: 'work-items'");
-        expect(REPO_TAB_SHORTCUTS['i']).toBe('work-items');
+    it('wiki shortcut (Alt+I) is defined in ALL_REPO_TAB_SHORTCUTS but hidden from exported REPO_TAB_SHORTCUTS', () => {
+        expect(ROUTER_SOURCE).toContain("i: 'wiki'");
+        expect(REPO_TAB_SHORTCUTS['i']).toBeUndefined();
     });
 
     it('bare A is no longer a shortcut (replaced by Alt+A)', () => {

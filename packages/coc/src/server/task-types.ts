@@ -17,7 +17,7 @@ import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
 // Target Type
 // ============================================================================
 
-export type TargetType = 'prompt' | 'script' | 'work-item';
+export type TargetType = 'prompt' | 'script';
 
 // ============================================================================
 // Task Type Union

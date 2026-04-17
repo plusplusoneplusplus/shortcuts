@@ -108,12 +108,10 @@ describe('useChatSSE', () => {
         expect(MockEventSource.instances).toHaveLength(0);
     });
 
-    it('calls setIsStreaming(false) on SSE onerror', async () => {
+    it('calls setIsStreaming(false) on SSE onerror', () => {
         const setIsStreaming = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setIsStreaming })));
         act(() => { MockEventSource.last._emitError(); });
-        // onerror is now deferred via setTimeout(0) — advance timers
-        await act(async () => { vi.advanceTimersByTime(0); });
         expect(setIsStreaming).toHaveBeenCalledWith(false);
     });
 
@@ -159,7 +157,7 @@ describe('useChatSSE', () => {
         expect(MockEventSource.last.url).toContain('pid-2');
     });
 
-    it('calls setTurnsAndRef with updater on conversation-snapshot event', () => {
+    it('calls setTurnsAndRef on conversation-snapshot event', () => {
         const setTurnsAndRef = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
         act(() => {
@@ -167,88 +165,7 @@ describe('useChatSSE', () => {
                 turns: [{ role: 'user', content: 'hi' }],
             });
         });
-        // conversation-snapshot now uses an updater function for stale-data guarding
-        expect(setTurnsAndRef).toHaveBeenCalledWith(expect.any(Function));
-        // With empty prev (initial), updater returns the snapshot
-        const updater = setTurnsAndRef.mock.calls[0][0];
-        expect(updater([])).toEqual([{ role: 'user', content: 'hi' }]);
-    });
-
-    it('conversation-snapshot guard: skips snapshot with fewer turns than current', () => {
-        const setTurnsAndRef = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
-        act(() => {
-            MockEventSource.last._emit('conversation-snapshot', {
-                turns: [{ role: 'user', content: 'hi' }],
-            });
-        });
-        const updater = setTurnsAndRef.mock.calls[0][0];
-        const current = [
-            { role: 'user', content: 'hi' },
-            { role: 'assistant', content: 'hello there' },
-        ];
-        // Snapshot has fewer turns — should return current (unchanged)
-        expect(updater(current)).toBe(current);
-    });
-
-    it('conversation-snapshot guard: skips snapshot with same count but less content', () => {
-        const setTurnsAndRef = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
-        act(() => {
-            MockEventSource.last._emit('conversation-snapshot', {
-                turns: [
-                    { role: 'user', content: 'hi' },
-                    { role: 'assistant', content: '' },
-                ],
-            });
-        });
-        const updater = setTurnsAndRef.mock.calls[0][0];
-        const current = [
-            { role: 'user', content: 'hi' },
-            { role: 'assistant', content: 'full response text' },
-        ];
-        // Same count but stale snapshot has less content — keep current
-        expect(updater(current)).toBe(current);
-    });
-
-    it('conversation-snapshot guard: applies snapshot with more turns', () => {
-        const setTurnsAndRef = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
-        const snapshotTurns = [
-            { role: 'user', content: 'hi' },
-            { role: 'assistant', content: 'hello' },
-            { role: 'user', content: 'follow-up' },
-        ];
-        act(() => {
-            MockEventSource.last._emit('conversation-snapshot', { turns: snapshotTurns });
-        });
-        const updater = setTurnsAndRef.mock.calls[0][0];
-        const current = [
-            { role: 'user', content: 'hi' },
-            { role: 'assistant', content: 'hello' },
-        ];
-        // Snapshot has more turns — should return snapshot
-        expect(updater(current)).toEqual(snapshotTurns);
-    });
-
-    it('conversation-snapshot guard: rejects snapshot with more turns but stale shared content', () => {
-        const setTurnsAndRef = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
-        const snapshotTurns = [
-            { role: 'user', content: 'hi' },
-            { role: 'assistant', content: 'he' }, // stale: less content than in-memory streaming
-            { role: 'user', content: 'follow-up' },
-        ];
-        act(() => {
-            MockEventSource.last._emit('conversation-snapshot', { turns: snapshotTurns });
-        });
-        const updater = setTurnsAndRef.mock.calls[0][0];
-        const current = [
-            { role: 'user', content: 'hi' },
-            { role: 'assistant', content: 'hello there, how are you doing?' }, // richer streaming content
-        ];
-        // Snapshot has more turns but shared turn has less content — keep current
-        expect(updater(current)).toBe(current);
+        expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
     });
 
     it('calls setIsStreaming(false) and refreshConversation on done event', async () => {

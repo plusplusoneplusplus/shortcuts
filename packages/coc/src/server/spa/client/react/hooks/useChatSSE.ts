@@ -28,10 +28,6 @@ export interface UseChatSSEOptions {
     setTurnsAndRef: SetTurnsAndRef;
     refreshConversation: (pid: string) => Promise<void>;
     onSendComplete: () => void;
-    /** Optional: dispatch to QueueContext for optimistic running→completed transition. */
-    queueDispatch?: (action: any) => void;
-    /** Required alongside queueDispatch: the workspace/repo ID for the optimistic dispatch. */
-    workspaceId?: string;
 }
 
 /** Manages the SSE EventSource for a running process and drives all streaming state updates. */
@@ -49,8 +45,6 @@ export function useChatSSE({
     setTurnsAndRef,
     refreshConversation,
     onSendComplete,
-    queueDispatch,
-    workspaceId,
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -82,25 +76,7 @@ export function useChatSSE({
         es.addEventListener('conversation-snapshot', (event: Event) => {
             try {
                 const data = JSON.parse((event as MessageEvent).data);
-                if (data.turns) {
-                    // Guard: don't overwrite richer in-memory state with a stale snapshot
-                    // (can happen on SSE reconnection before the server has flushed latest turns)
-                    setTurnsAndRef(prev => {
-                        const snapshot = data.turns as ClientConversationTurn[];
-                        if (prev.length === 0) return snapshot;
-                        if (snapshot.length < prev.length) return prev;
-                        // Per-turn identity check: reject snapshot if ANY shared turn
-                        // has less content than in-memory (handles both same-length and
-                        // more-turns cases where server hasn't flushed latest chunks)
-                        const shared = Math.min(snapshot.length, prev.length);
-                        for (let i = 0; i < shared; i++) {
-                            const prevContent = prev[i].content?.length || 0;
-                            const snapContent = (snapshot[i].content as string)?.length || 0;
-                            if (snapContent < prevContent) return prev;
-                        }
-                        return snapshot;
-                    });
-                }
+                if (data.turns) setTurnsAndRef(data.turns);
                 if (typeof data.sessionTokenLimit === 'number') setSessionTokenLimit(data.sessionTokenLimit);
                 if (typeof data.sessionCurrentTokens === 'number') setSessionCurrentTokens(data.sessionCurrentTokens);
             } catch { /* ignore */ }
@@ -215,65 +191,7 @@ export function useChatSSE({
             } catch { /* ignore */ }
         });
 
-        es.onerror = () => {
-            // Defer to let the browser drain any buffered SSE events (e.g. 'done',
-            // 'status') that arrived before the connection closed.  Without this,
-            // es.close() inside the guard below would discard those events, causing
-            // task.status to remain 'running' permanently.
-            setTimeout(() => {
-                if (finished) return; // finish() already handled completion
-                finished = true;
-                closeSSE();
-                setBackgroundTasks(null);
-                // Optimistically mark the task as completed so the Stop button
-                // transitions to Send immediately instead of waiting for the
-                // async fetch below.
-                setTask(prev => prev && prev.status === 'running' ? { ...prev, status: 'completed' } : prev);
-                if (queueDispatch && workspaceId) {
-                    queueDispatch({ type: 'REPO_TASK_COMPLETED_OPTIMISTIC', repoId: workspaceId, taskId, status: 'completed' });
-                }
-                setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-                // Unblock any sendFollowUp awaiting completion so sending/Stop-button resets.
-                onSendComplete();
-                // Fetch authoritative task status from queue with retry to handle
-                // the window where the server hasn't updated the process record yet.
-                const fetchTaskStatus = (attempt: number) => {
-                    fetch(`${getApiBase()}/queue/${encodeURIComponent(taskId)}`)
-                        .then(r => r.ok ? r.json() : null)
-                        .then((data: any) => {
-                            if (data?.task) {
-                                const serverStatus = data.task.status;
-                                if (serverStatus === 'running' && attempt < 3) {
-                                    // Server hasn't updated yet — retry with exponential backoff
-                                    setTimeout(() => fetchTaskStatus(attempt + 1), 500 * Math.pow(2, attempt));
-                                } else {
-                                    setTask((prev: any) => prev ? { ...prev, ...data.task } : data.task);
-                                    // Update queue context with authoritative status if terminal
-                                    if (queueDispatch && workspaceId && serverStatus && !['running', 'queued'].includes(serverStatus)) {
-                                        const mapped: 'completed' | 'failed' | 'cancelled' =
-                                            serverStatus === 'failed' ? 'failed' :
-                                            serverStatus === 'cancelled' ? 'cancelled' : 'completed';
-                                        queueDispatch({ type: 'REPO_TASK_COMPLETED_OPTIMISTIC', repoId: workspaceId, taskId, status: mapped });
-                                    }
-                                    // Re-fetch conversation when terminal — the earlier
-                                    // refreshConversation may have returned partial data
-                                    // if the agent was still running at that point.
-                                    if (serverStatus && !['running', 'queued'].includes(serverStatus)) {
-                                        void refreshConversation(processId);
-                                    }
-                                }
-                            }
-                        })
-                        .catch(() => {
-                            if (attempt < 3) {
-                                setTimeout(() => fetchTaskStatus(attempt + 1), 500 * Math.pow(2, attempt));
-                            }
-                        });
-                };
-                fetchTaskStatus(0);
-                void refreshConversation(processId);
-            }, 0);
-        };
+        es.onerror = () => { closeSSE(); void refreshConversation(processId); };
 
         es.addEventListener('suggestions', (event: Event) => {
             try {

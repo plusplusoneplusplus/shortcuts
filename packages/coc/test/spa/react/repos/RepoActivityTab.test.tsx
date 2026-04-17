@@ -1436,21 +1436,3 @@ describe('RepoActivityTab: reactive title updates from AppContext', () => {
         expect(propsAfter).toBe(propsBefore);
     });
 });
-
-// ── New Chat deselects task instead of opening dialog ──────────────────
-
-describe('RepoActivityTab: New Chat deselects task (regression)', () => {
-    it('passes onNewChat prop to ActivityListPane', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain('onNewChat=');
-    });
-
-    it('onNewChat dispatches SELECT_QUEUE_TASK with null id', () => {
-        // Ensure clicking "New Chat" deselects the current task to show NewChatArea.
-        // On mobile, it also sets mobileShowDetail=true before dispatching.
-        expect(ACTIVITY_TAB_SOURCE).toContain("SELECT_QUEUE_TASK', id: null, repoId: workspaceId");
-    });
-
-    it('still passes onOpenDialog for the Queue Task button', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain("onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG'");
-    });
-});

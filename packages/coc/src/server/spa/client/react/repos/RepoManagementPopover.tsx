@@ -26,16 +26,9 @@ export function RepoManagementPopover({ open, onClose, repos, onRefresh }: RepoM
         };
         const handleMouseDown = (e: MouseEvent) => {
             const target = e.target as Element;
-            // Don't close when clicking the hamburger toggle or mobile repo picker button;
-            // their own onClick handlers will toggle the popover.
-            if (target.id === 'hamburger-btn' || target.closest('#hamburger-btn') ||
-                target.id === 'repo-picker-btn' || target.closest('#repo-picker-btn')) {
-                return;
-            }
-            // Don't close when clicking inside a portal-rendered dialog (e.g. AddRepoDialog,
-            // AddFolderDialog). These render via createPortal to document.body, so their DOM
-            // is outside containerRef even though they are logically children.
-            if (target.closest('[data-testid="dialog-overlay"]')) {
+            // Don't close when clicking the hamburger toggle button itself;
+            // the button's own onClick handler will toggle the popover.
+            if (target.id === 'hamburger-btn' || target.closest('#hamburger-btn')) {
                 return;
             }
             if (containerRef.current && !containerRef.current.contains(target)) {

@@ -20,9 +20,6 @@ import { NotificationProvider } from '../../../src/server/spa/client/react/conte
 function defaultAppState(): AppContextState {
     return {
         processes: [],
-        processesTotal: 0,
-        processesOffset: 0,
-        processesLoading: false,
         selectedId: null,
         workspace: '__all',
         statusFilter: '__all',

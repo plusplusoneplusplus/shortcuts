@@ -121,7 +121,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     };
 
     const handleDelete = async (scheduleId: string) => {
-        if (!confirm('Delete this job?')) return;
+        if (!confirm('Delete this schedule?')) return;
         await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}`, {
             method: 'DELETE',
         });
@@ -143,7 +143,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     };
 
     if (loading) {
-        return <div className="p-4 text-sm text-[#848484]">Loading jobs...</div>;
+        return <div className="p-4 text-sm text-[#848484]">Loading schedules...</div>;
     }
 
     const selectedSchedule = schedules.find(s => s.id === selectedId) ?? null;
@@ -198,8 +198,8 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             ) : (
                 <div className="flex items-center justify-center h-full text-sm text-[#848484]">
                     {schedules.length === 0
-                        ? 'Create your first job with "+ New"'
-                        : 'Select a job to view details'}
+                        ? 'Create your first schedule with "+ New"'
+                        : 'Select a schedule to view details'}
                 </div>
             )}
         </>
@@ -216,7 +216,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                                 onClick={() => setMobileShowDetail(false)}
                                 data-testid="schedules-back-btn"
                             >
-                                ← Jobs
+                                ← Schedules
                             </button>
                         </div>
                         <div className="flex-1 overflow-y-auto">
@@ -251,7 +251,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                 data-testid="schedules-resize-handle"
                 role="separator"
                 aria-orientation="vertical"
-                aria-label="Resize jobs panel"
+                aria-label="Resize schedules panel"
                 tabIndex={0}
             />
 

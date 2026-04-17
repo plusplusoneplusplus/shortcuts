@@ -19,8 +19,8 @@ describe('RepoDetail mobile: imports', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { useBreakpoint } from '../hooks/useBreakpoint'");
     });
 
-    it('no longer imports BottomSheet (mobile menu moved to MobileTabBar)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain("import { BottomSheet } from '../shared/BottomSheet'");
+    it('imports BottomSheet for mobile overflow menu', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { BottomSheet } from '../shared/BottomSheet'");
     });
 
     it('destructures isMobile from useBreakpoint', () => {
@@ -29,46 +29,61 @@ describe('RepoDetail mobile: imports', () => {
 });
 
 describe('RepoDetail mobile: header layout', () => {
-    it('header only renders on desktop (!isMobile)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('!isMobile && (');
-        expect(REPO_DETAIL_SOURCE).toContain('repo-detail-header');
+    it('uses single-line flex-row layout on desktop, flex-col on mobile', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]'");
+        expect(REPO_DETAIL_SOURCE).toContain("isMobile ? 'flex flex-col' : 'flex flex-row items-center'");
     });
 
     it('desktop layout: tabs come before action buttons (title | tabs | splitter | buttons)', () => {
         // On desktop, the tab strip container appears before the action buttons
         const tabStripIdx = REPO_DETAIL_SOURCE.indexOf('repo-sub-tab-strip-container');
         const splitterIdx = REPO_DETAIL_SOURCE.indexOf('repo-header-splitter');
-        const runScriptBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
+        const generateBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
         expect(tabStripIdx).toBeGreaterThan(-1);
         expect(splitterIdx).toBeGreaterThan(tabStripIdx);
-        expect(runScriptBtnIdx).toBeGreaterThan(splitterIdx);
+        expect(generateBtnIdx).toBeGreaterThan(splitterIdx);
     });
 
     it('renders a vertical splitter between tabs and action buttons on desktop', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-splitter"');
     });
 
-    it('mobile header has no title row (repo name shown in TopBar)', () => {
-        // Title row was removed — repo name is now in TopBar
-        expect(REPO_DETAIL_SOURCE).not.toContain('Title row');
+    it('title row has truncate class to prevent overflow', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('truncate');
+    });
+
+    it('title row has min-w-0 for proper flex shrinking', () => {
+        // The title row div has min-w-0 class
+        const titleRowSection = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('Title row'));
+        expect(titleRowSection).toBeDefined();
+        const titleRowIdx = REPO_DETAIL_SOURCE.indexOf('Title row');
+        const nearby = REPO_DETAIL_SOURCE.substring(titleRowIdx, titleRowIdx + 200);
+        expect(nearby).toContain('min-w-0');
     });
 });
 
-describe('RepoDetail mobile: overflow menu moved to MobileTabBar', () => {
-    it('no longer renders inline more-menu button (moved to MobileTabBar actions)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-menu-btn"');
+describe('RepoDetail mobile: overflow menu', () => {
+    it('renders more-menu button on mobile', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-menu-btn"');
     });
 
-    it('no longer has inline BottomSheet for the overflow menu', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('<BottomSheet isOpen onClose=');
+    it('more-menu button has ⋯ text', () => {
+        const lines = REPO_DETAIL_SOURCE.split('\n');
+        const btnIdx = lines.findIndex(l => l.includes('repo-more-menu-btn'));
+        const nearby = lines.slice(btnIdx, btnIdx + 5).join('\n');
+        expect(nearby).toContain('⋯');
     });
 
-    it('overflow menu no longer has Queue Task action (removed from menu)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-queue-task"');
+    it('uses BottomSheet for the overflow menu', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<BottomSheet isOpen onClose=');
     });
 
-    it('overflow menu no longer has Generate Plan action (removed from menu)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-generate"');
+    it('overflow menu has Queue Task action', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-queue-task"');
+    });
+
+    it('overflow menu has Generate Plan action', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-generate"');
     });
 
     it('overflow menu does not have Edit action (removed from menu)', () => {
@@ -79,31 +94,34 @@ describe('RepoDetail mobile: overflow menu moved to MobileTabBar', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-remove"');
     });
 
-    it('no longer has inline more-menu container', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-menu-container"');
+    it('more-menu container has data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-menu-container"');
     });
 
-    it('no longer has inline overflow menu items container', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-menu-items"');
+    it('overflow menu items container has data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-menu-items"');
     });
 
-    it('Queue Task and Generate Plan buttons are removed from the header', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('repo-queue-task-btn');
-        expect(REPO_DETAIL_SOURCE).not.toContain('repo-generate-btn');
+    it('Queue Task and Generate buttons are only rendered on non-mobile', () => {
+        // These desktop-only buttons appear inside the !isMobile branch
+        const desktopBranch = REPO_DETAIL_SOURCE.substring(
+            REPO_DETAIL_SOURCE.indexOf('repo-more-menu-container'),
+            REPO_DETAIL_SOURCE.indexOf('repo-generate-btn')
+        );
+        expect(desktopBranch).toContain(') : (');
     });
 
-    it('no longer has moreMenuOpen state (overflow menu moved to MobileTabBar)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('moreMenuOpen');
-        expect(REPO_DETAIL_SOURCE).not.toContain('setMoreMenuOpen');
+    it('moreMenuOpen state controls overflow menu visibility', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('moreMenuOpen');
+        expect(REPO_DETAIL_SOURCE).toContain('setMoreMenuOpen');
     });
 
-    it('no longer has click-outside handler for more-menu', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('moreMenuRef.current && !moreMenuRef.current.contains');
+    it('closes more-menu on outside click', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('moreMenuRef.current && !moreMenuRef.current.contains');
     });
 
-    it('passes actions prop to MobileTabBar with Run Script', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("label: 'Run Script'");
-        expect(REPO_DETAIL_SOURCE).toContain("icon: '⚡'");
+    it('click-outside mousedown listener is skipped on mobile', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('if (!moreMenuOpen || isMobile) return;');
     });
 });
 
@@ -249,12 +267,8 @@ describe('RepoDetail mobile: MobileTabBar integration', () => {
     });
 
     it('passes badge counts to MobileTabBar', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('taskCount={tasksRunning + tasksQueued}');
+        expect(REPO_DETAIL_SOURCE).toContain('taskCount={taskCount}');
         expect(REPO_DETAIL_SOURCE).toContain('activityCount={');
-    });
-
-    it('passes workItemCount to MobileTabBar', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('workItemCount={unseenWorkItemCount}');
     });
 
     it('hides top tab strip on mobile', () => {

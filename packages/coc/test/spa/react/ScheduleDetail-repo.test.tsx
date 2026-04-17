@@ -93,13 +93,13 @@ describe('ScheduleDetail — repo schedule read-only', () => {
 
     it('hides Delete button for repo schedule', () => {
         renderDetail(REPO_SCHEDULE);
-        expect(screen.queryByLabelText('Delete job')).toBeNull();
+        expect(screen.queryByLabelText('Delete schedule')).toBeNull();
     });
 
     it('shows Run Now and Pause buttons for repo schedule', () => {
         renderDetail(REPO_SCHEDULE);
-        expect(screen.getByLabelText('Run job now')).toBeTruthy();
-        expect(screen.getByLabelText('Pause job')).toBeTruthy();
+        expect(screen.getByLabelText('Run schedule now')).toBeTruthy();
+        expect(screen.getByLabelText('Pause schedule')).toBeTruthy();
     });
 
     it('shows "defined in repo" badge for repo schedule', () => {
@@ -117,7 +117,7 @@ describe('ScheduleDetail — repo schedule read-only', () => {
         renderDetail(BASE_SCHEDULE);
         expect(screen.getByTestId('edit-btn')).toBeTruthy();
         expect(screen.getByTestId('duplicate-btn')).toBeTruthy();
-        expect(screen.getByLabelText('Delete job')).toBeTruthy();
+        expect(screen.getByLabelText('Delete schedule')).toBeTruthy();
     });
 
     it('schedule name is shown correctly for repo schedule', () => {

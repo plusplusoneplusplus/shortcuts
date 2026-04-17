@@ -256,9 +256,7 @@ describe('useSendMessage', () => {
         expect(setTask).not.toHaveBeenCalled();
     });
 
-    it('calls refreshConversation via waitForSendCompletion fallback (no EventSource)', async () => {
-        // With EventSource stubbed to undefined, waitForSendCompletion falls through
-        // to `return refreshConversation(pid)` — so it is still called once.
+    it('calls refreshConversation in finally block after successful send', async () => {
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
         const refreshConversation = vi.fn().mockResolvedValue(undefined);
         const opts = makeOptions({ refreshConversation });
@@ -269,11 +267,7 @@ describe('useSendMessage', () => {
         expect(refreshConversation).toHaveBeenCalledWith('pid-1');
     });
 
-    it('calls refreshConversation in finally block as fallback safety net', async () => {
-        // refreshConversation IS called from the finally block as a safety fallback
-        // for cases where neither finish() nor the safety-net effect triggered a refresh
-        // (e.g. 90s timeout path). The monotonic version counter in refreshConversation
-        // safely deduplicates concurrent calls.
+    it('calls refreshConversation in finally block even after error', async () => {
         fetchMock.mockRejectedValue(new Error('network'));
         const refreshConversation = vi.fn().mockResolvedValue(undefined);
         const opts = makeOptions({ refreshConversation });
@@ -281,8 +275,6 @@ describe('useSendMessage', () => {
 
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp(); });
-        // fetch throws before waitForSendCompletion is reached, but the finally
-        // block still calls refreshConversation as a fallback
         expect(refreshConversation).toHaveBeenCalledWith('pid-1');
     });
 
@@ -493,67 +485,5 @@ describe('useSendMessage', () => {
             expect(clearImages).toHaveBeenCalled();
             expect(clearPaste).toHaveBeenCalled();
         });
-    });
-});
-
-// ── Timeout fix regression tests ─────────────────────────────────────────────
-
-describe('waitForSendCompletion safety timeout (regression)', () => {
-    beforeEach(() => { vi.useFakeTimers(); });
-    afterEach(() => { vi.useRealTimers(); });
-
-    it('timeout fires and resolves the promise (previously: ref comparison was always false)', async () => {
-        // Reproduces the waitForSendCompletion pattern directly to verify the fix.
-        // Before the fix, the ref was overwritten with a wrapper after the comparison
-        // reference was captured, making `resolveCurrentSendRef.current === resolve`
-        // always false — the 90-second safety timeout never fired.
-        const resolveRef: { current: (() => void) | null } = { current: null };
-
-        const waitFn = (): Promise<void> => new Promise<void>(resolve => {
-            let timeoutId: ReturnType<typeof setTimeout>;
-            // Fixed pattern: ref holds the wrapper, timeout calls the wrapper directly
-            const wrappedResolve = () => {
-                clearTimeout(timeoutId);
-                if (resolveRef.current === wrappedResolve) resolveRef.current = null;
-                resolve();
-            };
-            resolveRef.current = wrappedResolve;
-            timeoutId = setTimeout(wrappedResolve, 90_000);
-        });
-
-        let resolved = false;
-        const p = waitFn().then(() => { resolved = true; });
-
-        expect(resolved).toBe(false);
-        vi.advanceTimersByTime(91_000);
-        await p;
-        expect(resolved).toBe(true);
-    });
-
-    it('onSendComplete (external caller) fires the wrapper and resolves immediately', async () => {
-        const resolveRef: { current: (() => void) | null } = { current: null };
-
-        const waitFn = (): Promise<void> => new Promise<void>(resolve => {
-            let timeoutId: ReturnType<typeof setTimeout>;
-            const wrappedResolve = () => {
-                clearTimeout(timeoutId);
-                if (resolveRef.current === wrappedResolve) resolveRef.current = null;
-                resolve();
-            };
-            resolveRef.current = wrappedResolve;
-            timeoutId = setTimeout(wrappedResolve, 90_000);
-        });
-
-        let resolved = false;
-        const p = waitFn().then(() => { resolved = true; });
-
-        expect(resolved).toBe(false);
-        // Simulate onSendComplete calling resolveRef.current() (as useChatSSE does)
-        if (resolveRef.current) { resolveRef.current(); resolveRef.current = null; }
-        await p;
-        expect(resolved).toBe(true);
-        // Timer should NOT have fired (cancelled)
-        vi.runAllTimers();
-        expect(resolved).toBe(true); // idempotent
     });
 });

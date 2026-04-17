@@ -1,6 +1,8 @@
 ---
 name: create-work-item
 description: Interactively create a work item for this repository with title, description, status, and an AI-generated plan. Use when the user asks to create a work item, track a feature request, file a bug, or queue a task for later AI execution. Never execute the work item inside the chat session — queue it via the API instead.
+metadata:
+  version: "0.0.1"
 ---
 
 # Create Work Item

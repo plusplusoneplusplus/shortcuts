@@ -16,7 +16,6 @@ import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '..
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { getApiBase } from '../utils/config';
-import { fetchApi } from '../hooks/useApi';
 
 export interface TypeFilterOptions {
     includeTypes?: string[];

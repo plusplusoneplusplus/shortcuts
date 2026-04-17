@@ -36,8 +36,6 @@ export interface UseSendMessageOptions {
     getPastedContent?: () => string | null;
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
-    /** Workspace/repo ID for dispatching REPO_TASK_REQUEUED to clear stale optimistic history. */
-    workspaceId?: string;
 }
 
 export function useSendMessage({
@@ -64,7 +62,6 @@ export function useSendMessage({
     getPastedContent,
     lastFailedMessageRef,
     setTask,
-    workspaceId,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     closeFollowUpStream: () => void;
@@ -99,12 +96,14 @@ export function useSendMessage({
             const timeout = setTimeout(() => {
                 if (resolveCurrentSendRef.current === resolve) {
                     resolveCurrentSendRef.current = null;
+                    resolve();
                 }
-                resolve();
+            }, 90_000);
+            const origResolve = resolve;
+            resolveCurrentSendRef.current = () => {
+                clearTimeout(timeout);
+                origResolve();
             };
-            resolveCurrentSendRef.current = wrappedResolve;
-            // Safety timeout in case 'done' never fires (e.g. SSE connection dropped).
-            timeoutId = setTimeout(wrappedResolve, 90_000);
         });
     }, [refreshConversation]);
 
@@ -187,7 +186,6 @@ export function useSendMessage({
                 body: JSON.stringify({
                     content: rawContent,
                     images: images.length > 0 ? images : undefined,
-                    attachments: toPayload && toPayload().length > 0 ? toPayload() : undefined,
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
@@ -211,9 +209,6 @@ export function useSendMessage({
 
             lastFailedMessageRef.current = '';
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
-            if (workspaceId) {
-                queueDispatch({ type: 'REPO_TASK_REQUEUED', repoId: workspaceId, taskId });
-            }
             clearImages();
             clearPaste();
             await waitForSendCompletion(processId);
@@ -226,7 +221,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, selectedMode, images, toPayload, archivedChatIds, unarchiveChat, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }
