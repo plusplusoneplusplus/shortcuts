@@ -103,7 +103,7 @@ describe('NotesWatcher', () => {
 
             vi.advanceTimersByTime(300);
             expect(callback).toHaveBeenCalledOnce();
-            expect(callback).toHaveBeenCalledWith('ws1', ['/fake/notes/test.md']);
+            expect(callback).toHaveBeenCalledWith('ws1', ['test.md']);
         });
 
         it('should accumulate multiple changed files into single callback', () => {
@@ -119,9 +119,9 @@ describe('NotesWatcher', () => {
             vi.advanceTimersByTime(300);
             expect(callback).toHaveBeenCalledOnce();
             const paths = callback.mock.calls[0][1] as string[];
-            expect(paths).toContain('/fake/notes/a.md');
-            expect(paths).toContain('/fake/notes/b.md');
-            expect(paths).toContain('/fake/notes/sub/c.md');
+            expect(paths).toContain('a.md');
+            expect(paths).toContain('b.md');
+            expect(paths).toContain('sub/c.md');
         });
 
         it('should deduplicate the same file changed multiple times', () => {
@@ -138,7 +138,7 @@ describe('NotesWatcher', () => {
             expect(callback).toHaveBeenCalledOnce();
             const paths = callback.mock.calls[0][1] as string[];
             expect(paths).toHaveLength(1);
-            expect(paths[0]).toBe('/fake/notes/same.md');
+            expect(paths[0]).toBe('same.md');
         });
 
         it('should ignore non-markdown files', () => {
@@ -196,9 +196,8 @@ describe('NotesWatcher', () => {
             vi.advanceTimersByTime(300);
             expect(callback).toHaveBeenCalledOnce();
             const paths = callback.mock.calls[0][1] as string[];
-            // Full path should use forward slashes
-            expect(paths[0]).not.toContain('\\');
-            expect(paths[0]).toContain('sub/nested.md');
+            // Relative path should use forward slashes
+            expect(paths[0]).toBe('sub/nested.md');
         });
     });
 
@@ -323,7 +322,7 @@ describe('NotesWatcher', () => {
             vi.advanceTimersByTime(300);
 
             expect(callback).toHaveBeenCalledOnce();
-            expect(callback).toHaveBeenCalledWith('ws1', ['/fake/notes1/a.md']);
+            expect(callback).toHaveBeenCalledWith('ws1', ['a.md']);
         });
     });
 

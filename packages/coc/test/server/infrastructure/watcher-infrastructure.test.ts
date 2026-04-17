@@ -210,13 +210,13 @@ describe('createWatcherInfrastructure', () => {
 
         const { notesWatcher } = await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
-        (notesWatcher as any).onNotesChanged('test-ws', ['/path/to/note.md']);
+        (notesWatcher as any).onNotesChanged('test-ws', ['note.md']);
 
         expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: 'notes-changed',
                 workspaceId: 'test-ws',
-                changedPaths: ['/path/to/note.md'],
+                changedPaths: ['note.md'],
             }),
         );
     });

@@ -11,7 +11,6 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 
 // ============================================================================
 // Types
@@ -29,7 +28,6 @@ export class NotesWatcher {
     private watchers = new Map<string, fs.FSWatcher>();
     private timers = new Map<string, ReturnType<typeof setTimeout>>();
     private changedFiles = new Map<string, Set<string>>();
-    private watchedDirs = new Map<string, string>();
     private onNotesChanged: NotesChangedCallback;
 
     constructor(onNotesChanged: NotesChangedCallback) {
@@ -67,7 +65,6 @@ export class NotesWatcher {
             });
 
             this.watchers.set(workspaceId, watcher);
-            this.watchedDirs.set(workspaceId, notesDir);
         } catch {
             // fs.watch can throw if the path disappears
         }
@@ -120,13 +117,7 @@ export class NotesWatcher {
                 const changed = Array.from(files);
                 files.clear();
 
-                // Resolve to full paths relative to the notes root
-                const notesDir = this.watchedDirs.get(workspaceId);
-                const fullPaths = notesDir
-                    ? changed.map(f => path.join(notesDir, f).replace(/\\/g, '/'))
-                    : changed;
-
-                this.onNotesChanged(workspaceId, fullPaths);
+                this.onNotesChanged(workspaceId, changed);
             }
         }, DEBOUNCE_MS);
 
@@ -147,6 +138,5 @@ export class NotesWatcher {
         }
 
         this.changedFiles.delete(workspaceId);
-        this.watchedDirs.delete(workspaceId);
     }
 }
