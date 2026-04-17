@@ -32,7 +32,6 @@ import type { ModelInfo } from '../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
 import { FollowUpInputArea } from './FollowUpInputArea';
-import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { ConversationMiniMap } from '../processes/ConversationMiniMap';
 import { useConversationSelection } from '../hooks/useConversationSelection';
@@ -56,15 +55,13 @@ export interface ActivityChatDetailProps {
     variant?: 'inline' | 'floating';
     /** When true, suppresses QueueContext dispatches (SELECT_QUEUE_TASK). For embedded use. */
     standalone?: boolean;
-    /** When true, hides the follow-up input area (read-only execution viewer). */
-    readOnly?: boolean;
     /** Override the "Chat" title in ChatHeader */
     title?: string;
     /** Hide the ask/plan/autopilot mode selector */
     hideModeSelector?: boolean;
 }
 
-export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, readOnly = false, title, hideModeSelector = false }: ActivityChatDetailProps) {
+export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -99,7 +96,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
     const [backgroundTasks, setBackgroundTasks] = useState<import('../hooks/useChatSSE').BackgroundTasksState | null>(null);
-    const [showCreateWorkItem, setShowCreateWorkItem] = useState(false);
     const lastFailedMessageRef = useRef<string>('');
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
@@ -130,7 +126,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
     const isPending = task?.status === 'queued';
     const isTerminal = task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
-    const inputDisabled = loading || isPending || sessionExpired;
+    const inputDisabled = loading || isPending || task?.status === 'cancelled' || task?.status === 'cancelling' || sessionExpired;
     const resumeSessionId = getSessionIdFromProcess(processDetails || task);
     const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
 
@@ -215,13 +211,10 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
     const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
         const resolved = typeof next === 'function' ? next(turnsRef.current) : next;
-        // No-op: updater returned same reference — skip re-render and cache dispatch
-        if (resolved === turnsRef.current) return;
         turnsRef.current = resolved;
         setTurns(resolved);
-        if (taskId) {
-            const dirty = resolved.some(t => t.streaming);
-            appDispatch({ type: 'CACHE_CONVERSATION', processId: taskId, turns: resolved, dirty });
+        if (taskId && !resolved.some(t => t.streaming)) {
+            appDispatch({ type: 'CACHE_CONVERSATION', processId: taskId, turns: resolved });
         }
     }, [taskId, appDispatch]);
 
@@ -232,27 +225,11 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         });
     }, [setTurnsAndRef]);
 
-    // Monotonic counter to deduplicate concurrent refreshConversation calls.
-    // Only the latest in-flight fetch applies its result; earlier ones are discarded.
-    const refreshVersionRef = useRef(0);
-
     const refreshConversation = useCallback(async (pid: string) => {
-        const version = ++refreshVersionRef.current;
         try {
             const data = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
-            // Discard stale response — a newer refresh was issued while we were in flight
-            if (version !== refreshVersionRef.current) return;
             setProcessDetails(data?.process || null);
             const refreshedTurns = getConversationTurns(data);
-            // Guard against stale data: skip if fetched data is less rich than current.
-            // Check turn count first (cheap), then total content length for same-count case
-            // where the server returned partial/unflushed content.
-            if (refreshedTurns.length < turnsRef.current.length) return;
-            if (refreshedTurns.length === turnsRef.current.length) {
-                const fetchedLen = refreshedTurns.reduce((s, t) => s + (t.content?.length || 0), 0);
-                const currentLen = turnsRef.current.reduce((s, t) => s + (t.content?.length || 0), 0);
-                if (fetchedLen < currentLen) return;
-            }
             setTurnsAndRef(refreshedTurns);
             // Sync queued follow-ups from server state
             const serverPending: any[] = data?.process?.pendingMessages ?? [];
@@ -287,7 +264,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         toPayload,
         lastFailedMessageRef,
         setTask,
-        workspaceId,
     });
 
     const { stopStreaming } = useChatSSE({
@@ -304,37 +280,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setTurnsAndRef,
         refreshConversation,
         onSendComplete,
-        queueDispatch,
-        workspaceId,
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
-
-    // Safety net: sync task.status from queue context when it reports a terminal
-    // status but the local task still shows 'running' (e.g. SSE onerror race,
-    // or WebSocket queue-updated arriving before SSE done).
-    // In addition to updating status, mirror what useChatSSE.finish() does:
-    // refresh conversation data and unblock waitForSendCompletion so the UI
-    // doesn't hang on 'Agent is thinking...' for 90 seconds.
-    // Skip when `sending` — a follow-up POST is in flight and the stale
-    // optimistic history entry would incorrectly revert the status.
-    useEffect(() => {
-        if (sending) return;
-        if (!workspaceId || !taskId || task?.status !== 'running') return;
-        const repo = queueState.repoQueueMap[workspaceId];
-        if (!repo) return;
-        const match = repo.history?.find((t: any) => t.id === taskId);
-        if (match && ['completed', 'failed', 'cancelled'].includes(match.status)) {
-            setTask((prev: any) => prev ? { ...prev, status: match.status } : prev);
-            if (processId) {
-                refreshConversation(processId).finally(() => {
-                    onSendComplete();
-                });
-            } else {
-                onSendComplete();
-            }
-        }
-    }, [sending, workspaceId, taskId, task?.status, queueState.repoQueueMap, processId, refreshConversation, onSendComplete]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
 
@@ -458,11 +406,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 const cacheUsable = cached && (cached.dirty || Date.now() - cached.cachedAt < CACHE_TTL_MS);
                 if (cacheUsable) {
                     setTurnsAndRef(cached.turns);
-                    // Background-refresh both metadata AND turns
-                    // (critical when cache is dirty from interrupted streaming)
+                    // Background-refresh metadata
                     fetchApi(`/processes/${encodeURIComponent(pid)}`)
                         .then((data: any) => {
-                            if (loadCounterRef.current !== loadId) return;
                             setProcessDetails(data?.process || null);
                             const processMode = data?.process?.metadata?.mode;
                             if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
@@ -482,7 +428,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                                 });
                             }
                         })
-                        .catch(() => { /* background refresh is best-effort */ });
+                        .catch(() => { /* metadata refresh is best-effort */ });
                 } else {
                     const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
                     if (loadCounterRef.current !== loadId) return;
@@ -603,11 +549,12 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 // Force scroll to bottom when a task is first selected
                 isInitialLoadRef.current = false;
                 requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
-            } else if (!isScrolledUp) {
-                el.scrollTop = el.scrollHeight;
+            } else {
+                const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+                if (dist < 100) el.scrollTop = el.scrollHeight;
             }
         }
-    }, [turns, loading, isScrolledUp]);
+    }, [turns, loading]);
 
     // Track scroll position
     useEffect(() => {
@@ -628,14 +575,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(bareTaskId), { method: 'DELETE' });
         if (!standalone) queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
         onBack?.();
-    };
-
-    const handleStop = async () => {
-        if (!processId) return;
-        setSending(false);
-        try {
-            await fetchApi(`/processes/${encodeURIComponent(processId)}/cancel`, { method: 'POST' });
-        } catch { /* best-effort */ }
     };
 
     const handleMoveToTop = async () => {
@@ -739,14 +678,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     />
                 )}
             </div>
-            {!readOnly && !isPending && noSessionForFollowUp && (
+            {!isPending && noSessionForFollowUp && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                     <div className="text-[#848484] text-sm text-center">
                         Follow-up chat is not available for this process type.
                     </div>
                 </div>
             )}
-            {!readOnly && !isPending && !noSessionForFollowUp && (
+            {!isPending && !noSessionForFollowUp && (
                 <FollowUpInputArea
                     richTextRef={richTextRef}
                     inputDisabled={inputDisabled}
@@ -760,7 +699,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     setSelectedMode={setSelectedMode}
                     onSend={sendFollowUp}
                     onRetry={retryLastMessage}
-                    onStop={handleStop}
                     skills={skills}
                     attachments={attachments}
                     onAttachmentPaste={addFromPaste}
@@ -770,14 +708,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     task={task}
                     slashCommands={slashCommands}
                     hideModeSelector={hideModeSelector}
-                />
-            )}
-            {workspaceId && (
-                <CreateWorkItemDialog
-                    open={showCreateWorkItem}
-                    onClose={() => setShowCreateWorkItem(false)}
-                    workspaceId={workspaceId}
-                    fromChatId={processId ?? undefined}
                 />
             )}
         </div>

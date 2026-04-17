@@ -105,7 +105,7 @@ async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
         </Wrap>,
     );
     await waitFor(() => {
-        expect(screen.queryByText('Loading jobs...')).toBeNull();
+        expect(screen.queryByText('Loading schedules...')).toBeNull();
     });
     return result;
 }
@@ -123,7 +123,7 @@ async function renderEmpty() {
         </Wrap>,
     );
     await waitFor(() => {
-        expect(screen.queryByText('Loading jobs...')).toBeNull();
+        expect(screen.queryByText('Loading schedules...')).toBeNull();
     });
     return result;
 }
@@ -167,7 +167,7 @@ describe('Split-panel layout', () => {
 
         // Form should appear in right panel
         await waitFor(() => {
-            expect(screen.getByText('New Job')).toBeTruthy();
+            expect(screen.getByText('New Schedule')).toBeTruthy();
         });
 
         // Left list row should still have active styling (aria-selected on li)
@@ -188,7 +188,7 @@ describe('Split-panel layout', () => {
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 
         await waitFor(() => {
-            expect(screen.getByText('New Job')).toBeTruthy();
+            expect(screen.getByText('New Schedule')).toBeTruthy();
         });
 
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
@@ -204,11 +204,11 @@ describe('Split-panel layout', () => {
         await renderEmpty();
 
         // Left panel empty state — new two-section UI
-        expect(screen.getByText('No jobs yet. Click "+ New" to create one.')).toBeTruthy();
+        expect(screen.getByText('No schedules yet. Click "+ New" to create one.')).toBeTruthy();
         expect(screen.getByText('🕐')).toBeTruthy();
 
         // Right panel placeholder
-        expect(screen.getByText('Create your first job with "+ New"')).toBeTruthy();
+        expect(screen.getByText('Create your first schedule with "+ New"')).toBeTruthy();
     });
 
     it('active row has border-l-2 border-[#0078d4] classes', async () => {
@@ -271,7 +271,7 @@ describe('Split-panel layout', () => {
         );
 
         await waitFor(() => {
-            expect(screen.queryByText('Loading jobs...')).toBeNull();
+            expect(screen.queryByText('Loading schedules...')).toBeNull();
         });
 
         // Since auto-select fires, detail should be shown
@@ -284,17 +284,17 @@ describe('Split-panel layout', () => {
         await renderWithSchedules([MOCK_SCHEDULE, MOCK_SCHEDULE_2]);
 
         await waitFor(() => {
-            // MY JOBS section header shows count of user schedules
-            expect(screen.getByText(/MY JOBS\s*\(2\)/)).toBeTruthy();
+            // MY SCHEDULES section header shows count of user schedules
+            expect(screen.getByText(/MY SCHEDULES\s*\(2\)/)).toBeTruthy();
         });
     });
 
     it('left panel header shows no count when empty', async () => {
         await renderEmpty();
 
-        // MY JOBS section header should exist and show no count (no parentheses)
+        // MY SCHEDULES section header should exist and show no count (no parentheses)
         const header = screen.getByTestId('my-schedules-header');
-        expect(header.textContent).toContain('MY JOBS');
+        expect(header.textContent).toContain('MY SCHEDULES');
         expect(header.textContent).not.toContain('(');
     });
 
@@ -337,7 +337,7 @@ describe('Mobile layout: source structure', () => {
 
     it('has a back button to return to schedule list', () => {
         expect(SCHEDULES_TAB_SOURCE).toContain('data-testid="schedules-back-btn"');
-        expect(SCHEDULES_TAB_SOURCE).toContain('← Jobs');
+        expect(SCHEDULES_TAB_SOURCE).toContain('← Schedules');
     });
 
     it('has schedules-mobile-list testid for mobile list pane', () => {

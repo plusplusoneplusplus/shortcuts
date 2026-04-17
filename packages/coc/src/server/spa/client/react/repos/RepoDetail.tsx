@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import type { AppContextState } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
-import { useWorkItems, loadUnseenWorkItemIds } from '../context/WorkItemContext';
 import { Button, cn } from '../shared';
+import { BottomSheet } from '../shared/BottomSheet';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { WorkflowsTab } from './WorkflowsTab';
@@ -19,12 +19,10 @@ import { RepoWikiTab } from './RepoWikiTab';
 import { RepoSettingsTab } from './RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { PullRequestsTab } from './pull-requests/PullRequestsTab';
-import { WorkItemsTab } from './WorkItemsTab';
 import { WorkflowDetailView } from '../processes/dag';
 import { TerminalView } from './TerminalView';
 import { NotesView } from './NotesView';
 import { AddRepoDialog } from './AddRepoDialog';
-import { ErrorBoundary } from '../shared/ErrorBoundary';
 
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
@@ -87,14 +85,17 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { isMobile } = useBreakpoint();
     const [editOpen, setEditOpen] = useState(false);
+    const [moreMenuOpen, setMoreMenuOpen] = useState(false);
     const [generateDialog, setGenerateDialog] = useState<{
         open: boolean;
         minimized: boolean;
         targetFolder: string | undefined;
     }>({ open: false, minimized: false, targetFolder: undefined });
     const ws = repo.workspace;
+    const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
-    const { chatsRunning, chatsQueued, tasksRunning, tasksQueued } = useRepoQueueStats(ws.id);
+    const taskCount = repo.taskCount || 0;
+    const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(ws.id);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const terminalEnabled = useTerminalEnabled();
@@ -136,37 +137,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         prevNotesEnabled.current = notesEnabled;
     }, [activeSubTab, notesEnabled, dispatch]);
 
-    // Compute state-change-based unseen counts for MobileTabBar badges.
-    // Listen for coc-seen-updated events so we recompute when the user marks items read.
-    const [mobileSeenVersion, setMobileSeenVersion] = useState(0);
-    useEffect(() => {
-        const handler = () => setMobileSeenVersion(v => v + 1);
-        window.addEventListener('coc-seen-updated', handler);
-        return () => window.removeEventListener('coc-seen-updated', handler);
-    }, []);
-    const mobileUnseenCount = useMemo(() => {
-        const entry = queueState.repoQueueMap[ws.id];
-        if (!entry) return 0;
-        return computeUnseenCount(ws.id, entry.history ?? [], entry.queued ?? [], entry.running ?? []);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [queueState.repoQueueMap[ws.id], ws.id, mobileSeenVersion]);
-
-    // Work items: load for this repo if not yet in context (for badge)
-    const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
-    useEffect(() => {
-        if (workItemState.workItemsByRepo[ws.id] !== undefined) return;
-        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/work-items?limit=20`)
-            .then(data => {
-                if (data) {
-                    workItemDispatch({ type: 'SET_WORK_ITEMS', repoId: ws.id, items: data.items || [], total: data.total ?? 0, hasMore: data.hasMore ?? false });
-                    const ids = loadUnseenWorkItemIds(ws.id);
-                    workItemDispatch({ type: 'LOAD_UNSEEN_WORK_ITEMS', repoId: ws.id, ids });
-                }
-            })
-            .catch(() => {});
-    }, [ws.id]);
-    const unseenWorkItemCount = (workItemState.unseenByRepo[ws.id] || []).length;
-
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
         [state.wikis, ws.rootPath]
@@ -180,6 +150,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isLaunchingCli, setIsLaunchingCli] = useState(false);
     const tabStripRef = useRef<HTMLDivElement>(null);
+    const moreMenuRef = useRef<HTMLDivElement>(null);
     const [tabScrollState, setTabScrollState] = useState<{ canScrollLeft: boolean; canScrollRight: boolean }>({ canScrollLeft: false, canScrollRight: false });
 
     // Track tab strip scroll state for gradient affordance
@@ -204,6 +175,18 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             ro?.disconnect();
         };
     }, [updateTabScrollState]);
+
+    // Close more-menu when clicking outside
+    useEffect(() => {
+        if (!moreMenuOpen || isMobile) return;
+        const handler = (e: MouseEvent) => {
+            if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+                setMoreMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [moreMenuOpen]);
 
     // Auto-scroll active tab into view when sub-tab changes
     useEffect(() => {
@@ -254,16 +237,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     }, [ws.id]);
 
     const switchSubTab = (tab: RepoSubTab) => {
-        if (tab === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: ws.id });
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
         location.hash = '#repos/' + encodeURIComponent(ws.id) + getTabSuffix(tab, state);
     };
-
-    /** Navigate to the Tasks tab and select a specific queue task by ID. */
-    const handleNavigateToTask = useCallback((taskId: string) => {
-        switchSubTab('tasks');
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId: ws.id });
-    }, [ws.id, queueDispatch]);
 
     const handleOpenGenerateDialog = useCallback((targetFolder?: string) => {
         setGenerateDialog({ open: true, minimized: false, targetFolder });
@@ -325,17 +301,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                             {gitBehind > 0 && <span data-testid="git-behind-count">↓{gitBehind}</span>}
                                         </span>
                                     )}
-                                    {t.key === 'chats' && chatsRunning > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="chats-running-badge" title="Running">{chatsRunning}</span>
+                                    {t.key === 'tasks' && taskCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
                                     )}
-                                    {t.key === 'chats' && chatsQueued > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="chats-queued-badge" title="Queued">{chatsQueued}</span>
+                                    {t.key === 'activity' && queueRunningCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
                                     )}
-                                    {t.key === 'tasks' && tasksRunning > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="tasks-running-badge" title="Running">{tasksRunning}</span>
-                                    )}
-                                    {t.key === 'tasks' && tasksQueued > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="tasks-queued-badge" title="Queued">{tasksQueued}</span>
+                                    {t.key === 'activity' && queueQueuedCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
                                     )}
                                     {t.key === 'wiki' && wikiGeneratingCount > 0 && (
                                         <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
@@ -346,9 +319,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                             data-testid="wiki-warning-badge"
                                             title="Needs attention"
                                         />
-                                    )}
-                                    {t.key === 'work-items' && unseenWorkItemCount > 0 && (
-                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="work-items-new-badge" title="Work items with updates">{unseenWorkItemCount}</span>
                                     )}
                                     {activeSubTab === t.key && (
                                         <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
@@ -361,7 +331,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-2 my-1 flex-shrink-0" data-testid="repo-header-splitter" />
                         {/* Action buttons */}
                         <div className="flex items-center gap-2 flex-shrink-0">
-                            {(activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused && (
+                            {activeSubTab === 'activity' && isRepoPaused && (
                                 <Button
                                     variant="secondary"
                                     size="sm"
@@ -391,10 +361,26 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             >
                                 🛠️ Run Script
                             </Button>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
+                                title="Ask AI a question (read-only)"
+                                data-testid="repo-ask-btn"
+                            >
+                                💡 Ask
+                            </Button>
+                            <Button variant="primary" size="sm" id="repo-generate-btn"data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
+                                📋 Generate Plan
+                                {generateDialog.open && generateDialog.minimized && (
+                                    <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
+                                )}
+                            </Button>
 
                         </div>
+                    </>
+                )}
             </div>
-            )}
 
             {/* Mobile tab bar */}
             {isMobile && (
@@ -484,15 +470,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}
 
             {/* Edit dialog */}
-            <ErrorBoundary label="Dialog error" inline>
-                <AddRepoDialog
-                    open={editOpen}
-                    onClose={() => setEditOpen(false)}
-                    editId={ws.id}
-                    repos={repos}
-                    onSuccess={() => { setEditOpen(false); onRefresh(); }}
-                />
-            </ErrorBoundary>
+            <AddRepoDialog
+                open={editOpen}
+                onClose={() => setEditOpen(false)}
+                editId={ws.id}
+                repos={repos}
+                onSuccess={() => { setEditOpen(false); onRefresh(); }}
+            />
         </div>
     );
 }

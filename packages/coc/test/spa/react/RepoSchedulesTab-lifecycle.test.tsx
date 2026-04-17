@@ -104,7 +104,7 @@ async function renderWithSchedules(schedules: any[]) {
         </Wrap>,
     );
     await waitFor(() => {
-        expect(screen.queryByText('Loading jobs...')).toBeNull();
+        expect(screen.queryByText('Loading schedules...')).toBeNull();
     });
     return result;
 }
@@ -153,8 +153,8 @@ describe('RepoSchedulesTab — pause and resume', () => {
     it('clicking Pause sends PATCH with status=paused for active schedule', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PROMPT]);
 
-        await waitFor(() => expect(screen.getByRole('button', { name: /pause job/i })).toBeTruthy());
-        fireEvent.click(screen.getByRole('button', { name: /pause job/i }));
+        await waitFor(() => expect(screen.getByRole('button', { name: /pause schedule/i })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: /pause schedule/i }));
 
         await waitFor(() => {
             const patchCall = mockFetch.mock.calls.find(
@@ -169,8 +169,8 @@ describe('RepoSchedulesTab — pause and resume', () => {
     it('clicking Resume sends PATCH with status=active for paused schedule', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PAUSED]);
 
-        await waitFor(() => expect(screen.getByRole('button', { name: /resume job/i })).toBeTruthy());
-        fireEvent.click(screen.getByRole('button', { name: /resume job/i }));
+        await waitFor(() => expect(screen.getByRole('button', { name: /resume schedule/i })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: /resume schedule/i }));
 
         await waitFor(() => {
             const patchCall = mockFetch.mock.calls.find(
@@ -197,8 +197,8 @@ describe('RepoSchedulesTab — delete', () => {
     it('clicking Delete sends DELETE request to schedules endpoint', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PROMPT]);
 
-        await waitFor(() => expect(screen.getByRole('button', { name: /delete job/i })).toBeTruthy());
-        fireEvent.click(screen.getByRole('button', { name: /delete job/i }));
+        await waitFor(() => expect(screen.getByRole('button', { name: /delete schedule/i })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: /delete schedule/i }));
 
         await waitFor(() => {
             const deleteCall = mockFetch.mock.calls.find(
@@ -212,8 +212,8 @@ describe('RepoSchedulesTab — delete', () => {
         vi.stubGlobal('confirm', () => false);
         await renderWithSchedules([MOCK_SCHEDULE_PROMPT]);
 
-        await waitFor(() => expect(screen.getByRole('button', { name: /delete job/i })).toBeTruthy());
-        fireEvent.click(screen.getByRole('button', { name: /delete job/i }));
+        await waitFor(() => expect(screen.getByRole('button', { name: /delete schedule/i })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: /delete schedule/i }));
 
         await new Promise(r => setTimeout(r, 100));
         const deleteCall = mockFetch.mock.calls.find(
@@ -225,8 +225,8 @@ describe('RepoSchedulesTab — delete', () => {
     it('DELETE request targets the correct schedule ID', async () => {
         await renderWithSchedules([MOCK_SCHEDULE_PROMPT]);
 
-        await waitFor(() => expect(screen.getByRole('button', { name: /delete job/i })).toBeTruthy());
-        fireEvent.click(screen.getByRole('button', { name: /delete job/i }));
+        await waitFor(() => expect(screen.getByRole('button', { name: /delete schedule/i })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: /delete schedule/i }));
 
         await waitFor(() => {
             const deleteCall = mockFetch.mock.calls.find(

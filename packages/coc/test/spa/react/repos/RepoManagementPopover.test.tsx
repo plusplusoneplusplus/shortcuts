@@ -82,40 +82,6 @@ describe('RepoManagementPopover', () => {
         addSpy.mockRestore();
     });
 
-    it('does not call onClose when clicking inside a portal-rendered dialog overlay', () => {
-        const onClose = vi.fn();
-        render(
-            <div>
-                <RepoManagementPopover open={true} onClose={onClose} repos={[]} onRefresh={vi.fn()} />
-                <div data-testid="dialog-overlay">
-                    <button data-testid="dialog-browse-btn">Browse</button>
-                </div>
-            </div>
-        );
-        // Click the button inside the dialog overlay (simulates AddRepoDialog Browse button)
-        fireEvent.mouseDown(screen.getByTestId('dialog-browse-btn'));
-        expect(onClose).not.toHaveBeenCalled();
-
-        // Click the overlay itself
-        fireEvent.mouseDown(screen.getByTestId('dialog-overlay'));
-        expect(onClose).not.toHaveBeenCalled();
-    });
-
-    it('still closes when clicking outside both popover and dialog overlay', () => {
-        const onClose = vi.fn();
-        render(
-            <div>
-                <RepoManagementPopover open={true} onClose={onClose} repos={[]} onRefresh={vi.fn()} />
-                <div data-testid="dialog-overlay">
-                    <button>Browse</button>
-                </div>
-                <div data-testid="genuine-outside" />
-            </div>
-        );
-        fireEvent.mouseDown(screen.getByTestId('genuine-outside'));
-        expect(onClose).toHaveBeenCalledTimes(1);
-    });
-
     it('has role=dialog and aria-modal=true for accessibility', () => {
         render(
             <RepoManagementPopover open={true} onClose={vi.fn()} repos={[]} onRefresh={vi.fn()} />

@@ -8,9 +8,6 @@ import { appReducer, SIDEBAR_KEY, getInitialSidebarCollapsed, type AppContextSta
 function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
     return {
         processes: [],
-        processesTotal: 0,
-        processesOffset: 0,
-        processesLoading: false,
         selectedId: null,
         workspace: '__all',
         statusFilter: '__all',
@@ -19,7 +16,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         activeTab: 'repos',
         workspaces: [],
         selectedRepoId: null,
-        activeRepoSubTab: 'chats',
+        activeRepoSubTab: 'settings',
         reposSidebarCollapsed: false,
         selectedWikiId: null,
         selectedWikiComponentId: null,
@@ -142,116 +139,6 @@ describe('AppContext reducer', () => {
             });
             const result = appReducer(state, { type: 'PROCESSES_CLEARED' });
             expect(result.selectedId).toBe('p1');
-        });
-    });
-
-    // ── SET_PROCESSES (pagination) ─────────────────────────────────
-    describe('SET_PROCESSES', () => {
-        it('replaces processes and sets pagination metadata', () => {
-            const state = makeState({ processes: [{ id: 'old' }], processesTotal: 100, processesOffset: 50 });
-            const result = appReducer(state, { type: 'SET_PROCESSES', processes: [{ id: 'p1' }, { id: 'p2' }], total: 42 });
-            expect(result.processes).toHaveLength(2);
-            expect(result.processesTotal).toBe(42);
-            expect(result.processesOffset).toBe(2);
-            expect(result.processesLoading).toBe(false);
-        });
-
-        it('defaults total to processes.length when total is omitted', () => {
-            const state = makeState();
-            const result = appReducer(state, { type: 'SET_PROCESSES', processes: [{ id: 'p1' }] });
-            expect(result.processesTotal).toBe(1);
-            expect(result.processesOffset).toBe(1);
-        });
-    });
-
-    // ── APPEND_PROCESSES ──────────────────────────────────────────
-    describe('APPEND_PROCESSES', () => {
-        it('appends new processes and updates offset/total', () => {
-            const state = makeState({
-                processes: [{ id: 'p1' }, { id: 'p2' }],
-                processesTotal: 50,
-                processesOffset: 2,
-            });
-            const result = appReducer(state, {
-                type: 'APPEND_PROCESSES',
-                processes: [{ id: 'p3' }, { id: 'p4' }],
-                total: 50,
-            });
-            expect(result.processes).toHaveLength(4);
-            expect(result.processes[2].id).toBe('p3');
-            expect(result.processesOffset).toBe(4);
-            expect(result.processesTotal).toBe(50);
-            expect(result.processesLoading).toBe(false);
-        });
-
-        it('deduplicates processes already in the list', () => {
-            const state = makeState({
-                processes: [{ id: 'p1' }, { id: 'p2' }],
-                processesTotal: 50,
-                processesOffset: 2,
-            });
-            const result = appReducer(state, {
-                type: 'APPEND_PROCESSES',
-                processes: [{ id: 'p2' }, { id: 'p3' }],
-                total: 50,
-            });
-            expect(result.processes).toHaveLength(3);
-            expect(result.processesOffset).toBe(3);
-        });
-    });
-
-    // ── SET_PROCESSES_LOADING ─────────────────────────────────────
-    describe('SET_PROCESSES_LOADING', () => {
-        it('sets processesLoading to true', () => {
-            const state = makeState();
-            const result = appReducer(state, { type: 'SET_PROCESSES_LOADING', loading: true });
-            expect(result.processesLoading).toBe(true);
-        });
-
-        it('sets processesLoading to false', () => {
-            const state = makeState({ processesLoading: true });
-            const result = appReducer(state, { type: 'SET_PROCESSES_LOADING', loading: false });
-            expect(result.processesLoading).toBe(false);
-        });
-    });
-
-    // ── Pagination tracking in PROCESS_ADDED/REMOVED ──────────────
-    describe('pagination tracking', () => {
-        it('PROCESS_ADDED increments total and offset', () => {
-            const state = makeState({ processes: [{ id: 'p1' }], processesTotal: 10, processesOffset: 1 });
-            const result = appReducer(state, { type: 'PROCESS_ADDED', process: { id: 'p2' } });
-            expect(result.processesTotal).toBe(11);
-            expect(result.processesOffset).toBe(2);
-        });
-
-        it('PROCESS_ADDED does not change total for duplicate', () => {
-            const state = makeState({ processes: [{ id: 'p1' }], processesTotal: 10, processesOffset: 1 });
-            const result = appReducer(state, { type: 'PROCESS_ADDED', process: { id: 'p1' } });
-            expect(result.processesTotal).toBe(10);
-            expect(result.processesOffset).toBe(1);
-        });
-
-        it('PROCESS_REMOVED decrements total and adjusts offset', () => {
-            const state = makeState({ processes: [{ id: 'p1' }, { id: 'p2' }], processesTotal: 10, processesOffset: 2 });
-            const result = appReducer(state, { type: 'PROCESS_REMOVED', processId: 'p1' });
-            expect(result.processesTotal).toBe(9);
-            expect(result.processesOffset).toBe(1);
-        });
-
-        it('PROCESSES_CLEARED adjusts total by number of removed items', () => {
-            const state = makeState({
-                processes: [
-                    { id: 'p1', status: 'completed' },
-                    { id: 'p2', status: 'running' },
-                    { id: 'p3', status: 'completed' },
-                ],
-                processesTotal: 20,
-                processesOffset: 3,
-            });
-            const result = appReducer(state, { type: 'PROCESSES_CLEARED' });
-            expect(result.processes).toHaveLength(1);
-            expect(result.processesTotal).toBe(18);
-            expect(result.processesOffset).toBe(1);
         });
     });
 
@@ -438,12 +325,12 @@ describe('AppContext reducer', () => {
     // ── Per-repo tab state persistence ─────────────────────────────
     describe('per-repo tab state', () => {
         it('restores last active sub-tab when switching back to a repo', () => {
-            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'chats' });
+            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'settings' });
             // Switch to activity on repo-a
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-            // Switch to repo-b — saves repo-a's tab, defaults to chats for repo-b
+            // Switch to repo-b — saves repo-a's tab, defaults to settings for repo-b
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
-            expect(state.activeRepoSubTab).toBe('chats');
+            expect(state.activeRepoSubTab).toBe('settings');
             // Switch to wiki on repo-b
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
             // Switch back to repo-a — should restore activity
@@ -454,10 +341,10 @@ describe('AppContext reducer', () => {
             expect(state.activeRepoSubTab).toBe('wiki');
         });
 
-        it('defaults to chats when visiting a repo for the first time', () => {
+        it('defaults to settings when visiting a repo for the first time', () => {
             const state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'activity' });
             const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-new' });
-            expect(result.activeRepoSubTab).toBe('chats');
+            expect(result.activeRepoSubTab).toBe('settings');
         });
 
         it('SET_REPO_SUB_TAB records tab in repoTabState for the current repo', () => {

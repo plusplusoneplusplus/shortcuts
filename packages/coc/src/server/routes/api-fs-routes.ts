@@ -116,20 +116,7 @@ export function browseDirectory(dirPath: string, showHidden = false): {
         const entries: Array<{ name: string; type: 'directory'; isGitRepo: boolean }> = [];
 
         for (const entry of rawEntries) {
-            let isDir = entry.isDirectory();
-
-            // Symlinks report isDirectory()=false; resolve the target to check.
-            if (!isDir && entry.isSymbolicLink()) {
-                try {
-                    const realStat = fs.statSync(path.join(dirPath, entry.name));
-                    isDir = realStat.isDirectory();
-                } catch {
-                    // Broken symlink — skip gracefully
-                    continue;
-                }
-            }
-
-            if (!isDir) continue;
+            if (!entry.isDirectory()) continue;
             if (!showHidden && entry.name.startsWith('.')) continue;
 
             const fullPath = path.join(dirPath, entry.name);

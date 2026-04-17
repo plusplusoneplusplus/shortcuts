@@ -73,10 +73,10 @@ describe('useCommitCommentTotals', () => {
 
     // ── 2. fetches totals on mount ───────────────────────────────────
 
-    it('fetches totals on mount and populates map with open/resolved counts', async () => {
+    it('fetches totals on mount and populates map', async () => {
         fetchMock.mockResolvedValue({
             ok: true,
-            json: async () => ({ totals: { 'abc123': { open: 3, resolved: 1 }, 'def456': { open: 0, resolved: 0 } } }),
+            json: async () => ({ totals: { 'abc123': 3, 'def456': 0 } }),
         });
 
         const { result } = renderHook(() =>
@@ -84,7 +84,7 @@ describe('useCommitCommentTotals', () => {
         );
 
         await waitFor(() => {
-            expect(result.current.get('abc123')).toEqual({ open: 3, resolved: 1 });
+            expect(result.current.get('abc123')).toBe(3);
         });
 
         // Zero-count entries should not be in the map
@@ -96,7 +96,7 @@ describe('useCommitCommentTotals', () => {
     it('re-fetches totals when diff-comment-updated WS event matches wsId', async () => {
         fetchMock.mockResolvedValue({
             ok: true,
-            json: async () => ({ totals: { 'abc123': { open: 1, resolved: 0 } } }),
+            json: async () => ({ totals: { 'abc123': 1 } }),
         });
 
         renderHook(() => useCommitCommentTotals('ws-1', ['abc123']));
@@ -106,7 +106,7 @@ describe('useCommitCommentTotals', () => {
         // Simulate server broadcasting diff-comment-updated
         fetchMock.mockResolvedValue({
             ok: true,
-            json: async () => ({ totals: { 'abc123': { open: 2, resolved: 0 } } }),
+            json: async () => ({ totals: { 'abc123': 2 } }),
         });
 
         act(() => {
@@ -124,7 +124,7 @@ describe('useCommitCommentTotals', () => {
     it('does not re-fetch when diff-comment-updated WS event has different workspaceId', async () => {
         fetchMock.mockResolvedValue({
             ok: true,
-            json: async () => ({ totals: { 'abc123': { open: 1, resolved: 0 } } }),
+            json: async () => ({ totals: { 'abc123': 1 } }),
         });
 
         renderHook(() => useCommitCommentTotals('ws-1', ['abc123']));
@@ -181,7 +181,7 @@ describe('useCommitCommentTotals', () => {
     it('ignores malformed WebSocket messages without throwing', async () => {
         fetchMock.mockResolvedValue({
             ok: true,
-            json: async () => ({ totals: { 'abc123': { open: 1, resolved: 0 } } }),
+            json: async () => ({ totals: { 'abc123': 1 } }),
         });
 
         renderHook(() => useCommitCommentTotals('ws-1', ['abc123']));

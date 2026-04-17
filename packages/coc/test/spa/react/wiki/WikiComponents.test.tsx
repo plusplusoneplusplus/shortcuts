@@ -52,9 +52,6 @@ function SeededWikiDetail({
 describe('AppContext reducer — wiki actions', () => {
     const baseState: AppContextState = {
         processes: [],
-        processesTotal: 0,
-        processesOffset: 0,
-        processesLoading: false,
         selectedId: null,
         workspace: '__all',
         statusFilter: '__all',
@@ -1394,8 +1391,7 @@ describe('WikiDetail tab routing', () => {
 describe('useWebSocket wiki event dispatching', () => {
     it('WIKI_RELOAD action updates wiki in state', () => {
         const state: AppContextState = {
-            processes: [], processesTotal: 0, processesOffset: 0, processesLoading: false,
-            selectedId: null, workspace: '__all', statusFilter: '__all',
+            processes: [], selectedId: null, workspace: '__all', statusFilter: '__all',
             searchQuery: '', expandedGroups: {}, activeTab: 'repos', workspaces: [],
             selectedRepoId: null, activeRepoSubTab: 'settings',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
@@ -1412,8 +1408,7 @@ describe('useWebSocket wiki event dispatching', () => {
 
     it('WIKI_REBUILDING action sets status to generating', () => {
         const state: AppContextState = {
-            processes: [], processesTotal: 0, processesOffset: 0, processesLoading: false,
-            selectedId: null, workspace: '__all', statusFilter: '__all',
+            processes: [], selectedId: null, workspace: '__all', statusFilter: '__all',
             searchQuery: '', expandedGroups: {}, activeTab: 'repos', workspaces: [],
             selectedRepoId: null, activeRepoSubTab: 'settings',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
@@ -1429,8 +1424,7 @@ describe('useWebSocket wiki event dispatching', () => {
 
     it('WIKI_ERROR action sets status and error message', () => {
         const state: AppContextState = {
-            processes: [], processesTotal: 0, processesOffset: 0, processesLoading: false,
-            selectedId: null, workspace: '__all', statusFilter: '__all',
+            processes: [], selectedId: null, workspace: '__all', statusFilter: '__all',
             searchQuery: '', expandedGroups: {}, activeTab: 'repos', workspaces: [],
             selectedRepoId: null, activeRepoSubTab: 'settings',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',

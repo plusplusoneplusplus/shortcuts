@@ -44,7 +44,6 @@ function makeStore(): ProcessStore {
 function makeBridge(): any {
     return {
         enqueue: vi.fn(),
-        on: vi.fn(),
         getRepoExecutor: vi.fn(),
         createAggregateFacade: vi.fn(),
         registerRepoId: vi.fn(),

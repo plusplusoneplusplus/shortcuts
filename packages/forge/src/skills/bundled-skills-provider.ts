@@ -45,19 +45,19 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         relativePath: 'code-refactoring'
     },
     {
+        name: 'kb-refresh',
+        description: 'Distill recent CoC chat histories into knowledge-base skill improvements, proposing additions, updates, and removals',
+        relativePath: 'kb-refresh',
+    },
+    {
         name: 'create-work-item',
         description: 'Interactively create a work item for this repository with title, description, status, and an AI-generated plan',
-        relativePath: 'create-work-item'
+        relativePath: 'create-work-item',
     },
     {
         name: 'create-bug',
         description: 'Interactively create a bug report for this repository with title, description, priority, and an AI-generated plan',
-        relativePath: 'create-bug'
-    },
-    {
-        name: 'update-work-item',
-        description: 'Interactively update an existing work item — patch common fields or create a new plan version, then reset status to planning',
-        relativePath: 'update-work-item'
+        relativePath: 'create-bug',
     }
 ];
 

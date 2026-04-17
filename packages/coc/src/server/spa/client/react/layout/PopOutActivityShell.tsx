@@ -28,7 +28,7 @@ export interface PopOutRouteParams {
 export function parsePopOutActivityRoute(hash: string): PopOutRouteParams | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
-    if (parts[0] !== 'popout' || (parts[1] !== 'activity' && parts[1] !== 'chats' && parts[1] !== 'tasks') || !parts[2]) return null;
+    if (parts[0] !== 'popout' || parts[1] !== 'activity' || !parts[2]) return null;
     return { taskId: decodeURIComponent(parts[2]) };
 }
 

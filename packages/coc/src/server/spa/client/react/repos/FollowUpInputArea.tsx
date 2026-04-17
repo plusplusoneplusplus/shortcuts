@@ -9,7 +9,6 @@ import { useModifierKey } from '../hooks/useModifierKey';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
-import type { ChatAttachment } from '../types/attachments';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -24,7 +23,6 @@ export interface FollowUpInputAreaProps {
     setSelectedMode: (mode: 'ask' | 'plan' | 'autopilot') => void;
     onSend: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     onRetry: () => void;
-    onStop?: () => void;
     skills: SkillItem[];
     /** Unified file attachments (replaces images) */
     attachments: ChatAttachment[];
@@ -72,7 +70,6 @@ export function FollowUpInputArea({
     setSelectedMode,
     onSend,
     onRetry,
-    onStop,
     skills,
     attachments,
     onAttachmentPaste,
@@ -101,13 +98,7 @@ export function FollowUpInputArea({
     }, [followUpInput]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
-        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 pb-3 space-y-2">
-            {(sending || task?.status === 'running') && (
-                <div className="flex items-center gap-2 text-xs text-[#848484] dark:text-[#999]" data-testid="agent-responding-indicator">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />
-                    Agent is thinking...
-                </div>
-            )}
+        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
             {resumeFeedback && (
                 <div className={`text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
                     {resumeFeedback.message}
@@ -151,20 +142,6 @@ export function FollowUpInputArea({
                 <div className="text-xs text-[#f14c4c]" data-testid="attachment-error">{attachmentError}</div>
             )}
             <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
-                {/* Hidden file input for the + button */}
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    data-testid="file-input-hidden"
-                    onChange={(e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                            onAttachmentFiles(e.target.files);
-                        }
-                        e.target.value = '';
-                    }}
-                />
                 {!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">
                     {/* Mobile: icon-only button that cycles modes on tap */}
                     <button

@@ -117,7 +117,7 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
 
     return (
         <>
-            {/* ── MY JOBS section ─────────────────────────────────── */}
+            {/* ── MY SCHEDULES section ─────────────────────────────────── */}
             <div className="flex items-center justify-between px-4 pt-3 pb-1">
                 <button
                     className="flex items-center gap-1 text-[11px] uppercase text-[#848484] font-medium hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
@@ -126,11 +126,11 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
                     data-testid="my-schedules-header"
                 >
                     <span>{userCollapsed ? '▶' : '▼'}</span>
-                    MY JOBS{userSchedules.length > 0 ? ` (${userSchedules.length})` : ''}
+                    MY SCHEDULES{userSchedules.length > 0 ? ` (${userSchedules.length})` : ''}
                 </button>
                 <div className="flex items-center gap-1">
                     {onRefresh && (
-                        <Button variant="ghost" size="sm" onClick={onRefresh} title="Refresh Jobs" data-testid="schedules-refresh-btn">
+                        <Button variant="ghost" size="sm" onClick={onRefresh} title="Refresh Schedules" data-testid="schedules-refresh-btn">
                             ↻
                         </Button>
                     )}
@@ -153,7 +153,7 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
                             data-testid="user-schedules-dropzone"
                         >
                             <div className="text-2xl mb-1">🕐</div>
-                            <div className="text-xs">No jobs yet. Click &quot;+ New&quot; to create one.</div>
+                            <div className="text-xs">No schedules yet. Click &quot;+ New&quot; to create one.</div>
                         </div>
                     ) : (
                         <ul
@@ -179,7 +179,7 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
                 </>
             )}
 
-            {/* ── REPO JOBS section ──────────────────────────────── */}
+            {/* ── REPO SCHEDULES section ──────────────────────────────── */}
             <div className="flex items-center justify-between px-4 pt-2 pb-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <button
                     className="flex items-center gap-1 text-[11px] uppercase text-[#848484] font-medium hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
@@ -188,7 +188,7 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
                     data-testid="repo-schedules-header"
                 >
                     <span>{repoCollapsed ? '▶' : '▼'}</span>
-                    REPO JOBS{repoSchedules.length > 0 ? ` (${repoSchedules.length})` : ''}
+                    REPO SCHEDULES{repoSchedules.length > 0 ? ` (${repoSchedules.length})` : ''}
                 </button>
             </div>
 
@@ -207,7 +207,7 @@ export function ScheduleListPanel({ schedules, selectedId, onSelect, onNew, load
                             onDrop={(e) => handleDrop(e, 'repo')}
                             data-testid="repo-schedules-dropzone"
                         >
-                            No repo jobs found.
+                            No repo schedules found.
                         </div>
                     ) : (
                         <ul

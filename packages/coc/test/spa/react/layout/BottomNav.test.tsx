@@ -118,7 +118,7 @@ describe('BottomNav', () => {
         const nav = screen.getByTestId('bottom-nav');
         expect(nav.tagName).toBe('NAV');
         expect(nav.className).toContain('fixed');
-        expect(nav.className).toContain('top-10');
+        expect(nav.className).toContain('bottom-0');
     });
 
     it('has z-[8000] class', () => {
@@ -168,14 +168,6 @@ describe('BottomNav', () => {
             viewportCleanup = mockViewport(375);
             const { container } = render(<BottomNav />);
             expect(container.innerHTML).toBe('');
-        });
-
-        it('resets --bottom-nav-height to 0px on mobile when repo is selected', () => {
-            viewportCleanup = mockViewport(375);
-            // Seed a non-zero value to simulate the variable having been set
-            document.documentElement.style.setProperty('--bottom-nav-height', '48px');
-            render(<BottomNav />);
-            expect(document.documentElement.style.getPropertyValue('--bottom-nav-height')).toBe('0px');
         });
 
         it('is hidden on desktop even when repo is selected', () => {

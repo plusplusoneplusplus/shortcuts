@@ -96,7 +96,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             size="sm"
                             disabled={schedule.isRunning}
                             onClick={() => onRunNow(schedule.id)}
-                            aria-label="Run job now"
+                            aria-label="Run schedule now"
                         >
                             ▶ Run Now
                         </Button>
@@ -105,7 +105,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             variant="secondary"
                             size="sm"
                             onClick={() => onPauseResume(schedule)}
-                            aria-label={schedule.status === 'active' ? 'Pause job' : 'Resume job'}
+                            aria-label={schedule.status === 'active' ? 'Pause schedule' : 'Resume schedule'}
                         >
                             {schedule.status === 'active' ? '⏸ Pause' : '▶ Resume'}
                         </Button>

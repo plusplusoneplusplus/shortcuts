@@ -13,10 +13,10 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
 );
 
 describe('RepoDetail SUB_TABS', () => {
-    it('includes a "chats" entry', () => {
-        const chatsTab = SUB_TABS.find(t => t.key === 'chats');
-        expect(chatsTab).toBeDefined();
-        expect(chatsTab!.label).toBe('Chats');
+    it('includes an "activity" entry', () => {
+        const activityTab = SUB_TABS.find(t => t.key === 'activity');
+        expect(activityTab).toBeDefined();
+        expect(activityTab!.label).toBe('Activity');
     });
 
     it('does not include separate "chat" or "queue" entries', () => {
@@ -24,14 +24,14 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS.find(t => t.key === 'queue')).toBeUndefined();
     });
 
-    it('"chats" is followed by "work-items" entry', () => {
-        const chatsIdx = SUB_TABS.findIndex(t => t.key === 'chats');
-        const workItemsIdx = SUB_TABS.findIndex(t => t.key === 'work-items');
-        expect(workItemsIdx).toBe(chatsIdx + 1);
+    it('"activity" is followed by "git" entry', () => {
+        const activityIdx = SUB_TABS.findIndex(t => t.key === 'activity');
+        const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
+        expect(gitIdx).toBe(activityIdx + 1);
     });
 
-    it('"work-items" is the second entry', () => {
-        expect(SUB_TABS[1].key).toBe('work-items');
+    it('"git" is the second entry', () => {
+        expect(SUB_TABS[1].key).toBe('git');
     });
 
     it('has exactly 10 entries', () => {
@@ -43,23 +43,24 @@ describe('RepoDetail SUB_TABS', () => {
         expect(keys).toEqual(['chats', 'work-items', 'schedules', 'explorer', 'workflows', 'git', 'pull-requests', 'tasks', 'settings', 'wiki']);
     });
 
-    it('includes "wiki" entry', () => {
+    it('includes "wiki" entry with Alt+I shortcut', () => {
         const wikiTab = SUB_TABS.find(t => t.key === 'wiki');
         expect(wikiTab).toBeDefined();
+        expect(wikiTab!.shortcut).toBe('Alt+I');
     });
 
     it('has jobs as the third tab (after work-items)', () => {
         expect(SUB_TABS[2].key).toBe('schedules');
     });
 
-    it('chats is the first entry', () => {
-        expect(SUB_TABS[0].key).toBe('chats');
+    it('activity is the first entry', () => {
+        expect(SUB_TABS[0].key).toBe('activity');
     });
 
-    it('tasks tab has label "Tasks"', () => {
+    it('tasks tab has label "Plans"', () => {
         const tasksTab = SUB_TABS.find(t => t.key === 'tasks');
         expect(tasksTab).toBeDefined();
-        expect(tasksTab!.label).toBe('Tasks');
+        expect(tasksTab!.label).toBe('Plans');
     });
 });
 
@@ -93,20 +94,15 @@ describe('RepoDetail Activity tab rendering', () => {
         expect(REPO_DETAIL_SOURCE).toContain('mode="chats"');
     });
 
-    it('tasks sub-tab renders RepoActivityTab with mode="tasks"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'tasks'");
-        expect(REPO_DETAIL_SOURCE).toContain('mode="tasks"');
+    it('activity is in SUB_TABS (visible in tab strip)', () => {
+        const activityTab = SUB_TABS.find(t => t.key === 'activity');
+        expect(activityTab).toBeDefined();
     });
 
-    it('chats is in SUB_TABS (visible in tab strip)', () => {
-        const chatsTab = SUB_TABS.find(t => t.key === 'chats');
-        expect(chatsTab).toBeDefined();
-    });
-
-    it('chats sub-tab uses overflow-hidden layout', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chats'");
+    it('activity sub-tab uses overflow-hidden layout like queue', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
         const overflowLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
-            l.includes("activeSubTab === 'chats'") && l.includes('overflow-hidden')
+            l.includes("activeSubTab === 'activity'") && l.includes('overflow-hidden')
         );
         expect(overflowLine).toBeDefined();
     });
@@ -132,16 +128,23 @@ describe('RepoDetail Generate button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog'");
     });
 
-    it('generate button is removed from the header (moved to NewChatArea quick actions)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-generate-btn"');
+    it('renders generate button in the header row', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-generate-btn"');
     });
 
-    it('edit button is also removed', () => {
+    it('generate button is present but edit button is removed', () => {
+        const genIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
+        expect(genIdx).toBeGreaterThan(-1);
         expect(REPO_DETAIL_SOURCE).not.toContain('repo-edit-btn');
     });
 
-    it('passes onOpenGenerateDialog to GenerateTaskDialog or header', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('handleOpenGenerateDialog');
+    it('generate button uses primary variant', () => {
+        const line = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('repo-generate-btn'));
+        expect(line).toContain('variant="primary"');
+    });
+
+    it('passes onOpenGenerateDialog to TasksPanel', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('onOpenGenerateDialog={handleOpenGenerateDialog}');
     });
 
     it('renders GenerateTaskDialog when generateDialog.open is true', () => {
@@ -167,8 +170,9 @@ describe('RepoDetail Generate button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('onRestore={');
     });
 
-    it('minimized badge is removed along with the generate button', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="generate-minimized-badge"');
+    it('renders minimized badge on generate button when dialog is minimized', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="generate-minimized-badge"');
+        expect(REPO_DETAIL_SOURCE).toContain('generateDialog.open && generateDialog.minimized');
     });
 });
 
@@ -177,23 +181,21 @@ describe('RepoDetail Activity badge wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { useRepoQueueStats } from '../hooks/useRepoQueueStats'");
     });
 
-    it('destructures chatsRunning, chatsQueued, tasksRunning, tasksQueued from useRepoQueueStats', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('chatsRunning');
-        expect(REPO_DETAIL_SOURCE).toContain('chatsQueued');
-        expect(REPO_DETAIL_SOURCE).toContain('tasksRunning');
-        expect(REPO_DETAIL_SOURCE).toContain('tasksQueued');
+    it('destructures running and queued from useRepoQueueStats', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('running: queueRunningCount');
+        expect(REPO_DETAIL_SOURCE).toContain('queued: queueQueuedCount');
     });
 
     it('does not destructure chatPending (removed from visible nav)', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('chatPending: chatPendingCount');
     });
 
-    it('renders chats running badge only when chatsRunning > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'chats' && chatsRunning > 0");
+    it('renders activity running badge only when queueRunningCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'activity' && queueRunningCount > 0");
     });
 
-    it('renders chats queued badge only when chatsQueued > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'chats' && chatsQueued > 0");
+    it('renders activity queued badge only when queueQueuedCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'activity' && queueQueuedCount > 0");
     });
 
     it('running badge uses green background color', () => {
@@ -207,11 +209,11 @@ describe('RepoDetail Activity badge wiring', () => {
     });
 
     it('running badge has data-testid for testing', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="chats-running-badge"');
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="activity-running-badge"');
     });
 
     it('queued badge has data-testid for testing', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="chats-queued-badge"');
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="activity-queued-badge"');
     });
 
     it('running badge has title attribute', () => {
@@ -223,8 +225,8 @@ describe('RepoDetail Activity badge wiring', () => {
     });
 
     it('running badge renders before queued badge', () => {
-        const runningIdx = REPO_DETAIL_SOURCE.indexOf('chatsRunning > 0');
-        const queuedIdx = REPO_DETAIL_SOURCE.indexOf('chatsQueued > 0');
+        const runningIdx = REPO_DETAIL_SOURCE.indexOf('queueRunningCount > 0');
+        const queuedIdx = REPO_DETAIL_SOURCE.indexOf('queueQueuedCount > 0');
         expect(runningIdx).toBeLessThan(queuedIdx);
     });
 
@@ -273,18 +275,17 @@ describe('RepoDetail Resume Queue button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-resume-btn"');
     });
 
-    it('shows resume button when activeSubTab is chats or tasks and isRepoPaused', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chats'");
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'tasks'");
+    it('shows resume button when activeSubTab is activity and isRepoPaused', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
         expect(REPO_DETAIL_SOURCE).toContain('isRepoPaused');
     });
 
-    it('resume button appears before Run Script button', () => {
+    it('resume button appears before Queue Task button', () => {
         const resumeIdx = REPO_DETAIL_SOURCE.indexOf('repo-header-resume-btn');
-        const runScriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
+        const queueTaskIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
         expect(resumeIdx).toBeGreaterThan(-1);
-        expect(runScriptIdx).toBeGreaterThan(-1);
-        expect(resumeIdx).toBeLessThan(runScriptIdx);
+        expect(queueTaskIdx).toBeGreaterThan(-1);
+        expect(resumeIdx).toBeLessThan(queueTaskIdx);
     });
 
     it('uses secondary variant for resume button', () => {
@@ -332,18 +333,67 @@ describe('RepoDetail Resume Queue button in header', () => {
 });
 
 describe('RepoDetail Queue Task button in header', () => {
-    it('Queue Task button removed from header (access via NewChatArea)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-queue-task-btn"');
+    it('renders + Queue Task button in header', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-queue-task-btn"');
+    });
+
+    it('dispatches OPEN_DIALOG with workspaceId on click', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })");
+    });
+
+    it('button appears before generate button in the header', () => {
+        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        const genBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
+        expect(queueBtnIdx).toBeLessThan(genBtnIdx);
+    });
+
+    it('uses primary variant', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('variant="primary"');
     });
 });
 
 describe('RepoDetail Ask button in header', () => {
-    it('Ask button removed from header (access via NewChatArea)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-ask-btn"');
+    it('renders Ask button with data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-ask-btn"');
     });
 
-    it('does not have a mobile ask entry in the overflow menu', () => {
+    it('dispatches OPEN_DIALOG with mode ask on click', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })");
+    });
+
+    it('Ask button appears after Queue Task button in desktop toolbar', () => {
+        const desktopSection = REPO_DETAIL_SOURCE.substring(REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn'));
+        const queueBtnIdx = desktopSection.indexOf('repo-queue-task-btn');
+        const askBtnIdx = desktopSection.indexOf('repo-ask-btn');
+        expect(queueBtnIdx).toBeGreaterThan(-1);
+        expect(askBtnIdx).toBeGreaterThan(-1);
+        expect(askBtnIdx).toBeGreaterThan(queueBtnIdx);
+    });
+
+    it('Ask button appears before Generate Plan button', () => {
+        const askBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
+        const genBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
+        expect(askBtnIdx).toBeLessThan(genBtnIdx);
+    });
+
+    it('uses primary variant in desktop toolbar', () => {
+        const desktopSection = REPO_DETAIL_SOURCE.substring(REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn'));
+        const idx = desktopSection.indexOf('repo-ask-btn');
+        const block = desktopSection.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('variant="primary"');
+    });
+
+    it('mobile header includes Ask button (not in overflow)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-ask-btn"');
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-ask"');
+    });
+
+    it('mobile Ask button dispatches OPEN_DIALOG with mode ask', () => {
+        const askIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, askIdx - 300), askIdx + 200);
+        expect(block).toContain("mode: 'ask'");
     });
 });
 
@@ -356,21 +406,19 @@ describe('RepoDetail Run Script button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id })");
     });
 
-    it('Run Script button appears after Launch CLI button', () => {
-        const launchIdx = REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn');
+    it('Run Script button appears after Queue Task button', () => {
+        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
         const scriptBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
-        expect(launchIdx).toBeGreaterThan(-1);
+        expect(queueBtnIdx).toBeGreaterThan(-1);
         expect(scriptBtnIdx).toBeGreaterThan(-1);
-        expect(scriptBtnIdx).toBeGreaterThan(launchIdx);
+        expect(scriptBtnIdx).toBeGreaterThan(queueBtnIdx);
     });
 
-    it('Run Script is the last button in the desktop toolbar', () => {
-        const scriptBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
-        // No Queue Task, Ask, or Generate buttons follow it
-        expect(REPO_DETAIL_SOURCE).not.toContain('repo-queue-task-btn');
-        expect(REPO_DETAIL_SOURCE).not.toContain('repo-ask-btn');
-        expect(REPO_DETAIL_SOURCE).not.toContain('repo-generate-btn');
-        expect(scriptBtnIdx).toBeGreaterThan(-1);
+    it('Run Script button appears before Ask button in desktop toolbar', () => {
+        const desktopSection = REPO_DETAIL_SOURCE.substring(REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn'));
+        const scriptBtnIdx = desktopSection.indexOf('repo-run-script-btn');
+        const askBtnIdx = desktopSection.indexOf('repo-ask-btn');
+        expect(scriptBtnIdx).toBeLessThan(askBtnIdx);
     });
 
     it('uses primary variant', () => {
@@ -383,25 +431,25 @@ describe('RepoDetail Run Script button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('title="Run a script in this repo"');
     });
 
-    it('mobile Run Script action is passed to MobileTabBar via actions prop', () => {
-        // Run Script action moved from inline BottomSheet to MobileTabBar actions prop
-        expect(REPO_DETAIL_SOURCE).toContain("label: 'Run Script'");
-        expect(REPO_DETAIL_SOURCE).toContain("icon: '⚡'");
-        expect(REPO_DETAIL_SOURCE).toContain("type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id");
+    it('mobile overflow menu includes Run Script option', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-run-script"');
     });
 
-    it('mobile Run Script action appears in MobileTabBar actions array', () => {
-        const actionsIdx = REPO_DETAIL_SOURCE.indexOf("label: 'Run Script'");
-        expect(actionsIdx).toBeGreaterThan(-1);
+    it('mobile Run Script option appears after Queue Task in overflow', () => {
+        const queueIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-queue-task');
+        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
+        expect(queueIdx).toBeGreaterThan(-1);
+        expect(scriptIdx).toBeGreaterThan(-1);
+        expect(scriptIdx).toBeGreaterThan(queueIdx);
     });
 
     it('mobile overflow menu does not include Ask (Ask is a top-level button)', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-ask"');
     });
 
-    it('mobile Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId via actions', () => {
-        const actionsIdx = REPO_DETAIL_SOURCE.indexOf("label: 'Run Script'");
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, actionsIdx - 100), actionsIdx + 200);
+    it('mobile Run Script dispatches OPEN_SCRIPT_DIALOG with workspaceId', () => {
+        const scriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-run-script');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, scriptIdx - 300), scriptIdx + 200);
         expect(block).toContain("type: 'OPEN_SCRIPT_DIALOG'");
         expect(block).toContain('workspaceId: ws.id');
     });
@@ -431,8 +479,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab key={ws.id}');
     });
 
-    it('mounts a fresh RepoActivityTab on every repo switch via key containing ws.id', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={`${ws.id}');
+    it('mounts a fresh RepoActivityTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={ws.id}');
     });
 
     it('mounts a fresh RepoSchedulesTab on every repo switch via key={ws.id}', () => {
@@ -447,8 +495,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<ExplorerPanel key={ws.id}');
     });
 
-    it('no longer references TasksPanel (removed from RepoDetail)', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('<TasksPanel');
+    it('mounts a fresh TasksPanel on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toMatch(/<TasksPanel[\s\S]*?key=\{ws\.id\}/);
     });
 
     it('no longer mounts a separate RepoInfoTab (merged into RepoSettingsTab)', () => {
@@ -521,12 +569,12 @@ describe('RepoDetail Launch CLI button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('title="Open CLI in terminal"');
     });
 
-    it('button appears before Run Script button', () => {
+    it('button appears before Queue Task button', () => {
         const launchIdx = REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn');
-        const runScriptIdx = REPO_DETAIL_SOURCE.indexOf('repo-run-script-btn');
+        const queueTaskIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
         expect(launchIdx).toBeGreaterThan(-1);
-        expect(runScriptIdx).toBeGreaterThan(-1);
-        expect(launchIdx).toBeLessThan(runScriptIdx);
+        expect(queueTaskIdx).toBeGreaterThan(-1);
+        expect(launchIdx).toBeLessThan(queueTaskIdx);
     });
 
     it('button is disabled during loading', () => {
@@ -660,47 +708,6 @@ describe('RepoDetail MobileTabBar Activity badge wiring', () => {
             REPO_DETAIL_SOURCE.indexOf('<MobileTabBar') + 400,
         );
         expect(mobileBarSection).not.toContain('queueRunningCount={');
-    });
-});
-
-describe('RepoDetail Work Items badge wiring', () => {
-    it('imports loadUnseenWorkItemIds from WorkItemContext', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('loadUnseenWorkItemIds');
-    });
-
-    it('computes unseenWorkItemCount from context unseenByRepo', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('unseenWorkItemCount');
-        expect(REPO_DETAIL_SOURCE).toContain('workItemState.unseenByRepo');
-    });
-
-    it('no longer filters by status === created for badge', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain("i.status === 'created'");
-    });
-
-    it('desktop badge uses unseenWorkItemCount', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('unseenWorkItemCount > 0');
-    });
-
-    it('desktop badge title says "Work items with updates"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('Work items with updates');
-    });
-
-    it('does not use old "New work items" title', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('New work items');
-    });
-
-    it('passes workItemCount to MobileTabBar', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('workItemCount={unseenWorkItemCount}');
-    });
-
-    it('dispatches MARK_WORK_ITEMS_SEEN when switching to work-items tab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("'MARK_WORK_ITEMS_SEEN'");
-        expect(REPO_DETAIL_SOURCE).toContain("tab === 'work-items'");
-    });
-
-    it('dispatches LOAD_UNSEEN_WORK_ITEMS after fetching work items', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("'LOAD_UNSEEN_WORK_ITEMS'");
-        expect(REPO_DETAIL_SOURCE).toContain('loadUnseenWorkItemIds');
     });
 });
 

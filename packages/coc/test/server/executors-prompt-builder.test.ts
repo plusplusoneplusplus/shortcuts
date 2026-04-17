@@ -60,21 +60,6 @@ vi.mock('../../src/server/llm-tools/update-task-status-tool', () => ({
     createUpdateTaskStatusTool: () => mockCreateUpdateTaskStatusTool(),
 }));
 
-const mockCreateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_work_item' } }));
-vi.mock('../../src/server/create-work-item-tool', () => ({
-    createWorkItemTool: (...args: any[]) => mockCreateWorkItemTool(...args),
-}));
-
-const mockCreateBugTool = vi.fn(() => ({ tool: { name: 'create_bug' } }));
-vi.mock('../../src/server/create-bug-tool', () => ({
-    createBugTool: (...args: any[]) => mockCreateBugTool(...args),
-}));
-
-const mockUpdateWorkItemTool = vi.fn(() => ({ tool: { name: 'update_work_item' } }));
-vi.mock('../../src/server/update-work-item-tool', () => ({
-    createUpdateWorkItemTool: (...args: any[]) => mockUpdateWorkItemTool(...args),
-}));
-
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,

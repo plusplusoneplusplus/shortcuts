@@ -1337,60 +1337,6 @@ describe('API Handler', () => {
 
             safeRmSync(tmpDir);
         });
-
-        it('should include symlinked directories', async () => {
-            const srv = await startServer();
-            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browse-symlink-'));
-            const realDir = path.join(tmpDir, 'real-dir');
-            fs.mkdirSync(realDir);
-            // Create a symlink pointing to the real directory
-            fs.symlinkSync(realDir, path.join(tmpDir, 'linked-dir'), 'dir');
-
-            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(tmpDir)}`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            const names = body.entries.map((e: any) => e.name);
-            expect(names).toContain('real-dir');
-            expect(names).toContain('linked-dir');
-            expect(body.entries).toHaveLength(2);
-
-            fs.rmSync(tmpDir, { recursive: true, force: true });
-        });
-
-        it('should skip broken symlinks gracefully', async () => {
-            const srv = await startServer();
-            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browse-broken-sym-'));
-            fs.mkdirSync(path.join(tmpDir, 'valid-dir'));
-            // Symlink pointing to a non-existent target
-            fs.symlinkSync(path.join(tmpDir, 'nonexistent'), path.join(tmpDir, 'broken-link'), 'dir');
-
-            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(tmpDir)}`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            // Broken symlink should be skipped, only valid-dir returned
-            expect(body.entries).toHaveLength(1);
-            expect(body.entries[0].name).toBe('valid-dir');
-
-            fs.rmSync(tmpDir, { recursive: true, force: true });
-        });
-
-        it('should detect git repo via symlinked directory', async () => {
-            const srv = await startServer();
-            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browse-symgit-'));
-            const realRepo = path.join(tmpDir, 'real-repo');
-            fs.mkdirSync(realRepo);
-            fs.mkdirSync(path.join(realRepo, '.git'));
-            fs.symlinkSync(realRepo, path.join(tmpDir, 'sym-repo'), 'dir');
-
-            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(tmpDir)}`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            const symEntry = body.entries.find((e: any) => e.name === 'sym-repo');
-            expect(symEntry).toBeDefined();
-            expect(symEntry.isGitRepo).toBe(true);
-
-            fs.rmSync(tmpDir, { recursive: true, force: true });
-        });
     });
 
     // ========================================================================

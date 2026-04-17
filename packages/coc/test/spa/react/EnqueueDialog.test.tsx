@@ -616,7 +616,7 @@ describe('EnqueueDialog', () => {
         expect((screen.getByText('Enqueue') as HTMLButtonElement).disabled).toBe(false);
     });
 
-    it('shows prompt input and no paste hint when no attachments', async () => {
+    it('renders ImagePreviews paste hint below the prompt input', async () => {
         render(
             <Wrap>
                 <DialogOpener />
@@ -626,10 +626,8 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
-        // prompt input is present
-        expect(screen.getByTestId('prompt-input')).toBeTruthy();
-        // AttachmentPreviews returns null when empty — no paste hint shown
-        expect(screen.queryByText(/Paste images/)).toBeNull();
+        // The ImagePreviews component shows a paste hint when showHint is true and no images
+        expect(screen.getByText(/Paste images/)).toBeTruthy();
     });
 
     it('includes images in freeform POST body when present', async () => {

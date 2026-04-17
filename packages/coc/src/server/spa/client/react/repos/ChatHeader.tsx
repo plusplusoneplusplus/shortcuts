@@ -160,18 +160,8 @@ export function ChatHeader({
                         )}
                         onClick={onBack}
                         data-testid="activity-chat-back-btn"
-                        aria-label="Back to list"
                     >
-                        {isMobile ? (
-                            <>
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                                <span className="text-sm font-medium">Chats</span>
-                            </>
-                        ) : (
-                            '← Back'
-                        )}
+                        ← Back
                     </button>
                 )}
                 <span className={cn(

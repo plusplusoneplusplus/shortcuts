@@ -85,19 +85,14 @@ describe('TopBar responsive behavior', () => {
         expect(tabBar).toBeNull();
     });
 
-    it('mobile hamburger is visible with md:hidden class and shows brand label', () => {
+    it('mobile title "CoC" is visible with md:hidden class', () => {
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
-        const picker = document.getElementById('repo-picker-btn') as HTMLButtonElement;
-        expect(picker).toBeTruthy();
-        expect(picker.tagName).toBe('BUTTON');
-        expect(picker.className).toContain('md:hidden');
-        // Hamburger icon (☰ = &#9776;)
-        expect(picker.textContent).toContain('☰');
-        // Brand label next to hamburger shows "CoC" when no repo selected
-        const brand = screen.getByTestId('topbar-mobile-brand');
-        expect(brand.textContent).toBe('CoC');
-        expect(brand.className).toContain('md:hidden');
+        const mobileTitle = document.querySelector('[data-tab-mobile="repos"]') as HTMLAnchorElement;
+        expect(mobileTitle).toBeTruthy();
+        expect(mobileTitle.tagName).toBe('A');
+        expect(mobileTitle.href).toContain('#');
+        expect(mobileTitle.className).toContain('md:hidden');
     });
 
     it('desktop CoC link shows short label with tooltip', () => {

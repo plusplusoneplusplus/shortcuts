@@ -12,26 +12,26 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { type CreateTaskInput, type SessionCategory } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
-import { sendError, sendJSON } from './api-handler';
-import { isValidWorkspaceId } from './base-comments-manager';
-import { invokeCommentAI } from './comments-ai-helpers';
-import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import { sendJSON, sendError } from './api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
-import { buildAIPrompt, buildBatchResolvePrompt, buildEnrichedPrompt, DEFAULT_AI_COMMANDS } from './task-comments-ai';
-import type { DocumentContext } from './task-comments-manager';
-import { TaskCommentsManager } from './task-comments-manager';
-import { relocateCommentsIfNeeded } from './task-comments-relocation';
-import { resolveTaskRoot } from './task-root-resolver';
+import { isValidWorkspaceId } from './base-comments-manager';
 import type { Route } from './types';
 import type { ProcessWebSocketServer } from './websocket';
+import { type CreateTaskInput } from '@plusplusoneplusplus/forge';
+import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { resolveTaskRoot } from './task-root-resolver';
+import { TaskCommentsManager } from './task-comments-manager';
+import type { TaskComment, DocumentContext } from './task-comments-manager';
+import { relocateCommentsIfNeeded } from './task-comments-relocation';
+import { buildEnrichedPrompt, buildBatchResolvePrompt, buildAIPrompt, DEFAULT_AI_COMMANDS } from './task-comments-ai';
+import { invokeCommentAI } from './comments-ai-helpers';
 
 // Re-export types and classes so existing importers don't break
-export { buildBatchResolvePrompt } from './task-comments-ai';
+export type { TaskComment, TaskCommentReply, CommentAnchor, DocumentContext, CommentsStorage } from './task-comments-manager';
 export { TaskCommentsManager } from './task-comments-manager';
-export type { CommentAnchor, CommentsStorage, DocumentContext, TaskComment, TaskCommentReply } from './task-comments-manager';
+export { buildBatchResolvePrompt } from './task-comments-ai';
 
 // ============================================================================
 // Validation Helpers
@@ -119,17 +119,10 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         prompt: string,
         documentContent: string,
         skills?: string[],
-        workItemId?: string,
-        autoReExecute?: boolean,
-        sourceRunIndex?: number,
-        sourcePlanVersion?: number,
     ): Promise<string | undefined> {
         const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
         bridge.getOrCreateBridge(wsRootPath);
         const queueManager = bridge.registry.getQueueForRepo(wsRootPath);
-        const sessionCategory: SessionCategory = taskPath.startsWith('__wi-plan__/')
-            ? 'resolve-plan-comments'
-            : 'resolve-commit-comments';
         const input: CreateTaskInput = {
             type: 'chat',
             priority: 'normal',
@@ -139,8 +132,6 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 prompt,
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
-                sessionCategory,
-                ...(workItemId ? { workItemId, workItemResolveContext: { workItemId, wsId, autoReExecute: autoReExecute ?? false, ...(sourceRunIndex != null ? { sourceRunIndex } : {}), ...(sourcePlanVersion != null ? { sourcePlanVersion } : {}) } } : {}),
                 context: {
                     files: [path.resolve(wsRootPath, taskPath)],
                     resolveComments: {
@@ -154,7 +145,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 },
             },
             config: {},
-            displayName: taskPath.startsWith('__wi-plan__/') ? 'Resolve plan comment' : `Resolve comments: ${taskPath}`,
+            displayName: `Resolve comments: ${taskPath}`,
         };
         return queueManager.enqueue(input);
     }
@@ -399,16 +390,10 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
 
             const userContext: string | undefined = body.userContext;
             const skills: string[] | undefined = Array.isArray(body.skills) ? body.skills : undefined;
-            const singleCommentId: string | undefined = typeof body.singleCommentId === 'string' ? body.singleCommentId : undefined;
-            const sourceRunIndex: number | undefined = typeof body.sourceRunIndex === 'number' ? body.sourceRunIndex : undefined;
-            const sourcePlanVersion: number | undefined = typeof body.sourcePlanVersion === 'number' ? body.sourcePlanVersion : undefined;
 
             // Load and filter open comments
             const allComments = await manager.getComments(wsId, taskPath);
-            let openComments = allComments.filter(c => c.status === 'open');
-            if (singleCommentId) {
-                openComments = openComments.filter(c => c.id === singleCommentId);
-            }
+            const openComments = allComments.filter(c => c.status === 'open');
             if (openComments.length === 0) {
                 return sendError(res, 400, 'No open comments to resolve');
             }
@@ -419,12 +404,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             const prompt = buildBatchResolvePrompt(openComments, absoluteTaskPath, taskPath, userContext);
             const commentIds = openComments.map(c => c.id);
 
-            // Extract workItemId from synthetic plan path (__wi-plan__/{workItemId})
-            const planPrefix = '__wi-plan__/';
-            const workItemId = taskPath.startsWith(planPrefix) ? taskPath.slice(planPrefix.length) : undefined;
-
             try {
-                const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent, skills, workItemId, undefined, sourceRunIndex, sourcePlanVersion);
+                const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent, skills);
                 if (taskId) {
                     return sendJSON(res, 202, { taskId });
                 }

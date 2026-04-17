@@ -429,7 +429,10 @@ export class ProcessWebSocketServer {
             message.type === 'templates-changed' ||
             message.type === 'notes-changed' ||
             message.type === 'git-changed' ||
-            message.type === 'diff-comment-updated'
+            message.type === 'diff-comment-updated' ||
+            message.type === 'work-item-added' ||
+            message.type === 'work-item-updated' ||
+            message.type === 'work-item-removed'
         ) {
             return message.workspaceId;
         }

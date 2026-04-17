@@ -352,19 +352,17 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
             )}
 
             {/* Add dialogs */}
-            <ErrorBoundary label="Dialog error" inline>
-                <AddRepoDialog
-                    open={addOpen}
-                    onClose={() => setAddOpen(false)}
-                    repos={repos}
-                    onSuccess={() => { setAddOpen(false); onRefresh(); }}
-                />
-                <AddFolderDialog
-                    open={addFolderOpen}
-                    onClose={() => setAddFolderOpen(false)}
-                    onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
-                />
-            </ErrorBoundary>
+            <AddRepoDialog
+                open={addOpen}
+                onClose={() => setAddOpen(false)}
+                repos={repos}
+                onSuccess={() => { setAddOpen(false); onRefresh(); }}
+            />
+            <AddFolderDialog
+                open={addFolderOpen}
+                onClose={() => setAddFolderOpen(false)}
+                onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
+            />
         </div>
     );
 }

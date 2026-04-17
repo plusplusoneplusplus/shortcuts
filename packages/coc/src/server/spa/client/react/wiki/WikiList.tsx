@@ -113,8 +113,7 @@ export function WikiList() {
     }, [dispatch]);
 
     return (
-        <div className="h-full overflow-y-auto" id="view-wiki">
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4" id="view-wiki">
             <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Wikis</h2>
                 <div className="flex items-center gap-2">
@@ -189,12 +188,12 @@ export function WikiList() {
                                 )}
                                 <div className="flex justify-end gap-1 mt-2" onClick={e => e.stopPropagation()}>
                                     <button
-                                        className="wiki-card-edit p-1 min-w-[44px] min-h-[44px] flex items-center justify-center text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                                        className="wiki-card-edit p-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
                                         title="Edit wiki"
                                         onClick={() => setEditWiki(wiki)}
                                     >✏️</button>
                                     <button
-                                        className="wiki-card-delete p-1 min-w-[44px] min-h-[44px] flex items-center justify-center text-xs text-[#848484] hover:text-[#f14c4c]"
+                                        className="wiki-card-delete p-1 text-xs text-[#848484] hover:text-[#f14c4c]"
                                         title="Delete wiki"
                                         onClick={() => handleDeleteClick(wiki)}
                                     >🗑️</button>
@@ -222,7 +221,6 @@ export function WikiList() {
                     onDeleted={() => { handleDeleted(deleteWiki.id); setDeleteWiki(null); reload(); }}
                 />
             )}
-        </div>
         </div>
     );
 }

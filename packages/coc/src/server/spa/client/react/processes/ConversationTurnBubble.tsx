@@ -864,7 +864,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                         &lt;/&gt;
                     </button>
                     <button
-                        className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-[10px]"
+                        className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
                         title="Copy to clipboard"
                         onClick={async () => {
                             const text = showRaw ? buildRawContent(turn) : (turn.content || '');
@@ -881,7 +881,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     </button>
                     {!showRaw && (
                         <button
-                            className="bubble-copy-html-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-[10px]"
+                            className="bubble-copy-html-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
                             title="Copy as HTML"
                             onClick={async () => {
                                 try {
@@ -923,20 +923,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     )}
                     {isUser && turn.images && turn.images.length > 0 && (
                         <ImageGallery images={turn.images} />
-                    )}
-                    {isUser && turn.fileAttachments && turn.fileAttachments.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-1.5" data-testid="file-attachments">
-                            {turn.fileAttachments.map((fa, idx) => (
-                                <span
-                                    key={idx}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc]"
-                                    title={`${fa.name} (${fa.size < 1024 ? fa.size + ' B' : fa.size < 1048576 ? (fa.size / 1024).toFixed(1) + ' KB' : (fa.size / 1048576).toFixed(1) + ' MB'})`}
-                                >
-                                    <span>{fa.category === 'text' ? '📄' : fa.category === 'binary' ? '📎' : '🖼️'}</span>
-                                    <span className="max-w-[120px] truncate">{fa.name}</span>
-                                </span>
-                            ))}
-                        </div>
                     )}
                     {isUser && needsLazyImages && imageLoadState === 'idle' && (
                         <button

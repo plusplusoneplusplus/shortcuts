@@ -1,0 +1,276 @@
+/**
+ * MultiRepoQueuePersistence
+ *
+ * Persistence coordinator that routes per-repo queue state to and from
+ * the correct per-repo TaskQueueManager instance managed by
+ * MultiRepoQueueExecutorBridge. Reuses the existing PersistedQueueState
+ * file format and per-repo file paths (`~/.coc/repos/<workspaceId>/queues.json`).
+ *
+ * No VS Code dependencies — uses only Node.js built-in modules.
+ * Cross-platform compatible (Linux/Mac/Windows).
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import {
+    PersistedQueueState,
+    RestartPolicy,
+    getRepoQueueFilePath,
+    sanitizeTaskForPersistence,
+    atomicWriteJson,
+    restoreRepoQueueState,
+    CURRENT_VERSION,
+    DEBOUNCE_MS,
+    MAX_PERSISTED_HISTORY_DEFAULT,
+} from './queue/queue-persistence';
+import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/forge';
+
+// ============================================================================
+// MultiRepoQueuePersistence
+// ============================================================================
+
+export interface MultiRepoQueuePersistenceOptions {
+    /** Policy for tasks that were running when the server last stopped (default: 'fail'). */
+    restartPolicy?: RestartPolicy;
+    /** Maximum number of history entries to persist per repo (default: 100). */
+    maxPersistedHistory?: number;
+}
+
+export class MultiRepoQueuePersistence {
+    private readonly bridge: MultiRepoQueueExecutorBridge;
+    private readonly dataDir: string;
+    private readonly restartPolicy: RestartPolicy;
+    private readonly maxPersistedHistory: number;
+    private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private readonly dirtyRepos = new Set<string>();
+    private readonly changeListeners = new Map<string, (event: QueueChangeEvent) => void>();
+    private readonly bridgeChangeListener: (...args: any[]) => void;
+
+    constructor(bridge: MultiRepoQueueExecutorBridge, dataDir: string, options?: MultiRepoQueuePersistenceOptions) {
+        this.bridge = bridge;
+        this.dataDir = dataDir;
+        this.restartPolicy = options?.restartPolicy ?? 'fail';
+        this.maxPersistedHistory = options?.maxPersistedHistory ?? MAX_PERSISTED_HISTORY_DEFAULT;
+
+        // Auto-subscribe to change events for any repo (including newly created ones)
+        this.bridgeChangeListener = (event: { repoPath: string }) => {
+            if (!this.changeListeners.has(event.repoPath)) {
+                const queueManager = this.bridge.registry.getQueueForRepo(event.repoPath);
+                this.subscribeToRepo(event.repoPath, queueManager);
+            }
+            this.dirtyRepos.add(event.repoPath);
+            this.scheduleSave(event.repoPath);
+        };
+        this.bridge.on('queueChange', this.bridgeChangeListener);
+    }
+
+    /**
+     * Restore persisted queue state from all per-repo files.
+     * For each file, routes tasks to the correct per-repo queue manager
+     * via bridge.getOrCreateBridge().
+     */
+    restore(): void {
+        const reposDir = path.join(this.dataDir, 'repos');
+        if (!fs.existsSync(reposDir)) {
+            fs.mkdirSync(reposDir, { recursive: true });
+            return;
+        }
+
+        const repoIds = fs.readdirSync(reposDir);
+        const filePaths = repoIds
+            .map(id => path.join(reposDir, id, 'queues.json'))
+            .filter(f => fs.existsSync(f));
+
+        let totalRestored = 0;
+        let totalHistory = 0;
+
+        for (const filePath of filePaths) {
+            const { restored, historyCount } = this.restoreRepoQueue(filePath);
+            totalRestored += restored;
+            totalHistory += historyCount;
+        }
+
+        if (totalRestored > 0 || totalHistory > 0) {
+            process.stderr.write(
+                `[MultiRepoQueuePersistence] Restored ${totalRestored} pending task(s) across ${filePaths.length} repo(s), ${totalHistory} history entry/entries\n`
+            );
+        }
+    }
+
+    /**
+     * Save the queue state for a specific repo to disk.
+     * Deletes the file if the queue and history are empty.
+     */
+    async save(rootPath: string): Promise<void> {
+        const bridgeInstance = this.bridge.getOrCreateBridge(rootPath);
+
+        // Access the underlying TaskQueueManager via the registry
+        const queueManager = this.getQueueManager(rootPath);
+        if (!queueManager) {
+            return;
+        }
+
+        const queued = queueManager.getQueued();
+        const running = queueManager.getRunning();
+        const history = queueManager.getHistory();
+
+        const repoId = this.bridge.getRepoIdForPath(rootPath);
+        const isPaused = queueManager.isRepoPaused(repoId);
+
+        // G1: Only delete the file if queue is truly empty AND not paused
+        if (queued.length === 0 && running.length === 0 && history.length === 0 && !isPaused) {
+            const filePath = getRepoQueueFilePath(this.dataDir, repoId);
+            try {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            } catch {
+                // Non-fatal
+            }
+            return;
+        }
+
+        const sanitizedPending = await Promise.all(
+            [...queued, ...running].map(t => sanitizeTaskForPersistence(t, this.dataDir))
+        );
+        const sanitizedHistory = await Promise.all(
+            history.map(t => sanitizeTaskForPersistence(t, this.dataDir))
+        );
+        const state: PersistedQueueState = {
+            version: CURRENT_VERSION,
+            savedAt: new Date().toISOString(),
+            repoRootPath: rootPath,
+            repoId,
+            pending: sanitizedPending,
+            history: sanitizedHistory.slice(0, this.maxPersistedHistory),
+            isPaused,
+        };
+
+        const filePath = getRepoQueueFilePath(this.dataDir, repoId);
+        atomicWriteJson(filePath, state);
+    }
+
+    /**
+     * Flush all pending debounced saves and remove all change listeners.
+     */
+    dispose(): void {
+        // Remove bridge-level listener
+        this.bridge.removeListener('queueChange', this.bridgeChangeListener);
+
+        // Flush all pending debounced saves (fire-and-forget async)
+        for (const [rootPath, timer] of this.debounceTimers) {
+            clearTimeout(timer);
+            this.save(rootPath).catch(err =>
+                process.stderr.write(`[MultiRepoQueuePersistence] Dispose save failed: ${err}\n`)
+            );
+        }
+        this.debounceTimers.clear();
+        this.dirtyRepos.clear();
+
+        // Remove all change listeners
+        for (const [rootPath, listener] of this.changeListeners) {
+            const queueManager = this.getQueueManager(rootPath);
+            if (queueManager) {
+                queueManager.removeListener('change', listener);
+            }
+        }
+        this.changeListeners.clear();
+    }
+
+    // ========================================================================
+    // Private — restore helpers
+    // ========================================================================
+
+    private restoreRepoQueue(filePath: string): { restored: number; historyCount: number } {
+        let raw: string;
+        try {
+            raw = fs.readFileSync(filePath, 'utf-8');
+        } catch (err) {
+            process.stderr.write(`[MultiRepoQueuePersistence] Failed to read ${filePath}: ${err}\n`);
+            return { restored: 0, historyCount: 0 };
+        }
+
+        let state: PersistedQueueState;
+        try {
+            state = JSON.parse(raw);
+        } catch {
+            process.stderr.write(`[MultiRepoQueuePersistence] Corrupt file ${path.basename(filePath)} — skipping\n`);
+            return { restored: 0, historyCount: 0 };
+        }
+
+        // Apply v2 → v3 migration and validate version before creating any bridge
+        let migratedState = state;
+        if (migratedState.version === 2) {
+            migratedState = { ...migratedState, version: 3, isPaused: false };
+        }
+        if (migratedState.version !== CURRENT_VERSION) {
+            process.stderr.write(
+                `[MultiRepoQueuePersistence] Unknown version ${migratedState.version} in ${path.basename(filePath)} — skipping\n`
+            );
+            return { restored: 0, historyCount: 0 };
+        }
+
+        // Get or create the per-repo bridge + queue manager
+        this.bridge.getOrCreateBridge(migratedState.repoRootPath);
+        const queueManager = this.getQueueManager(migratedState.repoRootPath);
+        if (!queueManager) {
+            return { restored: 0, historyCount: 0 };
+        }
+
+        const result = restoreRepoQueueState(
+            migratedState,
+            queueManager,
+            this.restartPolicy,
+            `MultiRepoQueuePersistence/${path.basename(filePath)}`,
+        );
+
+        // Subscribe to change events for auto-save
+        this.subscribeToRepo(migratedState.repoRootPath, queueManager);
+
+        return result;
+    }
+
+    // ========================================================================
+    // Private — auto-save helpers
+    // ========================================================================
+
+    private subscribeToRepo(rootPath: string, queueManager: { on: (event: string, listener: (...args: unknown[]) => void) => void }): void {
+        // Don't subscribe twice
+        if (this.changeListeners.has(rootPath)) {
+            return;
+        }
+
+        const listener = () => {
+            this.dirtyRepos.add(rootPath);
+            this.scheduleSave(rootPath);
+        };
+        queueManager.on('change', listener);
+        this.changeListeners.set(rootPath, listener as (event: QueueChangeEvent) => void);
+    }
+
+    private scheduleSave(rootPath: string): void {
+        const existing = this.debounceTimers.get(rootPath);
+        if (existing !== undefined) {
+            clearTimeout(existing);
+        }
+        this.debounceTimers.set(rootPath, setTimeout(() => {
+            this.debounceTimers.delete(rootPath);
+            this.save(rootPath).catch(err =>
+                process.stderr.write(`[MultiRepoQueuePersistence] Debounced save failed: ${err}\n`)
+            );
+        }, DEBOUNCE_MS));
+    }
+
+    // ========================================================================
+    // Private — queue manager access
+    // ========================================================================
+
+    /**
+     * Get the TaskQueueManager for a given rootPath by accessing the
+     * registry through the bridge's getOrCreateBridge().
+     */
+    private getQueueManager(rootPath: string): import('@plusplusoneplusplus/forge').TaskQueueManager | undefined {
+        return this.bridge.registry.getQueueForRepo(rootPath);
+    }
+}

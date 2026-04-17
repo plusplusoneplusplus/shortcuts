@@ -1,6 +1,8 @@
 ---
 name: update-work-item
 description: Interactively update an existing work item — patch common fields or create a new plan version, then reset status to planning. Use when the user asks to modify, edit, revise, or update a work item.
+metadata:
+  version: "0.0.1"
 ---
 
 # Update Work Item

@@ -6,7 +6,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { AddRepoDialog } from './AddRepoDialog';
 import { AddFolderDialog } from './AddFolderDialog';
-import { ErrorBoundary } from '../shared/ErrorBoundary';
 import type { RepoData, RepoGroup } from './repoGrouping';
 import { groupReposByRemote, applyGroupOrder } from './repoGrouping';
 import { useApp } from '../context/AppContext';
@@ -577,26 +576,24 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 </div>
             )}
         </div>
-            <ErrorBoundary label="Dialog error" inline>
-                <AddRepoDialog
-                    open={addOpen}
-                    onClose={() => setAddOpen(false)}
-                    repos={repos}
-                    onSuccess={() => { setAddOpen(false); onRefresh(); }}
-                />
-                <AddFolderDialog
-                    open={addFolderOpen}
-                    onClose={() => setAddFolderOpen(false)}
-                    onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
-                />
-                <AddRepoDialog
-                    open={editRepoId !== null}
-                    onClose={() => setEditRepoId(null)}
-                    editId={editRepoId}
-                    repos={repos}
-                    onSuccess={() => { setEditRepoId(null); onRefresh(); }}
-                />
-            </ErrorBoundary>
+            <AddRepoDialog
+                open={addOpen}
+                onClose={() => setAddOpen(false)}
+                repos={repos}
+                onSuccess={() => { setAddOpen(false); onRefresh(); }}
+            />
+            <AddFolderDialog
+                open={addFolderOpen}
+                onClose={() => setAddFolderOpen(false)}
+                onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
+            />
+            <AddRepoDialog
+                open={editRepoId !== null}
+                onClose={() => setEditRepoId(null)}
+                editId={editRepoId}
+                repos={repos}
+                onSuccess={() => { setEditRepoId(null); onRefresh(); }}
+            />
             {contextMenu !== null && (() => {                const ws = repos.flatMap(r => [r.workspace]).find(w => w.id === contextMenu.repoId);
                 if (!ws) return null;
                 return (

@@ -201,17 +201,11 @@ export class DiffCommentsManager extends BaseCommentsManager<DiffComment, DiffCo
     }
 
     /**
-     * Get total comment counts per commit hash, broken down by status.
+     * Get total active comment counts per commit hash.
      *
      * Scans all storage files in the workspace and groups comment counts by
      * `context.newRef` (commit hash).  Only hashes present in `commitHashes`
-     * are included in the result.
-     *
-     * When `statuses` is provided, returns a flat `Record<string, number>`
-     * (backward-compatible single-number totals filtered to those statuses).
-     *
-     * When `statuses` is omitted, returns `Record<string, { open: number; resolved: number }>`
-     * with both counts per commit.
+     * are included in the result, and only entries with a count > 0 are returned.
      *
      * @param wsId          - Workspace ID
      * @param commitHashes  - The commit hashes to tally
@@ -221,7 +215,7 @@ export class DiffCommentsManager extends BaseCommentsManager<DiffComment, DiffCo
         wsId: string,
         commitHashes: string[],
         options?: { statuses?: string[] }
-    ): Promise<Record<string, number> | Record<string, { open: number; resolved: number }>> {
+    ): Promise<Record<string, number>> {
         if (commitHashes.length === 0) return {};
         const hashSet = new Set(commitHashes);
         const wsDir = this.getWorkspaceDir(wsId);
@@ -234,48 +228,23 @@ export class DiffCommentsManager extends BaseCommentsManager<DiffComment, DiffCo
         } catch {
             return {};
         }
-
-        const useStatusFilter = options?.statuses && options.statuses.length > 0;
-
-        if (useStatusFilter) {
-            // Backward-compatible mode: single number per SHA
-            const totals: Record<string, number> = {};
-            for (const entry of entries) {
-                if (!entry.endsWith('.json')) continue;
-                try {
-                    const content = await fs.promises.readFile(path.join(wsDir, entry), 'utf8');
-                    const storage: DiffCommentsStorage = JSON.parse(content);
-                    const comments = (storage.comments || []).filter(c => options.statuses!.includes(c.status));
-                    for (const comment of comments) {
-                        const ref = comment.context?.newRef;
-                        if (ref && hashSet.has(ref)) {
-                            totals[ref] = (totals[ref] ?? 0) + 1;
-                        }
-                    }
-                } catch {
-                    // Skip corrupted files
-                }
-            }
-            return totals;
-        }
-
-        // New mode: { open, resolved } per SHA
-        const totals: Record<string, { open: number; resolved: number }> = {};
+        const totals: Record<string, number> = {};
         for (const entry of entries) {
             if (!entry.endsWith('.json')) continue;
             try {
                 const content = await fs.promises.readFile(path.join(wsDir, entry), 'utf8');
                 const storage: DiffCommentsStorage = JSON.parse(content);
-                const comments = storage.comments || [];
+                let comments = storage.comments || [];
+
+                // Filter by status when requested
+                if (options?.statuses && options.statuses.length > 0) {
+                    comments = comments.filter(c => options.statuses!.includes(c.status));
+                }
+
                 for (const comment of comments) {
                     const ref = comment.context?.newRef;
                     if (ref && hashSet.has(ref)) {
-                        if (!totals[ref]) totals[ref] = { open: 0, resolved: 0 };
-                        if (comment.status === 'resolved') {
-                            totals[ref].resolved += 1;
-                        } else if (comment.status === 'open') {
-                            totals[ref].open += 1;
-                        }
+                        totals[ref] = (totals[ref] ?? 0) + 1;
                     }
                 }
             } catch {

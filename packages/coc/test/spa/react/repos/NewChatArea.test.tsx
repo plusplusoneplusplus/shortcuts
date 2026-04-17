@@ -61,28 +61,6 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
     };
 });
 
-vi.mock('../../../../src/server/spa/client/react/repos/CreateWorkItemDialog', () => ({
-    CreateWorkItemDialog: () => null,
-}));
-
-vi.mock('../../../../src/server/spa/client/react/hooks/useFileAttachments', () => ({
-    useFileAttachments: () => ({
-        attachments: [],
-        images: [],
-        addFromPaste: mockAddFromPaste,
-        addFromFileInput: mockAddFromFileInput,
-        removeAttachment: mockRemoveAttachment,
-        clearAttachments: mockClearAttachments,
-        error: null,
-        clearError: vi.fn(),
-        toPayload: mockToPayload,
-    }),
-}));
-
-vi.mock('../../../../src/server/spa/client/react/shared/AttachmentPreviews', () => ({
-    AttachmentPreviews: () => null,
-}));
-
 import { NewChatArea } from '../../../../src/server/spa/client/react/repos/NewChatArea';
 
 beforeEach(() => {
@@ -103,25 +81,7 @@ describe('NewChatArea', () => {
         expect(screen.getByText('Type a message below to begin')).toBeTruthy();
         expect(screen.getByTestId('new-chat-input')).toBeTruthy();
         expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
-        expect(screen.getByTestId('new-chat-attach-file-btn')).toBeTruthy();
-    });
-
-    it('does not render back button when onBack is not provided', () => {
-        render(<NewChatArea workspaceId="ws-1" />);
-        expect(screen.queryByTestId('new-chat-back-btn')).toBeNull();
-    });
-
-    it('renders back button when onBack prop is provided', () => {
-        render(<NewChatArea workspaceId="ws-1" onBack={vi.fn()} />);
-        expect(screen.getByTestId('new-chat-back-btn')).toBeTruthy();
-        expect(screen.getByTestId('new-chat-back-btn').textContent).toContain('Chats');
-    });
-
-    it('clicking back button calls onBack', () => {
-        const onBack = vi.fn();
-        render(<NewChatArea workspaceId="ws-1" onBack={onBack} />);
-        fireEvent.click(screen.getByTestId('new-chat-back-btn'));
-        expect(onBack).toHaveBeenCalledOnce();
+        expect(screen.getByTestId('new-chat-mode-dropdown')).toBeTruthy();
     });
 
     it('send button is disabled when input is empty', () => {
@@ -146,16 +106,17 @@ describe('NewChatArea', () => {
         expect(btn.disabled).toBe(false);
     });
 
-    it('does not render a mode selector (chat is always ask mode)', () => {
+    it('defaults to autopilot mode', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        expect(screen.queryByTestId('new-chat-mode-dropdown')).toBeNull();
-        expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
+        const dropdown = screen.getByTestId('new-chat-mode-dropdown') as HTMLSelectElement;
+        expect(dropdown.value).toBe('autopilot');
     });
 
-    it('does not render quick-action buttons', () => {
+    it('can switch mode via dropdown', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        expect(screen.queryByTestId('quick-ask-btn')).toBeNull();
-        expect(screen.queryByTestId('quick-create-work-item-btn')).toBeNull();
+        const dropdown = screen.getByTestId('new-chat-mode-dropdown') as HTMLSelectElement;
+        fireEvent.change(dropdown, { target: { value: 'ask' } });
+        expect(dropdown.value).toBe('ask');
     });
 
     it('sends POST to /api/queue/tasks on submit and selects the new task', async () => {
@@ -180,7 +141,7 @@ describe('NewChatArea', () => {
         const body = JSON.parse(opts.body);
         expect(body.type).toBe('chat');
         expect(body.payload.kind).toBe('chat');
-        expect(body.payload.mode).toBe('ask');
+        expect(body.payload.mode).toBe('autopilot');
         expect(body.payload.prompt).toBe('Hello world');
         expect(body.payload.workingDirectory).toBe('/home/user/repo');
         expect(body.payload.workspaceId).toBe('ws-1');
@@ -235,25 +196,28 @@ describe('NewChatArea', () => {
         expect(btn.disabled).toBe(true);
     });
 
-    it('always sends mode=ask regardless of any prior state', async () => {
+    it('sends with selected mode when changed to plan', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
-            json: async () => ({ id: 'task-ask' }),
+            json: async () => ({ id: 'task-plan' }),
         });
 
         render(<NewChatArea workspaceId="ws-1" />);
+        const dropdown = screen.getByTestId('new-chat-mode-dropdown') as HTMLSelectElement;
+        fireEvent.change(dropdown, { target: { value: 'plan' } });
+
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
-        fireEvent.change(input, { target: { value: 'Ask this' } });
+        fireEvent.change(input, { target: { value: 'Plan this' } });
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('new-chat-send-btn'));
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.payload.mode).toBe('ask');
+        expect(body.payload.mode).toBe('plan');
     });
 
-    it('shows stop button while sending', async () => {
+    it('shows spinner text while sending', async () => {
         let resolvePost: (v: any) => void;
         mockFetch.mockReturnValueOnce(new Promise(r => { resolvePost = r; }));
 
@@ -267,8 +231,7 @@ describe('NewChatArea', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId('new-chat-stop-btn')).toBeTruthy();
-            expect(screen.getByTestId('new-chat-stop-btn').textContent).toBe('Stop');
+            expect(screen.getByTestId('new-chat-send-btn').textContent).toBe('...');
         });
 
         // Resolve the fetch
@@ -277,31 +240,6 @@ describe('NewChatArea', () => {
         });
 
         expect(screen.getByTestId('new-chat-send-btn').textContent).toBe('Send');
-    });
-
-    it('stop button cancels the send and reverts to send state', async () => {
-        let rejectPost: (err: any) => void;
-        mockFetch.mockReturnValueOnce(new Promise((_, r) => { rejectPost = r; }));
-
-        render(<NewChatArea workspaceId="ws-1" />);
-        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
-        fireEvent.change(input, { target: { value: 'Hello' } });
-
-        act(() => {
-            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
-        });
-
-        await waitFor(() => {
-            expect(screen.getByTestId('new-chat-stop-btn')).toBeTruthy();
-        });
-
-        await act(async () => {
-            fireEvent.click(screen.getByTestId('new-chat-stop-btn'));
-            rejectPost!(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
-        });
-
-        expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
-        expect(screen.queryByTestId('new-chat-error')).toBeNull();
     });
 
     it('Enter key triggers send', async () => {

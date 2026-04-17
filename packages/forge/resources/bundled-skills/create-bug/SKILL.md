@@ -1,6 +1,8 @@
 ---
 name: create-bug
 description: Interactively create a bug report for this repository with title, description, priority, and an AI-generated plan. Use when the user asks to file a bug, report a defect, or log an issue. Never execute the bug fix inside the chat session — queue it via the API instead.
+metadata:
+  version: "0.0.1"
 ---
 
 # Create Bug
