@@ -181,7 +181,22 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
-export function parseChatsDeepLink(hash: string): string | null {
+/** Parse a tasks deep-link: `#repos/{wsId}/tasks/{taskId}`. */
+export function parseTasksDeepLink(hash: string): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'tasks' && parts[3]) {
+        return decodeURIComponent(parts[3]);
+    }
+    return null;
+}
+
+/**
+ * Parse a note deep-link: `#repos/{wsId}/notes/{path/segments}`.
+ * Each path segment is decoded individually so embedded `/` delimiters
+ * within segment names (encoded as `%2F`) are preserved correctly.
+ */
+export function parseNoteDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
     if (parts[0] === 'repos' && parts[1] && parts[2] === 'chats' && parts[3]) {
@@ -403,6 +418,13 @@ export function Router() {
                         const rawId = decodeURIComponent(parts[3]);
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
                     } else if (parts[2] === 'chats') {
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
+                    }
+                    // Tasks deep-link handling — select task when ID present
+                    if (parts[2] === 'tasks' && parts[3]) {
+                        const rawId = decodeURIComponent(parts[3]);
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });
+                    } else if (parts[2] === 'tasks') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
                     }
                     // Git commit deep-link handling

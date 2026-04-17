@@ -298,10 +298,10 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
         setSelectedTask(task || null);
         selectedTaskRef.current = task || null;
-        const tabSegment = activeTab === 'tasks' ? 'tasks' : 'activity';
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment + '/' + encodeURIComponent(id);
+        const tabSegment = mode === 'tasks' ? 'tasks' : 'activity';
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment + '/' + encodeURIComponent(processId);
         if (isMobile) setMobileShowDetail(true);
-    }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId]);
+    }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId, mode]);
 
     // Auto-dismiss notification when a deep-linked task is viewed via hash URL
     useEffect(() => {
@@ -438,6 +438,8 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                                 selectedTask={selectedTask}
                                 onBack={() => setMobileShowDetail(false)}
                                 workspaceId={workspaceId}
+                                readOnly={mode === 'tasks'}
+                                hideModeSelector={mode === 'chats'}
                             />
                         </div>
                     ) : (
@@ -481,6 +483,8 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                     selectedTaskId={selectedTaskId}
                     selectedTask={selectedTask}
                     workspaceId={workspaceId}
+                    readOnly={mode === 'tasks'}
+                    hideModeSelector={mode === 'chats'}
                 />
             </div>
         </div>
