@@ -233,6 +233,220 @@ describe('queueReducer', () => {
             expect(result.selectedTaskIdByRepo['repo-B']).toBe('task-b');
         });
     });
+
+    describe('REPO_TASK_COMPLETED_OPTIMISTIC', () => {
+        it('removes task from running and prepends to history with completed status', () => {
+            const task = { id: 'chat-1', status: 'running', startedAt: '2024-01-01T00:00:00Z' };
+            const state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [task], history: [], stats: { ...makeState().stats, running: 1 } } },
+            });
+            const result = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'repo-A',
+                taskId: 'chat-1',
+                status: 'completed',
+            });
+            const repo = result.repoQueueMap['repo-A'];
+            expect(repo.running).toHaveLength(0);
+            expect(repo.history).toHaveLength(1);
+            expect(repo.history[0].status).toBe('completed');
+            expect(repo.history[0].id).toBe('chat-1');
+            expect(repo.stats.running).toBe(0);
+            expect(repo.stats.completed).toBe(1);
+        });
+
+        it('sets completedAt when task has none', () => {
+            const task = { id: 'chat-1', status: 'running' };
+            const state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [task], history: [], stats: makeState().stats } },
+            });
+            const before = Date.now();
+            const result = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'repo-A',
+                taskId: 'chat-1',
+                status: 'completed',
+            });
+            const after = Date.now();
+            const completedAt = new Date(result.repoQueueMap['repo-A'].history[0].completedAt).getTime();
+            expect(completedAt).toBeGreaterThanOrEqual(before);
+            expect(completedAt).toBeLessThanOrEqual(after);
+        });
+
+        it('handles failed status and increments failed counter', () => {
+            const task = { id: 'chat-2', status: 'running' };
+            const state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [task], history: [], stats: { ...makeState().stats, running: 1 } } },
+            });
+            const result = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'repo-A',
+                taskId: 'chat-2',
+                status: 'failed',
+            });
+            const repo = result.repoQueueMap['repo-A'];
+            expect(repo.history[0].status).toBe('failed');
+            expect(repo.stats.failed).toBe(1);
+            expect(repo.stats.completed).toBe(0);
+        });
+
+        it('handles cancelled status and increments cancelled counter', () => {
+            const task = { id: 'chat-3', status: 'running' };
+            const state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [task], history: [], stats: { ...makeState().stats, running: 1 } } },
+            });
+            const result = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'repo-A',
+                taskId: 'chat-3',
+                status: 'cancelled',
+            });
+            expect(result.repoQueueMap['repo-A'].history[0].status).toBe('cancelled');
+            expect(result.repoQueueMap['repo-A'].stats.cancelled).toBe(1);
+        });
+
+        it('is a no-op when repoId does not exist in map', () => {
+            const state = makeState();
+            const result = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'unknown-repo',
+                taskId: 'task-1',
+                status: 'completed',
+            });
+            expect(result).toBe(state);
+        });
+
+        it('is a no-op when taskId is not in running list', () => {
+            const state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [], history: [], stats: makeState().stats } },
+            });
+            const result = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'repo-A',
+                taskId: 'ghost-task',
+                status: 'completed',
+            });
+            expect(result).toBe(state);
+        });
+
+        it('patches existing history entry instead of prepending duplicate', () => {
+            const task = { id: 'chat-1', status: 'running' };
+            const existingHistoryEntry = { id: 'chat-1', status: 'running' };
+            const state = makeState({
+                repoQueueMap: {
+                    'repo-A': { queued: [], running: [task], history: [existingHistoryEntry], stats: makeState().stats },
+                },
+            });
+            const result = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'repo-A',
+                taskId: 'chat-1',
+                status: 'completed',
+            });
+            const repo = result.repoQueueMap['repo-A'];
+            expect(repo.history).toHaveLength(1);
+            expect(repo.history[0].status).toBe('completed');
+        });
+
+        it('does not affect other repos', () => {
+            const task = { id: 'chat-1', status: 'running' };
+            const state = makeState({
+                repoQueueMap: {
+                    'repo-A': { queued: [], running: [task], history: [], stats: makeState().stats },
+                    'repo-B': { queued: [], running: [{ id: 'b1', status: 'running' }], history: [], stats: makeState().stats },
+                },
+            });
+            const result = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'repo-A',
+                taskId: 'chat-1',
+                status: 'completed',
+            });
+            expect(result.repoQueueMap['repo-B'].running).toHaveLength(1);
+        });
+
+        it('is reconciled correctly when REPO_QUEUE_UPDATED arrives subsequently', () => {
+            const task = { id: 'chat-1', status: 'running' };
+            let state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [task], history: [], stats: { ...makeState().stats, running: 1 } } },
+            });
+            // Optimistic completion
+            state = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'repo-A',
+                taskId: 'chat-1',
+                status: 'completed',
+            });
+            expect(state.repoQueueMap['repo-A'].running).toHaveLength(0);
+            // WebSocket update arrives with authoritative data
+            const authoritative = { id: 'chat-1', status: 'completed', completedAt: '2024-01-02T00:00:00Z' };
+            state = queueReducer(state, {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'repo-A',
+                queue: { queued: [], running: [], history: [authoritative], stats: { ...makeState().stats, completed: 1 } },
+            });
+            expect(state.repoQueueMap['repo-A'].running).toHaveLength(0);
+            expect(state.repoQueueMap['repo-A'].history[0].completedAt).toBe('2024-01-02T00:00:00Z');
+        });
+    });
+
+    describe('REPO_TASK_REQUEUED', () => {
+        it('removes the task from history', () => {
+            const state = makeState({
+                repoQueueMap: {
+                    'repo-A': {
+                        queued: [], running: [],
+                        history: [{ id: 'chat-1', status: 'completed' }, { id: 'chat-2', status: 'completed' }],
+                        stats: makeState().stats,
+                    },
+                },
+            });
+            const result = queueReducer(state, { type: 'REPO_TASK_REQUEUED', repoId: 'repo-A', taskId: 'chat-1' });
+            expect(result.repoQueueMap['repo-A'].history).toHaveLength(1);
+            expect(result.repoQueueMap['repo-A'].history[0].id).toBe('chat-2');
+        });
+
+        it('is a no-op when repoId does not exist', () => {
+            const state = makeState();
+            const result = queueReducer(state, { type: 'REPO_TASK_REQUEUED', repoId: 'unknown', taskId: 'task-1' });
+            expect(result).toBe(state);
+        });
+
+        it('is a no-op when taskId is not in history', () => {
+            const state = makeState({
+                repoQueueMap: {
+                    'repo-A': { queued: [], running: [], history: [{ id: 'other', status: 'completed' }], stats: makeState().stats },
+                },
+            });
+            const result = queueReducer(state, { type: 'REPO_TASK_REQUEUED', repoId: 'repo-A', taskId: 'ghost' });
+            expect(result).toBe(state);
+        });
+
+        it('prevents safety-net from reverting status after optimistic completion + requeue', () => {
+            const task = { id: 'chat-1', status: 'running' };
+            let state = makeState({
+                repoQueueMap: { 'repo-A': { queued: [], running: [task], history: [], stats: { ...makeState().stats, running: 1 } } },
+            });
+            // 1. Optimistic completion (SSE done fires)
+            state = queueReducer(state, {
+                type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
+                repoId: 'repo-A',
+                taskId: 'chat-1',
+                status: 'completed',
+            });
+            expect(state.repoQueueMap['repo-A'].history).toHaveLength(1);
+            expect(state.repoQueueMap['repo-A'].history[0].status).toBe('completed');
+
+            // 2. Follow-up dispatches REPO_TASK_REQUEUED
+            state = queueReducer(state, { type: 'REPO_TASK_REQUEUED', repoId: 'repo-A', taskId: 'chat-1' });
+            expect(state.repoQueueMap['repo-A'].history).toHaveLength(0);
+
+            // 3. Safety-net would look for taskId in history — should find nothing
+            const repo = state.repoQueueMap['repo-A'];
+            const match = repo.history.find((t: any) => t.id === 'chat-1');
+            expect(match).toBeUndefined();
+        });
+    });
 });
 
 // ── Provider integration tests ────────────────────────────────────────────────

@@ -19,7 +19,7 @@ const mockQueueDispatch = vi.fn();
 let mockAppState: Record<string, any> = {
     selectedRepoId: null,
     reposSidebarCollapsed: false,
-    activeRepoSubTab: 'settings',
+    activeRepoSubTab: 'chats',
     workspaces: [],
 };
 
@@ -79,7 +79,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/MiniReposSidebar', () => 
 vi.mock('../../../../src/server/spa/client/react/repos/RepoDetail', () => ({
     RepoDetail: () => <div data-testid="repo-detail">RepoDetail</div>,
     SUB_TABS: [
-        { key: 'info', label: 'Info' },
+        { key: 'chats', label: 'Chats' },
+        { key: 'tasks', label: 'Tasks' },
         { key: 'git', label: 'Git' },
         { key: 'tasks', label: 'Plans' },
         { key: 'activity', label: 'Activity' },
@@ -189,7 +190,7 @@ describe('ReposView — responsive layout', () => {
         mockAppState = {
             selectedRepoId: null,
             reposSidebarCollapsed: false,
-            activeRepoSubTab: 'settings',
+            activeRepoSubTab: 'chats',
             workspaces: [],
         };
         location.hash = '';
@@ -258,13 +259,25 @@ describe('ReposView — responsive layout', () => {
             expect(screen.queryByTestId('responsive-sidebar')).toBeNull();
         });
 
-        it('uses height class with bottom nav offset', async () => {
+        it('uses height class with bottom nav offset (no selection)', async () => {
             setBreakpoint('mobile');
+            mockAppState.selectedRepoId = null;
             render(<ReposView />);
 
-            // Height class is applied even during loading
+            // Height class is applied even during loading; no selection → BottomNav visible → subtract 48px
             const container = document.getElementById('view-repos')!;
-            expect(container.className).toContain('h-[calc(100vh-40px-48px)]');
+            expect(container.className).toContain('h-[calc(100dvh-40px-48px)]');
+        });
+
+        it('uses height class without bottom nav offset when repo selected', async () => {
+            setBreakpoint('mobile');
+            mockAppState.selectedRepoId = 'repo-1';
+            render(<ReposView />);
+
+            // With a selection the BottomNav is hidden, so no 48px subtraction; uses dvh
+            const container = document.getElementById('view-repos')!;
+            expect(container.className).toContain('h-[calc(100dvh-40px)]');
+            expect(container.className).not.toContain('48px');
         });
 
         it('selected repo shows full-screen detail without MobileRepoHeader bar', async () => {
@@ -388,7 +401,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
-        expect(tabs.length).toBe(8);
+        expect(tabs.length).toBe(9);
         tabs.forEach(tab => {
             expect(tab.className).toContain('whitespace-nowrap');
             expect(tab.className).toContain('shrink-0');
@@ -400,7 +413,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         Element.prototype.scrollIntoView = scrollIntoViewMock;
 
         const repo = makeRepo();
-        mockAppState.activeRepoSubTab = 'activity';
+        mockAppState.activeRepoSubTab = 'chats';
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         expect(scrollIntoViewMock).toHaveBeenCalledWith({

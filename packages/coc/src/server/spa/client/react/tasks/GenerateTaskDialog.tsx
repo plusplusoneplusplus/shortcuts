@@ -12,7 +12,8 @@ import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
-import { useImagePaste } from '../hooks/useImagePaste';
+import { useFileAttachments } from '../hooks/useFileAttachments';
+import { AttachmentPreviews } from '../shared/AttachmentPreviews';
 import { useGlobalToast } from '../context/ToastContext';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { type TaskFolder, filterGitMetadataFolders } from '../hooks/useTaskTree';
@@ -143,8 +144,8 @@ export function GenerateTaskDialog({
     const { status, taskId, error, enqueue, reset } =
         useQueueTaskGeneration(wsId);
 
-    // --- image paste ---
-    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+    // --- file attachments ---
+    const { attachments, images, addFromPaste, removeAttachment, clearAttachments, error: attachmentError } = useFileAttachments();
 
     // --- image lightbox ---
     const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
@@ -182,10 +183,10 @@ export function GenerateTaskDialog({
     useEffect(() => {
         if (status === 'queued') {
             addToast(`Task queued${taskId ? ` (${taskId.slice(0, 8)})` : ''}`, 'success');
-            clearImages();
+            clearAttachments();
             onSuccess(taskId || '');
         }
-    }, [status, taskId, addToast, clearImages, onSuccess]);
+    }, [status, taskId, addToast, clearAttachments, onSuccess]);
 
     const handleGenerate = useCallback(() => {
         let finalModel = model;
@@ -268,29 +269,9 @@ export function GenerateTaskDialog({
                         placeholder="Describe the task to generate…"
                         data-testid="gen-task-prompt-input"
                     />
-                    {/* Image preview strip */}
-                    {images.length > 0 && (
-                        <div id="gen-task-images" className="flex flex-wrap gap-2 mt-1">
-                            {images.map((img, i) => (
-                                <div key={i} className="relative group">
-                                    <img
-                                        src={img}
-                                        alt={`Attachment ${i + 1}`}
-                                        className="w-[80px] h-[80px] object-cover rounded border border-[#e0e0e0] dark:border-[#3c3c3c] cursor-zoom-in"
-                                        onClick={() => setViewImageIndex(i)}
-                                    />
-                                    <button
-                                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-80 hover:opacity-100"
-                                        onClick={() => removeImage(i)}
-                                        aria-label={`Remove image ${i + 1}`}
-                                        disabled={isSubmitting || isQueued}
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    {/* Attachment preview strip */}
+                    <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
+                    {attachmentError && <div className="text-xs text-red-500 mt-1">{attachmentError}</div>}
                 </div>
 
                 {/* Task name (optional) */}

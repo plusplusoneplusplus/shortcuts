@@ -10,9 +10,9 @@ import { Dialog, FloatingDialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/usePreferences';
-import { useImagePaste } from '../hooks/useImagePaste';
+import { useFileAttachments } from '../hooks/useFileAttachments';
 import { useBreakpoint } from '../hooks/useBreakpoint';
-import { ImagePreviews } from '../shared/ImagePreviews';
+import { AttachmentPreviews } from '../shared/AttachmentPreviews';
 import { filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
@@ -547,7 +547,8 @@ export function EnqueueDialog() {
                         highlightIndex={slashCommands.highlightIndex}
                     />
                 </div>
-                <ImagePreviews images={images} onRemove={removeImage} showHint />
+                <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
+                {attachmentError && <div className="text-xs text-[#f14c4c] mt-1">{attachmentError}</div>}
             </div>
 
             {/* Lower section tab bar: Templates | Advanced */}

@@ -229,13 +229,13 @@ const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     t: 'terminal',
     n: 'notes',
     e: 'explorer',
-    p: 'tasks',
+    t: 'tasks',
     r: 'pull-requests',
     a: 'activity',
     w: 'templates',
     s: 'schedules',
     c: 'settings',
-    i: 'wiki',
+    i: 'work-items',
 };
 
 export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB

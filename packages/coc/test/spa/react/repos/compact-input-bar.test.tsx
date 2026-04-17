@@ -53,6 +53,24 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfig: () => ({ apiBasePath: '/api' }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/hooks/useFileAttachments', () => ({
+    useFileAttachments: () => ({
+        attachments: [],
+        images: [],
+        addFromPaste: vi.fn(),
+        addFromFileInput: vi.fn(),
+        removeAttachment: vi.fn(),
+        clearAttachments: vi.fn(),
+        error: null,
+        clearError: vi.fn(),
+        toPayload: vi.fn(() => []),
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/shared/AttachmentPreviews', () => ({
+    AttachmentPreviews: () => null,
+}));
+
 import { FollowUpInputArea } from '../../../../src/server/spa/client/react/repos/FollowUpInputArea';
 import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/repos/FollowUpInputArea';
 import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';
@@ -85,6 +103,11 @@ function makeFollowUpProps(overrides: Partial<FollowUpInputAreaProps> = {}): Fol
         onSend: vi.fn().mockResolvedValue(undefined),
         onRetry: vi.fn(),
         skills: [],
+        attachments: [],
+        onAttachmentPaste: vi.fn(),
+        onAttachmentRemove: vi.fn(),
+        onAttachmentFiles: vi.fn(),
+        attachmentError: null,
         images: [],
         onImagePaste: vi.fn(),
         onImageRemove: vi.fn(),
@@ -203,9 +226,9 @@ describe('FollowUpInputArea — compact input bar layout', () => {
     it('all three children (mode, input, send) are direct children of the flex-row container', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
         const bar = screen.getByTestId('chat-input-bar');
-        // mode-selector, input wrapper, send button
+        // hidden file input, mode-selector, attach button, input wrapper, send button
         const children = Array.from(bar.children);
-        expect(children.length).toBe(3);
+        expect(children.length).toBe(5);
     });
 });
 
@@ -220,33 +243,10 @@ describe('NewChatArea — compact input bar layout', () => {
         expect(bar.className).not.toContain('flex-col');
     });
 
-    it('renders mode-cycle-btn for mobile and dropdown for desktop', () => {
+    it('does not render a mode selector (chat is always ask mode)', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        const cycleBtn = screen.getByTestId('mode-cycle-btn');
-        const dropdown = screen.getByTestId('new-chat-mode-dropdown');
-
-        expect(cycleBtn.className).toContain('sm:hidden');
-        expect(dropdown.className).toContain('hidden');
-        expect(dropdown.className).toContain('sm:block');
-    });
-
-    it('mode-cycle-btn shows autopilot icon by default', () => {
-        render(<NewChatArea workspaceId="ws-1" />);
-        expect(screen.getByTestId('mode-cycle-btn').textContent).toBe('🤖');
-    });
-
-    it('tapping mode-cycle-btn cycles modes', () => {
-        render(<NewChatArea workspaceId="ws-1" />);
-        const btn = screen.getByTestId('mode-cycle-btn');
-
-        // Default is autopilot → cycles to ask
-        fireEvent.click(btn);
-        expect(btn.textContent).toBe('💡');
-        expect(btn.getAttribute('aria-label')).toContain('ask');
-
-        // ask → cycles to autopilot
-        fireEvent.click(btn);
-        expect(btn.textContent).toBe('🤖');
+        expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
+        expect(screen.queryByTestId('new-chat-mode-dropdown')).toBeNull();
     });
 
     it('send button has shrink-0 and no w-full', () => {
@@ -270,18 +270,11 @@ describe('NewChatArea — compact input bar layout', () => {
         expect(inputWrapper).toBeTruthy();
     });
 
-    it('mode-cycle-btn has correct fixed dimensions for square appearance', () => {
-        render(<NewChatArea workspaceId="ws-1" />);
-        const btn = screen.getByTestId('mode-cycle-btn');
-        expect(btn.className).toContain('h-[34px]');
-        expect(btn.className).toContain('w-[34px]');
-    });
-
-    it('all three children (mode, input, send) are direct children of the flex-row container', () => {
+    it('input bar has four direct children: hidden file input, attach button, input wrapper and send button', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const bar = screen.getByTestId('chat-input-bar');
         const children = Array.from(bar.children);
-        expect(children.length).toBe(3);
+        expect(children.length).toBe(4);
     });
 });
 

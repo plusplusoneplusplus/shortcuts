@@ -83,21 +83,25 @@ export function ConversationArea({
                 data-testid="activity-chat-conversation"
                 className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3 min-w-0', variant === 'floating' ? 'p-2' : 'p-4')}
             >
-                {isPending ? (
+                {showPendingPanel ? (
                     <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
                 ) : loading ? (
                     <div className="flex items-center gap-2 text-[#848484] text-sm">
                         <Spinner size="sm" /> Loading conversation...
                     </div>
-                ) : turns.length === 0 ? (
+                ) : turns.length === 0 && !isPending ? (
                     <div className="text-[#848484] text-sm">No conversation data available.</div>
+                ) : turns.length === 0 && isPending ? (
+                    <div className="flex items-center gap-2 text-[#848484] text-sm">
+                        <Spinner size="sm" /> Starting conversation...
+                    </div>
                 ) : (
                     <div className="space-y-3" ref={turnsContainerRef}>
                         {(() => {
                             const hasStreaming = turns.some(t => t.streaming);
                             const nextTurnIndex = Math.max(0, ...turns.map(t => t.turnIndex ?? -1)) + 1;
                             const renderTurns =
-                                task?.status === 'running' && !hasStreaming && turns.length > 0
+                                (task?.status === 'running' || (isPending && isChatTask)) && !hasStreaming && turns.length > 0
                                     ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [], turnIndex: nextTurnIndex }]
                                     : turns;
                             // Sort by turnIndex to handle storage order anomalies from race conditions;

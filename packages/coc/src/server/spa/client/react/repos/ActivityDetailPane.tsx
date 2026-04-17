@@ -23,14 +23,28 @@ export interface ActivityDetailPaneProps {
     selectedTask: any | null;
     onBack?: () => void;
     workspaceId?: string;
+    /** When true, hides the follow-up input area (read-only view). */
+    readOnly?: boolean;
+    /** When true, hides the ask/plan/autopilot mode selector in the follow-up input. */
+    hideModeSelector?: boolean;
 }
 
-export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId }: ActivityDetailPaneProps) {
+export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector }: ActivityDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
 
     if (!selectedTaskId) {
-        return <NewChatArea workspaceId={workspaceId} />;
+        if (readOnly) {
+            return (
+                <div className="flex items-center justify-center h-full text-sm text-[#848484]" data-testid="activity-tasks-empty">
+                    <div className="text-center space-y-2">
+                        <div className="text-2xl opacity-40">☑</div>
+                        <div>Select a task to view its execution details</div>
+                    </div>
+                </div>
+            );
+        }
+        return <NewChatArea workspaceId={workspaceId} onBack={onBack} />;
     }
 
     if (poppedOutTasks.has(selectedTaskId)) {
@@ -69,5 +83,5 @@ export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId }: Acti
         );
     }
 
-    return <ActivityChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} />;
+    return <ActivityChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} />;
 }

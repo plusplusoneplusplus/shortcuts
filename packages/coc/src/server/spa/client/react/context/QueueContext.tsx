@@ -102,7 +102,7 @@ const initialState: QueueContextState = {
     dialogInitialFolderPath: null,
     dialogInitialWorkspaceId: null,
     dialogInitialPrompt: null,
-    dialogMode: 'task',
+    dialogMode: 'ask',
     dialogLaunchMode: 'default',
     dialogContextFiles: null,
     dialogContextTaskName: null,

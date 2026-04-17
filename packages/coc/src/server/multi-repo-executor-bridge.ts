@@ -27,6 +27,7 @@ import {
     QueueExecutorBridge,
     createQueueExecutorBridge,
 } from './queue-executor-bridge';
+import { resolveRootPath } from './routes/queue-shared';
 
 // ============================================================================
 // Types
@@ -56,6 +57,9 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     /** normalized rootPath → repoId (workspace ID) */
     private readonly pathToRepoId: Map<string, string> = new Map();
 
+    /** Pending follow-ups for tasks that are currently running, keyed by taskId */
+    private readonly pendingFollowUps = new Map<string, { prompt: string; attachments?: Attachment[]; imageTempDir?: string; mode?: string; deliveryMode?: string; images?: string[] }>();
+
     constructor(
         registry: RepoQueueRegistry,
         store: ProcessStore,
@@ -71,6 +75,13 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
             const repoId = this.getRepoIdForPath(repoPath);
             this.emit('queueChange', { repoPath, repoId, ...event });
         });
+
+        // When a running task finishes, check for pending follow-ups and requeue
+        for (const eventName of ['taskCompleted', 'taskFailed', 'taskCancelled'] as const) {
+            this.registry.on(eventName, (_repoPath: string, task: QueuedTask) => {
+                this.processPendingFollowUp(task.id);
+            });
+        }
     }
 
     /**
@@ -262,18 +273,15 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
 
     /**
      * Check whether any per-repo bridge has an active session for this process.
-     * If no per-repo bridges exist yet, falls back to checking the store + AI service directly.
+     * Verifies the process still exists in the store before accepting follow-ups.
      */
     async isSessionAlive(processId: string): Promise<boolean> {
-        // With keepalive removed, follow-ups always create fresh sessions.
-        // Delegate to per-repo bridges (which now always return true).
-        for (const { bridge } of this.bridges.values()) {
-            if (await bridge.isSessionAlive(processId)) {
-                return true;
-            }
+        try {
+            const proc = await this.store.getProcess(processId);
+            return !!proc;
+        } catch {
+            return false;
         }
-        // If no bridges exist, follow-ups are still possible via fresh sessions
-        return this.bridges.size === 0;
     }
 
     /**
@@ -292,13 +300,14 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
 
     /**
      * Enqueue a task into the correct per-repo queue.
-     * Routes based on payload.workingDirectory. Falls back to process.cwd().
+     * Resolves rootPath from payload.workingDirectory or payload.workspaceId
+     * (via workspace store). Falls back to process.cwd().
      * Implements the optional enqueue() method of QueueExecutorBridge so that
      * api-handler.ts can route follow-ups through the queue instead of firing
      * them directly.
      */
     async enqueue(input: CreateTaskInput): Promise<string> {
-        const rootPath = (input.payload as any)?.workingDirectory || process.cwd();
+        const rootPath = await resolveRootPath(input.payload, this.store, undefined) || process.cwd();
         this.getOrCreateBridge(rootPath);
         if (!input.repoId) {
             input.repoId = this.getRepoIdForPath(rootPath);
@@ -392,6 +401,35 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         const manager = this.findManagerForTask(taskId);
         if (!manager) return false;
         return manager.updateTask(taskId, { displayName });
+    }
+
+    /**
+     * Queue a follow-up behind a currently running task.
+     * The follow-up is stored and automatically requeued when the task completes/fails/cancels.
+     */
+    async queueFollowUpBehindRunningTask(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[]): Promise<void> {
+        this.pendingFollowUps.set(taskId, { prompt, attachments, imageTempDir, mode, deliveryMode, images });
+    }
+
+    /**
+     * Process a pending follow-up after a running task finishes.
+     * Called by taskCompleted/taskFailed/taskCancelled event listeners.
+     */
+    private processPendingFollowUp(taskId: string): void {
+        const pending = this.pendingFollowUps.get(taskId);
+        if (!pending) return;
+        this.pendingFollowUps.delete(taskId);
+
+        // The task has moved to history — requeue it with the follow-up prompt
+        for (const manager of this.registry.getAllQueues().values()) {
+            if (!manager.getTask(taskId)) continue;
+            try {
+                applyFollowUpToTask(manager, taskId, pending.prompt, pending.attachments, pending.imageTempDir, pending.mode, pending.deliveryMode, pending.images);
+            } catch (err) {
+                globalThis.process.stderr.write(`[MultiRepoBridge] Failed to requeue pending follow-up for task ${taskId}: ${err}\n`);
+            }
+            return;
+        }
     }
 
     /**

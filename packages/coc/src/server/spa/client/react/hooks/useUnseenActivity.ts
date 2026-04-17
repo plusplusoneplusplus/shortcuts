@@ -1,8 +1,9 @@
 /**
- * useUnseenActivity — tracks which completed tasks the user has viewed.
+ * useUnseenActivity — tracks which tasks have state changes the user hasn't acknowledged.
  *
- * Tasks that complete while the user is viewing another task are "unseen"
- * and surfaced via bold styling + dot indicator in the activity list.
+ * Any state transition (queued→running, running→completed, etc.) marks an item
+ * as "unseen" until the user clicks into it.  State is persisted per-workspace
+ * in localStorage so it survives page reloads.
  *
  * State is persisted server-side (SQLite `seen_at` column on `processes`).
  * On first load, existing localStorage data is migrated to the server.
@@ -21,6 +22,23 @@ export function getTaskCompletedAtIso(task: any): string | undefined {
     if (task.completedAt) return String(task.completedAt);
     if (task.endTime) return new Date(task.endTime).toISOString();
     return undefined;
+}
+
+/** Combine queued + running + history into a single array, deduplicating by id. */
+function mergeAllItems(queued: any[], running: any[], history: any[]): any[] {
+    const seen = new Set<string>();
+    const result: any[] = [];
+    for (const item of [...queued, ...running, ...history]) {
+        if (!item.id || seen.has(item.id)) continue;
+        seen.add(item.id);
+        result.push(item);
+    }
+    return result;
+}
+
+export interface UseUnseenActivityOptions {
+    /** When true, apply single-active-chat suppression. */
+    isViewingChats?: boolean;
 }
 
 export interface UseUnseenActivityResult {
@@ -42,6 +60,9 @@ export function useUnseenActivity(
     workspaceId: string,
     history: any[],
     selectedTaskId: string | null,
+    queued: any[] = [],
+    running: any[] = [],
+    options?: UseUnseenActivityOptions,
 ): UseUnseenActivityResult {
     const [seenMap, setSeenMap] = useState<Record<string, string>>({});
     const initializedRef = useRef(false);
@@ -179,7 +200,22 @@ export function useUnseenActivity(
             }
         }
         return unseen;
-    }, [history, seenMap]);
+    }, [allItems, seenMap]);
+
+    // Chat-specific badge logic: if exactly 1 active chat and the user is
+    // currently viewing it, suppress the badge entirely.
+    const unseenCount = useMemo(() => {
+        if (!options?.isViewingChats || !selectedTaskId) return unseenTaskIds.size;
+        const isChat = (t: any) => t.type === 'chat' && !t.payload?.workItemId;
+        const activeChats = allItems.filter(t => isChat(t) && (t.status === 'queued' || t.status === 'running'));
+        if (activeChats.length === 1 && activeChats[0].id === selectedTaskId) {
+            // The user is watching the only active chat — suppress its contribution.
+            const adjusted = new Set(unseenTaskIds);
+            adjusted.delete(selectedTaskId);
+            return adjusted.size;
+        }
+        return unseenTaskIds.size;
+    }, [unseenTaskIds, allItems, selectedTaskId, options?.isViewingChats]);
 
     // Mark a specific task as seen.
     const markSeen = useCallback((processId: string) => {
@@ -194,7 +230,7 @@ export function useUnseenActivity(
         }
     }, [history, schedulePatch]);
 
-    // Mark all history tasks as seen.
+    // Mark all tasks as seen.
     const markAllSeen = useCallback(() => {
         setSeenMap(prev => {
             const updated = { ...prev };

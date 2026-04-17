@@ -21,7 +21,7 @@ if (!container) throw new Error('No #app-root element found');
 const root = createRoot(container);
 
 if (window.location.hash.startsWith('#popout/activity/')) {
-    root.render(<PopOutActivityShell />);
+    root.render(<ErrorBoundary><PopOutActivityShell /></ErrorBoundary>);
 } else if (window.location.hash.startsWith('#popout/markdown')) {
     root.render(<PopOutMarkdownShell />);
 } else if (window.location.hash.startsWith('#popout/git-review')) {

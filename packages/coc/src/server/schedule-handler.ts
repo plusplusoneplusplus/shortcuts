@@ -22,7 +22,7 @@ import type { TargetType, ChatMode } from './task-types';
 
 const VALID_STATUSES: Set<string> = new Set(['active', 'paused', 'stopped']);
 const VALID_ON_FAILURE: Set<string> = new Set(['notify', 'stop']);
-const VALID_TARGET_TYPES: Set<string> = new Set(['prompt', 'script']);
+const VALID_TARGET_TYPES: Set<string> = new Set(['prompt', 'script', 'work-item']);
 const VALID_MODES: Set<string> = new Set(['ask', 'plan', 'autopilot']);
 
 function validateScheduleInput(body: any): { valid: boolean; error?: string } {
@@ -47,7 +47,7 @@ function validateScheduleInput(body: any): { valid: boolean; error?: string } {
         return { valid: false, error: `Invalid status: ${body.status}. Valid values: active, paused, stopped` };
     }
     if (body.targetType !== undefined && !VALID_TARGET_TYPES.has(body.targetType)) {
-        return { valid: false, error: `Invalid targetType: ${body.targetType}. Valid values: prompt, script` };
+        return { valid: false, error: `Invalid targetType: ${body.targetType}. Valid values: prompt, script, work-item` };
     }
     if (body.mode !== undefined && !VALID_MODES.has(body.mode)) {
         return { valid: false, error: `Invalid mode: ${body.mode}. Valid values: ask, plan, autopilot` };
@@ -179,7 +179,7 @@ export function registerScheduleRoutes(
                 return sendError(res, 400, `Invalid status: ${body.status}`);
             }
             if (body.targetType !== undefined && !VALID_TARGET_TYPES.has(body.targetType)) {
-                return sendError(res, 400, `Invalid targetType: ${body.targetType}. Valid values: prompt, script`);
+                return sendError(res, 400, `Invalid targetType: ${body.targetType}. Valid values: prompt, script, work-item`);
             }
             if (body.mode !== undefined && !VALID_MODES.has(body.mode)) {
                 return sendError(res, 400, `Invalid mode: ${body.mode}. Valid values: ask, plan, autopilot`);

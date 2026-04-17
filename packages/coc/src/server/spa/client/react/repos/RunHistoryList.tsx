@@ -84,7 +84,7 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
                         className="text-[#0078d4] hover:underline"
                         onClick={() => onRunNow(scheduleId)}
                         disabled={isRunning}
-                        aria-label="Run this schedule"
+                        aria-label="Run this job"
                     >
                         Run Now
                     </button>

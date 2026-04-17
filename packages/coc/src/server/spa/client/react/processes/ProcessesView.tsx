@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../shared';
+import { SkeletonList } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
@@ -67,7 +68,7 @@ export function ProcessesView() {
             // Sync global queue context
             queueDispatch({
                 type: 'QUEUE_UPDATED',
-                queue: { queued: nextQueued, running: nextRunning, history: nextHistory, stats: nextStats },
+                queue: { queued: nextQueued, running: nextRunning, history: nextHistory.length > 0 ? nextHistory : undefined, stats: nextStats },
             });
         } catch {
             setRunning([]);
@@ -226,6 +227,7 @@ export function ProcessesView() {
             onPauseResume={handlePauseResume}
             onRefresh={handleRefresh}
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG' })}
+            onNewChat={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null })}
             fetchQueue={fetchQueue}
         />
     );

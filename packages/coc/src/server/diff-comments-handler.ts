@@ -18,7 +18,7 @@ import { sendJSON, sendError, parseBody } from './api-handler';
 import * as path from 'path';
 import type { Route } from './types';
 import type { ProcessWebSocketServer } from './websocket';
-import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, CreateTaskInput, SessionCategory } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { isValidWorkspaceId } from './base-comments-manager';
 import { DiffCommentsManager, isValidStorageKey, isValidContext } from './diff-comments-manager';
@@ -110,6 +110,9 @@ export function registerDiffCommentsRoutes(
         oldRef: string,
         newRef: string,
         skills?: string[],
+        workItemId?: string,
+        autoReExecute?: boolean,
+        sourceRunIndex?: number,
     ): Promise<string | undefined> {
         const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
         bridge.getOrCreateBridge(wsRootPath);
@@ -124,6 +127,8 @@ export function registerDiffCommentsRoutes(
                 prompt,
                 tools: ['resolve-comments'],
                 workingDirectory: wsRootPath,
+                sessionCategory: 'resolve-commit-comments' satisfies SessionCategory,
+                ...(workItemId ? { workItemId, workItemResolveContext: { workItemId, wsId, autoReExecute: autoReExecute ?? false, ...(sourceRunIndex != null ? { sourceRunIndex } : {}) } } : {}),
                 context: {
                     files: files.map(f => path.resolve(wsRootPath, f.filePath)),
                     resolveDiffCommentsMulti: {
@@ -535,7 +540,7 @@ export function registerDiffCommentsRoutes(
                 return sendError(res, 400, 'Invalid JSON');
             }
             try {
-                const { oldRef, newRef, filePath, commentId, userContext, skills: rawSkills } = body;
+                const { oldRef, newRef, filePath, commentId, userContext, skills: rawSkills, workItemId, autoReExecute, sourceRunIndex } = body;
                 const skills: string[] | undefined = Array.isArray(rawSkills) ? rawSkills : undefined;
                 if (!oldRef || !newRef) {
                     return sendError(res, 400, 'Missing required fields: oldRef, newRef');
@@ -609,7 +614,7 @@ export function registerDiffCommentsRoutes(
                 }
 
                 try {
-                    const taskId = await enqueueDiffResolveMultiTask(wsId, files, prompt, oldRef, newRef, skills);
+                    const taskId = await enqueueDiffResolveMultiTask(wsId, files, prompt, oldRef, newRef, skills, workItemId, autoReExecute === true, typeof sourceRunIndex === 'number' ? sourceRunIndex : undefined);
                     if (taskId) {
                         return sendJSON(res, 202, { taskId, totalCount: targetComments.length });
                     }

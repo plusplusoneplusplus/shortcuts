@@ -114,6 +114,16 @@ export async function resolveSkillConfig(
         }
     }
 
+    // Bundled skills (lowest priority — shipped with forge)
+    const bundledDir = getBundledSkillsPath();
+    try {
+        if (await fs.promises.access(bundledDir).then(() => true).catch(() => false)) {
+            dirs.push(bundledDir);
+        }
+    } catch {
+        // Non-fatal
+    }
+
     return {
         skillDirectories: dirs.length > 0 ? dirs : undefined,
         disabledSkills,

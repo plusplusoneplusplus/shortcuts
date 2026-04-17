@@ -618,4 +618,180 @@ describe('getTaskCompletedAtIso', () => {
     it('returns undefined for falsy completedAt and endTime', () => {
         expect(getTaskCompletedAtIso({ completedAt: '', endTime: 0 })).toBeUndefined();
     });
+
+    it('auto-marks selected task as seen even when not completed', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const running = makeRunningTasks('a');
+        const { result, rerender } = renderHook(
+            ({ sel, r }) => useUnseenActivity('ws1', [], sel, [], r),
+            { initialProps: { sel: null as string | null, r: running } },
+        );
+
+        expect(result.current.unseenTaskIds.has('a')).toBe(true);
+
+        rerender({ sel: 'a', r: running });
+        expect(result.current.unseenTaskIds.has('a')).toBe(false);
+    });
+
+    it('deduplicates items across queued, running, and history', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        // Same item appears in both running and history
+        const running = [{ id: 'a', status: 'running', displayName: 'Task a' }];
+        const history = [{ id: 'a', status: 'completed', completedAt: '2026-01-01T00:00:00Z', displayName: 'Task a' }];
+
+        const { result } = renderHook(() =>
+            useUnseenActivity('ws1', history, null, [], running),
+        );
+
+        // Should only count once (queued takes priority in merge order: q, r, h)
+        expect(result.current.unseenCount).toBe(1);
+    });
+
+    it('migrates old localStorage format (bare completedAt) to snapshot format', () => {
+        // Old format stored just the completedAt string
+        const history = makeTasks('a');
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({
+            a: history[0].completedAt,
+        }));
+
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        // After migration, the old completedAt becomes "completed|completedAt"
+        // which matches the current snapshot for a completed item
+        expect(result.current.unseenTaskIds.has('a')).toBe(false);
+    });
+});
+
+describe('useUnseenActivity — chat-specific logic', () => {
+    beforeEach(() => {
+        localStorage.clear();
+    });
+
+    afterEach(() => {
+        localStorage.clear();
+    });
+
+    it('suppresses badge for single active chat being viewed', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const running = [makeChatTask('chat1', 'running')];
+
+        const { result } = renderHook(() =>
+            useUnseenActivity('ws1', [], 'chat1', [], running, { isViewingChats: true }),
+        );
+
+        // unseenTaskIds still contains chat1 (for dot indicators)
+        // but unseenCount is 0 because user is viewing the only active chat
+        expect(result.current.unseenCount).toBe(0);
+    });
+
+    it('suppresses badge when single active chat changes state while being viewed', () => {
+        // User is viewing chat1 in running state (already auto-marked seen)
+        const runSnapshot = getItemSnapshot({ status: 'running' });
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({ chat1: runSnapshot }));
+
+        const { result, rerender } = renderHook(
+            ({ h, r }) => useUnseenActivity('ws1', h, 'chat1', [], r, { isViewingChats: true }),
+            { initialProps: { h: [] as any[], r: [makeChatTask('chat1', 'running')] } },
+        );
+
+        expect(result.current.unseenCount).toBe(0);
+
+        // Chat completes while user is still viewing it — state change detected
+        // but single-chat suppression keeps badge at 0
+        rerender({
+            h: [makeChatTask('chat1', 'completed', '2026-01-01T00:00:00Z')],
+            r: [],
+        });
+        expect(result.current.unseenCount).toBe(0);
+    });
+
+    it('shows badge for multiple active chats with unviewed changes', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const running = [
+            makeChatTask('chat1', 'running'),
+            makeChatTask('chat2', 'running'),
+        ];
+
+        // Viewing chat1 — it gets auto-marked seen.
+        // chat2 is unseen. With 2 active chats, no single-chat suppression.
+        const { result } = renderHook(() =>
+            useUnseenActivity('ws1', [], 'chat1', [], running, { isViewingChats: true }),
+        );
+
+        // chat1 is auto-marked seen, chat2 remains unseen → badge = 1
+        expect(result.current.unseenCount).toBe(1);
+    });
+
+    it('does not suppress badge when isViewingChats is false', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const running = [makeChatTask('chat1', 'running')];
+
+        // Not viewing chats tab, no task selected — chat1 is unseen
+        const { result } = renderHook(() =>
+            useUnseenActivity('ws1', [], null, [], running, { isViewingChats: false }),
+        );
+
+        expect(result.current.unseenCount).toBe(1);
+    });
+
+    it('does not suppress when viewing a different task than the active chat', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const running = [makeChatTask('chat1', 'running')];
+        const queued = makeQueuedTasks('task1');
+
+        // Viewing task1 (auto-marked), but chat1 is the unseen active chat
+        const { result } = renderHook(() =>
+            useUnseenActivity('ws1', [], 'task1', queued, running, { isViewingChats: true }),
+        );
+
+        // task1 is auto-marked seen, chat1 is still unseen → badge = 1
+        expect(result.current.unseenCount).toBe(1);
+    });
+});
+
+describe('computeUnseenCount', () => {
+    beforeEach(() => {
+        localStorage.clear();
+    });
+
+    afterEach(() => {
+        localStorage.clear();
+    });
+
+    it('counts unseen items across all arrays', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const queued = makeQueuedTasks('a');
+        const running = makeRunningTasks('b');
+        const history = makeTasks('c');
+
+        expect(computeUnseenCount('ws1', history, queued, running)).toBe(3);
+    });
+
+    it('returns 0 when all items are seen', () => {
+        const history = makeTasks('a');
+        const snapshot = getItemSnapshot(history[0]);
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({ a: snapshot }));
+
+        expect(computeUnseenCount('ws1', history)).toBe(0);
+    });
+
+    it('detects state change in pure helper', () => {
+        // Mark 'a' as seen in "queued" state
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({ a: 'queued|' }));
+        // Now it's running
+        const running = makeRunningTasks('a');
+
+        expect(computeUnseenCount('ws1', [], [], running)).toBe(1);
+    });
+
+    it('migrates old format and counts correctly', () => {
+        const history = makeTasks('a', 'b');
+        // Old format: bare completedAt values
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({
+            a: history[0].completedAt,
+        }));
+
+        // 'a' should be migrated to "completed|..." and match → 0 unseen
+        // 'b' has no entry → 1 unseen
+        expect(computeUnseenCount('ws1', history)).toBe(1);
+    });
 });

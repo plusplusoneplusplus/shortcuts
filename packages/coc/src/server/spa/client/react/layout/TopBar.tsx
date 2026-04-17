@@ -2,7 +2,7 @@
  * TopBar — top navigation bar with tab switching and theme toggle.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRepos } from '../context/ReposContext';
 import { useTheme } from './ThemeProvider';
@@ -91,7 +91,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
 
     const selectRepo = useCallback((id: string) => {
         dispatch({ type: 'SET_SELECTED_REPO', id });
-        const subTab = state.repoTabState[id] ?? 'settings';
+        const subTab = state.repoTabState[id] ?? 'chats';
         const suffix = subTab === 'settings'
             ? `/${subTab}/${state.settingsSection}`
             : `/${subTab}`;
@@ -100,6 +100,13 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
 
     const isOnReposTab = state.activeTab === 'repos';
 
+    // Close popover whenever the selected repo changes (e.g. user picked a repo)
+    const prevSelectedRepoId = useRef(state.selectedRepoId);
+    if (prevSelectedRepoId.current !== state.selectedRepoId) {
+        prevSelectedRepoId.current = state.selectedRepoId;
+        if (popoverOpen) setPopoverOpen(false);
+    }
+
     return (
         <>
         <header
@@ -107,8 +114,9 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
             data-react
         >
             <div className="flex items-center gap-2 min-w-0 flex-1">
+                {/* Desktop hamburger */}
                 <button
-                    className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
+                    className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target hidden md:inline-flex items-center justify-center"
                     id="hamburger-btn"
                     aria-label={isOnReposTab ? 'Manage repositories' : 'Go to repositories'}
                     aria-pressed={isOnReposTab ? popoverOpen : false}
@@ -192,6 +200,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 )}
             </div>
             <div className="flex items-center gap-1">
+
                 <span
                     className="inline-flex items-center justify-center h-7 w-7 md:h-8 md:w-8"
                     title={wsStatusConfig[state.wsStatus ?? 'closed']?.label}
@@ -303,7 +312,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 </button>
             </div>
         </header>
-        {isOnReposTab && (
+        {(isOnReposTab || (isMobile && popoverOpen)) && (
             <RepoManagementPopover
                 open={popoverOpen}
                 onClose={() => setPopoverOpen(false)}

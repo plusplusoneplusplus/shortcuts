@@ -407,7 +407,7 @@ describe('DiffCommentsManager', () => {
     // -- getCommentTotals --
 
     describe('getCommentTotals', () => {
-        it('returns totals grouped by newRef (commitHash)', async () => {
+        it('returns totals grouped by newRef (commitHash) with open/resolved breakdown', async () => {
             const ctx1 = makeContext({ newRef: 'abc123', filePath: 'src/a.ts' });
             const ctx2 = makeContext({ newRef: 'abc123', filePath: 'src/b.ts' });
             const ctx3 = makeContext({ newRef: 'def456', filePath: 'src/c.ts' });
@@ -415,9 +415,9 @@ describe('DiffCommentsManager', () => {
             await manager.addComment('ws1', ctx2, makeCommentData(ctx2));
             await manager.addComment('ws1', ctx3, makeCommentData(ctx3));
 
-            const totals = await manager.getCommentTotals('ws1', ['abc123', 'def456']);
-            expect(totals['abc123']).toBe(2);
-            expect(totals['def456']).toBe(1);
+            const totals = await manager.getCommentTotals('ws1', ['abc123', 'def456']) as Record<string, { open: number; resolved: number }>;
+            expect(totals['abc123']).toEqual({ open: 2, resolved: 0 });
+            expect(totals['def456']).toEqual({ open: 1, resolved: 0 });
         });
 
         it('only returns hashes that are in the requested list', async () => {
@@ -448,8 +448,9 @@ describe('DiffCommentsManager', () => {
             await manager.addComment('ws1', ctx, makeCommentData(ctx));
             await manager.updateComment('ws1', key, c1.id, { status: 'resolved' });
 
-            const allTotals = await manager.getCommentTotals('ws1', ['abc123']);
-            expect(allTotals['abc123']).toBe(2);
+            // Without status filter: returns { open, resolved } breakdown
+            const allTotals = await manager.getCommentTotals('ws1', ['abc123']) as Record<string, { open: number; resolved: number }>;
+            expect(allTotals['abc123']).toEqual({ open: 1, resolved: 1 });
 
             const openTotals = await manager.getCommentTotals('ws1', ['abc123'], { statuses: ['open'] });
             expect(openTotals['abc123']).toBe(1);
@@ -471,10 +472,11 @@ describe('DiffCommentsManager', () => {
             await manager.addComment('ws2', ctx, makeCommentData(ctx));
             await manager.addComment('ws2', ctx, makeCommentData(ctx));
 
-            const totals1 = await manager.getCommentTotals('ws1', ['abc123']);
-            const totals2 = await manager.getCommentTotals('ws2', ['abc123']);
-            expect(totals1['abc123']).toBe(1);
-            expect(totals2['abc123']).toBe(2);
+            // Without status filter, returns { open, resolved } per SHA
+            const totals1 = await manager.getCommentTotals('ws1', ['abc123']) as Record<string, { open: number; resolved: number }>;
+            const totals2 = await manager.getCommentTotals('ws2', ['abc123']) as Record<string, { open: number; resolved: number }>;
+            expect(totals1['abc123']).toEqual({ open: 1, resolved: 0 });
+            expect(totals2['abc123']).toEqual({ open: 2, resolved: 0 });
         });
     });
 
@@ -684,7 +686,7 @@ describe('Diff Comments REST API', () => {
             expect(body.totals).toEqual({});
         });
 
-        it('reflects created comments grouped by newRef (commitHash)', async () => {
+        it('reflects created comments grouped by newRef (commitHash) with open/resolved counts', async () => {
             await postJSON(collectionUrl(), makePostBody({ newRef: 'commit-aaa', filePath: 'src/a.ts' }));
             await postJSON(collectionUrl(), makePostBody({ newRef: 'commit-aaa', filePath: 'src/b.ts' }));
             await postJSON(collectionUrl(), makePostBody({ newRef: 'commit-bbb', filePath: 'src/c.ts' }));
@@ -692,8 +694,9 @@ describe('Diff Comments REST API', () => {
             const res = await getJSON(`${totalsUrl()}?commits=commit-aaa,commit-bbb`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.totals['commit-aaa']).toBe(2);
-            expect(body.totals['commit-bbb']).toBe(1);
+            // Without status filter, returns { open, resolved } per SHA
+            expect(body.totals['commit-aaa']).toEqual({ open: 2, resolved: 0 });
+            expect(body.totals['commit-bbb']).toEqual({ open: 1, resolved: 0 });
         });
 
         it('omits commits not in the requested list', async () => {

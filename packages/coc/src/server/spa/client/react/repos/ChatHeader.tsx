@@ -308,8 +308,18 @@ export function ChatHeader({
                         className="inline-flex items-center justify-center px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1 flex-shrink-0"
                         onClick={onBack}
                         data-testid="activity-chat-back-btn"
+                        aria-label="Back to list"
                     >
-                        ← Back
+                        {isMobile ? (
+                            <>
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                    <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                <span className="text-sm font-medium">Chats</span>
+                            </>
+                        ) : (
+                            '← Back'
+                        )}
                     </button>
                 )}
                 <span className={cn(

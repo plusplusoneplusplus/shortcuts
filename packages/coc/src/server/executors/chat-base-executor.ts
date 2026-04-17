@@ -68,6 +68,8 @@ export interface ChatModeExecutorOptions {
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     /** Resolve workspace ID for a root path */
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
+    /** Optional accessor for the WebSocket server (used to broadcast work-item events) */
+    getWsServer?: () => import('../websocket').ProcessWebSocketServer | undefined;
 }
 
 /** Return type for the AI call result. */
@@ -103,6 +105,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly toolCallCacheStore: FileToolCallCacheStore;
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
+    protected readonly getWsServerFn?: () => import('../websocket').ProcessWebSocketServer | undefined;
+
+    /** Chat session output files go to the dedicated `chat/` subfolder. */
+    protected override readonly outputSubfolder: string = 'chat';
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -114,6 +120,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.toolCallCacheStore = options.toolCallCacheStore;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
+        this.getWsServerFn = options.getWsServer;
     }
 
     // ========================================================================
