@@ -63,6 +63,16 @@ export function isChatTask(task: any): boolean {
 }
 const isChat = isChatTask;
 
+/** Get a display title for a chat task, falling back to a truncated prompt preview. */
+function getChatTitle(task: any): string {
+    if (task.displayName) return task.displayName;
+    const text = task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '';
+    if (text && !/^Use the \S+ skill\.$/.test(text)) {
+        return text.length > 50 ? text.substring(0, 47) + '…' : text;
+    }
+    return 'Chat';
+}
+
 export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolean {
     if (excludedTypes.size === 0) return true;
     // Session category exclusion
@@ -312,23 +322,25 @@ export function ActivityListPane({
     const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [history, excludedTypes, searchQuery]);
 
     // Tab-aware filtered arrays for empty state detection
-    const tabFilteredRunning = useMemo(() => activeTab === 'chats' ? filteredRunning.filter(isChat) : filteredRunning, [activeTab, filteredRunning]);
-    const tabFilteredQueued = useMemo(() => activeTab === 'chats' ? [] : filteredQueued, [activeTab, filteredQueued]);
-    const tabFilteredHistory = useMemo(() => activeTab === 'chats' ? filteredHistory.filter(isChat) : filteredHistory, [activeTab, filteredHistory]);
+    const isTaskItem = useCallback((t: any) => !isChat(t), []);
+    const tabFilteredRunning = useMemo(() => activeTab === 'chats' ? filteredRunning.filter(isChat) : activeTab === 'tasks' ? filteredRunning.filter(isTaskItem) : filteredRunning, [activeTab, filteredRunning, isTaskItem]);
+    const tabFilteredQueued = useMemo(() => activeTab === 'chats' ? [] : activeTab === 'tasks' ? filteredQueued.filter(isTaskItem) : filteredQueued, [activeTab, filteredQueued, isTaskItem]);
+    const tabFilteredHistory = useMemo(() => activeTab === 'chats' ? filteredHistory.filter(isChat) : activeTab === 'tasks' ? filteredHistory.filter(isTaskItem) : filteredHistory, [activeTab, filteredHistory, isTaskItem]);
 
-    // Separate archived from non-archived history
+    // Separate archived from non-archived history (uses tab-filtered history for proper exclusions)
     const { activeHistory, filteredArchived } = useMemo(() => {
+        const base = tabFilteredHistory;
         if (!archivedChatIds || archivedChatIds.size === 0) {
-            return { activeHistory: filteredHistory, filteredArchived: [] };
+            return { activeHistory: base, filteredArchived: [] };
         }
         const active: any[] = [];
         const archived: any[] = [];
-        for (const task of filteredHistory) {
+        for (const task of base) {
             if (archivedChatIds.has(task.id)) archived.push(task);
             else active.push(task);
         }
         return { activeHistory: active, filteredArchived: archived };
-    }, [filteredHistory, archivedChatIds]);
+    }, [tabFilteredHistory, archivedChatIds]);
 
     // Split active history into pinned and non-pinned, preserving pin order
     const { filteredPinned, filteredUnpinned } = useMemo(() => {
@@ -854,7 +866,7 @@ export function ActivityListPane({
                                                     <span className="flex items-center gap-1 min-w-0 truncate">
                                                         {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
                                                         {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                        <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                        <span className={cn('truncate', isUnseen && 'font-semibold')} title={getChatTitle(task)}>{getChatTitle(task)}</span>
                                                         {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                                                         {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                                     </span>
@@ -892,7 +904,7 @@ export function ActivityListPane({
                                                     <span className="flex items-center gap-1 min-w-0 truncate">
                                                         {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" />}
                                                         {!isRunning && task.status === 'failed' && <span className="shrink-0">❌</span>}
-                                                        <span className={cn('truncate', isUnseen && 'font-semibold')} title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                        <span className={cn('truncate', isUnseen && 'font-semibold')} title={getChatTitle(task)}>{getChatTitle(task)}</span>
                                                         {hasDraft && <span className="shrink-0 text-[10px] text-[#848484]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                                                         {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                                     </span>
@@ -936,7 +948,7 @@ export function ActivityListPane({
                                             >
                                                 <div className="flex items-center justify-between gap-1.5 text-xs">
                                                     <span className="flex items-center gap-1 min-w-0 truncate">
-                                                        <span className="truncate" title={task.displayName || 'Chat'}>{task.displayName || 'Chat'}</span>
+                                                        <span className="truncate" title={getChatTitle(task)}>{getChatTitle(task)}</span>
                                                         {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                                     </span>
                                                     <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
@@ -1082,7 +1094,7 @@ export function ActivityListPane({
                                     ? chatAllItems.pinned.length + chatAllItems.unpinned.length + chatAllItems.archived.length
                                     : isServerSearchActive
                                         ? searchTotal ?? 0
-                                        : filteredRunning.length + filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length + filteredHistory.length}
+                                        : tabFilteredRunning.length + tabFilteredQueued.filter((t: any) => t.kind !== 'pause-marker').length + tabFilteredHistory.length}
                             </span>
                         )}
                         <button
@@ -1093,18 +1105,18 @@ export function ActivityListPane({
                     </div>
                 )}
 
-                {filteredRunning.length > 0 && (
+                {tabFilteredRunning.length > 0 && (
                     <div>
                         <button
                             className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
                             onClick={() => setShowRunning(!showRunning)}
                             data-testid="running-tasks-section-toggle"
                         >
-                            {showRunning ? '▼' : '▶'} Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
+                            {showRunning ? '▼' : '▶'} Running Tasks <span className="text-[10px]">({tabFilteredRunning.length})</span>
                         </button>
                         {showRunning && (
                             <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
-                                {filteredRunning.map(task => (
+                                {tabFilteredRunning.map(task => (
                                     <QueueTaskItem
                                         key={task.id}
                                         task={task}
@@ -1124,14 +1136,14 @@ export function ActivityListPane({
                     </div>
                 )}
 
-                {filteredQueued.length > 0 && (
+                {tabFilteredQueued.length > 0 && (
                     <div>
                         <button
                             className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
                             onClick={() => setShowQueued(!showQueued)}
                             data-testid="queued-tasks-section-toggle"
                         >
-                            {showQueued ? '▼' : '▶'} Queued Tasks <span className="text-[10px]">({filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
+                            {showQueued ? '▼' : '▶'} Queued Tasks <span className="text-[10px]">({tabFilteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
                         </button>
                         {showQueued && (
                             <div className={cn("flex flex-col", isDense ? "gap-0.5" : "gap-1")}>
@@ -1144,7 +1156,7 @@ export function ActivityListPane({
                                         onClick={() => handleInsertPauseMarker(-1)}
                                     />
                                 )}
-                                {filteredQueued.map((item: any, index: number) => {
+                                {tabFilteredQueued.map((item: any, index: number) => {
                                     const globalIndex = queued.findIndex((q: any) => q.id === item.id);
                                     if (item.kind === 'pause-marker') {
                                         return (
