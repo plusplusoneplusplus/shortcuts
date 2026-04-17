@@ -697,4 +697,84 @@ describe('FileWorkItemStore', () => {
             expect(result.groups['created'].total).toBe(5);
         });
     });
+
+    describe('index repair', () => {
+        it('recovers orphaned item files not in index', async () => {
+            // Add an item normally so the directory exists
+            const item1 = makeWorkItem({ id: 'indexed-1', title: 'Indexed item' });
+            await store.addWorkItem(item1);
+
+            // Manually write an orphan item file (not in index)
+            const wiDir = path.join(tmpDir, 'repos', 'test-repo', 'work-items');
+            const orphan = makeWorkItem({ id: 'orphan-1', title: 'Orphaned item' });
+            await fs.writeFile(path.join(wiDir, 'orphan-1.json'), JSON.stringify(orphan), 'utf-8');
+
+            // Remove orphan from index by overwriting with just the first item
+            const index = JSON.parse(await fs.readFile(path.join(wiDir, 'index.json'), 'utf-8'));
+            await fs.writeFile(path.join(wiDir, 'index.json'), JSON.stringify(index), 'utf-8');
+
+            // New store instance to trigger repair
+            const freshStore = new FileWorkItemStore({ dataDir: tmpDir });
+            const result = await freshStore.listWorkItems({ repoId: 'test-repo' });
+            expect(result.total).toBe(2);
+            const ids = result.items.map(i => i.id).sort();
+            expect(ids).toEqual(['indexed-1', 'orphan-1']);
+        });
+
+        it('handles corrupted single-object index', async () => {
+            const wiDir = path.join(tmpDir, 'repos', 'test-repo', 'work-items');
+            await fs.mkdir(wiDir, { recursive: true });
+
+            // Write an item file
+            const item = makeWorkItem({ id: 'single-1', title: 'Single object' });
+            await fs.writeFile(path.join(wiDir, 'single-1.json'), JSON.stringify(item), 'utf-8');
+
+            // Write a corrupted index (object instead of array)
+            const indexEntry = { id: 'single-1', repoId: 'test-repo', title: 'Single object', status: 'created', createdAt: item.createdAt, updatedAt: item.updatedAt };
+            await fs.writeFile(path.join(wiDir, 'index.json'), JSON.stringify(indexEntry), 'utf-8');
+
+            const freshStore = new FileWorkItemStore({ dataDir: tmpDir });
+            const result = await freshStore.listWorkItems({ repoId: 'test-repo' });
+            expect(result.total).toBe(1);
+            expect(result.items[0].id).toBe('single-1');
+        });
+
+        it('fixes missing repoId on entries', async () => {
+            const wiDir = path.join(tmpDir, 'repos', 'test-repo', 'work-items');
+            await fs.mkdir(wiDir, { recursive: true });
+
+            // Write item file without repoId
+            const item = { ...makeWorkItem({ id: 'no-repo', title: 'No repo' }), repoId: '' };
+            await fs.writeFile(path.join(wiDir, 'no-repo.json'), JSON.stringify(item), 'utf-8');
+
+            // Write index with missing repoId
+            const indexEntry = { id: 'no-repo', repoId: '', title: 'No repo', status: 'created', createdAt: item.createdAt, updatedAt: item.updatedAt };
+            await fs.writeFile(path.join(wiDir, 'index.json'), JSON.stringify([indexEntry]), 'utf-8');
+
+            const freshStore = new FileWorkItemStore({ dataDir: tmpDir });
+            const result = await freshStore.listWorkItems({ repoId: 'test-repo' });
+            expect(result.total).toBe(1);
+            expect(result.items[0].repoId).toBe('test-repo');
+        });
+
+        it('reads files with UTF-8 BOM', async () => {
+            const wiDir = path.join(tmpDir, 'repos', 'test-repo', 'work-items');
+            await fs.mkdir(wiDir, { recursive: true });
+
+            // Write item file with BOM
+            const item = makeWorkItem({ id: 'bom-item', title: 'BOM item' });
+            const bom = '\uFEFF';
+            await fs.writeFile(path.join(wiDir, 'bom-item.json'), bom + JSON.stringify(item), 'utf-8');
+
+            // Write index with BOM too
+            const indexEntry = { id: 'bom-item', repoId: 'test-repo', title: 'BOM item', status: 'created', createdAt: item.createdAt, updatedAt: item.updatedAt };
+            await fs.writeFile(path.join(wiDir, 'index.json'), bom + JSON.stringify([indexEntry]), 'utf-8');
+
+            const freshStore = new FileWorkItemStore({ dataDir: tmpDir });
+            const result = await freshStore.listWorkItems({ repoId: 'test-repo' });
+            expect(result.total).toBe(1);
+            expect(result.items[0].id).toBe('bom-item');
+            expect(result.items[0].title).toBe('BOM item');
+        });
+    });
 });

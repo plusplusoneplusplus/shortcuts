@@ -41,6 +41,7 @@ export interface FileWorkItemStoreOptions {
 export class FileWorkItemStore implements WorkItemStore {
     private readonly dataDir: string;
     private writeQueue: Promise<void> = Promise.resolve();
+    private repairedRepos = new Set<string>();
 
     constructor(options: FileWorkItemStoreOptions) {
         this.dataDir = options.dataDir;
@@ -93,7 +94,9 @@ export class FileWorkItemStore implements WorkItemStore {
 
     private async readJSON<T>(filePath: string, defaultValue: T): Promise<T> {
         try {
-            const data = await fs.readFile(filePath, 'utf-8');
+            let data = await fs.readFile(filePath, 'utf-8');
+            // Strip UTF-8 BOM if present
+            if (data.charCodeAt(0) === 0xFEFF) data = data.slice(1);
             return JSON.parse(data) as T;
         } catch {
             return defaultValue;
@@ -101,7 +104,54 @@ export class FileWorkItemStore implements WorkItemStore {
     }
 
     private async readIndex(repoId: string): Promise<WorkItemIndexEntry[]> {
-        return this.readJSON(this.indexPath(repoId), []);
+        const raw = await this.readJSON(this.indexPath(repoId), []);
+        // Handle corrupted index: single object instead of array
+        let entries: WorkItemIndexEntry[];
+        if (raw && !Array.isArray(raw)) {
+            entries = [raw as unknown as WorkItemIndexEntry];
+        } else {
+            entries = raw as WorkItemIndexEntry[];
+        }
+
+        // Repair once per repo per process lifetime: scan for orphaned .json item files
+        if (!this.repairedRepos.has(repoId)) {
+            this.repairedRepos.add(repoId);
+            try {
+                const dir = this.workItemsDir(repoId);
+                const files = await fs.readdir(dir);
+                const indexedIds = new Set(entries.map(e => e.id));
+                let repaired = false;
+                for (const file of files) {
+                    if (!file.endsWith('.json') || file === 'index.json' || file === 'counter.json') continue;
+                    const itemId = file.replace(/\.json$/, '');
+                    if (indexedIds.has(itemId)) continue;
+                    const item = await this.readItem(repoId, itemId);
+                    if (item) {
+                        // Fix missing repoId
+                        if (!item.repoId) item.repoId = repoId;
+                        entries.push(toIndexEntry(item));
+                        repaired = true;
+                    }
+                }
+                // Also fix existing entries that have corrupted/missing repoId
+                if (!repaired && !Array.isArray(raw)) {
+                    repaired = true; // corrupted format needs rewrite
+                }
+                for (const entry of entries) {
+                    if (!entry.repoId) {
+                        entry.repoId = repoId;
+                        repaired = true;
+                    }
+                }
+                if (repaired) {
+                    await this.atomicWrite(this.indexPath(repoId), JSON.stringify(entries, null, 2));
+                }
+            } catch {
+                // Non-fatal
+            }
+        }
+
+        return entries;
     }
 
     private async writeIndex(repoId: string, entries: WorkItemIndexEntry[]): Promise<void> {
