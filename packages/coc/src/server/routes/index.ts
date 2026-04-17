@@ -55,10 +55,33 @@ import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
+import { handleWorkItemTaskComplete } from '../work-items/work-item-executor';
 import type { EnqueueFunction } from '../work-items/work-item-executor';
+import { execGit } from '@plusplusoneplusplus/forge';
+import type { WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { TerminalSessionManager } from '../terminal/index';
+
+/** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
+function collectWorkItemCommits(
+    repoRoot: string,
+    headBefore: string,
+): WorkItemChangeCommit[] {
+    try {
+        const output = execGit(
+            ['log', `${headBefore}..HEAD`, '--pretty=format:%H\x1f%s\x1f%an\x1f%aI'],
+            repoRoot,
+        );
+        if (!output.trim()) return [];
+        return output.split('\n').filter(Boolean).map(line => {
+            const [sha, message, author, date] = line.split('\x1f');
+            return { sha, message, author, date };
+        });
+    } catch {
+        return [];
+    }
+}
 
 export interface RegisterRoutesOptions {
     store: ProcessStore;
@@ -183,6 +206,65 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
+
+    // Wire queue task completion → work item status update + commit collection
+    bridge.on('queueChange', (event: { type: string; task?: any }) => {
+        if (event.type !== 'updated' || !event.task) return;
+        const task = event.task;
+        const workItemId = task.payload?.workItemId as string | undefined;
+        if (!workItemId) return;
+        const taskStatus: string = task.status;
+        if (taskStatus !== 'completed' && taskStatus !== 'failed' && taskStatus !== 'cancelled') return;
+
+        handleWorkItemTaskComplete(
+            workItemId,
+            task.id,
+            {
+                status: taskStatus as 'completed' | 'failed' | 'cancelled',
+                error: task.error,
+                processId: task.processId,
+            },
+            workItemStore,
+        ).then(async () => {
+            try {
+                const updatedItem = await workItemStore.getWorkItem(workItemId).catch(() => undefined);
+                if (!updatedItem) return;
+
+                // Collect git commits for the just-closed change
+                let commitsAttached = false;
+                const changes = updatedItem.changes ?? [];
+                const justClosed = changes.find(
+                    c => c.taskId === task.id && c.status === 'closed' && c.headBefore,
+                );
+                if (justClosed?.headBefore) {
+                    const workspaces = await store.getWorkspaces().catch(() => []);
+                    const workspace = workspaces.find(w => w.id === updatedItem.repoId);
+                    if (workspace?.rootPath) {
+                        const commits = collectWorkItemCommits(workspace.rootPath, justClosed.headBefore);
+                        if (commits.length > 0) {
+                            await workItemStore.updateChange(workItemId, justClosed.id, { commits }).catch(() => {});
+                            commitsAttached = true;
+                        }
+                    }
+                }
+
+                // Re-fetch after commit attachment so the broadcast includes commits
+                const itemToSend = commitsAttached
+                    ? (await workItemStore.getWorkItem(workItemId).catch(() => updatedItem)) ?? updatedItem
+                    : updatedItem;
+
+                getWsServer?.()?.broadcastProcessEvent({
+                    type: 'work-item-updated',
+                    workspaceId: itemToSend.repoId,
+                    item: itemToSend,
+                });
+            } catch {
+                // Non-fatal
+            }
+        }).catch(() => {
+            // Non-fatal: don't crash the server on work item update failure
+        });
+    });
 
     const wikiManager = registerWikiRoutes(routes, {
         wikis: wikiOptions?.wikis,
