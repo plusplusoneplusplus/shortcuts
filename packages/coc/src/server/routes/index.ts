@@ -41,36 +41,24 @@ import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRou
 import { registerReplicateApplyRoutes } from '../replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule-handler';
 import { registerStatsRoutes } from '../stats-handler';
+import { registerDbBrowserRoutes } from '../db-browser-handler';
+import { registerHeapRoutes } from '../heap-monitor';
+import { registerSeenStateRoutes } from '../seen-state-handler';
+import { registerPinArchiveRoutes } from '../pin-archive-handler';
+import { registerProcessHistoryRoutes } from '../process-history-handler';
+import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
+import { registerTerminalRoutes } from '../terminal/terminal-routes';
+import { registerMyWorkRoutes } from '../my-work-handler';
+import { registerMyLifeRoutes } from '../my-life-handler';
 import { registerWorkItemRoutes } from './work-item-routes';
 import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
-import { handleWorkItemTaskComplete, executeWorkItem } from '../work-items/work-item-executor';
-import type { WorkItem } from '../work-items/types';
-import { DiffCommentsManager } from '../diff-comments-manager';
-import { execGit } from '@plusplusoneplusplus/forge';
-import { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile } from '../../config';
-
-/** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
-function collectWorkItemCommits(
-    repoRoot: string,
-    headBefore: string,
-): import('../work-items/types').WorkItemChangeCommit[] {
-    try {
-        const output = execGit(
-            ['log', `${headBefore}..HEAD`, '--pretty=format:%H\x1f%s\x1f%an\x1f%aI'],
-            repoRoot,
-        );
-        if (!output.trim()) return [];
-        return output.split('\n').filter(Boolean).map(line => {
-            const [sha, message, author, date] = line.split('\x1f');
-            return { sha, message, author, date };
-        });
-    } catch {
-        return [];
-    }
-}
+import type { EnqueueFunction } from '../work-items/work-item-executor';
+import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
+import type { ResolvedCLIConfig } from '../../config';
+import type { TerminalSessionManager } from '../terminal/index';
 
 export interface RegisterRoutesOptions {
     store: ProcessStore;
@@ -187,6 +175,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerHeapRoutes(routes);
     registerMyWorkRoutes(routes, store, dataDir);
     registerMyLifeRoutes(routes, store, dataDir);
+
+    // Work item routes
+    const workItemStore = new FileWorkItemStore({ dataDir });
+    const enqueueForWorkItems = bridge.enqueue.bind(bridge) as EnqueueFunction;
+    registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
+    registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
+    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
+    registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
 
     const wikiManager = registerWikiRoutes(routes, {
         wikis: wikiOptions?.wikis,

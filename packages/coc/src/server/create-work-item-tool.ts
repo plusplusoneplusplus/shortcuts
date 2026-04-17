@@ -71,9 +71,10 @@ export function createWorkItemTool(
         description:
             'Create a new work item in the Work Items page for this repository. ' +
             'Use this when the user asks to create a work item, track a feature request, ' +
-            'file a bug, or save a task for later execution. ' +
-            'IMPORTANT: Before calling this tool, you MUST first present a draft summary to the user, ' +
-            'iterate on their feedback, and only call this tool once the user confirms. ' +
+            'or save a task for later execution. ' +
+            'IMPORTANT: Before calling this tool, you MUST first present a draft summary to the user ' +
+            'and only call this tool once the user confirms. ' +
+            'Once confirmed, IMMEDIATELY call this tool — do not deliberate or plan further. ' +
             'Always include a `plan` field using the standard template: ' +
             '## Objective, ## Background, ## Steps (with checkboxes), ## Acceptance Criteria, ## Notes. ' +
             `Template:\n${WORK_ITEM_PLAN_TEMPLATE}`,

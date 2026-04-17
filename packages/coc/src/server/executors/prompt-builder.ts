@@ -457,10 +457,15 @@ export function buildCreateWorkItemAddon(
         '   Title: <title>\n' +
         '   Priority: <high|normal|low>\n' +
         '   Tags: <tags or "none">\n' +
+        '   Description: <markdown description>\n' +
+        '   Plan: <markdown plan using ## Objective, ## Background, ## Steps (with - [ ] checkboxes), ## Acceptance Criteria, ## Notes>\n' +
+        '   Then ask "Confirm to create, or give feedback to refine."\n' +
         '2. **Refine** — If the user provides feedback, update and re-present the summary. Repeat until confirmed.\n' +
-        '3. **Create** — Only after the user confirms, call the appropriate tool with title, description, priority, tags, and a complete plan.\n' +
+        '3. **Create** — Once the user confirms, IMMEDIATELY call the tool. Do not deliberate, plan, or think about what to do next — just call the tool right away with all the fields from the draft.\n' +
         'The `plan` parameter is REQUIRED — always generate a plan with concrete steps.\n' +
-        'Never execute the work item steps inside this chat session — use the tool to persist it, then stop.';
+        'Never execute the work item steps inside this chat session — use the tool to persist it, then stop.\n' +
+        'When the user discusses work, features, or tasks without explicitly asking to create a work item, ' +
+        'proactively suggest creating a work item to track the work.';
 
     return { tools: [workItemTool, bugTool], suffix };
 }
