@@ -7,6 +7,7 @@ import { formatAttachedContext } from './useAttachedContext';
 import type { AttachedContextItem } from './useAttachedContext';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
+import type { AttachmentPayload } from '../types/attachments';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
@@ -33,8 +34,11 @@ export interface UseSendMessageOptions {
     selectedModeRef: React.MutableRefObject<'ask' | 'plan' | 'autopilot'>;
     images: string[];
     clearImages: () => void;
-    /** Convert current attachments to wire format (includes non-image files) */
-    toPayload?: () => Array<{ name: string; mimeType: string; size: number; dataUrl: string }>;
+    clearPaste?: () => void;
+    /** Returns the raw pasted content held by useTextPaste, or null if no large paste is active. */
+    getPastedContent?: () => string | null;
+    /** Convert attachments to wire format for API calls */
+    toPayload?: () => AttachmentPayload[];
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
 }
@@ -59,10 +63,12 @@ export function useSendMessage({
     selectedModeRef,
     images,
     clearImages,
+    clearPaste,
+    getPastedContent,
     toPayload,
     lastFailedMessageRef,
     setTask,
-}: UseSendMessageOptions): {
+}: UseSendMessageOptions):{
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     closeFollowUpStream: () => void;
     onSendComplete: () => void;
@@ -155,12 +161,14 @@ export function useSendMessage({
             // Both immediate and enqueue: fire POST to /message and let the
             // server steer, buffer, or enqueue as appropriate.  No local
             // pending queue entry — the server is the source of truth.
+            const attachmentsPayload = toPayload ? toPayload() : null;
             fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     content: rawContent,
                     images: images.length > 0 ? images : undefined,
+                    ...(attachmentsPayload && attachmentsPayload.length > 0 ? { attachments: attachmentsPayload } : {}),
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
@@ -168,8 +176,7 @@ export function useSendMessage({
             }).catch(() => {});
 
             clearImages();
-            clearPaste();
-            clearAttachedContext?.();
+            clearPaste?.();
             return;
         }
 
@@ -189,12 +196,14 @@ export function useSendMessage({
         });
 
         try {
+            const attachmentsPayload = toPayload ? toPayload() : null;
             const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     content: rawContent,
                     images: images.length > 0 ? images : undefined,
+                    ...(attachmentsPayload && attachmentsPayload.length > 0 ? { attachments: attachmentsPayload } : {}),
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
@@ -219,8 +228,7 @@ export function useSendMessage({
             lastFailedMessageRef.current = '';
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
             clearImages();
-            clearPaste();
-            clearAttachedContext?.();
+            clearPaste?.();
             await waitForSendCompletion(processId);
         } catch (err: any) {
             setError(err?.message || 'Failed to send follow-up message.');

@@ -36,8 +36,8 @@ const { mockState } = vi.hoisted(() => ({
         pruneExpired: vi.fn(),
         clearDraft: vi.fn(),
         addFromPaste: vi.fn(),
-        removeImage: vi.fn(),
-        clearImages: vi.fn(),
+        removeAttachment: vi.fn(),
+        clearAttachments: vi.fn(),
         richTextValue: '',
         richTextSetValueCalls: [] as Array<[string, number?]>,
     },
@@ -123,24 +123,18 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useChatWindowActions', ()
     }),
 }));
 
-// useImagePaste
-vi.mock('../../../../src/server/spa/client/react/hooks/useImagePaste', () => ({
-    useImagePaste: () => ({
+// useFileAttachments
+vi.mock('../../../../src/server/spa/client/react/hooks/useFileAttachments', () => ({
+    useFileAttachments: () => ({
+        attachments: [],
         images: [],
         addFromPaste: mockState.addFromPaste,
-        removeImage: mockState.removeImage,
-        clearImages: mockState.clearImages,
-    }),
-}));
-
-// useTextPaste
-vi.mock('../../../../src/server/spa/client/react/hooks/useTextPaste', () => ({
-    useTextPaste: () => ({
-        pastedContent: null,
-        charCount: 0,
-        previewLines: [],
-        addFromPaste: vi.fn(),
-        clearPaste: vi.fn(),
+        addFromFileInput: vi.fn(),
+        removeAttachment: mockState.removeAttachment,
+        clearAttachments: mockState.clearAttachments,
+        error: null,
+        clearError: vi.fn(),
+        toPayload: () => [],
     }),
 }));
 
@@ -370,8 +364,8 @@ beforeEach(() => {
     mockState.pruneExpired.mockReset();
     mockState.clearDraft.mockReset();
     mockState.addFromPaste.mockReset();
-    mockState.removeImage.mockReset();
-    mockState.clearImages.mockReset();
+    mockState.removeAttachment.mockReset();
+    mockState.clearAttachments.mockReset();
     mockState.richTextValue = '';
     mockState.richTextSetValueCalls = [];
     // JSDOM polyfills
@@ -1039,7 +1033,7 @@ describe('ActivityChatDetail', () => {
             });
         });
 
-        it('clears images on taskId change', async () => {
+        it('clears attachments on taskId change', async () => {
             setupStandardFetch();
             const { rerender } = render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
@@ -1048,7 +1042,7 @@ describe('ActivityChatDetail', () => {
             setupStandardFetch();
             rerender(<Wrap><ActivityChatDetail taskId="task-2" /></Wrap>);
             await waitFor(() => {
-                expect(mockState.clearImages).toHaveBeenCalled();
+                expect(mockState.clearAttachments).toHaveBeenCalled();
             });
         });
     });

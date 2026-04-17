@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Button, SuggestionChips } from '../shared';
+import { useEffect, useRef, type RefObject } from 'react';
+import { Button, SuggestionChips, SendButton } from '../shared';
 import { AttachmentPreviews } from '../shared/AttachmentPreviews';
 import { cn } from '../shared/cn';
 import { RichTextInput } from '../shared/RichTextInput';
@@ -9,6 +9,7 @@ import { useModifierKey } from '../hooks/useModifierKey';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
+import type { ChatAttachment } from '../types/attachments';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -25,7 +26,7 @@ export interface FollowUpInputAreaProps {
     onRetry: () => void;
     onStop?: () => void;
     skills: SkillItem[];
-    /** Unified file attachments (replaces images) */
+    /** Unified file attachments */
     attachments: ChatAttachment[];
     onAttachmentPaste: (e: React.ClipboardEvent) => void;
     onAttachmentRemove: (id: string) => void;
@@ -82,9 +83,11 @@ export function FollowUpInputArea({
     slashCommands,
     hideModeSelector = false,
 }: FollowUpInputAreaProps) {
-    // Hidden file input for the + button
+    const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    // Sync programmatic followUpInput changes (draft restore, clear after send) to the editor.
+    const modHeld = useModifierKey(inputWrapperRef as RefObject<HTMLElement>);
+
+    // Sync programmatic followUpInput changes(draft restore, clear after send) to the editor.
     // Guard prevents re-setting when the change originated from the user typing.
     // skipNextSyncRef is set by selectSkill callers so the effect does not overwrite the cursor
     // position that selectSkill already placed synchronously via ref.current.setValue(text, cursor).
@@ -150,6 +153,20 @@ export function FollowUpInputArea({
                 <div className="text-xs text-[#f14c4c]" data-testid="attachment-error">{attachmentError}</div>
             )}
             <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
+                {/* Hidden file input for the + button */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    data-testid="file-input-hidden"
+                    onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                            onAttachmentFiles(e.target.files);
+                        }
+                        e.target.value = '';
+                    }}
+                />
                 {!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">
                     {/* Mobile: icon-only button that cycles modes on tap */}
                     <button
@@ -185,7 +202,7 @@ export function FollowUpInputArea({
                 >
                     +
                 </button>
-                <div className="relative flex-1 min-w-0">
+                <div ref={inputWrapperRef} className="relative flex-1 min-w-0">
                     <RichTextInput
                         ref={richTextRef}
                         disabled={inputDisabled}

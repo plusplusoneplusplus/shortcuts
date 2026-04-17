@@ -206,7 +206,7 @@ describe('NewChatArea', () => {
         expect(btn.disabled).toBe(true);
     });
 
-    it('shows spinner text while sending', async () => {
+    it('shows Stop button while sending', async () => {
         let resolvePost: (v: any) => void;
         mockFetch.mockReturnValueOnce(new Promise(r => { resolvePost = r; }));
 
@@ -220,7 +220,8 @@ describe('NewChatArea', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId('new-chat-send-btn').textContent).toBe('...');
+            expect(screen.getByTestId('new-chat-stop-btn')).toBeTruthy();
+            expect(screen.queryByTestId('new-chat-send-btn')).toBeNull();
         });
 
         // Resolve the fetch
@@ -228,7 +229,8 @@ describe('NewChatArea', () => {
             resolvePost!({ ok: true, json: async () => ({ id: 'done' }) });
         });
 
-        expect(screen.getByTestId('new-chat-send-btn').textContent).toBe('Send');
+        expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
+        expect(screen.queryByTestId('new-chat-stop-btn')).toBeNull();
     });
 
     it('Enter key triggers send', async () => {
