@@ -88,6 +88,10 @@ export function AdminPanel() {
     // My Life settings
     const [myLifeEnabled, setMyLifeEnabled] = useState(false);
 
+    // Client pool settings
+    const [clientPoolEnabled, setClientPoolEnabled] = useState(false);
+    const [clientPoolSize, setClientPoolSize] = useState('3');
+
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
 
@@ -157,6 +161,8 @@ export function AdminPanel() {
             setNotesEnabled(resolved.notes?.enabled ?? false);
             setMyWorkEnabled(resolved.myWork?.enabled ?? false);
             setMyLifeEnabled(resolved.myLife?.enabled ?? false);
+            setClientPoolEnabled(resolved.clientPool?.enabled ?? false);
+            setClientPoolSize(String(resolved.clientPool?.size ?? 3));
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -345,6 +351,52 @@ export function AdminPanel() {
             setDisplaySaving(false);
         }
     }, [myLifeEnabled, addToast]);
+
+    const handleToggleClientPoolEnabled = useCallback(async (newValue: boolean) => {
+        const prevEnabled = clientPoolEnabled;
+        setClientPoolEnabled(newValue);
+        setDisplaySaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'clientPool.enabled': newValue }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Settings saved', 'success');
+        } catch (err: any) {
+            setClientPoolEnabled(prevEnabled);
+            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+        } finally {
+            setDisplaySaving(false);
+        }
+    }, [clientPoolEnabled, addToast]);
+
+    const handleChangeClientPoolSize = useCallback(async (newSize: number) => {
+        const prevSize = clientPoolSize;
+        setClientPoolSize(String(newSize));
+        setDisplaySaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'clientPool.size': newSize }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Settings saved', 'success');
+        } catch (err: any) {
+            setClientPoolSize(prevSize);
+            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+        } finally {
+            setDisplaySaving(false);
+        }
+    }, [clientPoolSize, addToast]);
 
     const handleChangeToolCompactness= useCallback(async (newValue: 0 | 1 | 2 | 3) => {
         const prevValue = toolCompactness;
@@ -1061,6 +1113,58 @@ export function AdminPanel() {
                                     </div>
                                     <div className="text-xs text-[#616161] dark:text-[#999]">
                                         When enabled, a 🏠 icon appears in the top bar for a personal My Life page with goals, journal, and life admin.
+                                    </div>
+                                </div>
+
+                                <hr className={dividerClass} />
+
+                                {/* Client Pool section */}
+                                <div className="space-y-1.5">
+                                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Client Pool</div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Pre-warm Copilot SDK clients for faster first response">
+                                            Enable client pool
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['clientPool.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={clientPoolEnabled}
+                                                    disabled={displaySaving}
+                                                    onChange={e => void handleToggleClientPoolEnabled(e.target.checked)}
+                                                    data-testid="toggle-clientpool-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    {clientPoolEnabled && (
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <label className={labelClass} title="Number of pre-warmed clients to keep ready">Pool size</label>
+                                            <div className="flex items-center gap-2">
+                                                <SourceBadge source={sources['clientPool.size']} />
+                                                <input
+                                                    type="number"
+                                                    className={inputClass + ' !w-20'}
+                                                    min={1}
+                                                    max={10}
+                                                    value={clientPoolSize}
+                                                    disabled={displaySaving}
+                                                    onChange={e => {
+                                                        const v = Number(e.target.value);
+                                                        if (!isNaN(v) && v >= 1 && v <= 10) {
+                                                            void handleChangeClientPoolSize(v);
+                                                        }
+                                                    }}
+                                                    data-testid="input-clientpool-size"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="text-xs text-[#616161] dark:text-[#999]">
+                                        Pre-warms Copilot SDK clients so the first message gets a faster response. Disable to create clients on demand.
                                     </div>
                                 </div>
 
