@@ -15,6 +15,7 @@ import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItem } from '../work-items/types';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
+import { upsertWorkItemTaskFile } from '../work-items/work-item-task-file';
 import { buildPlanFromContext } from '../work-items/plan-template';
 import type { ProcessWebSocketServer } from '../websocket';
 
@@ -24,10 +25,14 @@ export interface WorkItemExecutionRouteContext {
     processStore: ProcessStore;
     enqueue?: EnqueueFunction;
     getWsServer?: () => ProcessWebSocketServer;
+    /** CoC data directory (e.g. ~/.coc). When provided, a placeholder task file is
+     *  created in the workspace tasks folder as soon as execution is enqueued so that
+     *  the Tasks panel shows live activity immediately. */
+    dataDir?: string;
 }
 
 export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteContext): void {
-    const { routes, workItemStore, processStore, enqueue, getWsServer } = ctx;
+    const { routes, workItemStore, processStore, enqueue, getWsServer, dataDir } = ctx;
 
     // POST /api/workspaces/:id/work-items/:wid/execute — Execute work item
     routes.push({
@@ -63,11 +68,29 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 }
             } catch { /* non-fatal — commit tracking will be skipped */ }
 
+            // Create a placeholder task file so the item appears immediately in the
+            // Tasks panel with a live "in-progress" indicator.
+            let taskFilePath: string | undefined;
+            if (dataDir) {
+                try {
+                    taskFilePath = await upsertWorkItemTaskFile(
+                        dataDir, repoId, workItemId, item.title, 'in-progress',
+                    );
+                    // Notify the Tasks panel about the new file.
+                    getWsServer?.()?.broadcastProcessEvent({
+                        type: 'tasks-changed',
+                        workspaceId: repoId,
+                        timestamp: Date.now(),
+                    });
+                } catch { /* non-fatal — live visibility is best-effort */ }
+            }
+
             try {
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
                     model: body.model,
                     mode: body.mode,
                     headBefore,
+                    taskFilePath,
                 });
                 const updatedItem = await workItemStore.getWorkItem(workItemId);
                 if (updatedItem) {

@@ -787,5 +787,145 @@ describe('MultiRepoQueueExecutorBridge', () => {
         });
     });
 
+    // ========================================================================
+    // enqueue() — workspaceId-to-rootPath routing
+    // ========================================================================
+
+    describe('enqueue() workspace routing', () => {
+        it('routes to the correct per-repo queue when workspaceId is resolved via store', async () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            const wsRootPath = '/repo/wi-workspace';
+            (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+                { id: 'ws-wi-test', rootPath: wsRootPath, name: 'WI Workspace' },
+            ]);
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+
+            const resolvedPath = require('path').resolve(wsRootPath);
+            bridge.getOrCreateBridge(wsRootPath);
+
+            const taskId = await bridge.enqueue({
+                type: 'run-workflow',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: 'Work item task',
+                    workspaceId: 'ws-wi-test',
+                    workItemId: 'wi-1',
+                } as any,
+                config: {},
+            });
+
+            const manager = registry.getQueueForRepo(resolvedPath);
+            expect(manager.getTask(taskId)).toBeDefined();
+            expect(manager.getTask(taskId)!.type).toBe('run-workflow');
+
+            bridge.dispose();
+        });
+
+        it('sets workingDirectory on payload when resolved via workspaceId', async () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            const wsRootPath = '/repo/wi-dir';
+            (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+                { id: 'ws-wi-dir', rootPath: wsRootPath, name: 'WI Dir' },
+            ]);
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            bridge.getOrCreateBridge(wsRootPath);
+
+            const input: any = {
+                type: 'run-workflow',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    workspaceId: 'ws-wi-dir',
+                    workItemId: 'wi-2',
+                },
+                config: {},
+            };
+
+            await bridge.enqueue(input);
+
+            expect(input.payload.workingDirectory).toBe(require('path').resolve(wsRootPath));
+
+            bridge.dispose();
+        });
+
+        it('falls back to process.cwd() when workspaceId is unknown', async () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore(); // getWorkspaces returns []
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+
+            const taskId = await bridge.enqueue({
+                type: 'run-workflow',
+                priority: 'normal',
+                payload: { kind: 'chat', workspaceId: 'unknown-ws', workItemId: 'wi-3' } as any,
+                config: {},
+            });
+
+            expect(taskId).toBeDefined();
+
+            bridge.dispose();
+        });
+
+        it('prefers workingDirectory over workspaceId when both are present', async () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+                { id: 'ws-prefer-wd', rootPath: '/repo/from-ws', name: 'From WS' },
+            ]);
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+
+            const explicitPath = require('path').resolve('/repo/explicit-wd');
+            bridge.getOrCreateBridge(explicitPath);
+
+            const taskId = await bridge.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    workingDirectory: explicitPath,
+                    workspaceId: 'ws-prefer-wd', // should be ignored since workingDirectory is set
+                } as any,
+                config: {},
+            });
+
+            const manager = registry.getQueueForRepo(explicitPath);
+            expect(manager.getTask(taskId)).toBeDefined();
+
+            bridge.dispose();
+        });
+
+        it('two work items from the same workspace share the same queue', async () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            const wsRootPath = '/repo/serial-ws';
+            (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+                { id: 'ws-serial', rootPath: wsRootPath, name: 'Serial WS' },
+            ]);
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+            bridge.getOrCreateBridge(wsRootPath);
+
+            const id1 = await bridge.enqueue({
+                type: 'run-workflow', priority: 'normal',
+                payload: { kind: 'chat', workspaceId: 'ws-serial', workItemId: 'wi-a' } as any, config: {},
+            });
+            const id2 = await bridge.enqueue({
+                type: 'run-workflow', priority: 'normal',
+                payload: { kind: 'chat', workspaceId: 'ws-serial', workItemId: 'wi-b' } as any, config: {},
+            });
+
+            const resolvedPath = require('path').resolve(wsRootPath);
+            const manager = registry.getQueueForRepo(resolvedPath);
+            expect(manager.getTask(id1)).toBeDefined();
+            expect(manager.getTask(id2)).toBeDefined();
+            // Only one queue for this workspace — not two phantom queues
+            expect(registry.getAllQueues().size).toBe(1);
+
+            bridge.dispose();
+        });
+    });
+
 });
 

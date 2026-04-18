@@ -57,6 +57,7 @@ import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
 import { handleWorkItemTaskComplete } from '../work-items/work-item-executor';
 import type { EnqueueFunction } from '../work-items/work-item-executor';
+import { upsertWorkItemTaskFile, toTaskFileStatus } from '../work-items/work-item-task-file';
 import { execGit } from '@plusplusoneplusplus/forge';
 import type { WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
@@ -204,7 +205,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const enqueueForWorkItems = bridge.enqueue.bind(bridge) as EnqueueFunction;
     registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
-    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
+    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
 
     // Wire queue task completion → work item status update + commit collection
@@ -247,6 +248,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                         }
                     }
                 }
+
+                // Update the placeholder task file to reflect the final execution status.
+                try {
+                    const fileStatus = toTaskFileStatus(taskStatus as 'completed' | 'failed' | 'cancelled');
+                    await upsertWorkItemTaskFile(dataDir, updatedItem.repoId, workItemId, updatedItem.title, fileStatus);
+                    getWsServer?.()?.broadcastProcessEvent({
+                        type: 'tasks-changed',
+                        workspaceId: updatedItem.repoId,
+                        timestamp: Date.now(),
+                    });
+                } catch { /* non-fatal — placeholder file update is best-effort */ }
 
                 // Re-fetch after commit attachment so the broadcast includes commits
                 const itemToSend = commitsAttached

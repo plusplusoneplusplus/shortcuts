@@ -47,9 +47,17 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
     const outputs = new Map<string, string[]>();
     const completions = new Map<string, { status: string; duration: string }>();
 
+    const workspaces = new Map<string, WorkspaceInfo>();
+
     if (options?.initialProcesses) {
         for (const proc of options.initialProcesses) {
             processes.set(proc.id, { ...proc });
+        }
+    }
+
+    if (options?.initialWorkspaces) {
+        for (const ws of options.initialWorkspaces) {
+            workspaces.set(ws.id, { ...ws });
         }
     }
 
@@ -84,10 +92,14 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             processes.clear();
             return count;
         }),
-        getWorkspaces: vi.fn(async () => []),
-        registerWorkspace: vi.fn(async () => {}),
-        removeWorkspace: vi.fn(async () => false),
-        updateWorkspace: vi.fn(async () => undefined),
+        getWorkspaces: vi.fn(async () => Array.from(workspaces.values())),
+        registerWorkspace: vi.fn(async (ws: WorkspaceInfo) => { workspaces.set(ws.id, { ...ws }); }),
+        removeWorkspace: vi.fn(async (id: string) => workspaces.delete(id)),
+        updateWorkspace: vi.fn(async (id: string, updates: Partial<WorkspaceInfo>) => {
+            const existing = workspaces.get(id);
+            if (existing) workspaces.set(id, { ...existing, ...updates });
+            return undefined;
+        }),
         getWikis: vi.fn(async () => []),
         registerWiki: vi.fn(async () => {}),
         removeWiki: vi.fn(async () => false),

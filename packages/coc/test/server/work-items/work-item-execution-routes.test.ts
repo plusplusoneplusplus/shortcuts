@@ -18,7 +18,7 @@ const mockProcessStore = {
     getProcess: vi.fn(),
 } as any;
 
-function makeServer(enqueue?: any): http.Server {
+function makeServer(enqueue?: any, opts: { dataDir?: string } = {}): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({ routes, workItemStore: store });
     registerWorkItemExecutionRoutes({
@@ -26,6 +26,7 @@ function makeServer(enqueue?: any): http.Server {
         workItemStore: store,
         processStore: mockProcessStore,
         enqueue,
+        dataDir: opts.dataDir,
     });
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
@@ -248,6 +249,96 @@ describe('Work Item Execution Routes', () => {
                 processId: 'nonexistent',
             });
             expect(res.status).toBe(404);
+        });
+    });
+
+    describe('POST /execute — task file creation', () => {
+        let capturedEnqueuePayload: any;
+        let enqueue: any;
+
+        beforeEach(async () => {
+            tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-taskfile-'));
+            store = new FileWorkItemStore({ dataDir: tmpDir });
+            capturedEnqueuePayload = undefined;
+            enqueue = vi.fn().mockImplementation(async (task: any) => {
+                capturedEnqueuePayload = task;
+                return 'task-xyz';
+            });
+            // dataDir is set so the placeholder file mechanism is active
+            server = makeServer(enqueue, { dataDir: tmpDir });
+            await startServer();
+        });
+
+        afterEach(async () => {
+            await stopServer();
+            await fs.rm(tmpDir, { recursive: true, force: true });
+        });
+
+        async function createAndReadyWorkItem(title = 'Placeholder Test Item'): Promise<string> {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, {
+                status: 'readyToExecute',
+            });
+            return id;
+        }
+
+        it('creates a placeholder .impl.md file when dataDir is provided', async () => {
+            const id = await createAndReadyWorkItem('My Task');
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {});
+            expect(res.status).toBe(200);
+
+            const expectedPath = path.join(
+                tmpDir, 'repos', REPO_ID, 'tasks', 'work-items', `${id}.impl.md`,
+            );
+            const contents = await fs.readFile(expectedPath, 'utf-8');
+            expect(contents).toContain('status: in-progress');
+            expect(contents).toContain('# My Task');
+        });
+
+        it('includes context.files[0] pointing to the task file in the enqueued payload', async () => {
+            const id = await createAndReadyWorkItem('Context Files Test');
+
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {});
+
+            expect(capturedEnqueuePayload).toBeDefined();
+            const files: string[] = capturedEnqueuePayload.payload?.context?.files ?? [];
+            expect(files.length).toBeGreaterThan(0);
+            expect(files[0]).toContain(id);
+            expect(files[0]).toContain('.impl.md');
+        });
+
+        it('does not create a task file when dataDir is not provided', async () => {
+            // Rebuild server WITHOUT dataDir
+            await stopServer();
+            server = makeServer(enqueue);
+            await startServer();
+
+            const id = await createAndReadyWorkItem('No DataDir Task');
+
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {});
+
+            const expectedPath = path.join(
+                tmpDir, 'repos', REPO_ID, 'tasks', 'work-items', `${id}.impl.md`,
+            );
+            await expect(fs.access(expectedPath)).rejects.toThrow();
+        });
+
+        it('still executes successfully even if task file creation fails', async () => {
+            // dataDir points to a non-existent read-only path — file creation will fail
+            const readOnlyDir = path.join(tmpDir, 'nonexistent', 'no-perms');
+            await stopServer();
+            server = makeServer(enqueue, { dataDir: readOnlyDir });
+            await startServer();
+
+            const id = await createAndReadyWorkItem('Resilient Task');
+
+            // Should still return 200 — file creation failure is non-fatal
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {});
+            expect(res.status).toBe(200);
+            expect(res.body.taskId).toBe('task-xyz');
         });
     });
 });

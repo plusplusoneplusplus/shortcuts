@@ -21,6 +21,13 @@ export interface ExecuteWorkItemOptions {
     headBefore?: string;
     /** Whether this execution was triggered automatically after comment resolution. */
     autoReExecuted?: boolean;
+    /**
+     * Absolute path to a pre-created task placeholder file.
+     * When provided, the path is included in the task payload as `context.files[0]`
+     * so the Tasks panel's `useQueueActivity` hook can display a live indicator
+     * for this work item while it is executing.
+     */
+    taskFilePath?: string;
 }
 
 export interface EnqueueFunction {
@@ -95,6 +102,9 @@ export async function executeWorkItem(
             workspaceId: item.repoId,
             sessionCategory: 'generating-code' satisfies SessionCategory,
             workItemId: item.id,
+            ...(options?.taskFilePath
+                ? { context: { files: [options.taskFilePath] } }
+                : {}),
         },
         config: {
             ...(options?.model ? { model: options.model } : {}),

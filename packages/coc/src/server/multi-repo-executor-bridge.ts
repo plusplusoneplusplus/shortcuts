@@ -292,13 +292,35 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
 
     /**
      * Enqueue a task into the correct per-repo queue.
-     * Routes based on payload.workingDirectory. Falls back to process.cwd().
-     * Implements the optional enqueue() method of QueueExecutorBridge so that
-     * api-handler.ts can route follow-ups through the queue instead of firing
-     * them directly.
+     *
+     * Routing priority:
+     * 1. `payload.workingDirectory` — used directly if present.
+     * 2. `payload.workspaceId` — resolved to a rootPath via the process store
+     *    (same logic as `resolveRootPath` in queue-shared.ts). The resolved path
+     *    is also written back to `payload.workingDirectory` for downstream use.
+     * 3. Falls back to `process.cwd()` when neither is available.
+     *
+     * This ensures work-item tasks (which carry `workspaceId` but no
+     * `workingDirectory`) are routed to their workspace-specific queue and
+     * therefore serialized per workspace (exclusiveConcurrency = 1).
      */
     async enqueue(input: CreateTaskInput): Promise<string> {
-        const rootPath = (input.payload as any)?.workingDirectory || process.cwd();
+        let rootPath = (input.payload as any)?.workingDirectory as string | undefined;
+
+        if (!rootPath) {
+            const workspaceId = (input.payload as any)?.workspaceId as string | undefined;
+            if (workspaceId) {
+                const workspaces = await this.store.getWorkspaces();
+                const ws = workspaces.find((w: any) => w.id === workspaceId);
+                if (ws?.rootPath) {
+                    rootPath = path.resolve(ws.rootPath);
+                    (input.payload as any).workingDirectory = rootPath;
+                }
+            }
+        }
+
+        if (!rootPath) rootPath = process.cwd();
+
         this.getOrCreateBridge(rootPath);
         if (!input.repoId) {
             input.repoId = this.getRepoIdForPath(rootPath);

@@ -203,7 +203,7 @@ describe('handleWorkItemTaskComplete', () => {
 });
 
 describe('executeWorkItem sessionCategory', () => {
-    it('sets sessionCategory to generating-code in the task payload', async () => {
+    it('sets sessionCategory to generating-code in the enqueue payload', async () => {
         const item = makeWorkItem({ id: 'wi-cat-payload', status: 'readyToExecute' });
         await store.addWorkItem(item);
 
@@ -278,5 +278,49 @@ describe('executeWorkItem title', () => {
         const updated = await store.getWorkItem('wi-auto-title', 'test-repo');
         expect(updated!.executionHistory![0].title).toBe('Code Implement');
         expect(updated!.executionHistory![0].autoReExecuted).toBe(true);
+    });
+});
+
+describe('executeWorkItem taskFilePath (live task visibility)', () => {
+    it('includes taskFilePath in context.files when provided', async () => {
+        const item = makeWorkItem({ id: 'wi-taskfile-1', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-tf-1');
+        const taskFilePath = '/data/repos/ws-abc/tasks/work-items/wi-taskfile-1.impl.md';
+        await executeWorkItem('wi-taskfile-1', store, enqueue, { taskFilePath });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.context).toEqual({ files: [taskFilePath] });
+    });
+
+    it('omits context.files when taskFilePath is not provided', async () => {
+        const item = makeWorkItem({ id: 'wi-taskfile-2', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-tf-2');
+        await executeWorkItem('wi-taskfile-2', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.context).toBeUndefined();
+    });
+
+    it('includes taskFilePath alongside other payload fields', async () => {
+        const item = makeWorkItem({
+            id: 'wi-taskfile-3',
+            status: 'readyToExecute',
+            plan: { version: 1, content: 'Do stuff', updatedAt: '' },
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-tf-3');
+        const taskFilePath = '/data/repos/ws-xyz/tasks/work-items/wi-taskfile-3.impl.md';
+        await executeWorkItem('wi-taskfile-3', store, enqueue, { taskFilePath, model: 'gpt-4' });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.workItemId).toBe('wi-taskfile-3');
+        expect(call.payload.workspaceId).toBe('test-repo');
+        expect(call.payload.context).toEqual({ files: [taskFilePath] });
+        expect(call.config.model).toBe('gpt-4');
     });
 });
