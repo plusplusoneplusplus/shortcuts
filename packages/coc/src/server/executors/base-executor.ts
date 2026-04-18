@@ -83,8 +83,9 @@ export abstract class BaseExecutor {
     /** Delete all session state for a process in one atomic operation. */
     protected cleanupSession(processId: string): void {
         this.sessions.delete(processId);
-        // Release the cached CopilotClient (if any) so the child process is stopped
-        this.clientCache?.release(processId).catch(() => {});
+        // Mark the cached client as idle — starts the idle timer so follow-ups
+        // can reuse the same child process without re-spawning.
+        this.clientCache?.markIdle(processId);
     }
 
     // ========================================================================

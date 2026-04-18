@@ -103,7 +103,7 @@ export class ExecutorRegistry {
         this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.noteChatExecutor = new NoteChatExecutor(store, chatOpts, options.dataDir);
         this.memoryAggregateExecutor = new MemoryAggregateExecutor(store, options.dataDir ?? '');
-        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded);
+        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, this.clientCache);
     }
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */

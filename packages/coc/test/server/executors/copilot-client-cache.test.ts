@@ -2,10 +2,11 @@
  * Tests for CopilotClientCache
  *
  * Verifies:
- * - Client is created on first call and reused on subsequent calls
+ * - Client is created on first acquire and reused on subsequent calls
  * - Cache hit/miss behavior
+ * - Acquire pauses idle timer, markIdle restarts it
  * - Cleanup on release (process end)
- * - Idle timeout auto-disposal
+ * - Idle timeout auto-disposal only after markIdle
  * - disposeAll on server shutdown
  * - Graceful handling of missing aiService
  */
@@ -53,15 +54,15 @@ describe('CopilotClientCache', () => {
     });
 
     // ========================================================================
-    // getOrCreate
+    // acquire (formerly getOrCreate)
     // ========================================================================
 
-    describe('getOrCreate', () => {
+    describe('acquire', () => {
         it('creates a new client on first call', async () => {
             const { service, mockClient } = createMockAIService();
             cache.setAIService(service as any);
 
-            const client = await cache.getOrCreate('proc-1', '/repo');
+            const client = await cache.acquire('proc-1', '/repo');
 
             expect(service.createClient).toHaveBeenCalledOnce();
             expect(service.createClient).toHaveBeenCalledWith('/repo');
@@ -73,8 +74,9 @@ describe('CopilotClientCache', () => {
             const { service, mockClient } = createMockAIService();
             cache.setAIService(service as any);
 
-            const first = await cache.getOrCreate('proc-1', '/repo');
-            const second = await cache.getOrCreate('proc-1', '/repo');
+            const first = await cache.acquire('proc-1', '/repo');
+            cache.markIdle('proc-1');
+            const second = await cache.acquire('proc-1', '/repo');
 
             expect(service.createClient).toHaveBeenCalledOnce();
             expect(first).toBe(second);
@@ -92,8 +94,8 @@ describe('CopilotClientCache', () => {
             };
             cache.setAIService(service as any);
 
-            const first = await cache.getOrCreate('proc-1', '/repo-a');
-            const second = await cache.getOrCreate('proc-2', '/repo-b');
+            const first = await cache.acquire('proc-1', '/repo-a');
+            const second = await cache.acquire('proc-2', '/repo-b');
 
             expect(service.createClient).toHaveBeenCalledTimes(2);
             expect(first).toBe(client1);
@@ -102,9 +104,17 @@ describe('CopilotClientCache', () => {
         });
 
         it('throws when aiService is not set', async () => {
-            await expect(cache.getOrCreate('proc-1')).rejects.toThrow(
+            await expect(cache.acquire('proc-1')).rejects.toThrow(
                 'aiService not set',
             );
+        });
+
+        it('getOrCreate is an alias for acquire', async () => {
+            const { service, mockClient } = createMockAIService();
+            cache.setAIService(service as any);
+
+            const client = await cache.getOrCreate('proc-1', '/repo');
+            expect(client).toBe(mockClient);
         });
     });
 
@@ -117,10 +127,10 @@ describe('CopilotClientCache', () => {
             expect(cache.has('proc-1')).toBe(false);
         });
 
-        it('returns true after getOrCreate', async () => {
+        it('returns true after acquire', async () => {
             const { service } = createMockAIService();
             cache.setAIService(service as any);
-            await cache.getOrCreate('proc-1');
+            await cache.acquire('proc-1');
 
             expect(cache.has('proc-1')).toBe(true);
         });
@@ -128,7 +138,7 @@ describe('CopilotClientCache', () => {
         it('returns false after release', async () => {
             const { service } = createMockAIService();
             cache.setAIService(service as any);
-            await cache.getOrCreate('proc-1');
+            await cache.acquire('proc-1');
             await cache.release('proc-1');
 
             expect(cache.has('proc-1')).toBe(false);
@@ -143,7 +153,7 @@ describe('CopilotClientCache', () => {
         it('stops the client and removes it from cache', async () => {
             const { service, mockClient } = createMockAIService();
             cache.setAIService(service as any);
-            await cache.getOrCreate('proc-1');
+            await cache.acquire('proc-1');
 
             await cache.release('proc-1');
 
@@ -166,8 +176,8 @@ describe('CopilotClientCache', () => {
             };
             cache.setAIService(service as any);
 
-            await cache.getOrCreate('proc-1');
-            await cache.getOrCreate('proc-2');
+            await cache.acquire('proc-1');
+            await cache.acquire('proc-2');
             await cache.release('proc-1');
 
             expect(client1.stop).toHaveBeenCalledOnce();
@@ -180,10 +190,39 @@ describe('CopilotClientCache', () => {
             const { service, mockClient } = createMockAIService();
             mockClient.stop.mockRejectedValue(new Error('stop failed'));
             cache.setAIService(service as any);
-            await cache.getOrCreate('proc-1');
+            await cache.acquire('proc-1');
 
             // Should not throw
             await expect(cache.release('proc-1')).resolves.toBeUndefined();
+            expect(cache.has('proc-1')).toBe(false);
+        });
+    });
+
+    // ========================================================================
+    // markIdle
+    // ========================================================================
+
+    describe('markIdle', () => {
+        it('is a no-op for unknown processId', () => {
+            // Should not throw
+            cache.markIdle('unknown');
+        });
+
+        it('starts the idle timer', async () => {
+            const { service, mockClient } = createMockAIService();
+            cache.setAIService(service as any);
+            await cache.acquire('proc-1');
+
+            cache.markIdle('proc-1');
+
+            // Before timeout: still cached
+            vi.advanceTimersByTime(59_000);
+            expect(cache.has('proc-1')).toBe(true);
+
+            // After timeout: auto-released
+            vi.advanceTimersByTime(2_000);
+            await vi.runAllTimersAsync();
+            expect(mockClient.stop).toHaveBeenCalledOnce();
             expect(cache.has('proc-1')).toBe(false);
         });
     });
@@ -193,40 +232,77 @@ describe('CopilotClientCache', () => {
     // ========================================================================
 
     describe('idle timeout', () => {
-        it('auto-disposes client after idle timeout', async () => {
+        it('does NOT auto-dispose while client is active (acquired)', async () => {
             const { service, mockClient } = createMockAIService();
             cache.setAIService(service as any);
-            await cache.getOrCreate('proc-1');
+            await cache.acquire('proc-1');
 
+            // No markIdle — client is active, no idle timer running
+            vi.advanceTimersByTime(120_000); // 2x the timeout
+            await vi.runAllTimersAsync();
+
+            // Client must still be alive
+            expect(mockClient.stop).not.toHaveBeenCalled();
             expect(cache.has('proc-1')).toBe(true);
+        });
 
-            // Advance time past the idle timeout
+        it('auto-disposes after markIdle + idle timeout', async () => {
+            const { service, mockClient } = createMockAIService();
+            cache.setAIService(service as any);
+            await cache.acquire('proc-1');
+
+            // AI call completes — mark idle
+            cache.markIdle('proc-1');
+
             vi.advanceTimersByTime(60_001);
-            // Give the async release a tick to complete
             await vi.runAllTimersAsync();
 
             expect(mockClient.stop).toHaveBeenCalledOnce();
             expect(cache.has('proc-1')).toBe(false);
         });
 
-        it('resets idle timer on each getOrCreate call', async () => {
+        it('acquire cancels idle timer (follow-up arrives before timeout)', async () => {
             const { service, mockClient } = createMockAIService();
             cache.setAIService(service as any);
-            await cache.getOrCreate('proc-1');
+            await cache.acquire('proc-1');
 
-            // Advance 50 seconds (under the 60s timeout)
+            // AI call completes — mark idle
+            cache.markIdle('proc-1');
+
+            // 50 seconds pass — follow-up arrives
             vi.advanceTimersByTime(50_000);
             expect(cache.has('proc-1')).toBe(true);
 
-            // Re-access (resets timer)
-            await cache.getOrCreate('proc-1');
+            // Acquire for follow-up — cancels idle timer
+            await cache.acquire('proc-1');
 
-            // Advance another 50 seconds (total 100s from first, but 50s from reset)
+            // Another 50 seconds — old timer would have fired, but was cancelled
+            vi.advanceTimersByTime(50_000);
+            await vi.runAllTimersAsync();
+            expect(cache.has('proc-1')).toBe(true);
+            expect(mockClient.stop).not.toHaveBeenCalled();
+        });
+
+        it('markIdle resets idle timer on each call', async () => {
+            const { service, mockClient } = createMockAIService();
+            cache.setAIService(service as any);
+            await cache.acquire('proc-1');
+            cache.markIdle('proc-1');
+
+            // 50 seconds pass
+            vi.advanceTimersByTime(50_000);
+            expect(cache.has('proc-1')).toBe(true);
+
+            // Follow-up: acquire then mark idle again
+            await cache.acquire('proc-1');
+            cache.markIdle('proc-1');
+
+            // Another 50 seconds (total 100s from first markIdle, but 50s from second)
             vi.advanceTimersByTime(50_000);
             expect(cache.has('proc-1')).toBe(true);
             expect(mockClient.stop).not.toHaveBeenCalled();
 
-            // Now push past the new timeout
+            // Push past the new timeout
             vi.advanceTimersByTime(11_000);
             await vi.runAllTimersAsync();
 
@@ -237,7 +313,8 @@ describe('CopilotClientCache', () => {
         it('clears idle timer on manual release', async () => {
             const { service, mockClient } = createMockAIService();
             cache.setAIService(service as any);
-            await cache.getOrCreate('proc-1');
+            await cache.acquire('proc-1');
+            cache.markIdle('proc-1');
 
             // Release before timeout fires
             await cache.release('proc-1');
@@ -267,9 +344,9 @@ describe('CopilotClientCache', () => {
             };
             cache.setAIService(service as any);
 
-            await cache.getOrCreate('proc-1');
-            await cache.getOrCreate('proc-2');
-            await cache.getOrCreate('proc-3');
+            await cache.acquire('proc-1');
+            await cache.acquire('proc-2');
+            await cache.acquire('proc-3');
             expect(cache.size).toBe(3);
 
             await cache.disposeAll();
@@ -291,8 +368,8 @@ describe('CopilotClientCache', () => {
             };
             cache.setAIService(service as any);
 
-            await cache.getOrCreate('proc-1');
-            await cache.getOrCreate('proc-2');
+            await cache.acquire('proc-1');
+            await cache.acquire('proc-2');
 
             // Should not throw despite client1 failure
             await expect(cache.disposeAll()).resolves.toBeUndefined();
@@ -315,13 +392,17 @@ describe('CopilotClientCache', () => {
             cache.setAIService(service as any);
 
             // Initial message
-            const c1 = await cache.getOrCreate('proc-1', '/repo');
+            const c1 = await cache.acquire('proc-1', '/repo');
+            cache.markIdle('proc-1');
             // Follow-up 1
-            const c2 = await cache.getOrCreate('proc-1', '/repo');
+            const c2 = await cache.acquire('proc-1', '/repo');
+            cache.markIdle('proc-1');
             // Follow-up 2
-            const c3 = await cache.getOrCreate('proc-1', '/repo');
+            const c3 = await cache.acquire('proc-1', '/repo');
+            cache.markIdle('proc-1');
             // Follow-up 3
-            const c4 = await cache.getOrCreate('proc-1', '/repo');
+            const c4 = await cache.acquire('proc-1', '/repo');
+            cache.markIdle('proc-1');
 
             expect(service.createClient).toHaveBeenCalledOnce();
             expect(c1).toBe(c2);
@@ -334,12 +415,36 @@ describe('CopilotClientCache', () => {
             const { service, mockClient } = createMockAIService();
             cache.setAIService(service as any);
 
-            await cache.getOrCreate('proc-1');
-            await cache.getOrCreate('proc-1'); // follow-up
+            await cache.acquire('proc-1');
+            cache.markIdle('proc-1');
+            await cache.acquire('proc-1'); // follow-up
             await cache.release('proc-1');     // process completed
 
             expect(mockClient.stop).toHaveBeenCalledOnce();
             expect(cache.size).toBe(0);
+        });
+
+        it('full lifecycle: acquire → markIdle → idle timeout releases', async () => {
+            const { service, mockClient } = createMockAIService();
+            cache.setAIService(service as any);
+
+            // Simulate: initial chat → follow-up → done
+            await cache.acquire('proc-1');
+            cache.markIdle('proc-1');
+
+            vi.advanceTimersByTime(30_000); // 30s later: follow-up
+            await cache.acquire('proc-1');
+            cache.markIdle('proc-1');
+
+            vi.advanceTimersByTime(30_000); // 30s later: no more follow-ups
+            expect(cache.has('proc-1')).toBe(true);
+            expect(mockClient.stop).not.toHaveBeenCalled();
+
+            vi.advanceTimersByTime(31_000); // 60s from last markIdle
+            await vi.runAllTimersAsync();
+
+            expect(mockClient.stop).toHaveBeenCalledOnce();
+            expect(cache.has('proc-1')).toBe(false);
         });
     });
 
@@ -353,7 +458,8 @@ describe('CopilotClientCache', () => {
             const { service, mockClient } = createMockAIService();
             defaultCache.setAIService(service as any);
 
-            await defaultCache.getOrCreate('proc-1');
+            await defaultCache.acquire('proc-1');
+            defaultCache.markIdle('proc-1');
 
             // 9 minutes — should still be cached
             vi.advanceTimersByTime(9 * 60 * 1000);

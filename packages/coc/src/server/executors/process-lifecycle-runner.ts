@@ -48,6 +48,7 @@ import {
     isChatPayload,
     isRunWorkflowPayload,
 } from '../task-types';
+import type { CopilotClientCache } from './copilot-client-cache';
 import { recordUserMessage } from '../memory/conversation-recorder';
 import { BaseExecutor } from './base-executor';
 
@@ -136,8 +137,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
+        clientCache?: CopilotClientCache,
     ) {
-        super(store, dataDir);
+        super(store, dataDir, clientCache);
         this.onGenerateTitle = onGenerateTitle;
     }
 

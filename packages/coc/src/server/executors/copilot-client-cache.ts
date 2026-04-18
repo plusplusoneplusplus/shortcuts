@@ -6,10 +6,12 @@
  * follow-up messages.
  *
  * Lifecycle:
- * - On first AI call for a process: `getOrCreate()` spawns a client and caches it.
- * - On follow-up: `getOrCreate()` returns the cached client (same child process).
- * - An idle timer (default 10 min) auto-disposes unused clients.
- * - `release(processId)` stops the client when a process ends.
+ * - On first AI call for a process: `acquire()` spawns a client and caches it.
+ *   The idle timer is **paused** while the client is acquired (active).
+ * - When the AI call completes: `markIdle(processId)` starts the idle timer.
+ *   If no follow-up arrives within the timeout, the client is auto-released.
+ * - On follow-up: `acquire()` returns the cached client and pauses the timer.
+ * - `release(processId)` stops the client immediately (e.g. on process end).
  * - `disposeAll()` stops every cached client on server shutdown.
  *
  * Clients are scoped per `processId` (not shared across repos) to preserve
@@ -24,6 +26,8 @@ export interface CachedClient {
     client: CopilotClient;
     idleTimer: ReturnType<typeof setTimeout> | null;
     workingDirectory: string | undefined;
+    /** True while an AI call is in progress — idle timer must not run. */
+    active: boolean;
 }
 
 export interface CopilotClientCacheOptions {
@@ -42,19 +46,33 @@ export class CopilotClientCache {
         this.idleTimeoutMs = options?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     }
 
-    /** Bind the AI service used to create clients. Must be called before `getOrCreate`. */
+    /** Bind the AI service used to create clients. Must be called before `acquire`. */
     setAIService(aiService: CopilotSDKService): void {
         this.aiService = aiService;
     }
 
     /**
-     * Return a cached CopilotClient for the given process, or create and cache
-     * a new one. Resets the idle timer on every call.
+     * Acquire a CopilotClient for the given process: return the cached one or
+     * create a new one.  The idle timer is **cleared** — the client is
+     * considered active until `markIdle()` or `release()` is called.
+     *
+     * @deprecated Use `acquire()` instead of `getOrCreate()` — same behavior.
      */
     async getOrCreate(processId: string, workingDirectory?: string): Promise<CopilotClient> {
+        return this.acquire(processId, workingDirectory);
+    }
+
+    /**
+     * Acquire a CopilotClient for the given process: return the cached one or
+     * create a new one.  The idle timer is **cleared** while the client is
+     * active — it will not be auto-released mid-call.
+     */
+    async acquire(processId: string, workingDirectory?: string): Promise<CopilotClient> {
         const entry = this.cache.get(processId);
         if (entry) {
-            this.resetIdleTimer(processId, entry);
+            // Client is now active — clear the idle timer so we don't kill it
+            this.clearIdleTimer(entry);
+            entry.active = true;
             return entry.client;
         }
 
@@ -66,11 +84,22 @@ export class CopilotClientCache {
         logger.debug(LogCategory.AI, `[ClientCache] Creating client for process ${processId}`);
         const client = await this.aiService.createClient(workingDirectory);
 
-        const cached: CachedClient = { client, idleTimer: null, workingDirectory };
+        const cached: CachedClient = { client, idleTimer: null, workingDirectory, active: true };
         this.cache.set(processId, cached);
-        this.resetIdleTimer(processId, cached);
 
         return client;
+    }
+
+    /**
+     * Mark a client as idle — starts (or restarts) the idle timer.
+     * Called when an AI call completes and the client is returned to the pool.
+     * If the process is not in the cache, this is a no-op.
+     */
+    markIdle(processId: string): void {
+        const entry = this.cache.get(processId);
+        if (!entry) return;
+        entry.active = false;
+        this.resetIdleTimer(processId, entry);
     }
 
     /** Check whether a client is cached for the given process. */
@@ -94,9 +123,7 @@ export class CopilotClientCache {
         const logger = getLogger();
         logger.debug(LogCategory.AI, `[ClientCache] Releasing client for process ${processId}`);
 
-        if (entry.idleTimer) {
-            clearTimeout(entry.idleTimer);
-        }
+        this.clearIdleTimer(entry);
         this.cache.delete(processId);
 
         try {
@@ -118,7 +145,7 @@ export class CopilotClientCache {
 
         await Promise.allSettled(
             entries.map(async ([, entry]) => {
-                if (entry.idleTimer) clearTimeout(entry.idleTimer);
+                this.clearIdleTimer(entry);
                 try {
                     await entry.client.stop();
                 } catch {
@@ -132,10 +159,15 @@ export class CopilotClientCache {
     // Internal
     // ========================================================================
 
-    private resetIdleTimer(processId: string, entry: CachedClient): void {
+    private clearIdleTimer(entry: CachedClient): void {
         if (entry.idleTimer) {
             clearTimeout(entry.idleTimer);
+            entry.idleTimer = null;
         }
+    }
+
+    private resetIdleTimer(processId: string, entry: CachedClient): void {
+        this.clearIdleTimer(entry);
         entry.idleTimer = setTimeout(() => {
             const logger = getLogger();
             logger.debug(LogCategory.AI, `[ClientCache] Idle timeout for process ${processId}`);
