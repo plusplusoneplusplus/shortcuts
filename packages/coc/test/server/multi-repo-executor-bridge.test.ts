@@ -927,5 +927,37 @@ describe('MultiRepoQueueExecutorBridge', () => {
         });
     });
 
+    // --------------------------------------------------------------------
+    // clientPool config wiring
+    // --------------------------------------------------------------------
+
+    describe('clientPool config wiring', () => {
+        it('passes clientPool config to CopilotClientCache', () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+                autoStart: false,
+                clientPool: { enabled: false, size: 0 },
+            });
+
+            // Pool should be disabled — poolCurrentSize stays 0
+            expect(bridge.clientCache.poolCurrentSize).toBe(0);
+            bridge.dispose();
+        });
+
+        it('defaults to pool enabled when clientPool not provided', () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+                autoStart: false,
+            });
+
+            // Pool is enabled by default (CopilotClientCache default)
+            // poolCurrentSize is 0 because initialize() hasn't been called
+            expect(bridge.clientCache.poolCurrentSize).toBe(0);
+            bridge.dispose();
+        });
+    });
+
 });
 

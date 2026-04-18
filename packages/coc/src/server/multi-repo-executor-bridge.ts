@@ -70,7 +70,11 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         this.defaultOptions = defaultOptions;
 
         // Single shared client cache across all repos (keyed by processId, globally unique)
-        this.clientCache = new CopilotClientCache();
+        const poolOpts = defaultOptions.clientPool;
+        this.clientCache = new CopilotClientCache(poolOpts ? {
+            poolEnabled: poolOpts.enabled,
+            poolSize: poolOpts.size,
+        } : undefined);
         const aiService = defaultOptions.aiService ?? getCopilotSDKService();
         this.clientCache.setAIService(aiService);
 

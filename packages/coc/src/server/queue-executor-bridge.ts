@@ -20,6 +20,8 @@ export interface CLITaskExecutorOptions {
     getWsServer?: () => import('./websocket').ProcessWebSocketServer | undefined;
     /** Shared CopilotClient cache (optional — when provided, AI calls reuse clients). */
     clientCache?: CopilotClientCache;
+    /** Client pool configuration from resolved config. */
+    clientPool?: { enabled: boolean; size: number };
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
