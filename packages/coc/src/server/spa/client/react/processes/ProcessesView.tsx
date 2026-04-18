@@ -205,9 +205,8 @@ export function ProcessesView() {
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
-                <div id="view-processes" className={`${heightClass} flex flex-col overflow-hidden`}>
-                    <SkeletonList count={6} className="pt-4" />
-                </div>
+                <ChatPrefsSync history={history} workspaceId={workspaceId} />
+                <ProcessesViewSkeleton heightClass={heightClass} />
             </ChatPreferencesProvider>
         );
     }

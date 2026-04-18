@@ -72,35 +72,47 @@ describe('queueReducer', () => {
             expect(result.queueInitialized).toBe(true);
         });
 
-        it('replaces existing history when action history is empty array (clears stale entries)', () => {
-            const existingHistory = [{ id: 'done-1', status: 'done' }];
-            const state = makeState({ history: existingHistory });
+        it('updates history when provided in queue payload', () => {
+            const state = makeState();
             const result = queueReducer(state, {
                 type: 'QUEUE_UPDATED',
-                queue: { queued: [], running: [], history: [], stats: undefined },
+                queue: {
+                    queued: [],
+                    running: [],
+                    stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
+                },
             });
-            expect(result.history).toEqual([]);
+            // QUEUE_UPDATED no longer carries history — it is managed solely via SET_HISTORY
+            expect(result.history).toHaveLength(0);
         });
 
-        it('preserves existing history when action history is undefined', () => {
-            const existingHistory = [{ id: 'done-1', status: 'done' }];
-            const state = makeState({ history: existingHistory });
+        it('preserves existing history when QUEUE_UPDATED fires', () => {
+            const state = makeState({ history: [{ id: 'existing' }] });
             const result = queueReducer(state, {
                 type: 'QUEUE_UPDATED',
-                queue: { queued: [], running: [], history: undefined, stats: undefined },
+                queue: {
+                    queued: [],
+                    running: [],
+                    stats: { queued: 0, running: 0, total: 0, isPaused: false, isDraining: false },
+                },
             });
-            expect(result.history).toEqual(existingHistory);
+            // QUEUE_UPDATED preserves history items not in running/queued
+            expect(result.history).toHaveLength(1);
+            expect(result.history[0].id).toBe('existing');
         });
 
-        it('replaces history when action history is non-empty', () => {
-            const existingHistory = [{ id: 'done-old', status: 'done' }];
-            const newHistory = [{ id: 'done-new', status: 'done' }];
-            const state = makeState({ history: existingHistory });
+        it('evicts history items that now appear in running (follow-up re-queue)', () => {
+            const state = makeState({ history: [{ id: 'h1' }, { id: 'h2' }] });
             const result = queueReducer(state, {
                 type: 'QUEUE_UPDATED',
-                queue: { queued: [], running: [], history: newHistory, stats: undefined },
+                queue: {
+                    queued: [],
+                    running: [{ id: 'h1' }],
+                    stats: { queued: 0, running: 1, total: 1, isPaused: false, isDraining: false },
+                },
             });
-            expect(result.history).toEqual(newHistory);
+            expect(result.history).toHaveLength(1);
+            expect(result.history[0].id).toBe('h2');
         });
     });
 
@@ -128,54 +140,14 @@ describe('queueReducer', () => {
             expect(result.repoQueueMap['repo-B'].queued[0].id).toBe('b1');
         });
 
-        it('replaces existing repo history when action history is empty array (clears stale entries)', () => {
-            const existingHistory = [{ id: 'done-1', status: 'done' }];
-            const state = makeState({
-                repoQueueMap: { 'repo-A': { queued: [], running: [], history: existingHistory, stats: makeState().stats } },
-            });
-            const result = queueReducer(state, {
-                type: 'REPO_QUEUE_UPDATED',
-                repoId: 'repo-A',
-                queue: { queued: [], running: [], history: [], stats: undefined },
-            });
-            expect(result.repoQueueMap['repo-A'].history).toEqual([]);
-        });
-
-        it('preserves existing repo history when action history is undefined', () => {
-            const existingHistory = [{ id: 'done-1', status: 'done' }];
-            const state = makeState({
-                repoQueueMap: { 'repo-A': { queued: [], running: [], history: existingHistory, stats: makeState().stats } },
-            });
-            const result = queueReducer(state, {
-                type: 'REPO_QUEUE_UPDATED',
-                repoId: 'repo-A',
-                queue: { queued: [], running: [], history: undefined, stats: undefined },
-            });
-            expect(result.repoQueueMap['repo-A'].history).toEqual(existingHistory);
-        });
-
-        it('replaces repo history when action history is non-empty', () => {
-            const existingHistory = [{ id: 'done-old', status: 'done' }];
-            const newHistory = [{ id: 'done-new', status: 'done' }];
-            const state = makeState({
-                repoQueueMap: { 'repo-A': { queued: [], running: [], history: existingHistory, stats: makeState().stats } },
-            });
-            const result = queueReducer(state, {
-                type: 'REPO_QUEUE_UPDATED',
-                repoId: 'repo-A',
-                queue: { queued: [], running: [], history: newHistory, stats: undefined },
-            });
-            expect(result.repoQueueMap['repo-A'].history).toEqual(newHistory);
-        });
-
-        it('starts with empty history for new repo when action history is empty', () => {
+        it('does not include history in per-repo queue', () => {
             const state = makeState();
             const result = queueReducer(state, {
                 type: 'REPO_QUEUE_UPDATED',
-                repoId: 'repo-new',
-                queue: { queued: [], running: [], history: [], stats: undefined },
+                repoId: 'repo-A',
+                queue: { queued: [], running: [] },
             });
-            expect(result.repoQueueMap['repo-new'].history).toEqual([]);
+            expect((result.repoQueueMap['repo-A'] as any).history).toBeUndefined();
         });
     });
 

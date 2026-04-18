@@ -31,8 +31,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
     const { dispatch: queueDispatch } = useQueue();
-    const { state: appState } = useApp();
-    const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const { state: appState, dispatch: appDispatch } = useApp();
 
     async function handleSend() {
         const trimmed = input.trim();

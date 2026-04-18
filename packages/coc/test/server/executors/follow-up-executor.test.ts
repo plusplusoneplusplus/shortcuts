@@ -45,7 +45,10 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
     withRepoInstructions: (...args: any[]) => mockWithRepoInstructions(...args),
     buildConversationHistoryContext: (...args: any[]) => mockBuildConversationHistoryContext(...args),
     buildFollowUpSuggestionsAddon: (...args: any[]) => mockBuildFollowUpSuggestionsAddon(...args),
-    buildCreateWorkItemAddon: (...args: any[]) => mockBuildCreateWorkItemAddon(...args),
+    prependSelectedSkillsDirective: (prompt: string, selectedSkills?: string[]) =>
+        selectedSkills && selectedSkills.length > 0
+            ? `<selected_skills>\nThe user explicitly selected these skills: ${selectedSkills.join(', ')}.\nUse the native skill system and invoke each selected skill immediately before proceeding with the request.\nDo not inline or restate the skill bodies yourself.\n</selected_skills>\n\n${prompt}`
+            : prompt,
 }));
 
 const mockEmitMessageSteering = vi.fn();

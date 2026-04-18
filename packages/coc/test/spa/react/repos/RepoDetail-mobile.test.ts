@@ -181,10 +181,35 @@ describe('RepoDetail mobile: tab scroll affordance', () => {
     });
 });
 
-describe('RepoDetail mobile: back button removed (repo switching via TopBar)', () => {
-    it('does not render a back button (repo name is in TopBar)', () => {
+describe('RepoDetail mobile: tappable repo name (back navigation)', () => {
+    it('does not render the old chevron-left back button', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-back-btn"');
-        expect(REPO_DETAIL_SOURCE).not.toContain('aria-label="Back to repos"');
+    });
+
+    it('renders tappable repo name with data-testid="repo-name-back"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-name-back"');
+    });
+
+    it('tappable repo name is only shown on mobile (gated on isMobile)', () => {
+        const nameBackIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-name-back"');
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, nameBackIdx - 1000), nameBackIdx);
+        expect(nearby).toContain('isMobile');
+    });
+
+    it('tappable repo name dispatches SET_SELECTED_REPO with null', () => {
+        const nameBackIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-name-back"');
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, nameBackIdx - 400), nameBackIdx + 100);
+        expect(nearby).toContain("type: 'SET_SELECTED_REPO', id: null");
+    });
+
+    it('tappable repo name clears hash', () => {
+        const nameBackIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-name-back"');
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, nameBackIdx - 400), nameBackIdx + 100);
+        expect(nearby).toContain("''");
+    });
+
+    it('tappable repo name has aria-label "Back to repos"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('aria-label="Back to repos"');
     });
 
     it('tappable repo name includes a chevron-down icon as visual cue', () => {

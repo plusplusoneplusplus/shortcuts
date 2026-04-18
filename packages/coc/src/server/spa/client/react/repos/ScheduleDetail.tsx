@@ -129,35 +129,14 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             ⧉ Duplicate
                         </Button>
                         {schedule.source !== 'repo' && (
-                            <>
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    disabled={schedule.isRunning}
-                                    onClick={() => onEdit(schedule.id)}
-                                    aria-label="Edit job"
-                                    data-testid="edit-btn"
-                                >
-                                    ✏ Edit
-                                </Button>
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => onDuplicate(schedule)}
-                                    aria-label="Duplicate job"
-                                    data-testid="duplicate-btn"
-                                >
-                                    ⧉ Duplicate
-                                </Button>
-                                <Button
-                                    variant="danger"
-                                    size="sm"
-                                    onClick={() => onDelete(schedule.id)}
-                                    aria-label="Delete job"
-                                >
-                                    🗑 Delete
-                                </Button>
-                            </>
+                            <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => onDelete(schedule.id)}
+                                aria-label="Delete schedule"
+                            >
+                                🗑 Delete
+                            </Button>
                         )}
                     </div>
 

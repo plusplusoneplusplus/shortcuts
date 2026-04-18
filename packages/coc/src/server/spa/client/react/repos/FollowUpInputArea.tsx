@@ -1,6 +1,8 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { Button, SuggestionChips, SendButton } from '../shared';
-import { AttachmentPreviews } from '../shared/AttachmentPreviews';
+import { ImagePreviews } from '../shared/ImagePreviews';
+import { PastePreview } from '../shared/PastePreview';
+import { AttachedContextPreviews } from '../shared/AttachedContextPreviews';
 import { cn } from '../shared/cn';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
@@ -9,7 +11,7 @@ import { useModifierKey } from '../hooks/useModifierKey';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
-import type { ChatAttachment } from '../types/attachments';
+import type { AttachedContextItem } from '../hooks/useAttachedContext';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -24,21 +26,18 @@ export interface FollowUpInputAreaProps {
     setSelectedMode: (mode: 'ask' | 'plan' | 'autopilot') => void;
     onSend: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     onRetry: () => void;
-    onStop?: () => void;
     skills: SkillItem[];
-    /** Unified file attachments */
-    attachments: ChatAttachment[];
-    onAttachmentPaste: (e: React.ClipboardEvent) => void;
-    onAttachmentRemove: (id: string) => void;
-    onAttachmentFiles: (files: FileList | File[]) => void;
-    /** Attachment validation error */
-    attachmentError: string | null;
-    /** @deprecated Use attachments/onAttachmentPaste/onAttachmentRemove instead */
-    images?: string[];
-    /** @deprecated */
-    onImagePaste?: (e: React.ClipboardEvent) => void;
-    /** @deprecated */
-    onImageRemove?: (index: number) => void;
+    images: string[];
+    onImagePaste: (e: React.ClipboardEvent) => void;
+    onImageRemove: (index: number) => void;
+    pastePreview: {
+        charCount: number;
+        previewLines: string[];
+        onTextPaste: (e: React.ClipboardEvent) => void;
+        clearPaste: () => void;
+    } | null;
+    attachedContext?: AttachedContextItem[];
+    onRemoveAttachedContext?: (id: string) => void;
     task: any;
     slashCommands: {
         handleInputChange: (val: string, cursor: number) => void;
@@ -72,19 +71,18 @@ export function FollowUpInputArea({
     setSelectedMode,
     onSend,
     onRetry,
-    onStop,
     skills,
-    attachments,
-    onAttachmentPaste,
-    onAttachmentRemove,
-    onAttachmentFiles,
-    attachmentError,
+    images,
+    onImagePaste,
+    onImageRemove,
+    pastePreview,
+    attachedContext,
+    onRemoveAttachedContext,
     task,
     slashCommands,
     hideModeSelector = false,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const modHeld = useModifierKey(inputWrapperRef as RefObject<HTMLElement>);
 
     // Sync programmatic followUpInput changes(draft restore, clear after send) to the editor.
@@ -104,12 +102,6 @@ export function FollowUpInputArea({
 
     return (
         <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
-            {(sending || task?.status === 'running') && (
-                <div className="flex items-center gap-2 text-xs text-[#848484] dark:text-[#999]" data-testid="agent-responding-indicator">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />
-                    Agent is thinking...
-                </div>
-            )}
             {resumeFeedback && (
                 <div className={`text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
                     {resumeFeedback.message}
@@ -148,25 +140,18 @@ export function FollowUpInputArea({
                     disabled={inputDisabled}
                 />
             )}
-            <AttachmentPreviews attachments={attachments} onRemove={onAttachmentRemove} />
-            {attachmentError && (
-                <div className="text-xs text-[#f14c4c]" data-testid="attachment-error">{attachmentError}</div>
+            {attachedContext && onRemoveAttachedContext && (
+                <AttachedContextPreviews items={attachedContext} onRemove={onRemoveAttachedContext} />
+            )}
+            <ImagePreviews images={images} onRemove={onImageRemove} />
+            {pastePreview && pastePreview.charCount > 0 && (
+                <PastePreview
+                    charCount={pastePreview.charCount}
+                    previewLines={pastePreview.previewLines}
+                    onDismiss={pastePreview.clearPaste}
+                />
             )}
             <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
-                {/* Hidden file input for the + button */}
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    data-testid="file-input-hidden"
-                    onChange={(e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                            onAttachmentFiles(e.target.files);
-                        }
-                        e.target.value = '';
-                    }}
-                />
                 {!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">
                     {/* Mobile: icon-only button that cycles modes on tap */}
                     <button
@@ -190,18 +175,6 @@ export function FollowUpInputArea({
                         ))}
                     </select>
                 </div>}
-                {/* Attach file button */}
-                <button
-                    type="button"
-                    disabled={inputDisabled}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="shrink-0 h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid="attach-file-btn"
-                    aria-label="Attach file"
-                    title="Attach files"
-                >
-                    +
-                </button>
                 <div ref={inputWrapperRef} className="relative flex-1 min-w-0">
                     <RichTextInput
                         ref={richTextRef}
@@ -242,7 +215,10 @@ export function FollowUpInputArea({
                                 }
                             }
                         }}
-                        onPaste={onAttachmentPaste}
+                        onPaste={(e: React.ClipboardEvent) => {
+                            onImagePaste(e);
+                            pastePreview?.onTextPaste(e);
+                        }}
                         data-testid="activity-chat-input"
                     />
                     <SlashCommandMenu
@@ -258,22 +234,11 @@ export function FollowUpInputArea({
                         highlightIndex={slashCommands.highlightIndex}
                     />
                 </div>
-                {(sending || task?.status === 'running') ? (
-                    <button
-                        type="button"
-                        className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
-                        onClick={() => onStop?.()}
-                        data-testid="activity-chat-stop-btn"
-                    >
-                        Stop
-                    </button>
-                ) : (
-                    <SendButton
-                        disabled={inputDisabled}
-                        ctrlHeld={modHeld}
-                        onSend={(dm) => { void onSend(undefined, dm); }}
-                    />
-                )}
+                <SendButton
+                    disabled={inputDisabled}
+                    ctrlHeld={modHeld}
+                    onSend={(dm) => { void onSend(undefined, dm); }}
+                />
             </div>
         </div>
     );

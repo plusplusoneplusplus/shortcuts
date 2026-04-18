@@ -199,91 +199,193 @@ describe('AppContext reducer', () => {
         });
     });
 
-    describe('CACHE_CONVERSATION', () => {
-        it('caches conversation turns', () => {
+    describe('SET_WELCOME_PREFERENCES', () => {
+        it('sets all welcome fields from payload and marks preferencesLoaded', () => {
             const state = makeState();
-            const turns = [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello' }];
-            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns } as AppAction);
-            expect(result.conversationCache['p1']).toBeDefined();
-            expect(result.conversationCache['p1'].turns).toEqual(turns);
+            const result = appReducer(state, {
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: {
+                    hasSeenWelcome: true,
+                    onboardingProgress: { hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: true },
+                    dismissedTips: ['tip-1', 'tip-2'],
+                },
+            });
+            expect(result.hasSeenWelcome).toBe(true);
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: true });
+            expect(result.dismissedTips).toEqual(['tip-1', 'tip-2']);
+            expect(result.preferencesLoaded).toBe(true);
         });
 
-        it('rejects stale data with fewer turns than existing cache (cache poisoning guard)', () => {
-            const existingTurns = [
-                { role: 'user', content: 'hi' },
-                { role: 'assistant', content: 'hello' },
-                { role: 'user', content: 'follow-up' },
-                { role: 'assistant', content: 'response' },
-            ];
+        it('keeps defaults when payload fields are undefined', () => {
             const state = makeState({
-                conversationCache: { 'p1': { turns: existingTurns, cachedAt: Date.now() } },
+                hasSeenWelcome: true,
+                onboardingProgress: { hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false },
+                dismissedTips: ['tip-a'],
             });
-            const staleTurns = [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello' }];
-            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns: staleTurns } as AppAction);
-            // Should preserve existing cache, not overwrite with stale data
-            expect(result.conversationCache['p1'].turns).toEqual(existingTurns);
+            const result = appReducer(state, { type: 'SET_WELCOME_PREFERENCES', payload: {} });
+            expect(result.hasSeenWelcome).toBe(true);
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false });
+            expect(result.dismissedTips).toEqual(['tip-a']);
+            expect(result.preferencesLoaded).toBe(true);
+        });
+
+        it('merges partial onboardingProgress without clobbering other fields', () => {
+            const state = makeState({
+                onboardingProgress: { hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false },
+            });
+            const result = appReducer(state, {
+                type: 'SET_WELCOME_PREFERENCES',
+                payload: { onboardingProgress: { hasOpenedWiki: true } },
+            });
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: true, hasUsedChat: false });
+        });
+    });
+
+    describe('DISMISS_WELCOME', () => {
+        it('sets hasSeenWelcome to true', () => {
+            const state = makeState({ hasSeenWelcome: false });
+            const result = appReducer(state, { type: 'DISMISS_WELCOME' });
+            expect(result.hasSeenWelcome).toBe(true);
+        });
+
+        it('fires a PATCH fetch to /preferences', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState();
+            appReducer(state, { type: 'DISMISS_WELCOME' });
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ hasSeenWelcome: true }),
+                }),
+            );
+            vi.unstubAllGlobals();
+        });
+    });
+
+    describe('UPDATE_ONBOARDING', () => {
+        it('merges partial progress without clobbering other fields', () => {
+            const state = makeState({
+                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+            });
+            const result = appReducer(state, { type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } });
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false });
+        });
+
+        it('fires a PATCH fetch with the merged progress', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState({
+                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: false },
+            });
+            appReducer(state, { type: 'UPDATE_ONBOARDING', payload: { hasUsedChat: true } });
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: true } }),
+                }),
+            );
+            vi.unstubAllGlobals();
+        });
+    });
+
+    describe('DISMISS_TIP', () => {
+        it('appends a new tipId to dismissedTips', () => {
+            const state = makeState({ dismissedTips: ['tip-a'] });
+            const result = appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-b' } });
+            expect(result.dismissedTips).toEqual(['tip-a', 'tip-b']);
+        });
+
+        it('fires a PATCH fetch with the updated tips', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState({ dismissedTips: [] });
+            appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-x' } });
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ dismissedTips: ['tip-x'] }),
+                }),
+            );
+            vi.unstubAllGlobals();
+        });
+
+        it('returns same state reference for duplicate tipId (no-op)', () => {
+            const state = makeState({ dismissedTips: ['tip-a'] });
+            const result = appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-a' } });
             expect(result).toBe(state);
         });
 
-        it('accepts update with same or more turns than existing cache', () => {
-            const existingTurns = [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello' }];
-            const state = makeState({
-                conversationCache: { 'p1': { turns: existingTurns, cachedAt: Date.now() - 1000 } },
-            });
-            const newTurns = [
-                { role: 'user', content: 'hi' },
-                { role: 'assistant', content: 'hello' },
-                { role: 'user', content: 'more' },
-            ];
-            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns: newTurns } as AppAction);
-            expect(result.conversationCache['p1'].turns).toEqual(newTurns);
+        it('does not fire a PATCH for duplicate tipId', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState({ dismissedTips: ['tip-a'] });
+            appReducer(state, { type: 'DISMISS_TIP', payload: { tipId: 'tip-a' } });
+            expect(fetchSpy).not.toHaveBeenCalled();
+            vi.unstubAllGlobals();
+        });
+    });
+
+    describe('SET_SELECTED_NOTE_PATH', () => {
+        it('updates selectedNotePath', () => {
+            const state = makeState({ selectedNotePath: null });
+            const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: 'Notebook/Page1' });
+            expect(result.selectedNotePath).toBe('Notebook/Page1');
         });
 
-        it('rejects stale data with same turn count but less total content', () => {
-            const existingTurns = [
-                { role: 'user', content: 'hi' },
-                { role: 'assistant', content: 'This is a complete response with lots of detail.' },
-            ];
-            const state = makeState({
-                conversationCache: { 'p1': { turns: existingTurns, cachedAt: Date.now() } },
-            });
-            const staleTurns = [
-                { role: 'user', content: 'hi' },
-                { role: 'assistant', content: '' }, // stale: content not flushed yet
-            ];
-            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns: staleTurns } as AppAction);
-            expect(result.conversationCache['p1'].turns).toEqual(existingTurns);
+        it('returns same state reference when path is unchanged (no-op)', () => {
+            const state = makeState({ selectedNotePath: 'Notebook/Page1' });
+            const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: 'Notebook/Page1' });
             expect(result).toBe(state);
         });
 
-        it('accepts data with same turn count but equal or more content', () => {
-            const existingTurns = [
-                { role: 'user', content: 'hi' },
-                { role: 'assistant', content: 'hello' },
-            ];
+        it('returns same state reference when setting null to null', () => {
+            const state = makeState({ selectedNotePath: null });
+            const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: null });
+            expect(result).toBe(state);
+        });
+    });
+
+    describe('COMPLETE_TOUR', () => {
+        it('sets hasCompletedTour to true in onboardingProgress', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'COMPLETE_TOUR' });
+            expect(result.onboardingProgress.hasCompletedTour).toBe(true);
+        });
+
+        it('preserves other onboardingProgress fields', () => {
             const state = makeState({
-                conversationCache: { 'p1': { turns: existingTurns, cachedAt: Date.now() - 1000 } },
+                onboardingProgress: {
+                    hasRunWorkflow: true,
+                    hasOpenedWiki: false,
+                    hasUsedChat: true,
+                    settingsVisited: false,
+                    dismissed: false,
+                    hasCompletedTour: false,
+                },
             });
-            const newTurns = [
-                { role: 'user', content: 'hi' },
-                { role: 'assistant', content: 'hello, how are you?' }, // more content
-            ];
-            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns: newTurns } as AppAction);
-            expect(result.conversationCache['p1'].turns).toEqual(newTurns);
+            const result = appReducer(state, { type: 'COMPLETE_TOUR' });
+            expect(result.onboardingProgress.hasRunWorkflow).toBe(true);
+            expect(result.onboardingProgress.hasUsedChat).toBe(true);
+            expect(result.onboardingProgress.hasCompletedTour).toBe(true);
         });
 
-        it('stores dirty flag from action', () => {
-            const turns = [{ role: 'user', content: 'hi' }];
-            const state = makeState({});
-            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns, dirty: true } as AppAction);
-            expect(result.conversationCache['p1'].dirty).toBe(true);
-        });
-
-        it('defaults dirty to false when not provided', () => {
-            const turns = [{ role: 'user', content: 'hi' }];
-            const state = makeState({});
-            const result = appReducer(state, { type: 'CACHE_CONVERSATION', processId: 'p1', turns } as AppAction);
-            expect(result.conversationCache['p1'].dirty).toBe(false);
+        it('fires a PATCH fetch with the merged onboardingProgress', () => {
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+            vi.stubGlobal('fetch', fetchSpy);
+            const state = makeState();
+            appReducer(state, { type: 'COMPLETE_TOUR' });
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: expect.stringContaining('"hasCompletedTour":true'),
+                }),
+            );
+            vi.unstubAllGlobals();
         });
     });
 });

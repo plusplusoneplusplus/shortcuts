@@ -199,22 +199,11 @@ export function parseTasksDeepLink(hash: string): string | null {
 export function parseNoteDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'chats' && parts[3]) {
-        return decodeURIComponent(parts[3]);
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'notes' && parts[3]) {
+        return parts.slice(3).map(decodeURIComponent).join('/');
     }
     return null;
 }
-
-export function parseTasksDeepLink(hash: string): string | null {
-    const cleaned = hash.replace(/^#/, '');
-    const parts = cleaned.split('/');
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'tasks' && parts[3]) {
-        return decodeURIComponent(parts[3]);
-    }
-    return null;
-}
-
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['chats', 'settings', 'git', 'workflows', 'tasks', 'work-items', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests']);
 
 /**
  * Build a hash string for a note deep-link.

@@ -171,38 +171,23 @@ export function useChatSSE({
             setIsStreaming(false);
         };
 
-        // Guard: prevent finish() from running twice if both 'done' and onerror fire
-        let finished = false;
-
         const finish = (finalStatus: 'completed' | 'failed' | 'cancelled' = 'completed') => {
-            if (finished) return;
-            finished = true;
             closeSSE();
             setBackgroundTasks(null);
-            if (queueDispatch && workspaceId) {
-                queueDispatch({ type: 'REPO_TASK_COMPLETED_OPTIMISTIC', repoId: workspaceId, taskId, status: finalStatus });
-            }
-            setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-            // Await refreshConversation before updating task status and signalling
-            // completion. This ensures processDetails and task.status update atomically,
-            // preventing the stale-render gap where the chat input disappears because
-            // task.status is terminal but conversation data hasn't been fetched yet.
-            refreshConversation(processId).finally(() => {
-                setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
-                onSendComplete();
-            });
+            setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
+            void refreshConversation(processId);
+            // Server drains one pending message on task completion; sync
+            // the queued section from the refreshed process data.
+            setPendingQueue([]);
+            onSendComplete();
         };
 
         es.addEventListener('done', () => finish('completed'));
         es.addEventListener('status', (e: Event) => {
             try {
-                const statusVal = JSON.parse((e as MessageEvent).data)?.status as string;
-                if (statusVal && !['running', 'queued'].includes(statusVal)) {
-                    const mapped: 'completed' | 'failed' | 'cancelled' =
-                        statusVal === 'failed' ? 'failed' :
-                        statusVal === 'cancelled' ? 'cancelled' : 'completed';
-                    finish(mapped);
-                }
+                const status = JSON.parse((e as MessageEvent).data)?.status;
+                if (status && !['running', 'queued'].includes(status))
+                    finish(status as 'completed' | 'failed' | 'cancelled');
             } catch { /* ignore */ }
         });
 

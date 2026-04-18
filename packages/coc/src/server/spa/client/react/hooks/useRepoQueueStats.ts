@@ -13,10 +13,7 @@ export interface RepoQueueStats {
     queued: number;
 }
 
-const isHidden = (t: { type?: string; payload?: any }) => t.type === 'chat' && t.payload?.processId;
-// Work item execution tasks (payload.workItemId) are autonomous, not interactive chat sessions.
-// They appear in the Tasks tab rather than the Chats tab.
-const isChat = (t: { type?: string; payload?: any }) => t.type === 'chat' && !t.payload?.workItemId;
+export const isHidden = (t: { type?: string; payload?: any }) => t.type === 'chat' && t.payload?.processId;
 
 export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
     const { state } = useQueue();

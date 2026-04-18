@@ -11,7 +11,7 @@ import { fetchApi } from '../hooks/useApi';
 import { FirstStepsCard } from '../welcome/FirstStepsCard';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { Button, cn } from '../shared';
-import { ErrorBoundary } from '../shared/ErrorBoundary';
+import { ReposEmptyState } from './ReposEmptyState';
 import { RepoCard } from './RepoCard';
 import { AddRepoDialog } from './AddRepoDialog';
 import { AddFolderDialog } from './AddFolderDialog';

@@ -14,7 +14,9 @@ import { getConversationTurns } from '../chat/chatConversationUtils';
 import { getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
-import { useFileAttachments } from '../hooks/useFileAttachments';
+import { useImagePaste } from '../hooks/useImagePaste';
+import { useTextPaste } from '../hooks/useTextPaste';
+import { useAttachedContext } from '../hooks/useAttachedContext';
 import { useSlashCommands } from './useSlashCommands';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
@@ -59,11 +61,9 @@ export interface ActivityChatDetailProps {
     title?: string;
     /** Hide the ask/plan/autopilot mode selector */
     hideModeSelector?: boolean;
-    /** When true, hides the follow-up input area (read-only execution viewer). */
-    readOnly?: boolean;
 }
 
-export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = true, readOnly = false }: ActivityChatDetailProps) {
+export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -109,7 +109,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const turnsContainerRef = useRef<HTMLDivElement>(null);
     const isInitialLoadRef = useRef(true);
 
-    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+    const textPaste = useTextPaste();
+    const attachedContext = useAttachedContext();
     const { isMobile } = useBreakpoint();
     const selection = useConversationSelection();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
@@ -262,10 +264,13 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         selectedMode,
         selectedModeRef,
         images,
-        clearImages: clearAttachments,
-        toPayload,
+        clearImages,
+        clearPaste: textPaste.clearPaste,
+        getPastedContent: () => textPaste.pastedContent,
         lastFailedMessageRef,
         setTask,
+        getAttachedContext: attachedContext.getItems,
+        clearAttachedContext: attachedContext.clear,
     });
 
     const { stopStreaming } = useChatSSE({
@@ -330,7 +335,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setResumeFeedback(null);
         setSessionTokenLimit(undefined);
         setSessionCurrentTokens(undefined);
-        clearAttachments();
+        clearImages();
+        textPaste.clearPaste();
         stopStreaming();
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
@@ -405,8 +411,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
                 // Check shared conversation cache
                 const cached = appState.conversationCache[taskId];
-                const cacheUsable = cached && (cached.dirty || Date.now() - cached.cachedAt < CACHE_TTL_MS);
-                if (cacheUsable) {
+                if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
+                    setTask(loadedTask);
                     setTurnsAndRef(cached.turns);
                     // Background-refresh metadata
                     fetchApi(`/processes/${encodeURIComponent(pid)}`)
@@ -416,19 +422,13 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                             if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
                                 setSelectedMode(processMode);
                             }
-                            // Refresh turns to catch any missed during streaming
-                            const refreshedTurns = getConversationTurns(data);
-                            if (refreshedTurns.length > 0) {
-                                setTurnsAndRef(prev => {
-                                    if (refreshedTurns.length < prev.length) return prev;
-                                    if (refreshedTurns.length === prev.length) {
-                                        const fetchedLen = refreshedTurns.reduce((s: number, t: ClientConversationTurn) => s + (t.content?.length || 0), 0);
-                                        const currentLen = prev.reduce((s, t) => s + (t.content?.length || 0), 0);
-                                        if (fetchedLen < currentLen) return prev;
-                                    }
-                                    return refreshedTurns;
-                                });
-                            }
+                            // Sync queued follow-ups from server
+                            const serverPending: any[] = data?.process?.pendingMessages ?? [];
+                            setPendingQueue(serverPending.map((m: any) => ({
+                                id: m.id,
+                                content: m.content,
+                                status: 'queued' as const,
+                            })));
                         })
                         .catch(() => { /* metadata refresh is best-effort */ });
                 } else {
@@ -579,14 +579,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         onBack?.();
     };
 
-    const handleStop = async () => {
-        if (!processId) return;
-        setSending(false);
-        try {
-            await fetchApi(`/processes/${encodeURIComponent(processId)}/cancel`, { method: 'POST' });
-        } catch { /* best-effort */ }
-    };
-
     const handleMoveToTop = async () => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(bareTaskId) + '/move-to-top', { method: 'POST' });
         queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
@@ -651,7 +643,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 onFloat={handleFloat}
                 title={title || task?.displayName}
                 wsId={workspaceId}
-                onCreateWorkItem={workspaceId ? () => setShowCreateWorkItem(true) : undefined}
+                turnsContainerRef={turnsContainerRef}
+                isSelecting={selection.isSelecting}
+                onToggleSelecting={selection.toggleSelecting}
             />
             <div className="relative flex-1 min-h-0 flex overflow-x-hidden min-w-0">
                 <ConversationArea
@@ -688,14 +682,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     />
                 )}
             </div>
-            {!readOnly && !isPending && noSessionForFollowUp && (
+            {!isPending && noSessionForFollowUp && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                     <div className="text-[#848484] text-sm text-center">
                         Follow-up chat is not available for this process type.
                     </div>
                 </div>
             )}
-            {!readOnly && !isPending && !noSessionForFollowUp && (
+            {!isPending && !noSessionForFollowUp && (
                 <FollowUpInputArea
                     richTextRef={richTextRef}
                     inputDisabled={inputDisabled}
@@ -709,13 +703,18 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     setSelectedMode={setSelectedMode}
                     onSend={sendFollowUp}
                     onRetry={retryLastMessage}
-                    onStop={handleStop}
                     skills={skills}
-                    attachments={attachments}
-                    onAttachmentPaste={addFromPaste}
-                    onAttachmentRemove={removeAttachment}
-                    onAttachmentFiles={addFromFileInput}
-                    attachmentError={attachmentError}
+                    images={images}
+                    onImagePaste={addFromPaste}
+                    onImageRemove={removeImage}
+                    pastePreview={{
+                        charCount: textPaste.charCount,
+                        previewLines: textPaste.previewLines,
+                        onTextPaste: textPaste.addFromPaste,
+                        clearPaste: textPaste.clearPaste,
+                    }}
+                    attachedContext={attachedContext.items}
+                    onRemoveAttachedContext={attachedContext.remove}
                     task={task}
                     slashCommands={slashCommands}
                     hideModeSelector={hideModeSelector}

@@ -1267,9 +1267,9 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
 
     const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
 
-    it('REPO_TAB_SHORTCUTS maps 9 letters to sub-tabs (wiki hidden)', () => {
-        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(9);
-        expect(REPO_TAB_SHORTCUTS['i']).toBe('work-items');
+    it('REPO_TAB_SHORTCUTS maps 10 letters to sub-tabs (wiki hidden)', () => {
+        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(10);
+        expect(REPO_TAB_SHORTCUTS['i']).toBeUndefined();
     });
 
     it.each([
@@ -1277,8 +1277,8 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
         ['e', 'KeyE', 'explorer'],
         ['p', 'KeyP', 'tasks'],
         ['r', 'KeyR', 'pull-requests'],
-        ['a', 'KeyA', 'chats'],
-        ['w', 'KeyW', 'workflows'],
+        ['a', 'KeyA', 'activity'],
+        ['w', 'KeyW', 'templates'],
         ['s', 'KeyS', 'schedules'],
         ['c', 'KeyC', 'settings'],
     ] as [string, string, string][])('Alt+%s dispatches SET_REPO_SUB_TAB %s', (letter, code, tab) => {

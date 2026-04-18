@@ -127,7 +127,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             queueDispatch({
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: workspaceId,
-                queue: { queued: nextQueued, running: nextRunning, history: nextHistory.length > 0 ? nextHistory : undefined, stats: nextStats },
+                queue: { queued: nextQueued, running: nextRunning, stats: nextStats },
             });
         } catch {
             setRunning([]);
@@ -159,7 +159,31 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         if (!repoQueue) return;
         setRunning(repoQueue.running);
         setQueued(repoQueue.queued);
-        setHistory(prev => nextHistory ?? prev);
+
+        const activeProcessIds = [
+            ...getActiveProcessIds(repoQueue.running),
+            ...getActiveProcessIds(repoQueue.queued),
+        ];
+        const activeProcessIdSet = new Set(activeProcessIds);
+        setHistory(prev => {
+            const next = prev.filter((task: any) => !activeProcessIdSet.has(task.id));
+            return next.length === prev.length ? prev : next;
+        });
+
+        // Detect task departures or arrivals and refetch history.
+        // Departure: a previously-active process disappeared (task completed/failed).
+        // Arrival: a process already in local history became active again (follow-up re-queue).
+        const currIds = activeProcessIds;
+        const prevIds = prevActiveIdsRef.current;
+        const hasDeparture = prevIds.some(id => !activeProcessIdSet.has(id));
+        const historyIds = new Set(history.map((t: any) => t.id));
+        const hasArrivalFromHistory = currIds.some(id => !prevIds.includes(id) && historyIds.has(id));
+        prevActiveIdsRef.current = currIds;
+
+        if (hasDeparture || hasArrivalFromHistory) {
+            fetchHistory();
+        }
+
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
             setPauseReason(repoQueue.stats.pauseReason);
@@ -246,11 +270,8 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         }
     }, [selectedTaskId]);
 
-    // Track unseen activity across all state changes (queued→running→completed etc.)
-    const { unseenTaskIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(
-        workspaceId, history, selectedTaskId, queued, running,
-        { isViewingChats: activeTab === 'chats' },
-    );
+    // Track unseen activity for completed tasks
+    const { unseenProcessIds, markSeen: rawMarkSeen, markAllSeen: rawMarkAllSeen, markTasksSeen: rawMarkTasksSeen, markUnseen: rawMarkUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
     const { markReadByProcessId } = useNotifications();
 
     // Wrap seen-state mutations to refresh badge counts after debounced API flush
@@ -368,9 +389,8 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
-                <div className="flex flex-col h-full overflow-hidden">
-                    <SkeletonList count={5} className="pt-4" />
-                </div>
+                <ChatPrefsSync history={history} workspaceId={workspaceId} />
+                <div className="p-4 text-sm text-[#848484]">Loading queue...</div>
             </ChatPreferencesProvider>
         );
     }
@@ -387,9 +407,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
             isMobile={isMobile}
             now={now}
             workspaceId={workspaceId}
-            activeTab={activeTab}
-            onTabChange={() => {}}
-            unseenTaskIds={unseenTaskIds}
+            unseenProcessIds={unseenProcessIds}
             onMarkAllRead={markTasksSeen}
             onMarkRead={markSeen}
             onMarkUnread={markUnseen}

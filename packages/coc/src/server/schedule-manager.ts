@@ -640,11 +640,7 @@ export class ScheduleManager extends EventEmitter {
                         repoId,
                     });
                     run.taskId = taskId;
-                    run.processId = `queue_${taskId}`;
-                } else if (schedule.targetType === 'work-item') {
-                    if (this.onCreateWorkItem) {
-                        await this.onCreateWorkItem(schedule, repoId);
-                    }
+                    run.processId = toQueueProcessId(taskId);
                 }
             }
 

@@ -34,13 +34,13 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 10 entries', () => {
-        expect(SUB_TABS).toHaveLength(10);
+    it('has exactly 11 entries', () => {
+        expect(SUB_TABS).toHaveLength(11);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'work-items', 'schedules', 'explorer', 'workflows', 'git', 'pull-requests', 'tasks', 'settings', 'wiki']);
+        expect(keys).toEqual(['activity', 'git', 'terminal', 'notes', 'tasks', 'pull-requests', 'settings', 'explorer', 'templates', 'schedules', 'wiki']);
     });
 
     it('includes "wiki" entry with Alt+I shortcut', () => {
@@ -49,8 +49,8 @@ describe('RepoDetail SUB_TABS', () => {
         expect(wikiTab!.shortcut).toBe('Alt+I');
     });
 
-    it('has jobs as the third tab (after work-items)', () => {
-        expect(SUB_TABS[2].key).toBe('schedules');
+    it('has tasks as the fifth tab (after notes)', () => {
+        expect(SUB_TABS[4].key).toBe('tasks');
     });
 
     it('activity is the first entry', () => {
@@ -69,13 +69,13 @@ describe('RepoDetail BASE_VISIBLE_SUB_TABS', () => {
         expect(BASE_VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
     });
 
-    it('has 9 entries (all SUB_TABS minus wiki)', () => {
-        expect(VISIBLE_SUB_TABS).toHaveLength(9);
+    it('has 10 entries (all SUB_TABS minus wiki)', () => {
+        expect(BASE_VISIBLE_SUB_TABS).toHaveLength(10);
     });
 
     it('contains all non-wiki tabs in order', () => {
-        const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'work-items', 'schedules', 'explorer', 'workflows', 'git', 'pull-requests', 'tasks', 'settings']);
+        const keys = BASE_VISIBLE_SUB_TABS.map(t => t.key);
+        expect(keys).toEqual(['activity', 'git', 'terminal', 'notes', 'tasks', 'pull-requests', 'settings', 'explorer', 'templates', 'schedules']);
     });
 
     it('renders visibleSubTabs.map in the tab strip', () => {
@@ -88,10 +88,9 @@ describe('RepoDetail BASE_VISIBLE_SUB_TABS', () => {
 });
 
 describe('RepoDetail Activity tab rendering', () => {
-    it('chats sub-tab renders RepoActivityTab with mode="chats"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chats'");
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab');
-        expect(REPO_DETAIL_SOURCE).toContain('mode="chats"');
+    it('activity sub-tab renders RepoActivityTab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("display: activeSubTab === 'activity' ? undefined : 'none'");
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={ws.id}');
     });
 
     it('activity is in SUB_TABS (visible in tab strip)', () => {

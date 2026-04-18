@@ -67,7 +67,9 @@ export function ProcessesSidebar() {
     const [now, setNow] = useState(Date.now());
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isClearLoading, setIsClearLoading] = useState(false);
-
+    const [enqueueMenuOpen, setEnqueueMenuOpen] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; processId: string } | null>(null);
+    const [renameTarget, setRenameTarget] = useState<{ id: string; title: string } | null>(null);
 
     // Long-press support for legacy process cards (mobile context menu)
     const processLongPressIdRef = useRef<string>('');
@@ -194,40 +196,27 @@ export function ProcessesSidebar() {
 
     const isEmpty = filteredRunning.length === 0 && filteredQueued.length === 0 && filteredLegacy.length === 0;
 
-    const hasMoreProcesses = state.processesOffset < state.processesTotal;
-    const sentinelRef = useRef<HTMLDivElement>(null);
-    const loadingRef = useRef(false);
-
-    const loadMoreProcesses = useCallback(async () => {
-        if (loadingRef.current || !hasMoreProcesses) return;
-        loadingRef.current = true;
-        dispatch({ type: 'SET_PROCESSES_LOADING', loading: true });
-        try {
-            const wsParam = state.workspace !== '__all' ? '&workspace=' + encodeURIComponent(state.workspace) : '';
-            const data = await fetchApi(`/processes/summaries?limit=20&offset=${state.processesOffset}${wsParam}`);
-            if (data?.summaries && Array.isArray(data.summaries)) {
-                dispatch({ type: 'APPEND_PROCESSES', processes: data.summaries, total: data.total ?? state.processesTotal });
-            }
-        } catch { /* ignore */ } finally {
-            loadingRef.current = false;
-        }
-    }, [dispatch, hasMoreProcesses, state.processesOffset, state.workspace, state.processesTotal]);
-
-    // IntersectionObserver for infinite scroll
-    useEffect(() => {
-        const sentinel = sentinelRef.current;
-        if (!sentinel) return;
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0]?.isIntersecting) {
-                    loadMoreProcesses();
-                }
-            },
-            { rootMargin: '200px' },
+    // When search results are active (non-null), render search results view
+    if (state.searchResults !== null) {
+        return (
+            <div className="flex flex-col gap-3 min-h-0 p-2">
+                <SearchResultsView
+                    results={state.searchResults}
+                    loading={state.searchLoading}
+                    onSelectProcess={(processId: string) => {
+                        const nextHash = '#process/' + encodeURIComponent(processId);
+                        if (location.hash !== nextHash) {
+                            location.hash = nextHash;
+                        } else {
+                            dispatch({ type: 'SELECT_PROCESS', id: processId });
+                            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                        }
+                    }}
+                    selectedId={state.selectedId}
+                />
+            </div>
         );
-        observer.observe(sentinel);
-        return () => observer.disconnect();
-    }, [loadMoreProcesses]);
+    }
 
     return (
         <div className="flex flex-col gap-3 min-h-0 p-2">
@@ -391,16 +380,45 @@ export function ProcessesSidebar() {
                 </div>
             )}
 
-            {/* Infinite scroll sentinel + loading indicator */}
-            {hasMoreProcesses && (
-                <div ref={sentinelRef} data-testid="load-more-sentinel" className="flex justify-center py-2">
-                    {state.processesLoading ? (
-                        <span className="text-xs text-[#848484]" data-testid="load-more-spinner">Loading more…</span>
-                    ) : (
-                        <span className="text-xs text-[#848484]">Scroll for more</span>
-                    )}
-                </div>
-            )}
+            {/* Enqueue button with dropdown */}
+            <div className="flex relative">
+                <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG' })}
+                >
+                    + Enqueue
+                </Button>
+                <button
+                    className="ml-1 px-1 text-xs rounded bg-[#0078d4] text-white hover:bg-[#106ebe] dark:bg-[#0e639c] dark:hover:bg-[#1177bb]"
+                    onClick={() => setEnqueueMenuOpen(v => !v)}
+                    data-testid="enqueue-dropdown-toggle"
+                    title="More enqueue options"
+                >
+                    ▾
+                </button>
+                {enqueueMenuOpen && (
+                    <div
+                        className="absolute top-full left-0 mt-1 z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg min-w-[160px]"
+                        data-testid="enqueue-dropdown-menu"
+                    >
+                        <button
+                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
+                            onClick={() => { setEnqueueMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG' }); }}
+                            data-testid="enqueue-chat-task"
+                        >
+                            💬 Chat Task
+                        </button>
+                        <button
+                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
+                            onClick={() => { setEnqueueMenuOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG' }); }}
+                            data-testid="enqueue-run-script"
+                        >
+                            🛠️ Run Script
+                        </button>
+                    </div>
+                )}
+            </div>
 
             {/* History section */}
             <div className="min-h-0">

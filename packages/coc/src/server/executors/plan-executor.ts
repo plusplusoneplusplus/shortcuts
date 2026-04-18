@@ -26,7 +26,7 @@ import {
     withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
-    buildCreateWorkItemAddon,
+    buildSearchConversationsAddon,
 } from './prompt-builder';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
@@ -76,19 +76,13 @@ export class PlanExecutor extends ChatBaseExecutor {
             this.followUpSuggestions.count,
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
-        const createWorkItem = buildCreateWorkItemAddon(
-            this.dataDir,
-            payload.workspaceId,
-            this.getWsServerFn
-                ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
-                : undefined,
-        );
+        const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId);
 
         return {
             agentMode: 'plan' as AgentMode,
             systemMessage,
-            tools: [...followUp.tools, ...updateStatus.tools, ...createWorkItem.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + createWorkItem.suffix,
+            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix,
         };
     }
 }

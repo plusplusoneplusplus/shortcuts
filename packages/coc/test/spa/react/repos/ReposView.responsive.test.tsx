@@ -81,12 +81,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoDetail', () => ({
     SUB_TABS: [
         { key: 'info', label: 'Info' },
         { key: 'git', label: 'Git' },
-        { key: 'work-items', label: 'Work Items' },
-        { key: 'pull-requests', label: 'Pull Requests' },
-        { key: 'workflows', label: 'Workflows' },
-        { key: 'schedules', label: 'Jobs' },
-        { key: 'explorer', label: 'Explorer' },
-        { key: 'settings', label: 'Settings' },
+        { key: 'tasks', label: 'Plans' },
+        { key: 'activity', label: 'Activity' },
+        { key: 'templates', label: 'Templates' },
+        { key: 'schedules', label: 'Schedules' },
+        { key: 'copilot', label: 'Copilot' },
     ],
 }));
 

@@ -42,8 +42,159 @@ export interface ChatHeaderProps {
     title?: string;
     /** Workspace ID for HTML copy (markdown rendering with image path rewriting) */
     wsId?: string;
-    /** Callback to open the "Create Work Item from Chat" dialog */
-    onCreateWorkItem?: () => void;
+    /** Ref to the turns container DOM element for DOM snapshot copy */
+    turnsContainerRef?: React.RefObject<HTMLDivElement | null>;
+    /** Whether turn selection mode is active */
+    isSelecting?: boolean;
+    /** Toggle selection mode on/off */
+    onToggleSelecting?: () => void;
+}
+
+/** Build overflow menu items based on what's hidden at the current container tier */
+function buildOverflowItems(
+    tier: ContainerWidthTier,
+    props: {
+        task: any;
+        loading: boolean;
+        turns: ClientConversationTurn[];
+        isPending: boolean;
+        resumeSessionId: string | null | undefined;
+        resumeLaunching: boolean;
+        onLaunchInteractiveResume: () => void;
+        metadataProcess: any;
+        planPath: string;
+        createdFiles: { filePath: string }[];
+        wsId?: string;
+        sessionTokenLimit: number | undefined;
+        sessionCurrentTokens: number | undefined;
+        sessionModel: string | undefined;
+        variant: 'inline' | 'floating';
+        isPopOut: boolean;
+        isMobile: boolean;
+        isFloatingChat: boolean;
+        taskId: string;
+        onFloat: () => void;
+        onPopOut: () => void;
+        onCopyHtml: () => void;
+        copiedHtml: boolean;
+        onOpenRefs?: () => void;
+        onToggleSelecting?: () => void;
+        isSelecting?: boolean;
+    },
+): OverflowMenuItem[] {
+    if (tier === 'wide') return [];
+
+    const items: OverflowMenuItem[] = [];
+
+    // Copy HTML — always in overflow at < 700px
+    items.push({
+        key: 'copy-html',
+        label: props.copiedHtml ? '✓ Copied HTML' : 'Copy as HTML',
+        icon: <span className="text-[10px]">HTML</span>,
+        onClick: props.onCopyHtml,
+    });
+
+    // Select turns for partial copy
+    if (props.onToggleSelecting && props.turns.length > 0) {
+        items.push({
+            key: 'select-turns',
+            label: props.isSelecting ? 'Cancel selection' : 'Select turns',
+            icon: <span className="text-[10px]">☐</span>,
+            onClick: props.onToggleSelecting,
+        });
+    }
+
+    // Metadata
+    if (!props.isPending && props.metadataProcess) {
+        items.push({
+            key: 'metadata',
+            label: 'Metadata',
+            icon: <span className="text-[10px] font-semibold">i</span>,
+            onClick: () => { /* handled via render */ },
+            render: () => (
+                <ConversationMetadataPopover process={props.metadataProcess} turnsCount={props.turns.length} />
+            ),
+        });
+    }
+
+    // References
+    const refTotal = (props.planPath ? 1 : 0) + (props.createdFiles?.length ?? 0);
+    if (refTotal > 0) {
+        if (props.isMobile && props.onOpenRefs) {
+            // On mobile, open a standalone BottomSheet outside the overflow menu
+            items.push({
+                key: 'references',
+                label: `References (${refTotal})`,
+                onClick: props.onOpenRefs,
+            });
+        } else {
+            items.push({
+                key: 'references',
+                label: `References (${refTotal})`,
+                onClick: () => { /* handled via render */ },
+                render: () => (
+                    <ReferencesDropdown planPath={props.planPath} files={props.createdFiles} wsId={props.wsId} />
+                ),
+            });
+        }
+    }
+
+    // Resume CLI
+    if (!props.isPending && props.resumeSessionId) {
+        items.push({
+            key: 'resume-cli',
+            label: 'Resume CLI',
+            icon: <span className="text-xs">▶</span>,
+            onClick: props.onLaunchInteractiveResume,
+        });
+    }
+
+    // Duration
+    if (props.task?.duration != null) {
+        items.push({
+            key: 'duration',
+            label: `Duration: ${formatDuration(props.task.duration)}`,
+            icon: <span className="text-xs">⏱</span>,
+            onClick: () => {},
+        });
+    }
+
+    // Context window
+    if (props.sessionTokenLimit && props.sessionTokenLimit > 0) {
+        items.push({
+            key: 'context-window',
+            label: 'Context window',
+            onClick: () => {},
+            render: () => (
+                <ContextWindowIndicator
+                    tokenLimit={props.sessionTokenLimit}
+                    currentTokens={props.sessionCurrentTokens}
+                    modelName={props.sessionModel}
+                    className="flex max-w-[240px]"
+                />
+            ),
+        });
+    }
+
+    // Float / Pop-out — only in overflow at narrow (< 500px)
+    if (tier === 'narrow') {
+        if (props.variant !== 'floating' && !props.isPopOut && !props.isMobile && !props.isFloatingChat) {
+            items.push({
+                key: 'float',
+                label: 'Float in window',
+                onClick: props.onFloat,
+            });
+        }
+        if (!props.isPopOut && !props.isMobile && props.variant !== 'floating') {
+            items.push({
+                key: 'popout',
+                label: 'Pop out to new window',
+                onClick: props.onPopOut,
+            });
+        }
+    }
+
+    return items;
 }
 
 export function ChatHeader({
@@ -71,7 +222,9 @@ export function ChatHeader({
     onFloat,
     title,
     wsId,
-    onCreateWorkItem,
+    turnsContainerRef,
+    isSelecting,
+    onToggleSelecting,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -152,12 +305,7 @@ export function ChatHeader({
             <div className="flex items-center gap-2 min-w-0">
                 {onBack && variant !== 'floating' && (
                     <button
-                        className={cn(
-                            "inline-flex items-center gap-1 mr-1",
-                            isMobile
-                                ? "px-1 py-1 rounded-md text-sm text-[#0078d4] dark:text-[#3794ff] hover:text-[#005a9e] dark:hover:text-[#60aeff] transition-colors"
-                                : "px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff]",
-                        )}
+                        className="inline-flex items-center justify-center px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1 flex-shrink-0"
                         onClick={onBack}
                         data-testid="activity-chat-back-btn"
                     >
@@ -172,7 +320,7 @@ export function ChatHeader({
                 </span>
                 {task && (
                     <Badge status={task.status}>
-                        {statusIcon(task.status)} {task.status === 'running' ? 'Thinking' : statusLabel(task.status)}
+                        {statusIcon(task.status)}{isWide ? ` ${statusLabel(task.status)}` : ''}
                     </Badge>
                 )}
                 {/* References, duration, Resume CLI, context window — only in wide tier */}
@@ -201,21 +349,11 @@ export function ChatHeader({
                     </>
                 )}
             </div>
-            <div className="flex items-center gap-2">
-                {onCreateWorkItem && (
-                    <button
-                        title="Create work item from chat"
-                        data-testid="create-work-item-from-chat-btn"
-                        onClick={onCreateWorkItem}
-                        className="inline-flex items-center justify-center p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
-                    >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <rect x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-                            <path d="M5 8h6M8 5v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        </svg>
-                    </button>
-                )}
-                {variant !== 'floating' && !isPopOut && !isMobile && !isFloating(taskId) && (
+
+            {/* Right side */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Float / Popout buttons — shown in wide + medium, hidden in narrow (moved to overflow) */}
+                {showFloatPopout && variant !== 'floating' && !isPopOut && !isMobile && !isFloating(taskId) && (
                     <button
                         title="Float in current window"
                         data-testid="activity-chat-float-btn"

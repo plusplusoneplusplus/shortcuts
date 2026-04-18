@@ -210,251 +210,117 @@ describe('useChatSSE', () => {
         expect(setBackgroundTasks).toHaveBeenCalledWith(null);
     });
 
+    it('sets task status to failed when status SSE event reports failed', async () => {
+        const setTask = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        await act(async () => {
+            MockEventSource.last._emit('status', { status: 'failed' });
+        });
+        // setTask receives an updater function; invoke it to verify the status
+        const updater = setTask.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater).toBeDefined();
+        const result = updater!({ status: 'running' });
+        expect(result.status).toBe('failed');
+    });
+
+    it('sets task status to cancelled when status SSE event reports cancelled', async () => {
+        const setTask = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask })));
+        await act(async () => {
+            MockEventSource.last._emit('status', { status: 'cancelled' });
+        });
+        const updater = setTask.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
+        expect(updater).toBeDefined();
+        const result = updater!({ status: 'running' });
+        expect(result.status).toBe('cancelled');
+    });
+
     it('sets task status to completed on done event', async () => {
         const setTask = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setTask })));
-        await act(async () => { MockEventSource.last._emit('done', {}); });
-        // setTask receives an updater — call it with a running task
-        const updater = setTask.mock.calls.find(([arg]) => typeof arg === 'function')?.[0];
+        await act(async () => {
+            MockEventSource.last._emit('done', {});
+        });
+        const updater = setTask.mock.calls.find(
+            (call: any[]) => typeof call[0] === 'function',
+        )?.[0];
         expect(updater).toBeDefined();
-        expect(updater({ status: 'running' })).toEqual({ status: 'completed' });
+        const result = updater!({ status: 'running' });
+        expect(result.status).toBe('completed');
     });
 
-    it('dispatches REPO_TASK_COMPLETED_OPTIMISTIC with completed on done event', async () => {
-        const queueDispatch = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ queueDispatch, workspaceId: 'ws-1' })));
-        await act(async () => { MockEventSource.last._emit('done', {}); });
-        expect(queueDispatch).toHaveBeenCalledWith({
-            type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
-            repoId: 'ws-1',
-            taskId: 'task-1',
-            status: 'completed',
-        });
-    });
+    // ── Group 4: SSE event handling ──
 
-    it('dispatches REPO_TASK_COMPLETED_OPTIMISTIC with failed on status failed event', async () => {
-        const queueDispatch = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ queueDispatch, workspaceId: 'ws-1' })));
-        await act(async () => { MockEventSource.last._emit('status', { status: 'failed' }); });
-        expect(queueDispatch).toHaveBeenCalledWith({
-            type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
-            repoId: 'ws-1',
-            taskId: 'task-1',
-            status: 'failed',
-        });
-    });
-
-    it('dispatches REPO_TASK_COMPLETED_OPTIMISTIC with cancelled on status cancelled event', async () => {
-        const queueDispatch = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ queueDispatch, workspaceId: 'ws-1' })));
-        await act(async () => { MockEventSource.last._emit('status', { status: 'cancelled' }); });
-        expect(queueDispatch).toHaveBeenCalledWith({
-            type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
-            repoId: 'ws-1',
-            taskId: 'task-1',
-            status: 'cancelled',
-        });
-    });
-
-    it('does not dispatch REPO_TASK_COMPLETED_OPTIMISTIC when queueDispatch is not provided', async () => {
-        // Should not throw even without queueDispatch
-        const setTask = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ setTask })));
-        await act(async () => { MockEventSource.last._emit('done', {}); });
-        expect(setTask).toHaveBeenCalled(); // still updates task
-    });
-
-    it('sets task status to failed on status failed event', async () => {
-        const setTask = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ setTask })));
-        await act(async () => { MockEventSource.last._emit('status', { status: 'failed' }); });
-        const updater = setTask.mock.calls.find(([arg]) => typeof arg === 'function')?.[0];
-        expect(updater).toBeDefined();
-        expect(updater({ status: 'running' })).toEqual({ status: 'failed' });
-    });
-
-    it('finish() dedup: onerror after done does not call refreshConversation twice', async () => {
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        const onSendComplete = vi.fn();
-        renderHook(() => useChatSSE(makeOptions({ refreshConversation, onSendComplete })));
-        const es = MockEventSource.last;
-        // Fire 'done' first (triggers finish())
-        await act(async () => { es._emit('done', {}); });
-        expect(refreshConversation).toHaveBeenCalledTimes(1);
-        expect(onSendComplete).toHaveBeenCalledTimes(1);
-        // Then fire onerror (should be suppressed by finished guard)
-        act(() => { es._emitError(); });
-        expect(refreshConversation).toHaveBeenCalledTimes(1); // still 1, not 2
-        expect(onSendComplete).toHaveBeenCalledTimes(1);
-    });
-
-    it('finish() dedup: done after status event does not double-fire', async () => {
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
-        const es = MockEventSource.last;
-        // Fire 'status failed' first
-        await act(async () => { es._emit('status', { status: 'failed' }); });
-        expect(refreshConversation).toHaveBeenCalledTimes(1);
-        // Then fire 'done' (should be suppressed)
-        await act(async () => { es._emit('done', {}); });
-        expect(refreshConversation).toHaveBeenCalledTimes(1);
-    });
-
-    it('onerror before done: defers via setTimeout so buffered done event fires first', async () => {
-        const setTask = vi.fn();
-        const onSendComplete = vi.fn();
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        renderHook(() => useChatSSE(makeOptions({ setTask, onSendComplete, refreshConversation })));
-        const es = MockEventSource.last;
-
-        // Simulate the race: onerror fires, then 'done' fires before setTimeout(0) runs
-        act(() => { es._emitError(); });
-        // At this point onerror has called setTimeout(..., 0) but the callback hasn't run yet.
-        // The 'done' event fires synchronously before the deferred handler:
-        await act(async () => { es._emit('done', {}); });
-        // finish() from 'done' should have set task to completed
-        const doneUpdater = setTask.mock.calls.find(([arg]: any) => typeof arg === 'function')?.[0];
-        expect(doneUpdater).toBeDefined();
-        expect(doneUpdater({ status: 'running' })).toEqual({ status: 'completed' });
-
-        // Now let the deferred onerror handler run — it should be suppressed by the finished guard
-        await act(async () => { vi.advanceTimersByTime(0); });
-        // onSendComplete was called once by finish() (via refreshConversation.finally), not by onerror
-        expect(onSendComplete).toHaveBeenCalledTimes(1);
-    });
-
-    it('onerror sets task.status to completed synchronously when no done event arrives', async () => {
-        const setTask = vi.fn();
-        const onSendComplete = vi.fn();
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        // Mock fetch for the retry fetch
-        const mockFetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ task: { id: 'task-1', status: 'completed' } }),
-        });
-        vi.stubGlobal('fetch', mockFetch);
-
-        renderHook(() => useChatSSE(makeOptions({ setTask, onSendComplete, refreshConversation })));
-        const es = MockEventSource.last;
-
-        // Fire onerror with no prior done event
-        act(() => { es._emitError(); });
-        // Advance past the setTimeout(0) deferral
-        await act(async () => { vi.advanceTimersByTime(0); });
-
-        // task.status should be optimistically set to 'completed'
-        const updater = setTask.mock.calls.find(([arg]: any) => typeof arg === 'function')?.[0];
-        expect(updater).toBeDefined();
-        expect(updater({ status: 'running' })).toEqual({ status: 'completed' });
-        // onSendComplete should have been called
-        expect(onSendComplete).toHaveBeenCalledTimes(1);
-    });
-
-    it('onerror dispatches REPO_TASK_COMPLETED_OPTIMISTIC', async () => {
-        const queueDispatch = vi.fn();
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        const mockFetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ task: { id: 'task-1', status: 'completed' } }),
-        });
-        vi.stubGlobal('fetch', mockFetch);
-
-        renderHook(() => useChatSSE(makeOptions({ queueDispatch, workspaceId: 'ws-1', refreshConversation })));
-        const es = MockEventSource.last;
-        act(() => { es._emitError(); });
-        await act(async () => { vi.advanceTimersByTime(0); });
-
-        expect(queueDispatch).toHaveBeenCalledWith({
-            type: 'REPO_TASK_COMPLETED_OPTIMISTIC',
-            repoId: 'ws-1',
-            taskId: 'task-1',
-            status: 'completed',
-        });
-    });
-
-    it('onerror retries fetch when server returns stale running status', async () => {
-        const setTask = vi.fn();
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        // First fetch returns stale 'running', second returns 'completed'
-        const mockFetch = vi.fn()
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ task: { id: 'task-1', status: 'running' } }),
-            })
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ task: { id: 'task-1', status: 'completed' } }),
+    describe('SSE queue events', () => {
+        it('SSE1: message-queued is acknowledged (no-op on pending queue)', () => {
+            const setPendingQueue = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
+            act(() => {
+                MockEventSource.last._emit('message-queued', { turnIndex: 2, deliveryMode: 'enqueue' });
             });
-        vi.stubGlobal('fetch', mockFetch);
+            // message-queued no longer touches pendingQueue
+            expect(setPendingQueue).not.toHaveBeenCalled();
+        });
 
-        renderHook(() => useChatSSE(makeOptions({ setTask, refreshConversation })));
-        const es = MockEventSource.last;
-        act(() => { es._emitError(); });
-
-        // Run the deferred onerror handler
-        await act(async () => { vi.advanceTimersByTime(0); });
-        // Let the first fetch resolve
-        await act(async () => { await Promise.resolve(); });
-        expect(mockFetch).toHaveBeenCalledTimes(1);
-
-        // First response was 'running' — should retry after 500ms
-        await act(async () => { vi.advanceTimersByTime(500); });
-        await act(async () => { await Promise.resolve(); });
-        expect(mockFetch).toHaveBeenCalledTimes(2);
-
-        // Second response was 'completed' — setTask should be called with server data
-        const serverUpdater = setTask.mock.calls.filter(([arg]: any) => typeof arg === 'function')
-            .map(([fn]: any) => fn)
-            .find((fn: any) => {
-                const result = fn({ id: 'task-1', status: 'running' });
-                return result?.status === 'completed' && result?.id === 'task-1';
+        it('SSE2: message-steering is acknowledged (no-op on pending queue)', () => {
+            const setPendingQueue = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
+            act(() => {
+                MockEventSource.last._emit('message-steering', { turnIndex: 2 });
             });
-        expect(serverUpdater).toBeDefined();
-    });
+            // message-steering no longer touches pendingQueue
+            expect(setPendingQueue).not.toHaveBeenCalled();
+        });
 
-    it('onerror retries fetch on network error', async () => {
-        const refreshConversation = vi.fn().mockResolvedValue(undefined);
-        const mockFetch = vi.fn()
-            .mockRejectedValueOnce(new Error('network error'))
-            .mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ task: { id: 'task-1', status: 'completed' } }),
+        it('SSE3: pending-message-added adds a server-confirmed queued item', () => {
+            const setPendingQueue = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
+            act(() => {
+                MockEventSource.last._emit('pending-message-added', {
+                    pendingMessage: { id: 'pm-1', content: 'queued msg', createdAt: '2024-01-01' },
+                });
             });
-        vi.stubGlobal('fetch', mockFetch);
-
-        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
-        const es = MockEventSource.last;
-        act(() => { es._emitError(); });
-
-        // Run the deferred onerror handler
-        await act(async () => { vi.advanceTimersByTime(0); });
-        // Let the first fetch reject
-        await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-        expect(mockFetch).toHaveBeenCalledTimes(1);
-
-        // Should retry after 500ms
-        await act(async () => { vi.advanceTimersByTime(500); });
-        await act(async () => { await Promise.resolve(); });
-        expect(mockFetch).toHaveBeenCalledTimes(2);
-    });
-
-    it('finish() defers setTask until after refreshConversation resolves', async () => {
-        const callOrder: string[] = [];
-        const refreshConversation = vi.fn().mockImplementation(() => {
-            callOrder.push('refreshConversation');
-            return Promise.resolve();
-        });
-        const setTask = vi.fn().mockImplementation(() => {
-            callOrder.push('setTask');
-        });
-        const onSendComplete = vi.fn().mockImplementation(() => {
-            callOrder.push('onSendComplete');
+            expect(setPendingQueue).toHaveBeenCalled();
+            const updater = setPendingQueue.mock.calls[0][0];
+            const result = updater([]);
+            expect(result).toHaveLength(1);
+            expect(result[0]).toEqual({ id: 'pm-1', content: 'queued msg', status: 'queued' });
         });
 
-        renderHook(() => useChatSSE(makeOptions({ setTask, refreshConversation, onSendComplete })));
-        await act(async () => { MockEventSource.last._emit('done', {}); });
+        it('SSE4: pending-message-added deduplicates by id', () => {
+            const setPendingQueue = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
+            act(() => {
+                MockEventSource.last._emit('pending-message-added', {
+                    pendingMessage: { id: 'pm-1', content: 'queued msg', createdAt: '2024-01-01' },
+                });
+            });
+            const updater = setPendingQueue.mock.calls[0][0];
+            const existing = [{ id: 'pm-1', content: 'queued msg', status: 'queued' as const }];
+            const result = updater(existing);
+            expect(result).toHaveLength(1); // no duplicate added
+        });
 
-        // refreshConversation should run before setTask and onSendComplete
-        expect(callOrder).toEqual(['refreshConversation', 'setTask', 'onSendComplete']);
+        it('SSE5: done event clears all pending queue items', async () => {
+            const setPendingQueue = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
+            await act(async () => {
+                MockEventSource.last._emit('done', {});
+            });
+            expect(setPendingQueue).toHaveBeenCalledWith([]);
+        });
+
+        it('SSE6: onSendComplete is called on done event', async () => {
+            const onSendComplete = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ onSendComplete })));
+            await act(async () => {
+                MockEventSource.last._emit('done', {});
+            });
+            expect(onSendComplete).toHaveBeenCalled();
+        });
     });
 });

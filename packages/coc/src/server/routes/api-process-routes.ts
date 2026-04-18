@@ -513,43 +513,78 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     turnIndex,
                     timeline: [],
                     images: validatedImages,
-                    fileAttachments: fileAttachmentMeta,
+                    ...(isPasteExternalized ? { pasteExternalized: true } : {}),
                 }),
                 { additionalUpdates: { status: 'running' } },
             );
             const turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
 
-            if (bridge.enqueue) {
-                const displayName = truncateDisplayName(messageContent.trim());
-                const parentTask = bridge.findTaskByProcessId?.(id);
-                if (parentTask && parentTask.status === 'running' && bridge.queueFollowUpBehindRunningTask) {
-                    // Task is currently executing — defer follow-up until it completes
-                    await bridge.queueFollowUpBehindRunningTask(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages);
-                } else if (parentTask && parentTask.status === 'queued') {
-                    // Task is already queued — message is persisted in conversation, no new task needed
-                } else if (parentTask && bridge.requeueForFollowUp) {
-                    // Task is in history (completed/failed/cancelled) — requeue
-                    await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode, validatedImages);
+            // Helper: buffer a follow-up as a pending message for server-side drain.
+            // The server drains pending messages when the running task completes,
+            // avoiding duplicate task IDs in the queue.
+            const bufferAsPendingMessage = async () => {
+                const pendingMsg = {
+                    id: crypto.randomUUID(),
+                    content: messageContent,
+                    ...(modeOverride ? { mode: modeOverride } : {}),
+                    createdAt: new Date().toISOString(),
+                };
+                const current = await store.getProcess(id);
+                const existing = current?.pendingMessages ?? [];
+                await store.updateProcess(id, {
+                    pendingMessages: [...existing, pendingMsg],
+                });
+                emitPendingMessageAdded(store, id, pendingMsg);
+            };
+
+            let steerSucceeded = false;
+
+            try {
+                if (bridge.enqueue) {
+                    const displayName = truncateDisplayName(messageContent.trim());
+                    const parentTask = bridge.findTaskByProcessId?.(id);
+                    if (parentTask && parentTask.status === 'running' && deliveryMode === 'immediate' && bridge.steerProcess) {
+                        const steered = await bridge.steerProcess(id, messageContent);
+                        if (!steered) {
+                            // Steering failed (no active SDK session); buffer for server-side drain
+                            await bufferAsPendingMessage();
+                        } else {
+                            steerSucceeded = true;
+                        }
+                    } else if (
+                        (parentTask && (parentTask.status === 'running' || parentTask.status === 'queued')) ||
+                        (!parentTask && NONTERMINAL_STATUSES.has(priorStatus))
+                    ) {
+                        // Task running/queued, or task not found but process was non-terminal:
+                        // buffer as pending message — server drains on task completion
+                        await bufferAsPendingMessage();
+                    } else {
+                        // Terminal status (failed/cancelled) or restart fallback → enqueue
+                        await bridge.enqueue({
+                            ...(isQueueProcessId(id) ? { id: toTaskId(id), processId: id } : {}),
+                            type: 'chat',
+                            priority: 'normal',
+                            payload: {
+                                kind: 'chat',
+                                prompt: messageContent,
+                                processId: id,
+                                attachments,
+                                imageTempDir,
+                                images: validatedImages,
+                                workingDirectory: proc.workingDirectory,
+                                readonly: (proc as any).payload?.readonly,
+                                ...(selectedSkillNames && selectedSkillNames.length > 0 ? { context: { skills: selectedSkillNames } } : {}),
+                                ...(modeOverride ? { mode: modeOverride } : {}),
+                                deliveryMode,
+                            },
+                            config: {},
+                            displayName,
+                        });
+                    }
                 } else {
-                    // No parent task found (pruned) or no requeue support — create new task
-                    await bridge.enqueue({
-                        type: 'chat',
-                        priority: 'normal',
-                        payload: {
-                            kind: 'chat',
-                            prompt: textContext ? messageContent + textContext : messageContent,
-                            processId: id,
-                            attachments,
-                            imageTempDir,
-                            images: validatedImages,
-                            workingDirectory: proc.workingDirectory,
-                            readonly: (proc as any).payload?.readonly,
-                            workspaceId: proc.metadata?.workspaceId as string | undefined,
-                            ...(modeOverride ? { mode: modeOverride } : {}),
-                            deliveryMode,
-                        },
-                        config: {},
-                        displayName,
+                    bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames).catch(() => {
+                    }).finally(() => {
+                        if (imageTempDir) { cleanupTempDir(imageTempDir); }
                     });
                 }
             } catch (err) {

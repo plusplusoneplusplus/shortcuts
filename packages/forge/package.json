@@ -85,9 +85,7 @@
     "build": "tsc",
     "test": "vitest",
     "test:run": "vitest run",
-    "coverage": "vitest run --coverage",
-    "coverage:diff": "bash ../../scripts/coverage-diff.sh",
-    "lint": "eslint src"
+    "lint": "eslint src --ext .ts"
   },
   "dependencies": {
     "@github/copilot-sdk": "^0.2.2",

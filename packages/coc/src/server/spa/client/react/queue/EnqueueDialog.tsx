@@ -79,9 +79,34 @@ export function EnqueueDialog() {
     const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [minimized, setMinimized] = useState(false);
-    const [beforeScript, setBeforeScript] = useState('');
-    const [afterScript, setAfterScript] = useState('');
-    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const [hooks, setHooks] = useState<HookEntry[]>([]);
+
+    const currentPostActions: PostAction[] = useMemo(() =>
+        hooks
+            .filter(h => h.timing === 'after' && ((h.type === 'script' && h.script.trim()) || (h.type === 'skill' && h.skillName)))
+            .map(h => {
+                if (h.type === 'script') return { type: 'script' as const, script: h.script.trim() };
+                return { type: 'skill' as const, skillName: h.skillName, ...(h.prompt.trim() ? { prompt: h.prompt.trim() } : {}) };
+            }),
+        [hooks],
+    );
+
+    const addHook = () => setHooks(prev => [...prev, {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timing: 'after',
+        type: 'script',
+        script: '',
+        skillName: '',
+        prompt: '',
+    }]);
+
+    const removeHook = (id: string) =>
+        setHooks(prev => prev.filter(h => h.id !== id));
+
+    const updateHook = (id: string, updates: Partial<HookEntry>) =>
+        setHooks(prev => prev.map(h => h.id === id ? { ...h, ...updates } : h));
+
+    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const richTextRef = useRef<RichTextInputHandle>(null);
     const slashCommands = useSlashCommands(skills);
     const [contextFiles, setContextFiles] = useState<string[]>([]);
@@ -235,83 +260,81 @@ export function EnqueueDialog() {
         setSubmitting(true);
         queueDispatch({ type: 'SET_TASK_SUBMITTING', value: true });
         try {
-            let body: any;
-            if (isAskMode) {
-                // Ask mode: create a read-only chat task
-                const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
-                body = {
-                    type: 'chat',
-                    priority: 'normal',
-                    payload: {
-                        kind: 'chat',
-                        mode: 'ask',
-                        prompt: effectivePrompt || `Ask: ${effectiveSkills.join(', ')}`,
-                        workspaceId: workspaceId || undefined,
-                        workingDirectory: ws?.rootPath || undefined,
-                        ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
-                    },
-                    images: images.length > 0 ? images : undefined,
-                    attachments: toPayload().length > 0 ? toPayload() : undefined,
-                };
-                if (model) body.config = { model };
-            } else if (effectiveSkills.length > 0) {
-                // Skill-based task
-                const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
-                const workingDirectory = ws?.rootPath || '';
-                const displayName = effectiveSkills.length === 1
-                    ? `Skill: ${effectiveSkills[0]}`
-                    : `Skills: ${effectiveSkills.join(', ')}`;
-                body = {
-                    type: 'chat',
-                    priority: 'normal',
-                    displayName,
-                    payload: {
-                        kind: 'chat',
-                        mode: 'autopilot',
-                        prompt: effectivePrompt || `Use the ${effectiveSkills.join(', ')} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
-                        workingDirectory,
-                        context: {
-                            skills: effectiveSkills,
+            const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
+            const workingDirectory = ws?.rootPath || '';
+            const contextTaskName = queueState.dialogContextTaskName;
+
+            // Helper to build a single task body, optionally with context files
+            const buildBody = (files?: string[], taskNameOverride?: string): any => {
+                const skillLabel = effectiveSkills.length === 1 ? effectiveSkills[0] : effectiveSkills.join(', ');
+                let body: any;
+                if (isAskMode) {
+                    body = {
+                        type: 'chat',
+                        priority: 'normal',
+                        payload: {
+                            kind: 'chat',
+                            mode: 'ask',
+                            prompt: effectivePrompt || `Ask: ${skillLabel}`,
+                            workspaceId: workspaceId || undefined,
+                            workingDirectory: workingDirectory || undefined,
+                            ...(effectiveSkills.length > 0 || files ? { context: { ...(effectiveSkills.length > 0 ? { skills: effectiveSkills } : {}), ...(files ? { files } : {}) } } : {}),
                         },
-                    },
-                    images: images.length > 0 ? images : undefined,
-                    attachments: toPayload().length > 0 ? toPayload() : undefined,
-                };
+                        images: images.length > 0 ? images : undefined,
+                    };
+                } else if (effectiveSkills.length > 0) {
+                    const displayLabel = taskNameOverride || contextTaskName;
+                    const displayName = displayLabel
+                        ? `Follow: ${skillLabel} on ${displayLabel}`
+                        : effectiveSkills.length === 1
+                            ? `Skill: ${effectiveSkills[0]}`
+                            : `Skills: ${effectiveSkills.join(', ')}`;
+                    body = {
+                        type: 'chat',
+                        priority: 'normal',
+                        displayName,
+                        payload: {
+                            kind: 'chat',
+                            mode: 'autopilot',
+                            prompt: effectivePrompt || `Use the ${skillLabel} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
+                            workspaceId: workspaceId || undefined,
+                            workingDirectory,
+                            context: {
+                                skills: effectiveSkills,
+                                ...(files ? { files } : {}),
+                            },
+                        },
+                        images: images.length > 0 ? images : undefined,
+                    };
+                } else {
+                    body = {
+                        type: 'chat',
+                        priority: 'normal',
+                        payload: {
+                            kind: 'chat',
+                            mode: 'autopilot',
+                            prompt: effectivePrompt,
+                            workspaceId: workspaceId || undefined,
+                            workingDirectory: workingDirectory || folderPath || undefined,
+                            ...(files ? { context: { files } } : {}),
+                        },
+                        images: images.length > 0 ? images : undefined,
+                    };
+                }
                 if (model) body.config = { model };
-            } else {
-                // Freeform prompt
-                const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
-                body = {
-                    type: 'chat',
-                    priority: 'normal',
-                    payload: {
-                        kind: 'chat',
-                        mode: 'autopilot',
-                        prompt: effectivePrompt,
-                        workingDirectory: ws?.rootPath || folderPath || undefined,
-                    },
-                    images: images.length > 0 ? images : undefined,
-                    attachments: toPayload().length > 0 ? toPayload() : undefined,
-                };
-                if (model) body.config = { model };
-            }
-            // Inject optional before/after scripts into payload
-            if (beforeScript.trim()) body.payload.beforeScript = beforeScript.trim();
-            if (afterScript.trim()) body.payload.afterScript = afterScript.trim();
-            const res = await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (queueState.dialogLaunchMode === 'floating-chat') {
-                const created = await res.json().catch(() => null);
-                const createdId = created?.task?.id ?? created?.id;
-                if (createdId) {
-                    floatChat({
-                        taskId: createdId,
-                        workspaceId: workspaceId || undefined,
-                        title: (effectivePrompt || 'Ask AI').slice(0, 60),
-                        status: 'running',
+                // Before-hooks: take the first script-type before hook (backward compat)
+                const beforeHook = hooks.find(h => h.timing === 'before' && h.type === 'script' && h.script.trim());
+                if (beforeHook) body.payload.beforeScript = beforeHook.script.trim();
+
+                // After-hooks → postActions array
+                const afterHooks = hooks.filter(h => h.timing === 'after' && (
+                    (h.type === 'script' && h.script.trim()) ||
+                    (h.type === 'skill' && h.skillName)
+                ));
+                if (afterHooks.length > 0) {
+                    body.payload.postActions = afterHooks.map(h => {
+                        if (h.type === 'script') return { type: 'script' as const, script: h.script.trim() };
+                        return { type: 'skill' as const, skillName: h.skillName, ...(h.prompt.trim() ? { prompt: h.prompt.trim() } : {}) };
                     });
                 }
                 // Backward compat: also set afterScript if there's exactly one script-type after hook
@@ -383,11 +406,14 @@ export function EnqueueDialog() {
                     }).catch(() => { /* ignore */ });
                 }
             }
-            clearAttachments();
+            clearImages();
+            if (!appState.onboardingProgress?.hasRunWorkflow) {
+                appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } });
+            }
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
-        finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, toPayload, appState.workspaces, queueDispatch, clearAttachments, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode]);
+        finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, appDispatch, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);

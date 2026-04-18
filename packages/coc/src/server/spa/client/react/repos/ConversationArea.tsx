@@ -67,8 +67,17 @@ export function ConversationArea({
     onCancelSelection,
     onAttachContext,
 }: ConversationAreaProps) {
-    const isChatTask = task?.type === 'chat' || task?.payload?.kind === 'chat';
-    const showPendingPanel = isPending && !isChatTask;
+    // Escape key exits selection mode
+    useEffect(() => {
+        if (!isSelecting) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onCancelSelection?.();
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [isSelecting, onCancelSelection]);
+
+    const selectedCount = selectedTurns?.size ?? 0;
 
     return (
         <div className="relative flex-1 min-h-0 overflow-x-hidden min-w-0">

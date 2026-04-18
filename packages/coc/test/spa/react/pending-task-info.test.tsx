@@ -310,13 +310,64 @@ describe('PendingTaskInfoPanel', () => {
         });
     });
 
-    it('chat tasks skip PendingTaskInfoPanel and show conversation instead', async () => {
+    it('renders "Plan File" metadata row when planFilePath is present', async () => {
         const task = makePendingTask({
-            type: 'chat',
             payload: {
                 kind: 'chat',
-                mode: 'ask',
-                prompt: 'Hello from chat',
+                mode: 'autopilot',
+                prompt: 'Implement the feature.',
+                workingDirectory: '/home/user/project',
+                planFilePath: '/home/user/project/.vscode/tasks/feature.plan.md',
+            },
+        });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededActivityChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Plan File')).toBeTruthy();
+        });
+        const planFileLink = screen.getByText('~/project/.vscode/tasks/feature.plan.md');
+        expect(planFileLink).toBeTruthy();
+        expect(planFileLink.getAttribute('data-full-path')).toBe('/home/user/project/.vscode/tasks/feature.plan.md');
+    });
+
+    it('renders "File" metadata row when filePath is present', async () => {
+        const task = makePendingTask({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Review this file.',
+                workingDirectory: '/home/user/project',
+                filePath: '/home/user/project/src/auth.ts',
+            },
+        });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededActivityChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('File')).toBeTruthy();
+        });
+        const fileLink = screen.getByText('~/project/src/auth.ts');
+        expect(fileLink).toBeTruthy();
+        expect(fileLink.getAttribute('data-full-path')).toBe('/home/user/project/src/auth.ts');
+    });
+
+    it('renders "Workflow" metadata row when workflowPath is present', async () => {
+        const task = makePendingTask({
+            type: 'run-workflow',
+            payload: {
+                kind: 'run-workflow',
+                workflowPath: '/home/user/project/.vscode/workflows/ci/pipeline.yaml',
                 workingDirectory: '/home/user/project',
             },
         });
@@ -328,13 +379,63 @@ describe('PendingTaskInfoPanel', () => {
             </Wrap>
         );
 
-        // Chat tasks should show the prompt as a conversation turn, not PendingTaskInfoPanel
         await waitFor(() => {
-            expect(screen.getByText('Hello from chat')).toBeTruthy();
+            expect(screen.getByText('Workflow')).toBeTruthy();
         });
-        // PendingTaskInfoPanel-specific elements should NOT be present
-        expect(screen.queryByText('⏳')).toBeNull();
-        expect(screen.queryByText('Cancel Task')).toBeNull();
-        expect(screen.queryByText('Move to Top')).toBeNull();
+        const workflowLink = screen.getByText('~/project/.vscode/workflows/ci/pipeline.yaml');
+        expect(workflowLink).toBeTruthy();
+        expect(workflowLink.getAttribute('data-full-path')).toBe('/home/user/project/.vscode/workflows/ci/pipeline.yaml');
+    });
+
+    it('does not render "Plan File", "File", or "Workflow" rows when those fields are absent', async () => {
+        const task = makePendingTask({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Simple chat without file references.',
+                workingDirectory: '/home/user/project',
+            },
+        });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededActivityChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Task ID')).toBeTruthy();
+        });
+        expect(screen.queryByText('Plan File')).toBeNull();
+        expect(screen.queryByText('File')).toBeNull();
+        expect(screen.queryByText('Workflow')).toBeNull();
+    });
+
+    it('renders all three file-path metadata rows when all fields are present', async () => {
+        const task = makePendingTask({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Run workflow with all paths.',
+                workingDirectory: '/home/user/project',
+                planFilePath: '/home/user/project/tasks/spec.plan.md',
+                filePath: '/home/user/project/src/main.ts',
+                workflowPath: '/home/user/project/.vscode/workflows/build.yaml',
+            },
+        });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededActivityChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Plan File')).toBeTruthy();
+            expect(screen.getByText('File')).toBeTruthy();
+            expect(screen.getByText('Workflow')).toBeTruthy();
+        });
     });
 });

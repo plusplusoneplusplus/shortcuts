@@ -36,7 +36,7 @@ import {
     withRepoInstructions,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
-    buildCreateWorkItemAddon,
+    prependSelectedSkillsDirective,
 } from './prompt-builder';
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
@@ -185,15 +185,10 @@ export class FollowUpExecutor extends BaseExecutor {
             // only needs to handle the AI call and assistant turn.
 
             const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
-            const createWorkItem = buildCreateWorkItemAddon(
-                this.dataDir,
-                wsId,
-                this.getWsServerFn
-                    ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
-                    : undefined,
+            const followUpMessage = prependSelectedSkillsDirective(
+                followUpSuffix ? `${message}${followUpSuffix}` : message,
+                selectedSkillNames,
             );
-            const allTools = [...suggestTools, ...createWorkItem.tools];
-            const followUpMessage = `${message}${followUpSuffix}${createWorkItem.suffix}`;
             const agentMode = toAgentMode(currentMode);
 
             const historySystemMessage: SystemMessageConfig | undefined = historyContext

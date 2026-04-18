@@ -167,9 +167,8 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 - `schedules.json` — schedule definitions
 - `git-ops.json` — background git operations
 - `preferences.json` — per-repo UI preferences
-- `tasks/` — task and plan files (.plan.md, shown in **Tasks tab**)
-- `work-items/` — work items (index.json + `<uuid>.json` per item, shown in **Work Items tab**)
-- `processes/` — per-repo process store (`index.json` + one JSON file per process, 500-process cap)
+- `tasks/` — task and plan files
+- `processes/` — legacy file-based process store (used only when `store.backend: file` in config)
 - `outputs/` — AI conversation output markdown files (`<processId>.md`), managed by `OutputFileManager`
 - `paste-context/` — temp files for large pasted content externalized from chat prompts (auto-cleaned after task completion and on server startup)
 

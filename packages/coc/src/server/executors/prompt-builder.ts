@@ -39,11 +39,9 @@ import {
     isRunScriptPayload,
     isRunWorkflowPayload,
 } from '../task-types';
-import { createSuggestFollowUpsTool } from '../suggest-follow-ups-tool';
-import { createUpdateTaskStatusTool } from '../update-task-status-tool';
-import { createWorkItemTool, type BroadcastWorkItemFn } from '../create-work-item-tool';
-import { createBugTool } from '../create-bug-tool';
-import { createUpdateWorkItemTool } from '../update-work-item-tool';
+import { createUpdateTaskStatusTool } from '../llm-tools/update-task-status-tool';
+import { readRepoPreferences } from '../preferences-handler';
+import { getRepoDataPath } from '../paths';
 
 // ============================================================================
 // System Message Builders
@@ -376,52 +374,30 @@ export function buildUpdateTaskStatusAddon(
 }
 
 // ============================================================================
-// Create Work Item
+// Search Conversations
 // ============================================================================
 
 /**
- * Builds the tools array and prompt suffix for the `create_work_item` and `create_bug` tools.
- * The tools are only injected when a valid dataDir and repoId are available.
+ * Builds the tools array and prompt suffix for the `search_conversations` tool.
+ * The tool is only injected when the store supports `searchConversations` (SQLite only).
  *
- * @param dataDir     - Base data directory (e.g. `~/.coc`).
- * @param repoId      - Workspace / repo ID the item should be created in.
- * @param broadcastFn - Optional function to broadcast a WebSocket event after creation.
+ * @param store        The ProcessStore instance.
+ * @param workspaceId  Optional default workspace to scope searches.
  */
-export function buildCreateWorkItemAddon(
-    dataDir: string | undefined,
-    repoId: string | undefined,
-    broadcastFn?: BroadcastWorkItemFn,
+export function buildSearchConversationsAddon(
+    store: ProcessStore,
+    workspaceId?: string,
 ): { tools: Tool<any>[]; suffix: string } {
-    if (!dataDir || !repoId) {
+    if (!store.searchConversations) {
         return { tools: [], suffix: '' };
     }
 
-    const { tool: workItemTool } = createWorkItemTool(dataDir, repoId, broadcastFn);
-    const { tool: bugTool } = createBugTool(dataDir, repoId, broadcastFn);
-    const { tool: updateWorkItemTool } = createUpdateWorkItemTool(dataDir, repoId, broadcastFn);
+    const { tool } = createSearchConversationsTool(store, workspaceId);
     const suffix =
-        '\n\nYou have access to the `create_work_item`, `create_bug`, and `update_work_item` tools. ' +
-        'When the user asks to create a work item, track a feature, or save a task for later execution, ' +
-        'use `create_work_item`. When the user asks to file a bug, report a defect, or log an issue, ' +
-        'use `create_bug`. When the user asks to update, modify, edit, or revise an existing work item, ' +
-        'use `update_work_item`. All creation tools follow the same workflow:\n' +
-        '1. **Draft** — Analyze the request and present a summary:\n' +
-        '   📋 Work Item Draft / 🐛 Bug Report Draft\n' +
-        '   Title: <title>\n' +
-        '   Priority: <high|normal|low>\n' +
-        '   Tags: <tags or "none">\n' +
-        '   Description: <markdown description>\n' +
-        '   Plan: <markdown plan using ## Objective, ## Background, ## Steps (with - [ ] checkboxes), ## Acceptance Criteria, ## Notes>\n' +
-        '   Then ask "Confirm to create, or give feedback to refine."\n' +
-        '2. **Refine** — If the user provides feedback, update and re-present the summary. Repeat until confirmed.\n' +
-        '3. **Create** — Only after the user confirms, call the appropriate tool with title, description, priority, tags, and a complete plan.\n' +
-        'The `plan` parameter is REQUIRED for creation tools — always generate a plan with concrete steps.\n' +
-        'For `update_work_item`: look up the current work item first, present a draft of the proposed changes, ' +
-        'iterate until confirmed, then call the tool with only the fields that should change. ' +
-        'Status is always reset to `planning` after an update. A new `plan` creates a new plan version.\n' +
-        'Never execute the work item steps inside this chat session — use the tool to persist it, then stop.';
+        '\n\nYou have access to `search_conversations` to search past AI conversation history in this workspace. ' +
+        'Use it when the user references previous discussions or you need context from earlier sessions.';
 
-    return { tools: [workItemTool, bugTool, updateWorkItemTool], suffix };
+    return { tools: [tool], suffix };
 }
 
 // ============================================================================

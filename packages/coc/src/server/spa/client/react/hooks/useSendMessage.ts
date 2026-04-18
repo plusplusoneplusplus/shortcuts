@@ -7,7 +7,6 @@ import { formatAttachedContext } from './useAttachedContext';
 import type { AttachedContextItem } from './useAttachedContext';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
-import type { AttachmentPayload } from '../types/attachments';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
@@ -34,13 +33,15 @@ export interface UseSendMessageOptions {
     selectedModeRef: React.MutableRefObject<'ask' | 'plan' | 'autopilot'>;
     images: string[];
     clearImages: () => void;
-    clearPaste?: () => void;
+    clearPaste: () => void;
     /** Returns the raw pasted content held by useTextPaste, or null if no large paste is active. */
     getPastedContent?: () => string | null;
-    /** Convert attachments to wire format for API calls */
-    toPayload?: () => AttachmentPayload[];
     lastFailedMessageRef: React.MutableRefObject<string>;
     setTask: (updater: (prev: any) => any) => void;
+    /** Returns the currently attached context items. */
+    getAttachedContext?: () => AttachedContextItem[];
+    /** Clears attached context after send. */
+    clearAttachedContext?: () => void;
 }
 
 export function useSendMessage({
@@ -65,10 +66,11 @@ export function useSendMessage({
     clearImages,
     clearPaste,
     getPastedContent,
-    toPayload,
     lastFailedMessageRef,
     setTask,
-}: UseSendMessageOptions):{
+    getAttachedContext,
+    clearAttachedContext,
+}: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     closeFollowUpStream: () => void;
     onSendComplete: () => void;
@@ -98,13 +100,9 @@ export function useSendMessage({
             return refreshConversation(pid);
         }
         return new Promise<void>(resolve => {
-            let timeoutId: ReturnType<typeof setTimeout>;
-            // Wrap resolve so both the timeout and onSendComplete share the same function
-            // reference stored in the ref — avoids the stale-closure comparison bug where
-            // the timeout checked `ref === resolve` after the ref was already overwritten.
-            const wrappedResolve = () => {
-                clearTimeout(timeoutId);
-                if (resolveCurrentSendRef.current === wrappedResolve) {
+            resolveCurrentSendRef.current = resolve;
+            const timeout = setTimeout(() => {
+                if (resolveCurrentSendRef.current === resolve) {
                     resolveCurrentSendRef.current = null;
                     resolve();
                 }
@@ -143,32 +141,29 @@ export function useSendMessage({
         // ── While AI is running: route through /message, let server decide ──
         if (sending) {
             if (deliveryMode === 'immediate') {
-                // Steering messages must reach the server immediately to inject into the running session
-                await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        content: rawContent,
-                        images: images.length > 0 ? images : undefined,
-                        attachments: toPayload && toPayload().length > 0 ? toPayload() : undefined,
-                        mode: selectedMode,
-                        deliveryMode,
-                        optimisticId: qm.id,
-                        ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
-                    }),
-                }).catch(() => {});
+                // Immediate steer: add optimistic user turn so it appears in
+                // the conversation right away. The server will attempt to inject
+                // into the live session; if steering fails, the message is
+                // buffered as a pending message and the SSE event will surface it
+                // in the queued section.
+                const timestamp = new Date().toISOString();
+                setTurnsAndRef(prev => {
+                    const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
+                    return [
+                        ...prev,
+                        { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx },
+                    ];
+                });
             }
             // Both immediate and enqueue: fire POST to /message and let the
             // server steer, buffer, or enqueue as appropriate.  No local
             // pending queue entry — the server is the source of truth.
-            const attachmentsPayload = toPayload ? toPayload() : null;
             fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     content: rawContent,
                     images: images.length > 0 ? images : undefined,
-                    ...(attachmentsPayload && attachmentsPayload.length > 0 ? { attachments: attachmentsPayload } : {}),
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
@@ -176,7 +171,8 @@ export function useSendMessage({
             }).catch(() => {});
 
             clearImages();
-            clearPaste?.();
+            clearPaste();
+            clearAttachedContext?.();
             return;
         }
 
@@ -196,14 +192,12 @@ export function useSendMessage({
         });
 
         try {
-            const attachmentsPayload = toPayload ? toPayload() : null;
             const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     content: rawContent,
                     images: images.length > 0 ? images : undefined,
-                    ...(attachmentsPayload && attachmentsPayload.length > 0 ? { attachments: attachmentsPayload } : {}),
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
@@ -228,7 +222,8 @@ export function useSendMessage({
             lastFailedMessageRef.current = '';
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
             clearImages();
-            clearPaste?.();
+            clearPaste();
+            clearAttachedContext?.();
             await waitForSendCompletion(processId);
         } catch (err: any) {
             setError(err?.message || 'Failed to send follow-up message.');
@@ -237,15 +232,7 @@ export function useSendMessage({
         } finally {
             setSending(false);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
-            setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-            // Fallback refresh: if we reach here after the 90s safety timeout,
-            // neither finish() nor the safety-net effect triggered the refresh.
-            // refreshConversation uses a monotonic version counter so concurrent
-            // calls safely deduplicate — stale responses are discarded.
-            if (processId) {
-                void refreshConversation(processId);
-            }
-            setTimeout(() => { flushQueueRef.current?.(); }, 0);
+            void refreshConversation(processId);
         }
     }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
