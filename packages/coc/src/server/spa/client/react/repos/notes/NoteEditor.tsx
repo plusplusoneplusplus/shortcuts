@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
+import type React from 'react';
 import type { Editor } from '@tiptap/core';
 import type { CommentThread } from '../notesApi';
 import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToRelative } from './noteMarkdown';
@@ -13,6 +14,8 @@ import { ModeToggleToolbar } from '../../shared/ModeToggleToolbar';
 import type { ModeOption } from '../../shared/ModeToggleToolbar';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
+import { wordDiff } from './noteEditDiff';
+import { AIEditNavigator } from './AIEditNavigator';
 import './noteEditor.css';
 
 export type NoteViewMode = 'rich' | 'source';
@@ -21,6 +24,15 @@ const NOTE_MODE_OPTIONS: readonly ModeOption<NoteViewMode>[] = [
     { value: 'rich', label: 'Rich', testId: 'note-mode-rich' },
     { value: 'source', label: 'Source', testId: 'note-mode-source' },
 ] as const;
+
+/** Imperative handle exposed to parent components via ref. */
+export interface NoteEditorHandle {
+    /**
+     * Apply an AI edit to the note: reload from disk, then decorate the
+     * changed region with word-level diff highlights (ephemeral, 5s).
+     */
+    applyAiEdit(args: { oldStr: string; newStr: string }): Promise<void>;
+}
 
 export interface NoteEditorProps {
     workspaceId: string;
@@ -46,7 +58,9 @@ export interface NoteEditorProps {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-export function NoteEditor({
+const AI_EDIT_HIGHLIGHT_DURATION_MS = 5000;
+
+export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEditor({
     workspaceId,
     notePath,
     io = defaultNoteEditorIO,
@@ -61,13 +75,17 @@ export function NoteEditor({
     onToggleCommentsPanel,
     commentCount,
     onFlushSave,
-}: NoteEditorProps) {
+}: NoteEditorProps, ref: React.Ref<NoteEditorHandle>) {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [saveState, setSaveState] = useState<SaveState>('idle');
     const [dirty, setDirty] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+    // AI edit navigator state
+    const [aiEditCount, setAiEditCount] = useState(0);
+    const aiEditRegionsRef = useRef<Array<{ id: string; from: number; to: number }>>([]);
 
     // Source mode state
     const [viewMode, setViewModeRaw] = useState<NoteViewMode>('rich');
@@ -485,6 +503,108 @@ export function NoteEditor({
         onFlushSave?.(flushSave);
     }, [onFlushSave, flushSave]);
 
+    // ── AI edit: imperative handle for applyAiEdit ──────────────────────
+
+    useImperativeHandle(ref, () => ({
+        async applyAiEdit({ oldStr, newStr }: { oldStr: string; newStr: string }) {
+            const path = notePathRef.current;
+            if (!path || viewMode === 'source') return;
+
+            // Cancel pending autosave to avoid race conditions
+            if (saveTimerRef.current) {
+                clearTimeout(saveTimerRef.current);
+                saveTimerRef.current = null;
+            }
+            pendingContentRef.current = null;
+
+            // Reload fresh content from disk
+            let freshHtml: string;
+            try {
+                const { content } = await ioRef.current.loadContent(workspaceIdRef.current, path);
+                freshHtml = markdownToHtml(content);
+                freshHtml = rewriteHtmlImageSrc(freshHtml, ioRef.current, workspaceIdRef.current);
+            } catch {
+                return; // If reload fails, skip decoration silently
+            }
+
+            const ed = editorRef.current;
+            if (!ed || ed.isDestroyed) return;
+
+            // Load fresh content without marking as dirty
+            ed.commands.setContent(freshHtml, false);
+            setDirty(false);
+
+            // Find newStr in the editor text to locate the decorated region
+            const docText = ed.state.doc.textContent;
+            const idx = newStr.length > 0 ? docText.indexOf(newStr) : -1;
+
+            setAiEditCount(prev => prev + 1);
+
+            if (idx === -1 && newStr.length > 0) {
+                // newStr not found — reload happened but decoration skipped
+                return;
+            }
+
+            // Compute ProseMirror positions for the found text region
+            // Walk the document to map text offset to doc position
+            const chunks = wordDiff(oldStr, newStr);
+            if (chunks.every(c => c.type === 'equal')) return;
+
+            let textOffset = 0;
+            let fromPos = -1;
+            let toPos = -1;
+
+            if (newStr.length > 0 && idx !== -1) {
+                ed.state.doc.descendants((node, pos) => {
+                    if (!node.isText || fromPos !== -1) return;
+                    const text = node.text ?? '';
+                    const nodeStart = textOffset;
+                    const nodeEnd = textOffset + text.length;
+                    if (nodeStart <= idx && idx < nodeEnd) {
+                        const offsetInNode = idx - nodeStart;
+                        fromPos = pos + offsetInNode;
+                        toPos = fromPos + newStr.length;
+                    }
+                    textOffset += text.length;
+                });
+            }
+
+            if (fromPos === -1) return;
+
+            const regionId = `ai-edit-${Date.now()}`;
+            const region = {
+                id: regionId,
+                from: fromPos,
+                to: toPos,
+                chunks,
+                expiresAt: Date.now() + AI_EDIT_HIGHLIGHT_DURATION_MS,
+            };
+
+            aiEditRegionsRef.current = [...aiEditRegionsRef.current, region];
+            ed.commands.setAiEdits(aiEditRegionsRef.current as any);
+        },
+    }), [viewMode]);
+
+    // ── AI edit navigator: dismiss all decorations ──────────────────────
+
+    const handleAiEditDismiss = useCallback(() => {
+        const ed = editorRef.current;
+        if (ed && !ed.isDestroyed) {
+            ed.commands.clearAiEdits?.();
+        }
+        aiEditRegionsRef.current = [];
+        setAiEditCount(0);
+    }, []);
+
+    // ── AI edit navigator: jump to next region ──────────────────────────
+
+    const handleAiEditNext = useCallback(() => {
+        const ed = editorRef.current;
+        if (!ed || aiEditRegionsRef.current.length === 0) return;
+        const first = aiEditRegionsRef.current[0];
+        ed.chain().setTextSelection({ from: first.from, to: first.to }).scrollIntoView().run();
+    }, []);
+
     // ── Auto-reload on notes-changed WS event ────────────────────────────
 
     useEffect(() => {
@@ -688,6 +808,15 @@ export function NoteEditor({
                     </span>
                 )}
             </div>
+
+            {/* AI edit navigator pill */}
+            {aiEditCount > 0 && viewMode === 'rich' && (
+                <AIEditNavigator
+                    editCount={aiEditCount}
+                    onNext={handleAiEditNext}
+                    onDismiss={handleAiEditDismiss}
+                />
+            )}
         </div>
     );
-}
+});

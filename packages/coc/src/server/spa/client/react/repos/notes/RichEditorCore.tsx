@@ -21,6 +21,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
 import { ResizableImage } from './extensions/resizableImage';
 import { CommentExtension } from '@sereneinserenade/tiptap-comment-extension';
+import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ export function RichEditorCore({
             TableHeader,
             Highlight.configure({ multicolor: true }),
             ResizableImage.configure({ inline: false, allowBase64: false }),
+            AiEditDecorationExtension,
             ...(commentsEnabled
                 ? [
                     CommentExtension.configure({

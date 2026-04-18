@@ -61,9 +61,11 @@ export interface ActivityChatDetailProps {
     title?: string;
     /** Hide the ask/plan/autopilot mode selector */
     hideModeSelector?: boolean;
+    /** Called when the server emits a `note-file-edit` SSE event. */
+    onNoteFileEdit?: (data: { toolCallId: string; filePath: string; oldStr: string; newStr: string }) => void;
 }
 
-export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false }: ActivityChatDetailProps) {
+export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, onNoteFileEdit }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -287,6 +289,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setTurnsAndRef,
         refreshConversation,
         onSendComplete,
+        onNoteFileEdit,
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });

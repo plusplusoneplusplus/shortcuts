@@ -74,4 +74,29 @@ describe('NotesView (notes chat refactor)', () => {
             expect(source).not.toContain('notePath={selectedPath!}');
         });
     });
+
+    describe('AI edit change indicator wiring', () => {
+        it('imports NoteEditorHandle', () => {
+            expect(source).toContain('NoteEditorHandle');
+        });
+
+        it('creates a noteEditorRef', () => {
+            expect(source).toContain('noteEditorRef');
+        });
+
+        it('passes ref to NoteEditor', () => {
+            expect(source).toContain('ref={noteEditorRef}');
+        });
+
+        it('defines handleNoteFileEdit callback', () => {
+            expect(source).toContain('handleNoteFileEdit');
+        });
+
+        it('passes onNoteFileEdit to NoteChatPanel', () => {
+            const chatPanelIdx = source.indexOf('<NoteChatPanel');
+            expect(chatPanelIdx).toBeGreaterThan(-1);
+            const chatPanelBlock = source.slice(chatPanelIdx);
+            expect(chatPanelBlock).toContain('onNoteFileEdit');
+        });
+    });
 });
