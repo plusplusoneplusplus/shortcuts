@@ -434,6 +434,88 @@ describe('NotesSidebar', () => {
         await waitFor(() => expect(document.querySelector('[data-testid="dialog-overlay"]')).toBeNull());
     });
 
+    it('right-click on empty tree area shows New Notebook and New Note', async () => {
+        const { findByTestId } = renderSidebar();
+        const treeArea = await findByTestId('notes-tree-area');
+
+        fireEvent.contextMenu(treeArea, { clientX: 100, clientY: 100 });
+
+        await waitFor(() => {
+            const menu = document.querySelector('[data-testid="context-menu"]');
+            expect(menu).toBeTruthy();
+            const items = menu!.querySelectorAll('[role="menuitem"]');
+            const labels = Array.from(items).map(i => i.textContent);
+            expect(labels).toContain('New Notebook');
+            expect(labels).toContain('New Note');
+            expect(labels).toHaveLength(2);
+        });
+    });
+
+    it('right-click on empty state shows New Notebook and New Note', async () => {
+        mockGetTree.mockResolvedValue([]);
+        const { findByTestId } = renderSidebar();
+        const empty = await findByTestId('notes-empty');
+
+        fireEvent.contextMenu(empty, { clientX: 100, clientY: 100 });
+
+        await waitFor(() => {
+            const menu = document.querySelector('[data-testid="context-menu"]');
+            expect(menu).toBeTruthy();
+            const items = menu!.querySelectorAll('[role="menuitem"]');
+            const labels = Array.from(items).map(i => i.textContent);
+            expect(labels).toContain('New Notebook');
+            expect(labels).toContain('New Note');
+        });
+    });
+
+    it('New Notebook from background context menu opens create-notebook dialog', async () => {
+        const { findByTestId } = renderSidebar();
+        const treeArea = await findByTestId('notes-tree-area');
+
+        fireEvent.contextMenu(treeArea, { clientX: 100, clientY: 100 });
+        await waitFor(() => expect(document.querySelector('[data-testid="context-menu"]')).toBeTruthy());
+
+        const menu = document.querySelector('[data-testid="context-menu"]')!;
+        const newNotebookBtn = Array.from(menu.querySelectorAll('[role="menuitem"]')).find(i => i.textContent === 'New Notebook') as HTMLElement;
+        fireEvent.click(newNotebookBtn);
+
+        await waitFor(() => {
+            const dialog = document.querySelector('[data-testid="dialog-overlay"]');
+            expect(dialog).toBeTruthy();
+            expect(dialog!.textContent).toContain('Create Notebook');
+        });
+    });
+
+    it('New Note from background context menu opens create-page dialog', async () => {
+        const { findByTestId } = renderSidebar();
+        const treeArea = await findByTestId('notes-tree-area');
+
+        fireEvent.contextMenu(treeArea, { clientX: 100, clientY: 100 });
+        await waitFor(() => expect(document.querySelector('[data-testid="context-menu"]')).toBeTruthy());
+
+        const menu = document.querySelector('[data-testid="context-menu"]')!;
+        const newNoteBtn = Array.from(menu.querySelectorAll('[role="menuitem"]')).find(i => i.textContent === 'New Note') as HTMLElement;
+        fireEvent.click(newNoteBtn);
+
+        await waitFor(() => {
+            const dialog = document.querySelector('[data-testid="dialog-overlay"]');
+            expect(dialog).toBeTruthy();
+            expect(dialog!.textContent).toContain('Create');
+            expect(document.querySelector('[data-testid="notes-dialog-input"]')).toBeTruthy();
+        });
+    });
+
+    it('shift+right-click on tree area allows native context menu', async () => {
+        const { findByTestId } = renderSidebar();
+        const treeArea = await findByTestId('notes-tree-area');
+
+        fireEvent.contextMenu(treeArea, { clientX: 100, clientY: 100, shiftKey: true });
+
+        // No custom context menu should appear
+        await new Promise(r => setTimeout(r, 50));
+        expect(document.querySelector('[data-testid="context-menu"]')).toBeNull();
+    });
+
     it('New Notebook button opens create-notebook dialog', async () => {
         const { findByTestId } = renderSidebar();
         await findByTestId('notes-tree');

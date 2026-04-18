@@ -10,6 +10,9 @@ import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu, type NoteDialogAction } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../../hooks/useNotesDragDrop';
 
+/** Synthetic root node used when right-clicking empty space in the sidebar. */
+const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
+
 /** Compute ancestor folder paths that need to be expanded for a given note path. */
 function getAncestorPaths(notePath: string): string[] {
     const segments = notePath.split('/');
@@ -74,6 +77,12 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
 
     const handleContextMenu = useCallback((node: NoteTreeNode, x: number, y: number) => {
         openContextMenu(node, x, y);
+    }, [openContextMenu]);
+
+    const handleBackgroundContextMenu = useCallback((e: React.MouseEvent) => {
+        if (e.shiftKey) return;
+        e.preventDefault();
+        openContextMenu(ROOT_NODE, e.clientX, e.clientY);
     }, [openContextMenu]);
 
     const handleNewNotebook = useCallback(() => {
@@ -187,6 +196,15 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const buildContextMenuItems = (): ContextMenuItem[] => {
         if (!ctxMenu) return [];
         const { node } = ctxMenu;
+
+        // Root-level context menu (right-click on empty space)
+        if (node.path === '' && node.name === '') {
+            return [
+                { label: 'New Notebook', onClick: () => openDialog('create-notebook', node) },
+                { label: 'New Note', onClick: () => openDialog('create-page', node) },
+            ];
+        }
+
         const isFolder = node.type === 'notebook' || node.type === 'section';
 
         if (isFolder) {
@@ -222,7 +240,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             </div>
 
             {/* Tree area */}
-            <div className="flex-1 overflow-y-auto py-1">
+            <div className="flex-1 overflow-y-auto py-1" data-testid="notes-tree-area" onContextMenu={handleBackgroundContextMenu}>
                 {loading && (
                     <div className="flex items-center justify-center py-6" data-testid="notes-loading">
                         <Spinner size="md" />

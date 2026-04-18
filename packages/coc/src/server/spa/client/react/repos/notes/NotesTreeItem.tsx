@@ -63,6 +63,7 @@ export function NotesTreeItem({
     };
 
     const handleContextMenu = (e: React.MouseEvent) => {
+        if (e.shiftKey) return;
         e.preventDefault();
         e.stopPropagation();
         onContextMenu(node, e.clientX, e.clientY);
