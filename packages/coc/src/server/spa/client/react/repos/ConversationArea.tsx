@@ -125,14 +125,17 @@ export function ConversationArea({
                                 const isSelected = isSelecting && selectedTurns?.has(idx);
 
                                 // Detect model change: show divider when a user turn
-                                // introduces a different model than the previous model-bearing turn
+                                // introduces a different model than the previous model-bearing turn,
+                                // or when switching from the default (no model field) for the first time
                                 let modelDivider: React.ReactNode = null;
                                 if (turn.role === 'user' && turn.model) {
                                     let prevModel: string | undefined;
+                                    let hasPriorTurns = false;
                                     for (let j = i - 1; j >= 0; j--) {
+                                        hasPriorTurns = true;
                                         if (sortedTurns[j].model) { prevModel = sortedTurns[j].model; break; }
                                     }
-                                    if (prevModel && prevModel !== turn.model) {
+                                    if (hasPriorTurns && prevModel !== turn.model) {
                                         modelDivider = (
                                             <div className="flex items-center gap-2 py-1 text-xs text-[#848484]" data-testid="model-change-divider">
                                                 <div className="flex-1 border-t border-dashed border-[#d0d0d0] dark:border-[#3c3c3c]" />

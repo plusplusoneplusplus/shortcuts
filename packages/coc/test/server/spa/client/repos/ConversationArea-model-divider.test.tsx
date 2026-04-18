@@ -117,16 +117,17 @@ describe('ConversationArea model-change divider', () => {
         expect(screen.queryByTestId('model-change-divider')).toBeNull();
     });
 
-    it('renders no divider when only first turn has no model and second has model', () => {
+    it('renders divider when switching from default model (no model field) to explicit model', () => {
         const turns = [
             makeTurn({ turnIndex: 0, role: 'user' }),
             makeTurn({ turnIndex: 1, role: 'assistant' }),
             makeTurn({ turnIndex: 2, role: 'user', model: 'gpt-5.4' }),
         ];
 
-        // No previous model-bearing turn → no divider
         render(<ConversationArea {...baseProps} turns={turns} />);
-        expect(screen.queryByTestId('model-change-divider')).toBeNull();
+        const divider = screen.getByTestId('model-change-divider');
+        expect(divider).toBeTruthy();
+        expect(divider.textContent).toContain('gpt-5.4');
     });
 
     it('renders multiple dividers for multiple model changes', () => {
