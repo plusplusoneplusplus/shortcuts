@@ -320,7 +320,7 @@ export class CopilotClientCache {
 
             logger.debug(LogCategory.AI, `[ClientCache] Replenishing pool: need ${needed} client(s)`);
             const results = await Promise.allSettled(
-                Array.from({ length: needed }, () => this.aiService!.createClient()),
+                Array.from({ length: needed }, () => this.createAndWarmClient()),
             );
             const now = Date.now();
             let created = 0;
@@ -336,6 +336,47 @@ export class CopilotClientCache {
         } finally {
             this.replenishing = false;
         }
+    }
+
+    /**
+     * Create a client and send a throwaway "hello" message to force the SDK
+     * subprocess to fully initialize. The warm-up session is destroyed after
+     * the response arrives so the client retains no conversation context.
+     */
+    private async createAndWarmClient(): Promise<CopilotClient> {
+        const client = await this.aiService!.createClient();
+        try {
+            const session = await client.createSession({
+                onPermissionRequest: () => ({ kind: 'denied-by-rules' as const, rules: [] }),
+            });
+            // Subscribe to events and wait for the turn to complete
+            await new Promise<void>((resolve) => {
+                let settled = false;
+                const settle = () => { if (!settled) { settled = true; resolve(); } };
+                // Listen for turn_end or confirmation events
+                if (session.on) {
+                    session.on((event) => {
+                        if (event.type === 'session.idle' || event.type === 'assistant.turn_end') {
+                            settle();
+                        }
+                    });
+                }
+                // Safety timeout — don't block pool init forever
+                setTimeout(settle, 15_000);
+                // Fire the message
+                if (session.send) {
+                    session.send({ prompt: 'hello' }).catch(settle);
+                } else {
+                    settle();
+                }
+            });
+            await session.destroy();
+            getLogger().debug(LogCategory.AI, '[ClientCache] Pool client warmed up');
+        } catch {
+            // Warm-up is best-effort — the client is still usable without it
+            getLogger().debug(LogCategory.AI, '[ClientCache] Pool client warm-up failed (non-fatal)');
+        }
+        return client;
     }
 
     /**

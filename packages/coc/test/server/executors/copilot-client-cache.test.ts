@@ -33,6 +33,7 @@ function createMockAIService() {
     return {
         service: {
             createClient: vi.fn().mockResolvedValue(mockClient),
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
         },
         mockClient,
     };
@@ -43,6 +44,7 @@ function createMultiClientAIService() {
     return {
         service: {
             createClient: vi.fn().mockImplementation(() => Promise.resolve(createMockClient())),
+            isAvailable: vi.fn().mockResolvedValue({ available: true }),
         },
     };
 }
@@ -101,6 +103,7 @@ describe('CopilotClientCache', () => {
                 createClient: vi.fn()
                     .mockResolvedValueOnce(client1)
                     .mockResolvedValueOnce(client2),
+                isAvailable: vi.fn().mockResolvedValue({ available: true }),
             };
             cache.setAIService(service as any);
 
@@ -185,6 +188,7 @@ describe('CopilotClientCache', () => {
                 createClient: vi.fn()
                     .mockResolvedValueOnce(client1)
                     .mockResolvedValueOnce(client2),
+                isAvailable: vi.fn().mockResolvedValue({ available: true }),
             };
             disabledPoolCache.setAIService(service as any);
 
@@ -358,6 +362,7 @@ describe('CopilotClientCache', () => {
                     .mockResolvedValueOnce(client1)
                     .mockResolvedValueOnce(client2)
                     .mockResolvedValueOnce(client3),
+                isAvailable: vi.fn().mockResolvedValue({ available: true }),
             };
             cache.setAIService(service as any);
 
@@ -382,6 +387,7 @@ describe('CopilotClientCache', () => {
                 createClient: vi.fn()
                     .mockResolvedValueOnce(client1)
                     .mockResolvedValueOnce(client2),
+                isAvailable: vi.fn().mockResolvedValue({ available: true }),
             };
             cache.setAIService(service as any);
 
@@ -547,6 +553,7 @@ describe('CopilotClientCache', () => {
                         if (callCount === 2) return Promise.reject(new Error('spawn failed'));
                         return Promise.resolve(createMockClient());
                     }),
+                    isAvailable: vi.fn().mockResolvedValue({ available: true }),
                 };
                 poolCache.setAIService(service as any);
 
@@ -622,6 +629,7 @@ describe('CopilotClientCache', () => {
                     createClient: vi.fn()
                         .mockResolvedValueOnce(poolClient) // pool init
                         .mockResolvedValueOnce(replenishedClient), // async replenish after pop
+                    isAvailable: vi.fn().mockResolvedValue({ available: true }),
                 };
                 poolCache.setAIService(service as any);
 
