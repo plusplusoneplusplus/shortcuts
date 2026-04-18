@@ -157,7 +157,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Previously a separate `
 
 **Storage layout — `~/.coc/` (top-level, global):**
 - `config.yaml` — server configuration
-- `processes.db` — SQLite process store (default backend; schema version 7); also stores queue tasks, schedule runs, per-process seen/unseen state (`seen_at` column), commit-chat bindings, per-process last-event timestamp (`last_event_at` column), pin state (`pinned_at` column), and FTS5 `conversation_search` index on `conversation_turns.content`
+- `processes.db` — SQLite process store (default backend; schema version 8); also stores queue tasks, schedule runs, per-process seen/unseen state (`seen_at` column), commit-chat bindings, per-process last-event timestamp (`last_event_at` column), pin state (`pinned_at` column), per-turn pin/archive/delete state (`conversation_turns.pinned_at`, `archived`, `deleted_at`), and FTS5 `conversation_search` index on `conversation_turns.content`
 - `preferences.json` — global UI preferences (theme, etc.)
 - `memory/` — cross-repo and system memory (see Memory System section)
 - `skills/` — global skill definitions
@@ -192,6 +192,8 @@ Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `packages/c
 **Memory layer:** `FileMemoryStore` (entry CRUD with `id`, `tags`, `summary`, `source` fields), `MemoryConfig` (`storageDir`, `backend`, `maxEntries`, `ttlDays`, `autoInject`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, `GET/POST /api/memory/entries`, `GET/PATCH/DELETE /api/memory/entries/:id`, `GET /api/memory/aggregate-tool-calls/stats`, `POST /api/memory/aggregate-tool-calls`, `GET /api/memory/observations/levels` (3-level overview), `GET /api/memory/observations` (list files at a level), `GET /api/memory/observations/:filename` (read observation). Dashboard UI: `MemoryView` → `MemoryEntriesPanel` + `MemoryFilesPanel` (3-level file browser) + `MemoryConfigPanel` + `ExploreCachePanel`.
 
 **Seen-state layer:** `seen-state-handler.ts` (`registerSeenStateRoutes`) exposes per-process read/unread tracking via `GET/PATCH /api/workspaces/:id/seen-state`, `DELETE /api/workspaces/:id/seen-state/:processId`, `GET /api/workspaces/:id/seen-state/count`. Backed by `seen_at TEXT` column on `processes` table. Client hook `useUnseenActivity` loads from server on mount, uses optimistic local state + debounced fire-and-forget API calls. One-time localStorage migration from `coc-unseen-*` keys on first load.
+
+**Turn actions layer:** `turn-actions-handler.ts` (`registerTurnActionRoutes`) exposes per-message delete, pin, and archive on conversation turns. Routes: `DELETE /api/processes/:id/turns/:turnIndex` (soft-delete), `PATCH .../restore`, `PATCH .../pin`, `PATCH .../archive`, `GET /api/processes/:id/turns/pinned`. Backed by `deleted_at TEXT`, `pinned_at TEXT`, `archived INTEGER` columns on `conversation_turns` table. SPA: `ConversationTurnBubble` context menu (Delete/Pin/Archive), `ProcessDetail` renders collapsible Pinned Messages section, archived toggle, undo-delete toast.
 
 **Testing:** 627+ Vitest test files under `packages/coc/test/server/`.
 
