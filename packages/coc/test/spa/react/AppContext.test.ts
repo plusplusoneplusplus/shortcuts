@@ -41,6 +41,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         activeSkillsSubTab: 'installed',
         activeAdminSubTab: 'settings',
         repoTabState: {},
+        notePathState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
         ...overrides,

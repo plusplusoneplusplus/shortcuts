@@ -49,6 +49,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         activeMemorySubTab: 'entries',
         activeSkillsSubTab: 'installed',
         repoTabState: {},
+        notePathState: {},
         wikiTabState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
@@ -346,6 +347,72 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedNotePath: null });
             const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: null });
             expect(result).toBe(state);
+        });
+
+        it('updates notePathState for the current workspace when selectedRepoId is set', () => {
+            const state = makeState({ selectedRepoId: 'ws-a', selectedNotePath: null, notePathState: {} });
+            const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: 'journal/today.md' });
+            expect(result.notePathState['ws-a']).toBe('journal/today.md');
+        });
+
+        it('does not touch notePathState when no workspace is selected', () => {
+            const state = makeState({ selectedRepoId: null, selectedNotePath: null, notePathState: {} });
+            const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: 'journal/today.md' });
+            expect(result.notePathState).toEqual({});
+        });
+
+        it('clears workspace note in notePathState when path is set to null', () => {
+            const state = makeState({ selectedRepoId: 'ws-a', selectedNotePath: 'journal/today.md', notePathState: { 'ws-a': 'journal/today.md' } });
+            const result = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: null });
+            expect(result.notePathState['ws-a']).toBeNull();
+        });
+    });
+
+    describe('SET_SELECTED_REPO note-path persistence', () => {
+        it('saves selectedNotePath into notePathState for the previous workspace on switch', () => {
+            const state = makeState({
+                selectedRepoId: 'ws-a',
+                selectedNotePath: 'journal/today.md',
+                notePathState: {},
+            });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'ws-b' });
+            expect(result.notePathState['ws-a']).toBe('journal/today.md');
+        });
+
+        it('restores selectedNotePath from notePathState when switching to a workspace with a saved path', () => {
+            const state = makeState({
+                selectedRepoId: 'ws-a',
+                selectedNotePath: 'current.md',
+                notePathState: { 'ws-b': 'archive/old.md' },
+            });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'ws-b' });
+            expect(result.selectedNotePath).toBe('archive/old.md');
+        });
+
+        it('resets selectedNotePath to null when switching to a workspace with no saved path', () => {
+            const state = makeState({
+                selectedRepoId: 'ws-a',
+                selectedNotePath: 'journal/today.md',
+                notePathState: {},
+            });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'ws-b' });
+            expect(result.selectedNotePath).toBeNull();
+        });
+
+        it('round-trips: open note in A → switch to B → switch back to A → note path restored', () => {
+            // Step 1: open a note in ws-a
+            let state = makeState({ selectedRepoId: 'ws-a', selectedNotePath: null, notePathState: {} });
+            state = appReducer(state, { type: 'SET_SELECTED_NOTE_PATH', notePath: 'journal/today.md' });
+            expect(state.selectedNotePath).toBe('journal/today.md');
+
+            // Step 2: switch to ws-b (saves ws-a path)
+            state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'ws-b' });
+            expect(state.selectedNotePath).toBeNull();
+            expect(state.notePathState['ws-a']).toBe('journal/today.md');
+
+            // Step 3: switch back to ws-a (restores path)
+            state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'ws-a' });
+            expect(state.selectedNotePath).toBe('journal/today.md');
         });
     });
 

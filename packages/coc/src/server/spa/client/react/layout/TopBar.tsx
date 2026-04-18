@@ -6,6 +6,7 @@ import { useCallback, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useRepos } from '../context/ReposContext';
 import { useTheme } from './ThemeProvider';
+import { buildNoteHash } from './Router';
 import { NotificationBell } from '../shared/NotificationBell';
 import { RepoTabStrip } from '../repos/RepoTabStrip';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
@@ -70,16 +71,22 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     }, [dispatch]);
 
     const goToMyWork = useCallback(() => {
+        const savedPath = state.notePathState?.[MY_WORK_WORKSPACE_ID];
         dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
         dispatch({ type: 'SET_SELECTED_REPO', id: MY_WORK_WORKSPACE_ID });
-        location.hash = '#repos/' + MY_WORK_WORKSPACE_ID + '/notes';
-    }, [dispatch]);
+        location.hash = savedPath
+            ? buildNoteHash(MY_WORK_WORKSPACE_ID, savedPath)
+            : '#repos/' + MY_WORK_WORKSPACE_ID + '/notes';
+    }, [dispatch, state.notePathState]);
 
     const goToMyLife = useCallback(() => {
+        const savedPath = state.notePathState?.[MY_LIFE_WORKSPACE_ID];
         dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
         dispatch({ type: 'SET_SELECTED_REPO', id: MY_LIFE_WORKSPACE_ID });
-        location.hash = '#repos/' + MY_LIFE_WORKSPACE_ID + '/notes';
-    }, [dispatch]);
+        location.hash = savedPath
+            ? buildNoteHash(MY_LIFE_WORKSPACE_ID, savedPath)
+            : '#repos/' + MY_LIFE_WORKSPACE_ID + '/notes';
+    }, [dispatch, state.notePathState]);
 
     const toggleRepoManagement = useCallback(() => {
         if (state.activeTab !== 'repos') {
@@ -92,11 +99,19 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const selectRepo = useCallback((id: string) => {
         dispatch({ type: 'SET_SELECTED_REPO', id });
         const subTab = state.repoTabState[id] ?? 'settings';
-        const suffix = subTab === 'settings'
-            ? `/${subTab}/${state.settingsSection}`
-            : `/${subTab}`;
+        let suffix: string;
+        if (subTab === 'settings') {
+            suffix = `/${subTab}/${state.settingsSection}`;
+        } else if (subTab === 'notes') {
+            const savedPath = state.notePathState?.[id];
+            suffix = savedPath
+                ? '/notes/' + savedPath.split('/').map(encodeURIComponent).join('/')
+                : '/notes';
+        } else {
+            suffix = `/${subTab}`;
+        }
         location.hash = '#repos/' + encodeURIComponent(id) + suffix;
-    }, [dispatch, state.repoTabState, state.settingsSection]);
+    }, [dispatch, state.repoTabState, state.settingsSection, state.notePathState]);
 
     const isOnReposTab = state.activeTab === 'repos';
 

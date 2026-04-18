@@ -81,6 +81,8 @@ export interface AppContextState {
     adminDbOrder: 'asc' | 'desc' | null;
     /** Per-repo remembered sub-tab (in-memory only, resets on page refresh). */
     repoTabState: Record<string, RepoSubTab>;
+    /** Per-workspace remembered note path (in-memory only, resets on page refresh). */
+    notePathState: Record<string, string | null>;
     /** Per-wiki remembered project tab (in-memory only, resets on page refresh). */
     wikiTabState: Record<string, string>;
     /** Per-repo per-sub-tab navigation state, keyed by `${repoId}::${subTab}` (in-memory only). */
@@ -140,6 +142,7 @@ const initialState: AppContextState = {
     adminDbSort: null,
     adminDbOrder: null,
     repoTabState: {},
+    notePathState: {},
     wikiTabState: {},
     repoSubTabNavState: {},
     settingsSection: 'info',
@@ -294,7 +297,12 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 ? { ...state.repoTabState, [state.selectedRepoId]: state.activeRepoSubTab }
                 : state.repoTabState;
             const restoredTab = action.id ? (savedTabState[action.id] ?? 'settings') : state.activeRepoSubTab;
-            return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab, selectedWorkflowName: null, selectedWorkflowProcessId: null };
+            // Save + restore note path per workspace
+            const savedNoteState = state.selectedRepoId
+                ? { ...state.notePathState, [state.selectedRepoId]: state.selectedNotePath }
+                : state.notePathState;
+            const restoredNotePath = action.id ? (savedNoteState[action.id] ?? null) : null;
+            return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab, notePathState: savedNoteState, selectedNotePath: restoredNotePath, selectedWorkflowName: null, selectedWorkflowProcessId: null };
         }
         case 'SET_REPO_SUB_TAB': {
             const updatedRepoTabState = state.selectedRepoId
@@ -442,10 +450,13 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, repoWikiInitialTab: null, repoWikiInitialAdminTab: null, repoWikiInitialComponentId: null };
         case 'SET_EXPLORER_PATH':
             return { ...state, selectedExplorerPath: action.path };
-        case 'SET_SELECTED_NOTE_PATH':
-            return state.selectedNotePath === action.notePath
-                ? state
-                : { ...state, selectedNotePath: action.notePath };
+        case 'SET_SELECTED_NOTE_PATH': {
+            if (state.selectedNotePath === action.notePath) return state;
+            const updatedNoteState = state.selectedRepoId
+                ? { ...state.notePathState, [state.selectedRepoId]: action.notePath }
+                : state.notePathState;
+            return { ...state, selectedNotePath: action.notePath, notePathState: updatedNoteState };
+        }
         case 'SET_MEMORY_SUB_TAB':
             return { ...state, activeMemorySubTab: action.tab };
         case 'SET_SKILLS_SUB_TAB':
