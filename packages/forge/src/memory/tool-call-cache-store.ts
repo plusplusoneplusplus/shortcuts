@@ -2,7 +2,7 @@
  * FileToolCallCacheStore — persistence layer for the tool-call caching system.
  *
  * Stores raw tool-call Q&A entries as individual JSON files, consolidated
- * summaries, and cache index metadata on disk. Follows FileMemoryStore
+ * summaries, and cache index metadata on disk. Follows BaseFileStore
  * patterns: atomic tmp→rename writes, write-queue serialization.
  *
  * No VS Code dependencies — pure Node.js.
@@ -20,7 +20,7 @@ import type {
     ToolCallCacheStats,
 } from './tool-call-cache-types';
 import { getRemoteUrl, computeRemoteHash } from '../git/remote';
-import { computeRepoHash } from './memory-store';
+import { computeRepoHash } from './repo-hash';
 import { BaseFileStore } from './base-file-store';
 
 /**

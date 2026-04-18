@@ -1,7 +1,8 @@
 /**
  * Memory System
  *
- * Re-exports all memory types, interfaces, and the FileMemoryStore implementation.
+ * Re-exports all memory types, interfaces, store implementations,
+ * and security scanner.
  */
 export type {
     RawObservation,
@@ -17,8 +18,14 @@ export type {
     MemoryStore,
 } from './types';
 
-export { FileMemoryStore, computeRepoHash } from './memory-store';
+export { computeRepoHash } from './repo-hash';
 export { BaseFileStore } from './base-file-store';
+
+// Bounded memory store
+export { BoundedMemoryStore } from './bounded-memory-store';
+export type { BoundedMemoryStoreOptions, MemoryMutationResult, MemoryUsage, MemoryScanResult, ThreatPatternId } from './bounded-memory-types';
+export { ENTRY_DELIMITER, DEFAULT_CHAR_LIMIT } from './bounded-memory-types';
+export { scanMemoryContent } from './memory-security-scanner';
 export { MemoryRetriever } from './memory-retriever';
 export { createWriteMemoryTool, WriteMemoryToolOptions, WriteMemoryArgs } from './write-memory-tool';
 export { MemoryAggregator, MEMORY_CONSOLIDATION_INSTRUCTIONS } from './memory-aggregator';

@@ -42,7 +42,10 @@ Persistent memory that lets AI interactions learn from past executions. Stores o
 | File | Export | Role |
 |------|--------|------|
 | `types.ts` | `MemoryStore`, `MemoryConfig`, `RawObservation`, `ConsolidatedMemory`, `MemoryIndex`, etc. | All type definitions and the store interface |
-| `memory-store.ts` | `FileMemoryStore`, `computeRepoHash` | CRUD for raw observations, consolidated memory, index, repo-info. Atomic writes (tmp→rename), sequential write queue. Follows `FileProcessStore` patterns. |
+| `bounded-memory-types.ts` | `BoundedMemoryStoreOptions`, `MemoryMutationResult`, `MemoryUsage`, `MemoryScanResult`, `ThreatPatternId`, `ENTRY_DELIMITER`, `DEFAULT_CHAR_LIMIT` | Types and constants for the bounded memory system |
+| `bounded-memory-store.ts` | `BoundedMemoryStore` | Hermes-style bounded file-backed store with add/replace/remove, substring matching, char limits, `§` delimiters, mkdir-based file locking, atomic writes. Extends `BaseFileStore`. |
+| `memory-security-scanner.ts` | `scanMemoryContent` | Stateless security scanner detecting prompt injection, exfiltration, persistence threats, and invisible Unicode characters |
+| `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths (deprecated — prefer `repoDir` option) |
 | `memory-retriever.ts` | `MemoryRetriever` | Loads `consolidated.md` for a repo/system level, formats as a context block for prompt injection |
 | `write-memory-tool.ts` | `createWriteMemoryTool` | Factory returning a `write_memory` tool (via `defineTool`) that AI can call organically during a session to record observations |
 | `memory-aggregator.ts` | `MemoryAggregator` | Checks batch threshold, consolidates raw observations into `consolidated.md` using an AI invoker |
@@ -53,9 +56,9 @@ Persistent memory that lets AI interactions learn from past executions. Stores o
 
 **Simple — `withMemory()` wrapper** (single AI call):
 ```typescript
-import { withMemory, FileMemoryStore } from 'forge';
+import { withMemory, BoundedMemoryStore } from 'forge';
 
-const store = new FileMemoryStore({ baseDir: '~/.coc/memory' });
+const store = new BoundedMemoryStore({ filePath: '~/.coc/repos/<id>/MEMORY.md' });
 const result = await withMemory(innerInvoker, prompt, {
     store, repoHash: 'abc123...', level: 'repo',
 });
