@@ -1236,8 +1236,12 @@ describe('isChatTask: tab routing', () => {
         expect(isChatTask({ type: 'chat', payload: { mode: 'autopilot' } })).toBe(true);
     });
 
-    it('returns false for a work-item execution chat task', () => {
+    it('returns false for a work-item execution chat task (payload.workItemId)', () => {
         expect(isChatTask({ type: 'chat', payload: { mode: 'ask', workItemId: 'wi-123' } })).toBe(false);
+    });
+
+    it('returns false for a work-item history item (top-level workItemId)', () => {
+        expect(isChatTask({ type: 'chat', workItemId: 'wi-456' })).toBe(false);
     });
 
     it('returns false for non-chat task types', () => {
