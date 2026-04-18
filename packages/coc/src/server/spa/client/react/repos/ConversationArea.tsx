@@ -123,29 +123,51 @@ export function ConversationArea({
                             return sortedTurns.map((turn, i) => {
                                 const idx = turn.turnIndex ?? i;
                                 const isSelected = isSelecting && selectedTurns?.has(idx);
-                                return (
-                                    <div
-                                        key={idx}
-                                        className={cn(
-                                            'flex items-start gap-2',
-                                            isSelecting && 'cursor-pointer',
-                                            isSelected && 'ring-2 ring-[#0078d4] ring-offset-1 rounded-lg',
-                                        )}
-                                        onClick={isSelecting ? (e: React.MouseEvent) => onTurnClick?.(idx, e) : undefined}
-                                    >
-                                        {isSelecting && (
-                                            <div className="flex-shrink-0 pt-3 pl-1">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected ?? false}
-                                                    readOnly
-                                                    className="w-4 h-4 accent-[#0078d4] pointer-events-none"
-                                                    aria-label={`Select turn ${idx}`}
-                                                />
+
+                                // Detect model change: show divider when a user turn
+                                // introduces a different model than the previous model-bearing turn
+                                let modelDivider: React.ReactNode = null;
+                                if (turn.role === 'user' && turn.model) {
+                                    let prevModel: string | undefined;
+                                    for (let j = i - 1; j >= 0; j--) {
+                                        if (sortedTurns[j].model) { prevModel = sortedTurns[j].model; break; }
+                                    }
+                                    if (prevModel && prevModel !== turn.model) {
+                                        modelDivider = (
+                                            <div className="flex items-center gap-2 py-1 text-xs text-[#848484]" data-testid="model-change-divider">
+                                                <div className="flex-1 border-t border-dashed border-[#d0d0d0] dark:border-[#3c3c3c]" />
+                                                <span>🤖 switched to <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{turn.model}</span></span>
+                                                <div className="flex-1 border-t border-dashed border-[#d0d0d0] dark:border-[#3c3c3c]" />
                                             </div>
-                                        )}
-                                        <div className="flex-1 min-w-0">
-                                            <ConversationTurnBubble turn={turn} taskId={taskId} wsId={wsId} turnIndex={idx} onAttachContext={onAttachContext} />
+                                        );
+                                    }
+                                }
+
+                                return (
+                                    <div key={idx}>
+                                        {modelDivider}
+                                        <div
+                                            className={cn(
+                                                'flex items-start gap-2',
+                                                isSelecting && 'cursor-pointer',
+                                                isSelected && 'ring-2 ring-[#0078d4] ring-offset-1 rounded-lg',
+                                            )}
+                                            onClick={isSelecting ? (e: React.MouseEvent) => onTurnClick?.(idx, e) : undefined}
+                                        >
+                                            {isSelecting && (
+                                                <div className="flex-shrink-0 pt-3 pl-1">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected ?? false}
+                                                        readOnly
+                                                        className="w-4 h-4 accent-[#0078d4] pointer-events-none"
+                                                        aria-label={`Select turn ${idx}`}
+                                                    />
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <ConversationTurnBubble turn={turn} taskId={taskId} wsId={wsId} turnIndex={idx} onAttachContext={onAttachContext} />
+                                            </div>
                                         </div>
                                     </div>
                                 );

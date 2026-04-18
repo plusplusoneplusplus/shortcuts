@@ -154,7 +154,7 @@ export function useSendMessage({
                     const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
                     return [
                         ...prev,
-                        { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx },
+                        { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, ...(modelOverride ? { model: modelOverride } : {}) },
                     ];
                 });
             }
@@ -190,7 +190,7 @@ export function useSendMessage({
             const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
             return [
                 ...prev,
-                { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, pasteExternalized },
+                { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, pasteExternalized, ...(modelOverride ? { model: modelOverride } : {}) },
                 { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1 },
             ];
         });

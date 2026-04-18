@@ -235,11 +235,11 @@ export class DirectoryHistoryImporter {
                 INSERT OR IGNORE INTO conversation_turns (
                     process_id, turn_index, role, content, timestamp, streaming,
                     tool_calls, timeline, images, historical, suggestions,
-                    token_usage, paste_externalized
+                    token_usage, paste_externalized, model
                 ) VALUES (
                     @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                     @tool_calls, @timeline, @images, @historical, @suggestions,
-                    @token_usage, @paste_externalized
+                    @token_usage, @paste_externalized, @model
                 )
             `);
 

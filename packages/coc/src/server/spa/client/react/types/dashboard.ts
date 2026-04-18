@@ -76,6 +76,8 @@ export interface ClientConversationTurn {
     tokenUsage?: ClientTokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /** Model override used for this turn (set on user turns when /model was active) */
+    model?: string;
 }
 
 /** Cached conversation data for a historical process. */

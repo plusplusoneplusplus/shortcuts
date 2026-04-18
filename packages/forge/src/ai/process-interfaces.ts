@@ -150,6 +150,8 @@ export interface ConversationTurn {
     tokenUsage?: TokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /** Model override used for this turn (set on user turns when /model was active) */
+    model?: string;
 }
 
 /**
@@ -174,6 +176,8 @@ export interface SerializedConversationTurn {
     tokenUsage?: TokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /** Model override used for this turn (set on user turns when /model was active) */
+    model?: string;
 }
 
 /**

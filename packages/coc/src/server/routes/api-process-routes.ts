@@ -517,6 +517,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     timeline: [],
                     images: validatedImages,
                     ...(isPasteExternalized ? { pasteExternalized: true } : {}),
+                    ...(modelOverride ? { model: modelOverride } : {}),
                 }),
                 { additionalUpdates: { status: 'running' } },
             );

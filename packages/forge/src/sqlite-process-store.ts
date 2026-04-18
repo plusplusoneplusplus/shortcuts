@@ -102,6 +102,7 @@ interface TurnRow {
     suggestions: string | null;
     token_usage: string | null;
     paste_externalized: number;
+    model: string | null;
 }
 
 interface WorkspaceRow {
@@ -400,6 +401,7 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         suggestions: turn.suggestions ? JSON.stringify(turn.suggestions) : null,
         token_usage: jsonStringify(turn.tokenUsage),
         paste_externalized: boolToInt(turn.pasteExternalized),
+        model: turn.model ?? null,
     };
 }
 
@@ -446,6 +448,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         suggestions: jsonParse<string[]>(row.suggestions),
         tokenUsage: jsonParse<TokenUsage>(row.token_usage),
         pasteExternalized: intToBool(row.paste_externalized),
+        ...(row.model ? { model: row.model } : {}),
     };
 }
 
@@ -570,11 +573,11 @@ export class SqliteProcessStore implements ProcessStore {
             INSERT INTO conversation_turns (
                 process_id, turn_index, role, content, timestamp, streaming,
                 tool_calls, timeline, images, historical, suggestions,
-                token_usage, paste_externalized
+                token_usage, paste_externalized, model
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @tool_calls, @timeline, @images, @historical, @suggestions,
-                @token_usage, @paste_externalized
+                @token_usage, @paste_externalized, @model
             )
         `);
 
@@ -934,6 +937,7 @@ export class SqliteProcessStore implements ProcessStore {
                     suggestions: null,
                     token_usage: null,
                     paste_externalized: 0,
+                    model: null,
                 });
             }
         });

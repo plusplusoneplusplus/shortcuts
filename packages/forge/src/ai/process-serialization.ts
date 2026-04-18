@@ -97,6 +97,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
             suggestions: turn.suggestions,
             tokenUsage: turn.tokenUsage,
             pasteExternalized: turn.pasteExternalized,
+            model: turn.model,
         })),
         // Context window tracking fields
         tokenLimit: process.tokenLimit,
@@ -198,6 +199,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
             suggestions: turn.suggestions,
             tokenUsage: turn.tokenUsage,
             pasteExternalized: turn.pasteExternalized,
+            model: turn.model,
         })),
         // Context window tracking fields
         tokenLimit: serialized.tokenLimit,

@@ -599,6 +599,53 @@ describe('POST /api/processes/:id/message', () => {
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             expect(enqueueFn.mock.calls[0][0].payload.model).toBeUndefined();
         });
+
+        it('should store model on the appended user turn', async () => {
+            const proc: AIProcess = {
+                id: 'proc-model-turn',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-model-turn',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-model-turn/message`, {
+                content: 'hello with model',
+                model: 'claude-sonnet-4.6',
+            });
+
+            const updated = await store.getProcess('proc-model-turn');
+            const userTurn = updated?.conversationTurns?.find(t => t.role === 'user');
+            expect(userTurn).toBeDefined();
+            expect(userTurn!.model).toBe('claude-sonnet-4.6');
+        });
+
+        it('should not store model on user turn when not provided', async () => {
+            const proc: AIProcess = {
+                id: 'proc-no-model-turn',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-no-model-turn',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-no-model-turn/message`, {
+                content: 'hello without model',
+            });
+
+            const updated = await store.getProcess('proc-no-model-turn');
+            const userTurn = updated?.conversationTurns?.find(t => t.role === 'user');
+            expect(userTurn).toBeDefined();
+            expect(userTurn!.model).toBeUndefined();
+        });
     });
 
     // ========================================================================

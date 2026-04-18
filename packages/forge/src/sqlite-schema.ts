@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * Read the current schema version from the database.
@@ -81,6 +81,7 @@ export function initializeDatabase(db: Database.Database): void {
                 suggestions       TEXT,
                 token_usage       TEXT,
                 paste_externalized INTEGER DEFAULT 0,
+                model             TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -279,6 +280,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore >= 1 && versionBefore < 7) {
             migrateV6toV7(db);
         }
+        if (versionBefore >= 1 && versionBefore < 8) {
+            migrateV7toV8(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -346,4 +350,14 @@ function migrateV5toV6(db: Database.Database): void {
  */
 function migrateV6toV7(db: Database.Database): void {
     db.exec('DROP TABLE IF EXISTS note_chat_bindings');
+}
+
+/**
+ * V7 → V8: add `model TEXT` column to `conversation_turns` for model-change tracking.
+ */
+function migrateV7toV8(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'model')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN model TEXT');
+    }
 }
