@@ -92,6 +92,14 @@ export class CopilotClientCache {
     async initialize(): Promise<void> {
         if (!this.poolEnabled || this.poolSize <= 0 || !this.aiService) return;
 
+        // Ensure the SDK is loaded before pre-warming
+        const availability = await this.aiService.isAvailable();
+        if (!availability.available) {
+            const logger = getLogger();
+            logger.warn(LogCategory.AI, `[ClientCache] Cannot pre-warm pool: SDK not available — ${availability.error}`);
+            return;
+        }
+
         const logger = getLogger();
         logger.debug(LogCategory.AI, `[ClientCache] Pre-warming pool with ${this.poolSize} clients`);
 
@@ -117,14 +125,14 @@ export class CopilotClientCache {
         // No-op if nothing changed
         if (this.poolEnabled === wasEnabled && this.poolSize === oldSize) return;
 
-        logger.debug(LogCategory.AI, `[ClientCache] Reconfigure: enabled=${this.poolEnabled} (was ${wasEnabled}), size=${this.poolSize} (was ${oldSize})`);
+        logger.info(LogCategory.AI, `[ClientCache] Reconfigure: enabled=${this.poolEnabled} (was ${wasEnabled}), size=${this.poolSize} (was ${oldSize})`);
 
         if (!this.poolEnabled) {
             // Drain all pool clients and stop the rotation timer
             this.stopRotationTimer();
             const drained = this.pool.splice(0);
             await Promise.allSettled(drained.map(pe => pe.client.stop().catch(() => {})));
-            logger.debug(LogCategory.AI, `[ClientCache] Pool disabled — drained ${drained.length} clients`);
+            logger.info(LogCategory.AI, `[ClientCache] Pool disabled — drained ${drained.length} clients`);
             return;
         }
 
@@ -303,18 +311,28 @@ export class CopilotClientCache {
             const needed = this.poolSize - this.pool.length;
             if (needed <= 0) return;
 
+            // Ensure SDK is loaded before spawning clients
+            const availability = await this.aiService.isAvailable();
+            if (!availability.available) {
+                logger.warn(LogCategory.AI, `[ClientCache] Cannot replenish pool: SDK not available — ${availability.error}`);
+                return;
+            }
+
+            logger.debug(LogCategory.AI, `[ClientCache] Replenishing pool: need ${needed} client(s)`);
             const results = await Promise.allSettled(
                 Array.from({ length: needed }, () => this.aiService!.createClient()),
             );
             const now = Date.now();
+            let created = 0;
             for (const r of results) {
                 if (r.status === 'fulfilled') {
                     this.pool.push({ client: r.value, createdAt: now });
+                    created++;
                 } else {
-                    logger.debug(LogCategory.AI, `[ClientCache] Pool replenish failed: ${r.reason}`);
+                    logger.warn(LogCategory.AI, `[ClientCache] Pool replenish failed: ${r.reason}`);
                 }
             }
-            logger.debug(LogCategory.AI, `[ClientCache] Pool replenished (size: ${this.pool.length})`);
+            logger.debug(LogCategory.AI, `[ClientCache] Pool replenished: created ${created}/${needed}, pool size: ${this.pool.length}`);
         } finally {
             this.replenishing = false;
         }
