@@ -204,7 +204,28 @@ export function useChatSSE({
             } catch { /* ignore */ }
         });
 
-        es.onerror = () => { closeSSE(); void refreshConversation(processId); };
+        // SSE auto-reconnects natively on transient errors. Only close
+        // permanently when the task reaches a terminal status (handled by
+        // finish()) or the component unmounts (handled by cleanup return).
+        // Track consecutive errors and fall back to a full refresh if the
+        // connection keeps failing.
+        let consecutiveErrors = 0;
+        const MAX_SSE_ERRORS = 5;
+
+        es.onerror = () => {
+            consecutiveErrors++;
+            if (consecutiveErrors >= MAX_SSE_ERRORS) {
+                // Too many consecutive errors — give up and refresh
+                closeSSE();
+                void refreshConversation(processId);
+            }
+            // Otherwise let EventSource auto-reconnect
+        };
+
+        // Reset error count on successful reconnection
+        es.onopen = () => {
+            consecutiveErrors = 0;
+        };
 
         es.addEventListener('suggestions', (event: Event) => {
             try {

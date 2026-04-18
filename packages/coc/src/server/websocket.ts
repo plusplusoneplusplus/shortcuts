@@ -128,6 +128,7 @@ export type ServerMessage =
     | { type: 'work-item-added'; workspaceId: string; item: any }
     | { type: 'work-item-updated'; workspaceId: string; item: any }
     | { type: 'work-item-removed'; workspaceId: string; itemId: string }
+    | { type: 'work-item-pr-created'; workspaceId: string; workItemId: string; prUrl: string; prNumber: number; iteration: number }
     | { type: 'turn-deleted'; processId: string; turnIndex: number; deletedAt: string | null }
     | { type: 'turn-pinned'; processId: string; turnIndex: number; pinnedAt: string | null }
     | { type: 'turn-archived'; processId: string; turnIndex: number; archived: boolean };

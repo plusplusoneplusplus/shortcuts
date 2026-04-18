@@ -94,6 +94,12 @@ export interface WorkItemExecution {
     sessionCategory?: string;
     /** Descriptive title for this execution (e.g. 'Code Implement', 'Resolve comments for Run #2'). */
     title?: string;
+    /** Execution kind (e.g. 'pr-generation' for PR creation runs). */
+    kind?: string;
+    /** PR generation iteration number. */
+    prIteration?: number;
+    /** URL of the created/updated pull request. */
+    prUrl?: string;
 }
 
 // ============================================================================
@@ -133,6 +139,14 @@ export interface WorkItemChange {
     headBefore?: string;
     /** Whether this Change is still tracking an active execution. */
     status: 'open' | 'closed';
+    /** Git branch name used for this change's PR. */
+    branchName?: string;
+    /** Pull request number (GitHub/ADO). */
+    prNumber?: number;
+    /** Pull request URL. */
+    prUrl?: string;
+    /** Pull request status. */
+    prStatus?: 'open' | 'merged' | 'closed';
 }
 
 // ============================================================================

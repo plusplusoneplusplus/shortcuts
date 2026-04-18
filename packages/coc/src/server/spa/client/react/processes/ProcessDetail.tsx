@@ -151,9 +151,17 @@ export function ProcessDetail() {
 
         es.addEventListener('chunk', (e) => {
             try {
-                const turn = JSON.parse(e.data);
-                dispatch({ type: 'APPEND_TURN', processId: selectedId, turn });
-                setTurns(prev => [...prev, turn]);
+                const data = JSON.parse(e.data);
+                const chunk = data.content || '';
+                setTurns(prev => {
+                    if (prev.length === 0 || prev[prev.length - 1].role !== 'assistant') {
+                        return [...prev, { role: 'assistant', content: chunk, streaming: true, timeline: [] }];
+                    }
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    updated[updated.length - 1] = { ...last, content: (last.content || '') + chunk, streaming: true };
+                    return updated;
+                });
             } catch { /* ignore parse errors */ }
         });
 
@@ -225,10 +233,16 @@ export function ProcessDetail() {
             setTurns(prev => prev.map(t => t.streaming ? { ...t, streaming: false } : t));
         });
 
+        let consecutiveErrors = 0;
+        const MAX_SSE_ERRORS = 5;
         es.onerror = () => {
-            es.close();
-            eventSourceRef.current = null;
+            consecutiveErrors++;
+            if (consecutiveErrors >= MAX_SSE_ERRORS) {
+                es.close();
+                eventSourceRef.current = null;
+            }
         };
+        es.onopen = () => { consecutiveErrors = 0; };
 
         return () => {
             es.close();
