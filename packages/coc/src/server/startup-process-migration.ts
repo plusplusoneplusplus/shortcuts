@@ -26,6 +26,37 @@ import {
 
 const PREFIX = '[ProcessMigration]';
 
+/**
+ * Build a mapping from processId → workItemId by scanning work-item JSON files
+ * in the workspace's work-items directory. Each work item's executionHistory
+ * entries contain taskId/processId that link back to process records.
+ */
+function buildWorkItemProcessMap(dataDir: string, workspaceId: string): Map<string, string> {
+    const map = new Map<string, string>();
+    const wiDir = path.join(dataDir, 'repos', workspaceId, 'work-items');
+    if (!fs.existsSync(wiDir)) return map;
+
+    let files: string[];
+    try {
+        files = fs.readdirSync(wiDir).filter(f => f.endsWith('.json'));
+    } catch {
+        return map;
+    }
+
+    for (const file of files) {
+        try {
+            const raw = fs.readFileSync(path.join(wiDir, file), 'utf-8');
+            const wi = JSON.parse(raw);
+            if (!wi?.id || !Array.isArray(wi.executionHistory)) continue;
+            for (const exec of wi.executionHistory) {
+                if (exec.processId) map.set(exec.processId, wi.id);
+            }
+        } catch { /* skip unreadable files */ }
+    }
+
+    return map;
+}
+
 export interface ProcessMigrationResult {
     migrated: boolean;
     workspaceCount: number;
@@ -44,6 +75,7 @@ function importProcessesFromDir(
     insertProcess: { run: (params: Record<string, unknown>) => { changes: number } },
     insertTurn: { run: (params: Record<string, unknown>) => { changes: number } },
     archived: boolean,
+    workItemMap?: Map<string, string>,
 ): { imported: number; turns: number; errors: string[] } {
     const indexPath = path.join(dir, 'index.json');
     const index = readJsonFile<ProcessIndexEntry[]>(indexPath);
@@ -62,6 +94,16 @@ function importProcessesFromDir(
         }
 
         try {
+            // Enrich work-item processes: set correct type and inject workItemId into metadata
+            const workItemId = workItemMap?.get(stored.process.id);
+            if (workItemId) {
+                stored.process.type = 'run-workflow';
+                if (!stored.process.metadata) {
+                    stored.process.metadata = { type: 'run-workflow' };
+                }
+                (stored.process.metadata as Record<string, unknown>).workItemId = workItemId;
+            }
+
             const result = insertProcess.run(serializeProcessToRow(stored.process, workspaceId, archived));
             if (result.changes === 0) {
                 // Already exists — skip (INSERT OR IGNORE)
@@ -185,11 +227,14 @@ export async function migrateProcessHistoryIfNeeded(
             let wsTurns = 0;
             const wsErrors: string[] = [];
 
+            // Build processId → workItemId map for enriching work-item processes
+            const workItemMap = buildWorkItemProcessMap(dataDir, wsId);
+
             // Run all inserts for this workspace in a single transaction
             const wsTransaction = db.transaction(() => {
                 // Active processes
                 const activeResult = importProcessesFromDir(
-                    processesDir, wsId, insertProcess, insertTurn, false,
+                    processesDir, wsId, insertProcess, insertTurn, false, workItemMap,
                 );
                 wsProcesses += activeResult.imported;
                 wsTurns += activeResult.turns;
@@ -208,7 +253,7 @@ export async function migrateProcessHistoryIfNeeded(
                         if (!bucket.isDirectory()) continue;
                         const bucketDir = path.join(prunedRoot, bucket.name);
                         const archivedResult = importProcessesFromDir(
-                            bucketDir, wsId, insertProcess, insertTurn, true,
+                            bucketDir, wsId, insertProcess, insertTurn, true, workItemMap,
                         );
                         wsProcesses += archivedResult.imported;
                         wsTurns += archivedResult.turns;
