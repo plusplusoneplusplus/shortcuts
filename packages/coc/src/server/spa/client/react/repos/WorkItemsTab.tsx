@@ -12,6 +12,8 @@ import { WorkItemSection } from './WorkItemSection';
 import { WorkItemDetail } from './WorkItemDetail';
 import { WorkItemExecutionSession } from './WorkItemExecutionSession';
 import { CommitDetail } from './CommitDetail';
+import { FileDiffPanel } from './FileDiffPanel';
+import { createCommitDiffSource } from './diffSource';
 import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import { useWorkItems } from '../context/WorkItemContext';
 import { fetchApi } from '../hooks/useApi';
@@ -238,17 +240,26 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                             )}
                         </div>
                     </div>
-                    {/* CommitDetail with optional filePath */}
+                    {/* CommitDetail for overview; FileDiffPanel for file-level diffs */}
                     <div className="flex-1 min-w-0 overflow-hidden">
-                        <CommitDetail
-                            key={selectedCommitFile ? `${selectedCommitHash}-${selectedCommitFile}` : selectedCommitHash}
-                            workspaceId={workspaceId}
-                            hash={selectedCommitHash}
-                            filePath={selectedCommitFile ?? undefined}
-                            commitFiles={commitFilePaths}
-                            onNavigateToFile={handleNavigateToFile}
-                            initialHunkTarget={hunkTarget}
-                        />
+                        {selectedCommitFile ? (
+                            <FileDiffPanel
+                                key={`${selectedCommitHash}-${selectedCommitFile}`}
+                                source={createCommitDiffSource(workspaceId, selectedCommitHash, {
+                                    files: commitFilePaths,
+                                })}
+                                workspaceId={workspaceId}
+                                filePath={selectedCommitFile}
+                                onNavigateToFile={handleNavigateToFile}
+                                initialHunkTarget={hunkTarget}
+                            />
+                        ) : (
+                            <CommitDetail
+                                key={selectedCommitHash}
+                                workspaceId={workspaceId}
+                                hash={selectedCommitHash}
+                            />
+                        )}
                     </div>
                 </div>
             </div>

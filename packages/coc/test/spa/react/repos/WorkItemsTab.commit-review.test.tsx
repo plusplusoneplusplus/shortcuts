@@ -44,11 +44,29 @@ vi.mock('../../../../src/server/spa/client/react/repos/CommitDetail', () => ({
         mockCommitDetail(props);
         return (
             <div data-testid="mock-commit-detail">
-                {props.filePath && <span data-testid="commit-detail-file-path">{props.filePath}</span>}
-                {!props.filePath && <span data-testid="commit-detail-no-file">full commit view</span>}
+                <span data-testid="commit-detail-no-file">full commit view</span>
             </div>
         );
     },
+}));
+
+// Mock FileDiffPanel — rendered when a specific file is selected
+const mockFileDiffPanel = vi.fn();
+vi.mock('../../../../src/server/spa/client/react/repos/FileDiffPanel', () => ({
+    FileDiffPanel: (props: any) => {
+        mockFileDiffPanel(props);
+        return (
+            <div data-testid="mock-file-diff-panel">
+                <span data-testid="file-diff-panel-file-path">{props.filePath}</span>
+            </div>
+        );
+    },
+}));
+
+// Mock createCommitDiffSource
+const mockCreateCommitDiffSource = vi.fn().mockReturnValue({ type: 'commit' });
+vi.mock('../../../../src/server/spa/client/react/repos/diffSource', () => ({
+    createCommitDiffSource: (...args: any[]) => mockCreateCommitDiffSource(...args),
 }));
 
 // Mock sub-components that are not under test
@@ -97,6 +115,9 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockFetchApi.mockReset();
+        mockFileDiffPanel.mockClear();
+        mockCreateCommitDiffSource.mockClear();
+        mockCreateCommitDiffSource.mockReturnValue({ type: 'commit' });
     });
 
     afterEach(() => {
@@ -140,8 +161,16 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
         });
     });
 
-    it('renders CommitDetail without filePath initially (full commit diff)', async () => {
+    it('renders CommitDetail for full commit view when file is deselected', async () => {
         await navigateToCommitReview();
+
+        // After commit files load, first file is auto-selected → FileDiffPanel renders
+        await waitFor(() => {
+            expect(screen.getByTestId('mock-file-diff-panel')).toBeTruthy();
+        });
+
+        // Click back to deselect file → CommitDetail renders for full overview
+        fireEvent.click(screen.getByTestId('commit-review-back-btn'));
 
         await waitFor(() => {
             expect(screen.getByTestId('commit-detail-no-file')).toBeTruthy();
@@ -149,11 +178,10 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
 
         // Verify CommitDetail was called without filePath
         const lastCall = mockCommitDetail.mock.calls[mockCommitDetail.mock.calls.length - 1][0];
-        expect(lastCall.filePath).toBeUndefined();
         expect(lastCall.hash).toBe('abc1234567890');
     });
 
-    it('passes filePath to CommitDetail when a file is clicked', async () => {
+    it('renders FileDiffPanel when a file is clicked', async () => {
         await navigateToCommitReview();
 
         // Wait for file list to render
@@ -165,14 +193,16 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
         fireEvent.click(screen.getByTestId('wi-commit-file-src/utils/helper.ts'));
 
         await waitFor(() => {
-            expect(screen.getByTestId('commit-detail-file-path')).toBeTruthy();
-            expect(screen.getByTestId('commit-detail-file-path').textContent).toBe('src/utils/helper.ts');
+            expect(screen.getByTestId('mock-file-diff-panel')).toBeTruthy();
+            expect(screen.getByTestId('file-diff-panel-file-path').textContent).toBe('src/utils/helper.ts');
         });
 
-        // Verify CommitDetail received the filePath prop
-        const lastCall = mockCommitDetail.mock.calls[mockCommitDetail.mock.calls.length - 1][0];
+        // Verify FileDiffPanel received the correct props
+        const lastCall = mockFileDiffPanel.mock.calls[mockFileDiffPanel.mock.calls.length - 1][0];
         expect(lastCall.filePath).toBe('src/utils/helper.ts');
-        expect(lastCall.hash).toBe('abc1234567890');
+        expect(lastCall.workspaceId).toBe('ws-test');
+        expect(lastCall.source).toBeDefined();
+        expect(lastCall.onNavigateToFile).toBeDefined();
     });
 
     it('shows short hash in the header', async () => {
@@ -181,20 +211,19 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
         expect(screen.getByText('abc1234')).toBeTruthy();
     });
 
-    it('updates header to show "File Diff" when a file is selected', async () => {
+    it('header shows "File Diff" when file is auto-selected, and "Commit Review" after back', async () => {
         await navigateToCommitReview();
 
-        // Initially shows "Commit Review"
-        expect(screen.getByText('Commit Review')).toBeTruthy();
-
-        // Wait for files and click one
-        await waitFor(() => {
-            expect(screen.getByTestId('commit-file-list')).toBeTruthy();
-        });
-        fireEvent.click(screen.getByTestId('wi-commit-file-src/utils/helper.ts'));
-
+        // First file is auto-selected, so header shows "File Diff"
         await waitFor(() => {
             expect(screen.getByText('File Diff')).toBeTruthy();
+        });
+
+        // Click back to deselect file
+        fireEvent.click(screen.getByTestId('commit-review-back-btn'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Commit Review')).toBeTruthy();
         });
     });
 
@@ -208,7 +237,7 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
         // Select a file
         fireEvent.click(screen.getByTestId('wi-commit-file-src/utils/helper.ts'));
         await waitFor(() => {
-            expect(screen.getByTestId('commit-detail-file-path')).toBeTruthy();
+            expect(screen.getByTestId('mock-file-diff-panel')).toBeTruthy();
         });
 
         // Click back — should deselect file but stay in commit review
@@ -219,17 +248,24 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
         });
     });
 
-    it('back button from file list returns to work item detail', async () => {
+    it('back button from commit overview returns to work item detail', async () => {
         await navigateToCommitReview();
 
-        // Click back without a file selected — should go back to work item detail
+        // First file is auto-selected; click back to deselect file
+        await waitFor(() => screen.getByTestId('mock-file-diff-panel'));
+        fireEvent.click(screen.getByTestId('commit-review-back-btn'));
+        await waitFor(() => {
+            expect(screen.getByTestId('commit-detail-no-file')).toBeTruthy();
+        });
+
+        // Click back again — should go back to work item detail
         fireEvent.click(screen.getByTestId('commit-review-back-btn'));
         await waitFor(() => {
             expect(screen.getByTestId('mock-work-item-detail')).toBeTruthy();
         });
     });
 
-    it('passes commitFiles and onNavigateToFile for cross-file navigation', async () => {
+    it('passes onNavigateToFile to FileDiffPanel for cross-file navigation', async () => {
         await navigateToCommitReview();
 
         await waitFor(() => {
@@ -240,11 +276,17 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
         fireEvent.click(screen.getByTestId('wi-commit-file-src/components/Button.tsx'));
 
         await waitFor(() => {
-            const lastCall = mockCommitDetail.mock.calls[mockCommitDetail.mock.calls.length - 1][0];
-            expect(lastCall.commitFiles).toBeDefined();
-            expect(lastCall.commitFiles.length).toBe(3);
+            const lastCall = mockFileDiffPanel.mock.calls[mockFileDiffPanel.mock.calls.length - 1][0];
             expect(lastCall.onNavigateToFile).toBeDefined();
+            expect(lastCall.filePath).toBe('src/components/Button.tsx');
         });
+
+        // Verify createCommitDiffSource was called with the right args
+        expect(mockCreateCommitDiffSource).toHaveBeenCalledWith(
+            'ws-test',
+            'abc1234567890',
+            expect.objectContaining({ files: expect.any(Array) }),
+        );
     });
 
     it('shows all changed files in the sidebar tree', async () => {
@@ -307,9 +349,9 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
         // Click a file
         fireEvent.click(screen.getByTestId('wi-commit-file-src/utils/helper.ts'));
 
-        // The CommitDetail mock should show it's selected
+        // FileDiffPanel should be rendered with the selected file
         await waitFor(() => {
-            const lastCall = mockCommitDetail.mock.calls[mockCommitDetail.mock.calls.length - 1][0];
+            const lastCall = mockFileDiffPanel.mock.calls[mockFileDiffPanel.mock.calls.length - 1][0];
             expect(lastCall.filePath).toBe('src/utils/helper.ts');
         });
     });
@@ -317,15 +359,15 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
     it('back label changes based on file selection state', async () => {
         await navigateToCommitReview();
 
-        // Initially no file selected — back button labeled "Back to work item"
-        expect(screen.getByLabelText('Back to work item')).toBeTruthy();
-
-        // Select a file
-        await waitFor(() => screen.getByTestId('commit-file-list'));
-        fireEvent.click(screen.getByTestId('wi-commit-file-src/utils/helper.ts'));
-
+        // First file is auto-selected — back button labeled "Back to file list"
         await waitFor(() => {
             expect(screen.getByLabelText('Back to file list')).toBeTruthy();
+        });
+
+        // Click back to deselect file — now labeled "Back to work item"
+        fireEvent.click(screen.getByTestId('commit-review-back-btn'));
+        await waitFor(() => {
+            expect(screen.getByLabelText('Back to work item')).toBeTruthy();
         });
     });
 });
