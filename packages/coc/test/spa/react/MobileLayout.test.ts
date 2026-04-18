@@ -171,10 +171,10 @@ describe('MobileTabBar safe area and touch targets', () => {
 });
 
 // ---------------------------------------------------------------------------
-// RepoActivityTab — uses SkeletonList for loading state
+// RepoChatTab — uses SkeletonList for loading state
 // ---------------------------------------------------------------------------
-describe('RepoActivityTab loading skeleton', () => {
-    const src = read('repos/RepoActivityTab.tsx');
+describe('RepoChatTab loading skeleton', () => {
+    const src = read('repos/RepoChatTab.tsx');
 
     it('imports SkeletonList', () => {
         expect(src).toContain('SkeletonList');

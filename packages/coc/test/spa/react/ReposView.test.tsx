@@ -37,8 +37,8 @@ vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({
 vi.mock('../../../src/server/spa/client/react/repos/RepoGitTab', () => ({
     RepoGitTab: () => null,
 }));
-vi.mock('../../../src/server/spa/client/react/repos/RepoActivityTab', () => ({
-    RepoActivityTab: () => null,
+vi.mock('../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
+    RepoChatTab: () => null,
 }));
 
 function Wrap({ children }: { children: ReactNode }) {

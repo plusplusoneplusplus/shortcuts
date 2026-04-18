@@ -1,9 +1,9 @@
 /**
- * Render tests for ActivityListPane.
+ * Render tests for ChatListPane.
  *
  * Dropped source-level tests that inspected code text rather than behavior:
  *   - Export name checks (TASK_TYPE_LABELS, QueueTaskItem, …)
- *   - TypeScript interface shape assertions (ActivityListPaneProps)
+ *   - TypeScript interface shape assertions (ChatListPaneProps)
  *   - Import existence checks (useChatPrefs, useDisplaySettings, …)
  *   - State variable declaration checks (useState calls)
  *   - useMemo dependency-array inspections
@@ -20,12 +20,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import {
-    ActivityListPane,
+    ChatListPane,
     taskMatchesFilter,
     taskMatchesSearch,
     getTaskTypeIcon,
     getTaskPromptPreview,
-} from '../../../../src/server/spa/client/react/repos/ActivityListPane';
+} from '../../../../src/server/spa/client/react/repos/ChatListPane';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -203,14 +203,14 @@ function defaultProps(overrides: Partial<any> = {}): any {
 
 function renderPane(overrides: Partial<any> = {}) {
     const props = defaultProps(overrides);
-    return { ...renderWithProviders(<ActivityListPane {...props} />), props };
+    return { ...renderWithProviders(<ChatListPane {...props} />), props };
 }
 
 // ════════════════════════════════════════════════════════════════════════
 // Tests
 // ════════════════════════════════════════════════════════════════════════
 
-describe('ActivityListPane', () => {
+describe('ChatListPane', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockPinnedChatIds = new Set();

@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const ACTIVITY_LIST_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityListPane.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatListPane.tsx'
 );
 const ENQUEUE_DIALOG_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'EnqueueDialog.tsx'
@@ -25,20 +25,20 @@ const QUEUE_CONTEXT_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'QueueContext.tsx'
 );
 const REPO_ACTIVITY_TAB_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoActivityTab.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'
 );
 
 describe('Refresh button spin during mutations', () => {
     let activityListSource: string;
     let enqueueDialogSource: string;
     let queueContextSource: string;
-    let repoActivityTabSource: string;
+    let RepoChatTabSource: string;
 
     beforeAll(() => {
         activityListSource = fs.readFileSync(ACTIVITY_LIST_PATH, 'utf-8');
         enqueueDialogSource = fs.readFileSync(ENQUEUE_DIALOG_PATH, 'utf-8');
         queueContextSource = fs.readFileSync(QUEUE_CONTEXT_PATH, 'utf-8');
-        repoActivityTabSource = fs.readFileSync(REPO_ACTIVITY_TAB_PATH, 'utf-8');
+        RepoChatTabSource = fs.readFileSync(REPO_ACTIVITY_TAB_PATH, 'utf-8');
     });
 
     // ── handleAdmit loading state ──────────────────────────────────
@@ -81,7 +81,7 @@ describe('Refresh button spin during mutations', () => {
             expect(queueContextSource).toContain('isTaskSubmitting: false');
         });
 
-        it('ActivityListPane reads isTaskSubmitting from QueueContext', () => {
+        it('ChatListPane reads isTaskSubmitting from QueueContext', () => {
             expect(activityListSource).toContain('useQueue');
             expect(activityListSource).toContain('isTaskSubmitting');
         });
@@ -138,13 +138,13 @@ describe('Refresh button spin during mutations', () => {
     // ── No regression: manual refresh ──────────────────────────────
 
     describe('manual refresh (no regression)', () => {
-        it('RepoActivityTab still has isRefreshing state', () => {
-            expect(repoActivityTabSource).toContain('isRefreshing');
-            expect(repoActivityTabSource).toContain('setIsRefreshing');
+        it('RepoChatTab still has isRefreshing state', () => {
+            expect(RepoChatTabSource).toContain('isRefreshing');
+            expect(RepoChatTabSource).toContain('setIsRefreshing');
         });
 
-        it('RepoActivityTab passes isRefreshing to ActivityListPane', () => {
-            expect(repoActivityTabSource).toContain('isRefreshing={isRefreshing}');
+        it('RepoChatTab passes isRefreshing to ChatListPane', () => {
+            expect(RepoChatTabSource).toContain('isRefreshing={isRefreshing}');
         });
 
         it('button loading prop uses isRefreshing', () => {

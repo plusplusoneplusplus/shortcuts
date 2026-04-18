@@ -1,7 +1,7 @@
 /**
  * ProcessesView — global queue activity view for the Processes tab.
  *
- * Uses the same ActivityListPane + ActivityDetailPane UI as the per-repo
+ * Uses the same ChatListPane + ChatDetailPane UI as the per-repo
  * Activity tab. Fetches the global queue (no repoId param) which the server
  * scopes to the global workspace queue directly — no client-side filtering needed.
  */
@@ -13,8 +13,8 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { toQueueProcessId } from '../utils/queue-process-id';
-import { ActivityListPane } from '../repos/ActivityListPane';
-import { ActivityDetailPane } from '../repos/ActivityDetailPane';
+import { ChatListPane } from '../repos/ChatListPane';
+import { ChatDetailPane } from '../repos/ChatDetailPane';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../context/ChatPreferencesContext';
 import { ProcessesViewSkeleton } from './QueueTaskSkeleton';
 
@@ -212,7 +212,7 @@ export function ProcessesView() {
     }
 
     const listPane = (
-        <ActivityListPane
+        <ChatListPane
             running={running}
             queued={queued}
             history={history}
@@ -237,7 +237,7 @@ export function ProcessesView() {
                 <div id="view-processes" className={`flex flex-col ${heightClass} overflow-hidden`} data-testid="activity-split-panel">
                     {mobileShowDetail && selectedTaskId ? (
                         <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel">
-                            <ActivityDetailPane
+                            <ChatDetailPane
                                 selectedTaskId={selectedTaskId}
                                 selectedTask={selectedTask}
                                 onBack={() => setMobileShowDetail(false)}
@@ -267,7 +267,7 @@ export function ProcessesView() {
 
                 {/* Right panel — detail or placeholder */}
                 <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel">
-                    <ActivityDetailPane
+                    <ChatDetailPane
                         selectedTaskId={selectedTaskId}
                         selectedTask={selectedTask}
                     />

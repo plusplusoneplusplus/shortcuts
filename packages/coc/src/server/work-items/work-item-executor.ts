@@ -24,7 +24,7 @@ export interface ExecuteWorkItemOptions {
     /**
      * Absolute path to a pre-created task placeholder file.
      * When provided, the path is included in the task payload as `context.files[0]`
-     * so the Tasks panel's `useQueueActivity` hook can display a live indicator
+     * so the Tasks panel's `useQueueChat` hook can display a live indicator
      * for this work item while it is executing.
      */
     taskFilePath?: string;

@@ -1,5 +1,5 @@
 /**
- * useQueueActivity — maps queue execution state onto task file paths.
+ * useQueueChat — maps queue execution state onto task file paths.
  *
  * Builds a record keyed by relative task file path (matching TaskTreeItem paths)
  * with the count of running queue items for each path.
@@ -64,18 +64,18 @@ function extractTaskPath(
     return null;
 }
 
-export type QueueActivityMap = Record<string, number>;
-export type QueueFolderActivityMap = Record<string, number>;
+export type QueueChatMap = Record<string, number>;
+export type QueueFolderChatMap = Record<string, number>;
 
-export function useQueueActivity(wsId: string, tasksFolder = '.vscode/tasks'): { fileMap: QueueActivityMap; folderMap: QueueFolderActivityMap } {
+export function useQueueChat(wsId: string, tasksFolder = '.vscode/tasks'): { fileMap: QueueChatMap; folderMap: QueueFolderChatMap } {
     const { state: queueState } = useQueue();
     const { state: appState } = useApp();
 
     return useMemo(() => {
         const ws = appState.workspaces.find((w: any) => w.id === wsId);
-        if (!ws) return { fileMap: {} as QueueActivityMap, folderMap: {} as QueueFolderActivityMap };
+        if (!ws) return { fileMap: {} as QueueChatMap, folderMap: {} as QueueFolderChatMap };
         const wsRootPath: string = ws.rootPath || '';
-        const map: QueueActivityMap = {};
+        const map: QueueChatMap = {};
 
         // Prefer per-repo data from repoQueueMap (updated in real-time via WebSocket)
         // over top-level arrays (only populated on full page refresh).
@@ -91,7 +91,7 @@ export function useQueueActivity(wsId: string, tasksFolder = '.vscode/tasks'): {
             }
         }
 
-        const folderMap: QueueFolderActivityMap = {};
+        const folderMap: QueueFolderChatMap = {};
         for (const [rel, count] of Object.entries(map)) {
             const parts = rel.split('/');
             // accumulate for each ancestor folder prefix (exclude the filename itself)

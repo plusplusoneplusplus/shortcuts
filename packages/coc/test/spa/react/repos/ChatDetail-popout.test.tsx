@@ -1,6 +1,6 @@
 /**
  * Render tests for pop-out button visibility (ChatHeader), pop-out placeholder
- * (ActivityDetailPane), and the handlePopOut hook (useChatWindowActions).
+ * (ChatDetailPane), and the handlePopOut hook (useChatWindowActions).
  *
  * Dropped from the previous source-level tests:
  * - PopOutContext structure tests (TypeScript compiler covers exports/interfaces)
@@ -64,9 +64,9 @@ vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
     ToastProvider: ({ children }: any) => children,
 }));
 
-// Mock child components for ActivityDetailPane
-vi.mock('../../../../src/server/spa/client/react/repos/ActivityChatDetail', () => ({
-    ActivityChatDetail: (props: any) =>
+// Mock child components for ChatDetailPane
+vi.mock('../../../../src/server/spa/client/react/repos/ChatDetail', () => ({
+    ChatDetail: (props: any) =>
         React.createElement('div', { 'data-testid': 'activity-chat-detail' }, `task=${props.taskId}`),
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/NewChatArea', () => ({
@@ -109,7 +109,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/cn', () => ({
 
 // Imports (after mocks)
 import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/repos/ChatHeader';
-import { ActivityDetailPane } from '../../../../src/server/spa/client/react/repos/ActivityDetailPane';
+import { ChatDetailPane } from '../../../../src/server/spa/client/react/repos/ChatDetailPane';
 import { useChatWindowActions } from '../../../../src/server/spa/client/react/hooks/useChatWindowActions';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -181,36 +181,36 @@ describe('ChatHeader: pop-out button', () => {
     });
 });
 
-// ── ActivityDetailPane: pop-out placeholder ───────────────────────────────────
+// ── ChatDetailPane: pop-out placeholder ───────────────────────────────────
 
-describe('ActivityDetailPane: pop-out placeholder', () => {
+describe('ChatDetailPane: pop-out placeholder', () => {
     it('renders placeholder when task is popped out', () => {
         mockPoppedOutTasks.add('task-1');
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         expect(screen.getByTestId('activity-popped-out-placeholder')).toBeTruthy();
     });
 
     it('shows "Chat is open in a separate window" message', () => {
         mockPoppedOutTasks.add('task-1');
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         expect(screen.getByText('Chat is open in a separate window')).toBeTruthy();
     });
 
     it('renders restore button with correct data-testid', () => {
         mockPoppedOutTasks.add('task-1');
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         expect(screen.getByTestId('activity-chat-restore-btn')).toBeTruthy();
     });
 
     it('calls markRestored when restore button is clicked', () => {
         mockPoppedOutTasks.add('task-1');
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         fireEvent.click(screen.getByTestId('activity-chat-restore-btn'));
         expect(mockMarkRestored).toHaveBeenCalledWith('task-1');
     });
 
-    it('renders ActivityChatDetail when task is not popped out', () => {
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+    it('renders ChatDetail when task is not popped out', () => {
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
         expect(screen.queryByTestId('activity-popped-out-placeholder')).toBeNull();
     });

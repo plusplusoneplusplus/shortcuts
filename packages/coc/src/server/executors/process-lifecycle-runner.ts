@@ -66,7 +66,7 @@ const CREATE_TOOL_NAMES = new Set(['create', 'write_file', 'create_file', 'apply
 
 /**
  * Scan conversation turns for a created `.plan.md` file.
- * Mirrors the client-side detection in ActivityChatDetail.tsx.
+ * Mirrors the client-side detection in ChatDetail.tsx.
  */
 export function scanTurnsForPlanFile(turns: ConversationTurn[]): string | undefined {
     for (const turn of turns) {

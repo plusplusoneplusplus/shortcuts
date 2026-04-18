@@ -1,5 +1,5 @@
 /**
- * ActivityChatDetail — unified detail surface for the Activity tab.
+ * ChatDetail — unified detail surface for the Activity tab.
  *
  * Orchestrates data loading, SSE streaming, follow-up messaging, scroll
  * management, and draft persistence. Delegates rendering to ChatHeader,
@@ -42,7 +42,7 @@ import { copyHtmlToClipboard } from '../utils/format';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
-export interface ActivityChatDetailProps {
+export interface ChatDetailProps {
     taskId: string;
     onBack?: () => void;
     workspaceId?: string;
@@ -65,7 +65,7 @@ export interface ActivityChatDetailProps {
     readOnly?: boolean;
 }
 
-export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false }: ActivityChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false }: ChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 

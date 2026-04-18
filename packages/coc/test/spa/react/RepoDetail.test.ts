@@ -88,9 +88,9 @@ describe('RepoDetail BASE_VISIBLE_SUB_TABS', () => {
 });
 
 describe('RepoDetail Activity tab rendering', () => {
-    it('activity sub-tab renders RepoActivityTab', () => {
+    it('activity sub-tab renders RepoChatTab', () => {
         expect(REPO_DETAIL_SOURCE).toContain("display: activeSubTab === 'activity' ? undefined : 'none'");
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={ws.id}');
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={ws.id}');
     });
 
     it('activity is in SUB_TABS (visible in tab strip)', () => {
@@ -326,8 +326,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab key={ws.id}');
     });
 
-    it('mounts a fresh RepoActivityTab on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={ws.id}');
+    it('mounts a fresh RepoChatTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={ws.id}');
     });
 
     it('mounts a fresh RepoSchedulesTab on every repo switch via key={ws.id}', () => {

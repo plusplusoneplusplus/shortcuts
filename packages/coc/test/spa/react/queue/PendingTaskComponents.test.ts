@@ -3,7 +3,7 @@
  *   PendingTaskInfoPanel, PendingTaskPayload, MetaRow, FilePathValue
  *
  * Validates that the components exist as standalone modules and are
- * imported by ActivityChatDetail.
+ * imported by ChatDetail.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -158,12 +158,12 @@ describe('PendingTaskPayload (standalone)', () => {
     });
 });
 
-describe('ActivityChatDetail imports extracted components', () => {
+describe('ChatDetail imports extracted components', () => {
     let source: string;
     let conversationAreaSource: string;
     let chatHeaderSource: string;
     const ACTIVITY_CHAT_DETAIL_PATH = path.join(
-        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityChatDetail.tsx'
+        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatDetail.tsx'
     );
     const CONVERSATION_AREA_PATH = path.join(
         __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ConversationArea.tsx'
@@ -190,7 +190,7 @@ describe('ActivityChatDetail imports extracted components', () => {
         expect(conversationAreaSource).toContain('<PendingTaskInfoPanel');
     });
 
-    it('exports ActivityChatDetail', () => {
-        expect(source).toContain('export function ActivityChatDetail');
+    it('exports ChatDetail', () => {
+        expect(source).toContain('export function ChatDetail');
     });
 });

@@ -8,9 +8,9 @@
  *
  * Uses existing data-testid attributes:
  *   ProcessesView:       data-testid="activity-split-panel"
- *   ActivityListPane:    data-testid="queue-empty-state", data-testid="queue-filter-dropdown"
- *   ActivityDetailPane:  data-testid="activity-detail-panel"
- *   ActivityChatDetail:  data-testid="activity-chat-detail"
+ *   ChatListPane:    data-testid="queue-empty-state", data-testid="queue-filter-dropdown"
+ *   ChatDetailPane:  data-testid="activity-detail-panel"
+ *   ChatDetail:  data-testid="activity-chat-detail"
  *   ConversationMiniMap: data-testid="minimap-panel"
  *   WorkflowResultCard:  data-testid="workflow-result-card"
  *   ToolCallView:        various tool-call selectors

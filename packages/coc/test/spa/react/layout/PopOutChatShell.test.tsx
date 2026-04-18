@@ -1,5 +1,5 @@
 /**
- * Tests for PopOutActivityShell (source-level verification).
+ * Tests for PopOutChatShell (source-level verification).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -9,11 +9,11 @@ import * as path from 'path';
 const LAYOUT_DIR = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'layout'
 );
-const SOURCE = fs.readFileSync(path.join(LAYOUT_DIR, 'PopOutActivityShell.tsx'), 'utf-8');
+const SOURCE = fs.readFileSync(path.join(LAYOUT_DIR, 'PopOutChatShell.tsx'), 'utf-8');
 
-describe('PopOutActivityShell: structure', () => {
-    it('exports PopOutActivityShell component', () => {
-        expect(SOURCE).toContain('export function PopOutActivityShell');
+describe('PopOutChatShell: structure', () => {
+    it('exports PopOutChatShell component', () => {
+        expect(SOURCE).toContain('export function PopOutChatShell');
     });
 
     it('exports parsePopOutActivityRoute helper', () => {
@@ -25,7 +25,7 @@ describe('PopOutActivityShell: structure', () => {
     });
 });
 
-describe('PopOutActivityShell: providers', () => {
+describe('PopOutChatShell: providers', () => {
     it('wraps with AppProvider', () => {
         expect(SOURCE).toContain('<AppProvider>');
     });
@@ -43,21 +43,21 @@ describe('PopOutActivityShell: providers', () => {
     });
 });
 
-describe('PopOutActivityShell: ActivityChatDetail usage', () => {
-    it('renders ActivityChatDetail', () => {
-        expect(SOURCE).toContain('<ActivityChatDetail');
+describe('PopOutChatShell: ChatDetail usage', () => {
+    it('renders ChatDetail', () => {
+        expect(SOURCE).toContain('<ChatDetail');
     });
 
-    it('passes isPopOut={true} to ActivityChatDetail', () => {
+    it('passes isPopOut={true} to ChatDetail', () => {
         expect(SOURCE).toContain('isPopOut={true}');
     });
 
-    it('passes workspaceId to ActivityChatDetail', () => {
+    it('passes workspaceId to ChatDetail', () => {
         expect(SOURCE).toContain('workspaceId=');
     });
 });
 
-describe('PopOutActivityShell: BroadcastChannel communication', () => {
+describe('PopOutChatShell: BroadcastChannel communication', () => {
     it('uses usePopOutChannel hook', () => {
         expect(SOURCE).toContain('usePopOutChannel');
     });
@@ -77,7 +77,7 @@ describe('PopOutActivityShell: BroadcastChannel communication', () => {
     });
 });
 
-describe('PopOutActivityShell: route parsing', () => {
+describe('PopOutChatShell: route parsing', () => {
     it('parses taskId from #popout/activity/:taskId hash', () => {
         expect(SOURCE).toContain("parts[0] !== 'popout'");
         expect(SOURCE).toContain("parts[1] !== 'activity'");
@@ -98,7 +98,7 @@ describe('PopOutActivityShell: route parsing', () => {
     });
 });
 
-describe('PopOutActivityShell: data-testid', () => {
+describe('PopOutChatShell: data-testid', () => {
     it('has data-testid for the shell container', () => {
         expect(SOURCE).toContain('data-testid="popout-shell"');
     });

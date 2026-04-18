@@ -1,6 +1,6 @@
 /**
  * Render tests for float button visibility (ChatHeader), floating placeholder
- * (ActivityDetailPane), handleFloat hook, FloatingChatManager, and FloatingChatContent.
+ * (ChatDetailPane), handleFloat hook, FloatingChatManager, and FloatingChatContent.
  *
  * Dropped from the previous source-level tests:
  * - FloatingChatsContext structure tests (TypeScript compiler covers exports/interfaces)
@@ -65,9 +65,9 @@ vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
     ToastProvider: ({ children }: any) => children,
 }));
 
-// Mock child components for ActivityDetailPane
-vi.mock('../../../../src/server/spa/client/react/repos/ActivityChatDetail', () => ({
-    ActivityChatDetail: (props: any) =>
+// Mock child components for ChatDetailPane
+vi.mock('../../../../src/server/spa/client/react/repos/ChatDetail', () => ({
+    ChatDetail: (props: any) =>
         React.createElement('div', {
             'data-testid': 'activity-chat-detail',
             'data-variant': props.variant,
@@ -155,7 +155,7 @@ vi.mock('../../../../src/server/spa/client/react/context/ChatPreferencesContext'
 
 // Imports (after mocks)
 import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/repos/ChatHeader';
-import { ActivityDetailPane } from '../../../../src/server/spa/client/react/repos/ActivityDetailPane';
+import { ChatDetailPane } from '../../../../src/server/spa/client/react/repos/ChatDetailPane';
 import { useChatWindowActions } from '../../../../src/server/spa/client/react/hooks/useChatWindowActions';
 import { FloatingChatManager } from '../../../../src/server/spa/client/react/layout/FloatingChatManager';
 import { FloatingChatContent } from '../../../../src/server/spa/client/react/repos/FloatingChatContent';
@@ -235,36 +235,36 @@ describe('ChatHeader: float button', () => {
     });
 });
 
-// ── ActivityDetailPane: floating placeholder ──────────────────────────────────
+// ── ChatDetailPane: floating placeholder ──────────────────────────────────
 
-describe('ActivityDetailPane: floating placeholder', () => {
+describe('ChatDetailPane: floating placeholder', () => {
     it('renders floating placeholder when task is floating', () => {
         mockFloatingChats.set('task-1', { taskId: 'task-1', title: 'Chat', status: 'running' });
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         expect(screen.getByTestId('activity-floating-placeholder')).toBeTruthy();
     });
 
     it('shows "Chat is floating" message', () => {
         mockFloatingChats.set('task-1', { taskId: 'task-1', title: 'Chat', status: 'running' });
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         expect(screen.getByText('Chat is floating')).toBeTruthy();
     });
 
     it('renders restore inline button with data-testid', () => {
         mockFloatingChats.set('task-1', { taskId: 'task-1', title: 'Chat', status: 'running' });
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         expect(screen.getByTestId('activity-chat-restore-inline-btn')).toBeTruthy();
     });
 
     it('calls unfloatChat when restore inline button is clicked', () => {
         mockFloatingChats.set('task-1', { taskId: 'task-1', title: 'Chat', status: 'running' });
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         fireEvent.click(screen.getByTestId('activity-chat-restore-inline-btn'));
         expect(mockUnfloatChat).toHaveBeenCalledWith('task-1');
     });
 
-    it('renders ActivityChatDetail when task is not floating', () => {
-        render(<ActivityDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
+    it('renders ChatDetail when task is not floating', () => {
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} workspaceId="ws-1" />);
         expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
         expect(screen.queryByTestId('activity-floating-placeholder')).toBeNull();
     });
@@ -367,7 +367,7 @@ describe('FloatingChatManager', () => {
 // ── FloatingChatContent ───────────────────────────────────────────────────────
 
 describe('FloatingChatContent', () => {
-    it('renders ActivityChatDetail with variant="floating"', () => {
+    it('renders ChatDetail with variant="floating"', () => {
         render(<FloatingChatContent taskId="task-1" workspaceId="ws-1" />);
         const detail = screen.getByTestId('activity-chat-detail');
         expect(detail.getAttribute('data-variant')).toBe('floating');

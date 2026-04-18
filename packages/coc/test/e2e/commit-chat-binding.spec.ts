@@ -414,7 +414,7 @@ test.describe('Commit-Chat Binding — UI create flow', () => {
             await expect(page.getByTestId('commit-chat-panel')).toBeVisible({ timeout: 5_000 });
 
             // The panel should NOT show the empty-state send button — it should
-            // render ActivityChatDetail instead (because taskId is set).
+            // render ChatDetail instead (because taskId is set).
             // The empty-state send button only appears when taskId is null.
             await expect(page.getByTestId('commit-chat-send-btn')).toBeHidden({ timeout: 5_000 });
         } finally {

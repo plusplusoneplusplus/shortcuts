@@ -1,9 +1,9 @@
 /**
- * RepoActivityTab — unified Activity tab combining a queue-style left rail
+ * RepoChatTab — unified Activity tab combining a queue-style left rail
  * with conditional right-pane rendering for chat tasks versus other queue tasks.
  *
- * Top-level chat tasks are rendered inline via ActivityChatDetail.
- * All task types are handled by the unified ActivityChatDetail component.
+ * Top-level chat tasks are rendered inline via ChatDetail.
+ * All task types are handled by the unified ChatDetail component.
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -14,9 +14,9 @@ import { useApp } from '../context/AppContext';
 import { useRepos } from '../context/ReposContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useResizablePanel } from '../hooks/useResizablePanel';
-import { ActivityListPane } from './ActivityListPane';
-import { ActivityDetailPane } from './ActivityDetailPane';
-import { useUnseenActivity } from '../hooks/useUnseenActivity';
+import { ChatListPane } from './ChatListPane';
+import { ChatDetailPane } from './ChatDetailPane';
+import { useUnseenChat } from '../hooks/useUnseenChat';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../context/ChatPreferencesContext';
 import { useNotifications } from '../context/NotificationContext';
 import { useProcessSearch } from '../hooks/useProcessSearch';
@@ -24,7 +24,7 @@ import { adaptSearchResults } from '../utils/search-adapter';
 import type { ProcessHistoryItem } from '../../../../shared/process-history-item';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../utils/queue-process-id';
 
-export interface RepoActivityTabProps {
+export interface RepoChatTabProps {
     workspaceId: string;
     mode?: 'chats' | 'tasks';
 }
@@ -33,7 +33,7 @@ function getActiveProcessIds(tasks: any[]): string[] {
     return tasks.map((task: any) => task.processId ?? toQueueProcessId(task.id));
 }
 
-export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
+export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
     const [history, setHistory] = useState<ProcessHistoryItem[]>([]);
@@ -271,7 +271,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
     }, [selectedTaskId]);
 
     // Track unseen activity for completed tasks
-    const { unseenProcessIds, markSeen: rawMarkSeen, markAllSeen: rawMarkAllSeen, markTasksSeen: rawMarkTasksSeen, markUnseen: rawMarkUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
+    const { unseenProcessIds, markSeen: rawMarkSeen, markAllSeen: rawMarkAllSeen, markTasksSeen: rawMarkTasksSeen, markUnseen: rawMarkUnseen } = useUnseenChat(workspaceId, history, selectedTaskId);
     const { markReadByProcessId } = useNotifications();
 
     // Wrap seen-state mutations to refresh badge counts after debounced API flush
@@ -396,7 +396,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
     }
 
     const listPane = (
-        <ActivityListPane
+        <ChatListPane
             running={running}
             queued={queued}
             history={history}
@@ -451,7 +451,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
                 <div className="flex flex-col h-full overflow-hidden" data-testid="activity-split-panel">
                     {mobileShowDetail ? (
                         <div className="flex-1 flex flex-col overflow-hidden" data-testid="activity-detail-panel" data-pane="detail">
-                            <ActivityDetailPane
+                            <ChatDetailPane
                                 selectedTaskId={selectedTaskId}
                                 selectedTask={selectedTask}
                                 onBack={() => setMobileShowDetail(false)}
@@ -497,7 +497,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
 
             {/* Right panel — detail or placeholder */}
             <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel" data-pane="detail">
-                <ActivityDetailPane
+                <ChatDetailPane
                     selectedTaskId={selectedTaskId}
                     selectedTask={selectedTask}
                     workspaceId={workspaceId}

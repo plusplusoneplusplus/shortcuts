@@ -1,5 +1,5 @@
 /**
- * PopOutActivityShell — standalone shell for a chat popped into a separate window.
+ * PopOutChatShell — standalone shell for a chat popped into a separate window.
  *
  * Rendered when `window.location.hash` starts with `#popout/activity/:taskId`.
  * Bootstraps its own minimal provider stack (AppProvider, QueueProvider,
@@ -15,7 +15,7 @@ import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../context/ToastContext';
 import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 import { ToastContainer, useToast } from '../shared';
-import { ActivityChatDetail } from '../repos/ActivityChatDetail';
+import { ChatDetail } from '../repos/ChatDetail';
 import { usePopOutChannel, type PopOutMessage } from '../hooks/usePopOutChannel';
 import { getHostname } from '../utils/config';
 
@@ -69,7 +69,7 @@ function PopOutContent({ taskId, workspaceId }: { taskId: string; workspaceId: s
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <ChatPreferencesProvider workspaceId={workspaceId ?? ''}>
                 <div className="flex flex-col h-screen bg-white dark:bg-[#1e1e1e]" data-testid="popout-shell">
-                    <ActivityChatDetail
+                    <ChatDetail
                         taskId={taskId}
                         workspaceId={workspaceId ?? undefined}
                         isPopOut={true}
@@ -83,7 +83,7 @@ function PopOutContent({ taskId, workspaceId }: { taskId: string; workspaceId: s
 
 // ── Shell entry point ──────────────────────────────────────────────────────────
 
-export function PopOutActivityShell() {
+export function PopOutChatShell() {
     const parsed = parsePopOutActivityRoute(window.location.hash);
     const searchParams = new URLSearchParams(window.location.search);
     const workspaceId = searchParams.get('workspace');

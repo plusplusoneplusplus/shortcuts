@@ -1,6 +1,6 @@
 /**
  * Tests for navigation integration:
- * - ActivityListPane: mini progress indicator on running workflow cards
+ * - ChatListPane: mini progress indicator on running workflow cards
  * - WorkflowRunHistory: clicks navigate to workflow view
  * - RepoDetail: workflow sub-tab renders WorkflowDetailView
  * - ProcessDetail: "View Workflow →" button for workflow processes
@@ -34,12 +34,12 @@ const USE_PIPELINE_PROGRESS_SRC = fs.readFileSync(
 );
 
 const ACTIVITY_LIST_PANE_SRC = fs.readFileSync(
-    path.join(SRC_ROOT, 'repos', 'ActivityListPane.tsx'),
+    path.join(SRC_ROOT, 'repos', 'ChatListPane.tsx'),
     'utf-8',
 );
 
-// ─── ActivityListPane: mini progress indicator ─────
-describe('ActivityListPane: mini progress indicator', () => {
+// ─── ChatListPane: mini progress indicator ─────
+describe('ChatListPane: mini progress indicator', () => {
     it('imports useWorkflowProgress', () => {
         expect(ACTIVITY_LIST_PANE_SRC).toContain("import { useWorkflowProgress } from '../hooks/useWorkflowProgress'");
     });

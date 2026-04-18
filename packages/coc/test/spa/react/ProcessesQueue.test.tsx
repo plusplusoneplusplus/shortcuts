@@ -17,7 +17,7 @@ import { ToolCallView } from '../../../src/server/spa/client/react/processes/Too
 import { MarkdownView } from '../../../src/server/spa/client/react/processes/MarkdownView';
 // QueuePanel merged into ProcessesSidebar
 import { QueueView } from '../../../src/server/spa/client/react/queue/QueueView';
-import { ActivityChatDetail } from '../../../src/server/spa/client/react/repos/ActivityChatDetail';
+import { ChatDetail } from '../../../src/server/spa/client/react/repos/ChatDetail';
 
 // Mock useDisplaySettings — controls report_intent visibility
 const mockDisplaySettings = { showReportIntent: false };
@@ -84,7 +84,7 @@ function SeededQueueTaskDetail({ task }: { task: any }) {
         dispatch({ type: 'SET_HISTORY', history: [task] });
         dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
     }, [dispatch, task]);
-    return <ActivityChatDetail taskId={task.id} />;
+    return <ChatDetail taskId={task.id} />;
 }
 
 describe('ProcessFilters', () => {
@@ -819,7 +819,7 @@ describe('ProcessesView', () => {
         });
     });
 
-    it('renders ActivityListPane and ActivityDetailPane in split layout', async () => {
+    it('renders ChatListPane and ChatDetailPane in split layout', async () => {
         render(<Wrap><ProcessesView /></Wrap>);
         await waitFor(() => {
             const view = document.getElementById('view-processes');
@@ -1197,7 +1197,7 @@ describe('ProcessesSidebar (queue panel)', () => {
     });
 });
 
-describe('ActivityChatDetail metadata popover', () => {
+describe('ChatDetail metadata popover', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -1271,7 +1271,7 @@ describe('ActivityChatDetail metadata popover', () => {
     });
 });
 
-describe('ActivityChatDetail follow-up input', () => {
+describe('ChatDetail follow-up input', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -1465,7 +1465,7 @@ describe('ActivityChatDetail follow-up input', () => {
     });
 });
 
-describe('ActivityChatDetail semantic hooks', () => {
+describe('ChatDetail semantic hooks', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });

@@ -1,17 +1,17 @@
 /**
- * Render tests for RepoActivityTab — the integration layer that wires
- * ActivityListPane and ActivityDetailPane with data fetching, task selection,
+ * Render tests for RepoChatTab — the integration layer that wires
+ * ChatListPane and ChatDetailPane with data fetching, task selection,
  * mobile layout, and provider wiring.
  *
- * Child components (ActivityListPane, ActivityDetailPane) are mocked — their
+ * Child components (ChatListPane, ChatDetailPane) are mocked — their
  * internal behavior is covered by their own test files. These tests verify
  * only the wiring: correct props, correct dispatches, correct layout decisions.
  *
  * Dropped tests (covered by per-component test files):
- * - ActivityChatDetail behavior → ActivityChatDetail.test.ts (46 tests)
- * - ActivityListPane rendering → ActivityListPane.test.ts (52 tests)
- * - ActivityDetailPane routing → ActivityDetailPane.test.tsx
- * - useUnseenActivity hook → hooks/useUnseenActivity.test.ts (24 tests)
+ * - ChatDetail behavior → ChatDetail.test.ts (46 tests)
+ * - ChatListPane rendering → ChatListPane.test.ts (52 tests)
+ * - ChatDetailPane routing → ChatDetailPane.test.tsx
+ * - useUnseenChat hook → hooks/useUnseenChat.test.ts (24 tests)
  * - Cross-repo selection → cross-repo-activity-mixing.test.tsx
  * - Barrel exports, RepoDetail wiring, TypeScript interfaces — TypeScript covers
  */
@@ -29,8 +29,8 @@ import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/
 const mockListPane = vi.fn();
 const mockDetailPane = vi.fn();
 
-vi.mock('../../../../src/server/spa/client/react/repos/ActivityListPane', () => ({
-    ActivityListPane: (props: any) => {
+vi.mock('../../../../src/server/spa/client/react/repos/ChatListPane', () => ({
+    ChatListPane: (props: any) => {
         mockListPane(props);
         return React.createElement('div', { 'data-testid': 'mock-list-pane' },
             ...(props.running || []).map((t: any) =>
@@ -74,8 +74,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/ActivityListPane', () => 
     },
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/ActivityDetailPane', () => ({
-    ActivityDetailPane: (props: any) => {
+vi.mock('../../../../src/server/spa/client/react/repos/ChatDetailPane', () => ({
+    ChatDetailPane: (props: any) => {
         mockDetailPane(props);
         return React.createElement('div', {
             'data-testid': 'mock-detail-pane',
@@ -133,8 +133,8 @@ const mockMarkAllSeen = vi.fn();
 const mockMarkTasksSeen = vi.fn();
 const mockMarkUnseen = vi.fn();
 let mockUnseenTaskIds = new Set<string>();
-vi.mock('../../../../src/server/spa/client/react/hooks/useUnseenActivity', () => ({
-    useUnseenActivity: () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/useUnseenChat', () => ({
+    useUnseenChat: () => ({
         unseenProcessIds: mockUnseenTaskIds,
         markSeen: mockMarkSeen,
         markAllSeen: mockMarkAllSeen,
@@ -173,7 +173,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 
 // ── Import component under test (after mocks) ─────────────────────────
 
-import { RepoActivityTab } from '../../../../src/server/spa/client/react/repos/RepoActivityTab';
+import { RepoChatTab } from '../../../../src/server/spa/client/react/repos/RepoChatTab';
 
 // ── Test helpers ───────────────────────────────────────────────────────
 
@@ -228,7 +228,7 @@ async function renderTab(workspaceId = 'ws-1') {
     let result: ReturnType<typeof renderWithProviders> | undefined;
     await act(async () => {
         result = renderWithProviders(
-            React.createElement(RepoActivityTab, { workspaceId }),
+            React.createElement(RepoChatTab, { workspaceId }),
         );
     });
     await waitFor(() => {
@@ -265,7 +265,7 @@ afterEach(() => {
 // LAYOUT
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: layout', () => {
+describe('RepoChatTab: layout', () => {
     it('renders split-panel container with data-testid', async () => {
         await renderTab();
         expect(screen.getByTestId('activity-split-panel')).toBeTruthy();
@@ -322,11 +322,11 @@ describe('RepoActivityTab: layout', () => {
 // DATA FETCHING
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: data fetching', () => {
+describe('RepoChatTab: data fetching', () => {
     it('shows "Loading queue..." before fetch completes', async () => {
         mockFetchApi.mockImplementation(() => new Promise(() => {}));
         await act(async () => {
-            renderWithProviders(React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }));
+            renderWithProviders(React.createElement(RepoChatTab, { workspaceId: 'ws-1' }));
         });
         expect(screen.getByText('Loading queue...')).toBeTruthy();
     });
@@ -401,7 +401,7 @@ describe('RepoActivityTab: data fetching', () => {
 // TASK SELECTION
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: task selection', () => {
+describe('RepoChatTab: task selection', () => {
     it('clicking a task updates selectedTaskId in list and detail panes', async () => {
         const r1 = makeRunningTask('r1');
         setupFetchMock({ running: [r1] });
@@ -560,7 +560,7 @@ describe('RepoActivityTab: task selection', () => {
 // MOBILE BEHAVIOR
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: mobile behavior', () => {
+describe('RepoChatTab: mobile behavior', () => {
     beforeEach(() => {
         mockBreakpoint = { isMobile: true, isTablet: false };
     });
@@ -696,7 +696,7 @@ describe('RepoActivityTab: mobile behavior', () => {
 // TABLET LAYOUT
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: tablet layout', () => {
+describe('RepoChatTab: tablet layout', () => {
     beforeEach(() => {
         mockBreakpoint = { isMobile: false, isTablet: true };
     });
@@ -719,7 +719,7 @@ describe('RepoActivityTab: tablet layout', () => {
 // PROVIDER WIRING
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: provider wiring', () => {
+describe('RepoChatTab: provider wiring', () => {
     it('wraps content in ChatPreferencesProvider', async () => {
         await renderTab();
         expect(screen.getByTestId('chat-prefs-provider')).toBeTruthy();
@@ -733,7 +733,7 @@ describe('RepoActivityTab: provider wiring', () => {
     it('loading state is also wrapped in ChatPreferencesProvider', async () => {
         mockFetchApi.mockImplementation(() => new Promise(() => {}));
         await act(async () => {
-            renderWithProviders(React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }));
+            renderWithProviders(React.createElement(RepoChatTab, { workspaceId: 'ws-1' }));
         });
         expect(screen.getByTestId('chat-prefs-provider')).toBeTruthy();
         expect(screen.getByText('Loading queue...')).toBeTruthy();
@@ -757,7 +757,7 @@ describe('RepoActivityTab: provider wiring', () => {
 // UNSEEN ACTIVITY WIRING
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: unseen activity wiring', () => {
+describe('RepoChatTab: unseen activity wiring', () => {
     it('passes unseenProcessIds to list pane', async () => {
         mockUnseenTaskIds = new Set(['h1', 'h2']);
         await renderTab();
@@ -834,7 +834,7 @@ describe('RepoActivityTab: unseen activity wiring', () => {
 // PAUSE / RESUME
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: pause/resume', () => {
+describe('RepoChatTab: pause/resume', () => {
     it('onPauseResume calls POST /queue/pause when not paused', async () => {
         setupFetchMock({ stats: { isPaused: false } });
         await renderTab();
@@ -916,7 +916,7 @@ describe('RepoActivityTab: pause/resume', () => {
 // PROPS WIRING
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: props wiring to children', () => {
+describe('RepoChatTab: props wiring to children', () => {
     it('passes workspaceId to list pane', async () => {
         await renderTab('ws-99');
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
@@ -973,7 +973,7 @@ describe('RepoActivityTab: props wiring to children', () => {
 // WEBSOCKET UPDATES
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
+describe('RepoChatTab: WebSocket updates via repoQueueMap', () => {
     it('applies external queue updates to displayed tasks', async () => {
         setupFetchMock();
         const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
@@ -981,7 +981,7 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         await act(async () => {
             renderWithProviders(
                 React.createElement(React.Fragment, null,
-                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
                     React.createElement(WsSimulator, { dispatchRef }),
                 ),
             );
@@ -1012,7 +1012,7 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         await act(async () => {
             renderWithProviders(
                 React.createElement(React.Fragment, null,
-                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
                     React.createElement(WsSimulator, { dispatchRef }),
                 ),
             );
@@ -1040,7 +1040,7 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         await act(async () => {
             renderWithProviders(
                 React.createElement(React.Fragment, null,
-                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
                     React.createElement(WsSimulator, { dispatchRef }),
                 ),
             );
@@ -1078,7 +1078,7 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         await act(async () => {
             renderWithProviders(
                 React.createElement(React.Fragment, null,
-                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
                     React.createElement(WsSimulator, { dispatchRef }),
                 ),
             );
@@ -1116,7 +1116,7 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         await act(async () => {
             renderWithProviders(
                 React.createElement(React.Fragment, null,
-                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
                     React.createElement(WsSimulator, { dispatchRef }),
                 ),
             );
@@ -1171,7 +1171,7 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
         await act(async () => {
             renderWithProviders(
                 React.createElement(React.Fragment, null,
-                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
                     React.createElement(WsSimulator, { dispatchRef }),
                 ),
             );
@@ -1200,7 +1200,7 @@ describe('RepoActivityTab: WebSocket updates via repoQueueMap', () => {
 // SELECTION-CLEARING FALLBACK (process-based probing)
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: selection-clearing fallback', () => {
+describe('RepoChatTab: selection-clearing fallback', () => {
     it('probes /processes/:id for processId-shaped selectedTaskId', async () => {
         setupFetchMock();
         await renderTab();
@@ -1261,7 +1261,7 @@ describe('RepoActivityTab: selection-clearing fallback', () => {
 // PAGINATION
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: pagination', () => {
+describe('RepoChatTab: pagination', () => {
     it('passes limit=100 and offset=0 in initial history fetch', async () => {
         setupFetchMock();
         await renderTab();
@@ -1365,7 +1365,7 @@ describe('RepoActivityTab: pagination', () => {
 // REACTIVE TITLE UPDATES FROM process-updated WS events
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('RepoActivityTab: reactive title updates from AppContext', () => {
+describe('RepoChatTab: reactive title updates from AppContext', () => {
     /** Helper component that dispatches PROCESS_UPDATED to AppContext. */
     function AppDispatcher({ dispatchRef }: { dispatchRef: { current: ((process: any) => void) | null } }) {
         const { dispatch } = useApp();
@@ -1384,7 +1384,7 @@ describe('RepoActivityTab: reactive title updates from AppContext', () => {
         await act(async () => {
             renderWithProviders(
                 React.createElement(React.Fragment, null,
-                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
                     React.createElement(AppDispatcher, { dispatchRef: appRef }),
                 ),
             );
@@ -1416,7 +1416,7 @@ describe('RepoActivityTab: reactive title updates from AppContext', () => {
         await act(async () => {
             renderWithProviders(
                 React.createElement(React.Fragment, null,
-                    React.createElement(RepoActivityTab, { workspaceId: 'ws-1' }),
+                    React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
                     React.createElement(AppDispatcher, { dispatchRef: appRef }),
                 ),
             );

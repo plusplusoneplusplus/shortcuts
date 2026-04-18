@@ -1,6 +1,6 @@
 /**
- * Tests for the useQueueActivity hook rendered inside QueueProvider + AppProvider.
- * Tests the hook itself with real context (unlike useQueueActivity.test.ts which
+ * Tests for the useQueueChat hook rendered inside QueueProvider + AppProvider.
+ * Tests the hook itself with real context (unlike useQueueChat.test.ts which
  * only tests extracted pure computation logic).
  */
 
@@ -9,7 +9,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
-import { useQueueActivity } from '../../../src/server/spa/client/react/hooks/useQueueActivity';
+import { useQueueChat } from '../../../src/server/spa/client/react/hooks/useQueueChat';
 
 /**
  * Wrapper that provides both AppProvider and QueueProvider, then seeds
@@ -69,7 +69,7 @@ function Seeder({
     return <>{children}</>;
 }
 
-describe('useQueueActivity — hook with context', () => {
+describe('useQueueChat — hook with context', () => {
     const TASKS_FOLDER = '/data/repos/abc/tasks';
 
     beforeEach(() => {
@@ -78,7 +78,7 @@ describe('useQueueActivity — hook with context', () => {
 
     it('returns empty fileMap and folderMap when queue is empty', () => {
         const wrapper = createWrapper({ workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }] });
-        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({});
         expect(result.current.folderMap).toEqual({});
     });
@@ -91,7 +91,7 @@ describe('useQueueActivity — hook with context', () => {
                 payload: { planFilePath: '/data/repos/abc/tasks/feature1/task.plan.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({ 'feature1/task.plan.md': 1 });
     });
 
@@ -103,7 +103,7 @@ describe('useQueueActivity — hook with context', () => {
                 payload: { data: { originalTaskPath: '/data/repos/abc/tasks/feature2/impl.md' } },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({ 'feature2/impl.md': 1 });
     });
 
@@ -115,7 +115,7 @@ describe('useQueueActivity — hook with context', () => {
                 payload: { filePath: '/data/repos/abc/tasks/bug/fix.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({ 'bug/fix.md': 1 });
     });
 
@@ -127,7 +127,7 @@ describe('useQueueActivity — hook with context', () => {
                 payload: { filePath: '/data/repos/def/tasks/task.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({});
     });
 
@@ -140,7 +140,7 @@ describe('useQueueActivity — hook with context', () => {
                 payload: { planFilePath: 'C:\\Users\\dev\\.coc\\repos\\abc\\tasks\\feature\\task.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1', winFolder), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', winFolder), { wrapper });
         expect(result.current.fileMap).toEqual({ 'feature/task.md': 1 });
     });
 
@@ -152,7 +152,7 @@ describe('useQueueActivity — hook with context', () => {
                 { id: 'q2', payload: { filePath: '/data/repos/abc/tasks/feature/task.md' } },
             ],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap['feature/task.md']).toBe(2);
     });
 
@@ -164,7 +164,7 @@ describe('useQueueActivity — hook with context', () => {
                 payload: { planFilePath: '/data/repos/abc/tasks/a/b/task.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.folderMap).toEqual({ 'a': 1, 'a/b': 1 });
     });
 
@@ -174,7 +174,7 @@ describe('useQueueActivity — hook with context', () => {
             queued: [{ id: 'q1', payload: { planFilePath: '/data/repos/abc/tasks/a/task1.md' } }],
             running: [{ id: 'r1', payload: { planFilePath: '/data/repos/abc/tasks/a/task2.md' } }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap['a/task1.md']).toBe(1);
         expect(result.current.fileMap['a/task2.md']).toBe(1);
         expect(result.current.folderMap['a']).toBe(2);
@@ -185,7 +185,7 @@ describe('useQueueActivity — hook with context', () => {
             workspaces: [{ id: 'ws-other', rootPath: '/other' }],
             queued: [{ id: 'q1', payload: { planFilePath: '/data/repos/abc/tasks/task.md' } }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({});
         expect(result.current.folderMap).toEqual({});
     });

@@ -1,10 +1,10 @@
 /**
- * ActivityDetailPane — right-side detail switcher for the Activity tab.
+ * ChatDetailPane — right-side detail switcher for the Activity tab.
  *
- * Always renders ActivityChatDetail for any selected task.
+ * Always renders ChatDetail for any selected task.
  * When a deep-link selects a task before the queue list has loaded,
  * `selectedTask` may still be null.  In that case we show a loading
- * spinner while ActivityChatDetail fetches the task data.
+ * spinner while ChatDetail fetches the task data.
  *
  * When a task is popped out into a separate window, shows a placeholder
  * with a "Restore inline" button.
@@ -13,12 +13,12 @@
  * placeholder with a "Restore inline" button that calls unfloatChat.
  */
 
-import { ActivityChatDetail } from './ActivityChatDetail';
+import { ChatDetail } from './ChatDetail';
 import { NewChatArea } from './NewChatArea';
 import { usePopOut } from '../context/PopOutContext';
 import { useFloatingChats } from '../context/FloatingChatsContext';
 
-export interface ActivityDetailPaneProps {
+export interface ChatDetailPaneProps {
     selectedTaskId: string | null;
     selectedTask: any | null;
     onBack?: () => void;
@@ -29,7 +29,7 @@ export interface ActivityDetailPaneProps {
     hideModeSelector?: boolean;
 }
 
-export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector }: ActivityDetailPaneProps) {
+export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector }: ChatDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
 
@@ -83,5 +83,5 @@ export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId, readOn
         );
     }
 
-    return <ActivityChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} />;
+    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} />;
 }

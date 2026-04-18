@@ -1,6 +1,6 @@
 /**
  * Tests for the "Create Work Item from Chat" button in ChatHeader
- * and its integration with ActivityChatDetail + CreateWorkItemDialog.
+ * and its integration with ChatDetail + CreateWorkItemDialog.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -9,7 +9,7 @@ import * as path from 'path';
 
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
 const CHAT_HEADER_SRC_PATH = path.join(REACT_SRC, 'repos', 'ChatHeader.tsx');
-const ACTIVITY_CHAT_DETAIL_SRC_PATH = path.join(REACT_SRC, 'repos', 'ActivityChatDetail.tsx');
+const ACTIVITY_CHAT_DETAIL_SRC_PATH = path.join(REACT_SRC, 'repos', 'ChatDetail.tsx');
 const CREATE_WORK_ITEM_DIALOG_SRC_PATH = path.join(REACT_SRC, 'repos', 'CreateWorkItemDialog.tsx');
 
 describe('ChatHeader — Create Work Item button', () => {
@@ -44,7 +44,7 @@ describe('ChatHeader — Create Work Item button', () => {
     });
 });
 
-describe('ActivityChatDetail — CreateWorkItemDialog integration', () => {
+describe('ChatDetail — CreateWorkItemDialog integration', () => {
     let detailSrc: string;
 
     beforeAll(() => {

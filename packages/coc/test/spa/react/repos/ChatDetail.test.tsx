@@ -1,5 +1,5 @@
 /**
- * Render tests for ActivityChatDetail — the right-pane chat orchestrator.
+ * Render tests for ChatDetail — the right-pane chat orchestrator.
  *
  * Covers: container rendering, loading/error states, pending task display,
  * mode selector, follow-up send, cancel/move-to-top, back navigation,
@@ -240,7 +240,7 @@ vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal)
 });
 
 // Now import the component under test (after mocks)
-import { ActivityChatDetail } from '../../../../src/server/spa/client/react/repos/ActivityChatDetail';
+import { ChatDetail } from '../../../../src/server/spa/client/react/repos/ChatDetail';
 
 // ── Provider wrapper ───────────────────────────────────────────────────────
 
@@ -261,15 +261,15 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 /**
- * Seeds a pending (queued) task into queue state and renders ActivityChatDetail.
+ * Seeds a pending (queued) task into queue state and renders ChatDetail.
  */
-function SeededActivityChatDetail({ task, ...rest }: { task: any } & Partial<React.ComponentProps<typeof ActivityChatDetail>>) {
+function SeededChatDetail({ task, ...rest }: { task: any } & Partial<React.ComponentProps<typeof ChatDetail>>) {
     const { dispatch: queueDispatch } = useQueue();
     useEffect(() => {
         queueDispatch({ type: 'QUEUE_UPDATED', queue: { queued: [task], running: [], stats: {} } });
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
     }, []);
-    return <ActivityChatDetail taskId={task.id} {...rest} />;
+    return <ChatDetail taskId={task.id} {...rest} />;
 }
 
 // ── Factories ──────────────────────────────────────────────────────────────
@@ -386,25 +386,25 @@ afterEach(() => {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe('ActivityChatDetail', () => {
+describe('ChatDetail', () => {
     // ── Rendering ──────────────────────────────────────────────────────────
 
     describe('rendering', () => {
         it('renders container with data-testid="activity-chat-detail"', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
         });
 
         it('renders conversation area', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             expect(screen.getByTestId('activity-chat-conversation')).toBeTruthy();
         });
 
         it('renders send button', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -412,7 +412,7 @@ describe('ActivityChatDetail', () => {
 
         it('hides mode selector by default', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -421,7 +421,7 @@ describe('ActivityChatDetail', () => {
 
         it('renders copy-conversation button', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
             });
@@ -429,7 +429,7 @@ describe('ActivityChatDetail', () => {
 
         it('renders copy-conversation-html button', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
             });
@@ -437,7 +437,7 @@ describe('ActivityChatDetail', () => {
 
         it('renders back button when onBack provided', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" onBack={() => {}} /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" onBack={() => {}} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-back-btn')).toBeTruthy();
             });
@@ -445,7 +445,7 @@ describe('ActivityChatDetail', () => {
 
         it('does not render back button when onBack is undefined', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -454,7 +454,7 @@ describe('ActivityChatDetail', () => {
 
         it('renders conversation minimap for inline variant', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('conversation-minimap')).toBeTruthy();
             });
@@ -462,7 +462,7 @@ describe('ActivityChatDetail', () => {
 
         it('does not render conversation minimap for floating variant', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" variant="floating" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" variant="floating" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -475,7 +475,7 @@ describe('ActivityChatDetail', () => {
     describe('loading and data', () => {
         it('shows loading spinner while fetch is pending', async () => {
             fetchMock.mockImplementation(() => new Promise(() => {})); // never resolves
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByText('Loading conversation...')).toBeTruthy();
             });
@@ -483,7 +483,7 @@ describe('ActivityChatDetail', () => {
 
         it('shows conversation turns after load completes', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByText('Hello')).toBeTruthy();
                 expect(screen.getByText('Hi there')).toBeTruthy();
@@ -494,7 +494,7 @@ describe('ActivityChatDetail', () => {
             setupFetch({
                 '/queue/': { status: 500, body: { error: 'Server error' } },
             });
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByText(/API error: 500/)).toBeTruthy();
             });
@@ -502,7 +502,7 @@ describe('ActivityChatDetail', () => {
 
         it('fetches /queue/<id> on mount', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-42" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-42" /></Wrap>);
             await waitFor(() => {
                 const queueCalls = fetchMock.mock.calls.filter(
                     ([url]: [string]) => typeof url === 'string' && url.includes('/queue/task-42'),
@@ -513,7 +513,7 @@ describe('ActivityChatDetail', () => {
 
         it('fetches /processes/<id> for non-queued tasks', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 const processCalls = fetchMock.mock.calls.filter(
                     ([url]: [string]) => typeof url === 'string' && url.includes('/processes/proc-1'),
@@ -525,7 +525,7 @@ describe('ActivityChatDetail', () => {
         it('shows "No conversation data available." when no turns exist', async () => {
             const proc = makeProcess({ conversationTurns: [] });
             setupStandardFetch(undefined, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByText('No conversation data available.')).toBeTruthy();
             });
@@ -533,7 +533,7 @@ describe('ActivityChatDetail', () => {
 
         it('prunes expired drafts on mount', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(mockState.pruneExpired).toHaveBeenCalled();
             });
@@ -549,7 +549,7 @@ describe('ActivityChatDetail', () => {
                 '/queue/': { body: { task } },
                 '/skills/all': { body: { merged: [] } },
             });
-            render(<Wrap><SeededActivityChatDetail task={task} /></Wrap>);
+            render(<Wrap><SeededChatDetail task={task} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('pending-task-info-panel')).toBeTruthy();
             });
@@ -561,7 +561,7 @@ describe('ActivityChatDetail', () => {
                 '/queue/': { body: { task } },
                 '/skills/all': { body: { merged: [] } },
             });
-            render(<Wrap><SeededActivityChatDetail task={task} /></Wrap>);
+            render(<Wrap><SeededChatDetail task={task} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('pending-task-info-panel')).toBeTruthy();
             });
@@ -574,7 +574,7 @@ describe('ActivityChatDetail', () => {
                 '/queue/': { body: { task } },
                 '/skills/all': { body: { merged: [] } },
             });
-            render(<Wrap><SeededActivityChatDetail task={task} /></Wrap>);
+            render(<Wrap><SeededChatDetail task={task} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('pending-prompt')).toBeTruthy();
                 expect(screen.getByTestId('pending-prompt').textContent).toBe('Build feature X');
@@ -588,7 +588,7 @@ describe('ActivityChatDetail', () => {
                 '/skills/all': { body: { merged: [] } },
             });
             const onBack = vi.fn();
-            render(<Wrap><SeededActivityChatDetail task={task} onBack={onBack} /></Wrap>);
+            render(<Wrap><SeededChatDetail task={task} onBack={onBack} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('cancel-task-btn')).toBeTruthy();
             });
@@ -610,7 +610,7 @@ describe('ActivityChatDetail', () => {
                 '/queue/': { body: { task } },
                 '/skills/all': { body: { merged: [] } },
             });
-            render(<Wrap><SeededActivityChatDetail task={task} /></Wrap>);
+            render(<Wrap><SeededChatDetail task={task} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('move-to-top-btn')).toBeTruthy();
             });
@@ -632,7 +632,7 @@ describe('ActivityChatDetail', () => {
     describe('mode selector', () => {
         it('mode selector is hidden by default (hideModeSelector defaults to true)', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -642,7 +642,7 @@ describe('ActivityChatDetail', () => {
 
         it('shows mode selector when hideModeSelector is false', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('mode-selector')).toBeTruthy();
             });
@@ -654,7 +654,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ payload: { kind: 'chat', mode: 'ask', prompt: 'test' } });
             const proc = makeProcess({ metadata: {} });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
             await waitFor(() => {
                 const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
                 expect(dropdown.value).toBe('ask');
@@ -665,7 +665,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ payload: { kind: 'chat', prompt: 'test' } });
             const proc = makeProcess({ metadata: { mode: 'plan', sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
             await waitFor(() => {
                 const dropdown = screen.getByTestId('mode-dropdown') as HTMLSelectElement;
                 expect(dropdown.value).toBe('plan');
@@ -674,7 +674,7 @@ describe('ActivityChatDetail', () => {
 
         it('dropdown selection changes mode when visible', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('mode-dropdown')).toBeTruthy();
             });
@@ -688,7 +688,7 @@ describe('ActivityChatDetail', () => {
     describe('follow-up send', () => {
         it('send button triggers sendFollowUp', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -700,7 +700,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'cancelled' });
             const proc = makeProcess({ status: 'cancelled' });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 const sendBtn = screen.getByTestId('activity-chat-send-btn');
                 expect(sendBtn.hasAttribute('disabled')).toBe(true);
@@ -711,7 +711,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'cancelled' });
             const proc = makeProcess({ status: 'cancelled' });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 // The input placeholder text is set in FollowUpInputArea
                 const sendBtn = screen.getByTestId('activity-chat-send-btn');
@@ -723,7 +723,7 @@ describe('ActivityChatDetail', () => {
             setupFetch({
                 '/queue/': { status: 500, body: { error: 'fail' } },
             });
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByText(/API error: 500/)).toBeTruthy();
             });
@@ -731,7 +731,7 @@ describe('ActivityChatDetail', () => {
 
         it('input disabled during loading', async () => {
             fetchMock.mockImplementation(() => new Promise(() => {}));
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             // During loading, the FollowUpInputArea may not render or input is disabled
             // ConversationArea shows loading message
             await waitFor(() => {
@@ -747,7 +747,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed', processId: 'proc-1' });
             const proc = makeProcess({ metadata: { mode: 'autopilot' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 const msg = screen.queryByText('Follow-up chat is not available for this process type.');
                 // This renders when processDetails is non-null and no sessionId is found
@@ -761,7 +761,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed', processId: 'proc-1' });
             const proc = makeProcess({ metadata: { mode: 'autopilot' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.queryByText('Follow-up chat is not available for this process type.')).toBeTruthy();
             });
@@ -772,7 +772,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed', processId: 'proc-1' });
             const proc = makeProcess({ metadata: { sessionId: 'sess-123' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -782,7 +782,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'running', processId: 'proc-1' });
             const proc = makeProcess({ status: 'running', metadata: {} });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -795,7 +795,7 @@ describe('ActivityChatDetail', () => {
         it('back button calls onBack callback', async () => {
             setupStandardFetch();
             const onBack = vi.fn();
-            render(<Wrap><ActivityChatDetail taskId="task-1" onBack={onBack} /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" onBack={onBack} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-back-btn')).toBeTruthy();
             });
@@ -810,7 +810,7 @@ describe('ActivityChatDetail', () => {
                 '/skills/all': { body: { merged: [] } },
             });
             const onBack = vi.fn();
-            render(<Wrap><SeededActivityChatDetail task={task} onBack={onBack} /></Wrap>);
+            render(<Wrap><SeededChatDetail task={task} onBack={onBack} /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('cancel-task-btn')).toBeTruthy();
             });
@@ -828,7 +828,7 @@ describe('ActivityChatDetail', () => {
     describe('copy conversation', () => {
         it('copy buttons are present', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
                 expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
@@ -837,7 +837,7 @@ describe('ActivityChatDetail', () => {
 
         it('copy buttons disabled when loading', async () => {
             fetchMock.mockImplementation(() => new Promise(() => {}));
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 const copyBtn = screen.getByTestId('copy-conversation-btn');
                 expect(copyBtn.hasAttribute('disabled')).toBe(true);
@@ -847,7 +847,7 @@ describe('ActivityChatDetail', () => {
         it('copy buttons disabled when no turns exist', async () => {
             const proc = makeProcess({ conversationTurns: [] });
             setupStandardFetch(undefined, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByText('No conversation data available.')).toBeTruthy();
             });
@@ -861,7 +861,7 @@ describe('ActivityChatDetail', () => {
     describe('streaming', () => {
         it('renders conversation turns from loaded data', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 const userTurns = screen.getAllByTestId('turn-user');
                 const assistantTurns = screen.getAllByTestId('turn-assistant');
@@ -878,7 +878,7 @@ describe('ActivityChatDetail', () => {
                 conversationTurns: [{ role: 'user', content: 'test', turnIndex: 0, timeline: [] }],
             });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 // ConversationArea adds a streaming placeholder for running tasks
                 const assistantTurns = screen.getAllByTestId('turn-assistant');
@@ -888,7 +888,7 @@ describe('ActivityChatDetail', () => {
 
         it('shows scroll-to-bottom button', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('scroll-to-bottom-btn')).toBeTruthy();
             });
@@ -903,7 +903,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed', processId: 'proc-1' });
             const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(mockState.getDraft).toHaveBeenCalledWith('task-1');
             });
@@ -914,7 +914,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed', processId: 'proc-1' });
             const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 // Mode should be restored to 'ask' but then overridden by process metadata
                 // unless process metadata has no mode
@@ -926,7 +926,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed', processId: 'proc-1' });
             const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            const { unmount } = render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            const { unmount } = render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -936,7 +936,7 @@ describe('ActivityChatDetail', () => {
 
         it('calls getDraft with taskId on each mount', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(mockState.getDraft).toHaveBeenCalledWith('task-1');
             });
@@ -948,7 +948,7 @@ describe('ActivityChatDetail', () => {
     describe('workspace id', () => {
         it('passes data-ws-id attribute when workspaceId provided', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" workspaceId="ws-abc" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-abc" /></Wrap>);
             await waitFor(() => {
                 const container = screen.getByTestId('activity-chat-detail');
                 expect(container.getAttribute('data-ws-id')).toBe('ws-abc');
@@ -957,7 +957,7 @@ describe('ActivityChatDetail', () => {
 
         it('does not add data-ws-id when workspaceId is absent', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 const container = screen.getByTestId('activity-chat-detail');
                 expect(container.hasAttribute('data-ws-id')).toBe(false);
@@ -966,7 +966,7 @@ describe('ActivityChatDetail', () => {
 
         it('fetches skills for the workspace', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" workspaceId="ws-abc" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-abc" /></Wrap>);
             await waitFor(() => {
                 const skillsCalls = fetchMock.mock.calls.filter(
                     ([url]: [string]) => typeof url === 'string' && url.includes('/workspaces/ws-abc/skills/all'),
@@ -984,7 +984,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed' });
             const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" onBack={() => {}} variant="floating" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" onBack={() => {}} variant="floating" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -995,7 +995,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed' });
             const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" isPopOut /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" isPopOut /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
             });
@@ -1008,13 +1008,13 @@ describe('ActivityChatDetail', () => {
     describe('hook wiring', () => {
         it('calls stopStreaming on taskId change (cleanup)', async () => {
             setupStandardFetch();
-            const { rerender } = render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            const { rerender } = render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
             });
             // Change taskId triggers cleanup which calls stopStreaming
             setupStandardFetch();
-            rerender(<Wrap><ActivityChatDetail taskId="task-2" /></Wrap>);
+            rerender(<Wrap><ChatDetail taskId="task-2" /></Wrap>);
             await waitFor(() => {
                 expect(mockState.stopStreaming).toHaveBeenCalled();
             });
@@ -1022,12 +1022,12 @@ describe('ActivityChatDetail', () => {
 
         it('calls closeFollowUpStream on taskId change (cleanup)', async () => {
             setupStandardFetch();
-            const { rerender } = render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            const { rerender } = render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
             });
             setupStandardFetch();
-            rerender(<Wrap><ActivityChatDetail taskId="task-2" /></Wrap>);
+            rerender(<Wrap><ChatDetail taskId="task-2" /></Wrap>);
             await waitFor(() => {
                 expect(mockState.closeFollowUpStream).toHaveBeenCalled();
             });
@@ -1035,12 +1035,12 @@ describe('ActivityChatDetail', () => {
 
         it('clears attachments on taskId change', async () => {
             setupStandardFetch();
-            const { rerender } = render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            const { rerender } = render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
             });
             setupStandardFetch();
-            rerender(<Wrap><ActivityChatDetail taskId="task-2" /></Wrap>);
+            rerender(<Wrap><ChatDetail taskId="task-2" /></Wrap>);
             await waitFor(() => {
                 expect(mockState.clearAttachments).toHaveBeenCalled();
             });
@@ -1054,7 +1054,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed' });
             const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-popout-btn')).toBeTruthy();
             });
@@ -1064,7 +1064,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'completed' });
             const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-float-btn')).toBeTruthy();
             });
@@ -1072,7 +1072,7 @@ describe('ActivityChatDetail', () => {
 
         it('hides float button when variant is floating', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" variant="floating" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" variant="floating" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
             });
@@ -1087,7 +1087,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'cancelling', processId: 'proc-1' });
             const proc = makeProcess({ status: 'cancelling', metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 const sendBtn = screen.getByTestId('activity-chat-send-btn');
                 expect(sendBtn.hasAttribute('disabled')).toBe(true);
@@ -1098,7 +1098,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'failed', processId: 'proc-1' });
             const proc = makeProcess({ status: 'failed', metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByText('Hello')).toBeTruthy();
                 expect(screen.getByText('Hi there')).toBeTruthy();
@@ -1109,7 +1109,7 @@ describe('ActivityChatDetail', () => {
             const task = makeTask({ status: 'running', processId: 'proc-1' });
             const proc = makeProcess({ status: 'running', metadata: { sessionId: 'sess-1' } });
             setupStandardFetch(task, proc);
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 // Running tasks should show the conversation area
                 expect(screen.getByTestId('activity-chat-conversation')).toBeTruthy();
@@ -1122,7 +1122,7 @@ describe('ActivityChatDetail', () => {
     describe('title override', () => {
         it('passes custom title to ChatHeader', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" title="Custom Title" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" title="Custom Title" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByText('Custom Title')).toBeTruthy();
             });
@@ -1130,7 +1130,7 @@ describe('ActivityChatDetail', () => {
 
         it('defaults to "Chat" title when no title provided', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByText('Chat')).toBeTruthy();
             });
@@ -1142,7 +1142,7 @@ describe('ActivityChatDetail', () => {
     describe('standalone mode', () => {
         it('renders correctly in standalone mode', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="task-1" standalone /></Wrap>);
+            render(<Wrap><ChatDetail taskId="task-1" standalone /></Wrap>);
             await waitFor(() => {
                 expect(screen.getByTestId('activity-chat-detail')).toBeTruthy();
                 expect(screen.getByText('Hello')).toBeTruthy();
@@ -1154,10 +1154,10 @@ describe('ActivityChatDetail', () => {
 
     describe('refresh deduplication', () => {
         /**
-         * Helper that bumps refreshVersion N times before mounting ActivityChatDetail,
+         * Helper that bumps refreshVersion N times before mounting ChatDetail,
          * simulating a scenario where prior interactions already incremented it.
          */
-        function PreBumpedDetail({ bumps, taskId, ...rest }: { bumps: number; taskId: string } & Partial<React.ComponentProps<typeof ActivityChatDetail>>) {
+        function PreBumpedDetail({ bumps, taskId, ...rest }: { bumps: number; taskId: string } & Partial<React.ComponentProps<typeof ChatDetail>>) {
             const { dispatch } = useQueue();
             const [ready, setReady] = React.useState(false);
             useEffect(() => {
@@ -1167,7 +1167,7 @@ describe('ActivityChatDetail', () => {
                 setReady(true);
             }, []); // eslint-disable-line react-hooks/exhaustive-deps
             if (!ready) return null;
-            return <ActivityChatDetail taskId={taskId} {...rest} />;
+            return <ChatDetail taskId={taskId} {...rest} />;
         }
 
         it('does not duplicate fetches when refreshVersion > 0 on mount', async () => {
@@ -1206,7 +1206,7 @@ describe('ActivityChatDetail', () => {
             setupStandardFetch(task, proc);
 
             await act(async () => {
-                render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+                render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             });
 
             await waitFor(() => {
@@ -1231,7 +1231,7 @@ describe('ActivityChatDetail', () => {
             setupStandardFetch(task, proc);
 
             await act(async () => {
-                render(<Wrap><ActivityChatDetail taskId="task-1" /></Wrap>);
+                render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             });
 
             await waitFor(() => {
@@ -1258,7 +1258,7 @@ describe('ActivityChatDetail', () => {
             setupStandardFetch(task, proc);
 
             /**
-             * Helper that renders ActivityChatDetail then dispatches
+             * Helper that renders ChatDetail then dispatches
              * REFRESH_SELECTED_QUEUE_TASK after mount to simulate a re-click.
              */
             function ReClickDetail() {
@@ -1270,7 +1270,7 @@ describe('ActivityChatDetail', () => {
                 // Expose trigger via testid button
                 return (
                     <>
-                        <ActivityChatDetail taskId="task-1" />
+                        <ChatDetail taskId="task-1" />
                         <button data-testid="trigger-refresh" onClick={() => (triggerRef as any).current?.()} />
                     </>
                 );
@@ -1313,7 +1313,7 @@ describe('ActivityChatDetail', () => {
                 '/models': { body: [] },
             });
 
-            render(<Wrap><ActivityChatDetail taskId="queue_abc" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="queue_abc" /></Wrap>);
 
             await waitFor(() => {
                 const queueCalls = fetchMock.mock.calls.filter(
@@ -1333,7 +1333,7 @@ describe('ActivityChatDetail', () => {
 
         it('uses /queue/ fetch for raw (non-processId) taskId', async () => {
             setupStandardFetch();
-            render(<Wrap><ActivityChatDetail taskId="raw-task-id" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="raw-task-id" /></Wrap>);
 
             await waitFor(() => {
                 const queueCalls = fetchMock.mock.calls.filter(
@@ -1357,7 +1357,7 @@ describe('ActivityChatDetail', () => {
                 '/models': { body: [] },
             });
 
-            render(<Wrap><ActivityChatDetail taskId="queue_abc" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="queue_abc" /></Wrap>);
 
             // Should NOT produce a double-prefixed /processes/queue_queue_abc call
             await waitFor(() => {
@@ -1383,7 +1383,7 @@ describe('ActivityChatDetail', () => {
                 '/models': { body: [] },
             });
 
-            render(<Wrap><ActivityChatDetail taskId="queue_abc" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="queue_abc" /></Wrap>);
 
             await waitFor(() => {
                 expect(screen.getByText('First message')).toBeTruthy();
@@ -1414,7 +1414,7 @@ describe('ActivityChatDetail', () => {
 
             render(
                 <Wrap>
-                    <ActivityChatDetail taskId="queue_proc-1" />
+                    <ChatDetail taskId="queue_proc-1" />
                     <AppDispatcher dispatchRef={appRef} />
                 </Wrap>,
             );
@@ -1446,7 +1446,7 @@ describe('ActivityChatDetail', () => {
 
             render(
                 <Wrap>
-                    <ActivityChatDetail taskId="queue_proc-1" title="Explicit Title" />
+                    <ChatDetail taskId="queue_proc-1" title="Explicit Title" />
                     <AppDispatcher dispatchRef={appRef} />
                 </Wrap>,
             );
@@ -1472,7 +1472,7 @@ describe('ActivityChatDetail', () => {
                 '/models': { body: [] },
             });
 
-            render(<Wrap><ActivityChatDetail taskId="queue_proc-1" /></Wrap>);
+            render(<Wrap><ChatDetail taskId="queue_proc-1" /></Wrap>);
 
             await waitFor(() => {
                 expect(screen.getByText('Pre-existing Title')).toBeTruthy();

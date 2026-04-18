@@ -35,7 +35,7 @@ const QUEUE_CONTEXT_SOURCE = fs.readFileSync(
 );
 
 const REPO_ACTIVITY_TAB_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoActivityTab.tsx'),
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'),
     'utf-8',
 );
 
@@ -77,8 +77,8 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
 // ════════════════════════════════════════════════════════════════════════
 
 describe('Fix 1: key={ws.id} on workspace-dependent tab components', () => {
-    it('RepoActivityTab has key containing ws.id', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={`${ws.id}');
+    it('RepoChatTab has key containing ws.id', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}');
     });
 
     it('RepoSchedulesTab has key={ws.id}', () => {
@@ -203,7 +203,7 @@ describe('Fix 3: per-repo selectedTaskIdByRepo', () => {
         });
     });
 
-    describe('RepoActivityTab reads from per-repo map', () => {
+    describe('RepoChatTab reads from per-repo map', () => {
         it('reads selectedTaskId from selectedTaskIdByRepo[workspaceId]', () => {
             expect(REPO_ACTIVITY_TAB_SOURCE).toContain('queueState.selectedTaskIdByRepo[workspaceId]');
         });

@@ -1171,7 +1171,7 @@ test.describe('Workflows Tab — WorkflowDetail', () => {
 // ================================================================
 
 test.describe('Activity Tab — Task List', () => {
-    test('completed task appears in ActivityListPane history', async ({ page, serverUrl }) => {
+    test('completed task appears in ChatListPane history', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-activity-task-1', 'activity-task-repo');
 
         // Seed a queue task for this workspace (mock AI completes it quickly).

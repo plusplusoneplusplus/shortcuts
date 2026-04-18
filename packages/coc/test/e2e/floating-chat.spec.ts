@@ -1,7 +1,7 @@
 /**
  * FloatingChat E2E Tests
  *
- * Tests the FloatingChatManager and PopOutActivityShell:
+ * Tests the FloatingChatManager and PopOutChatShell:
  *   - Float button appears in a completed queue task chat
  *   - Clicking float button opens a FloatingDialog overlay
  *   - Closing the floating dialog removes it
@@ -9,7 +9,7 @@
  *   - Conversation history is retained when floating
  *
  * Relies on existing data-testid attributes:
- *   ActivityChatDetail:
+ *   ChatDetail:
  *     data-testid="activity-chat-detail"
  *     data-testid="activity-chat-float-btn"   — float-in-window button
  *     data-testid="activity-chat-popout-btn"  — pop-out button

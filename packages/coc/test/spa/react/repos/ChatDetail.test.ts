@@ -1,5 +1,5 @@
 /**
- * Tests for ActivityChatDetail component — unified task detail surface.
+ * Tests for ChatDetail component — unified task detail surface.
  *
  * Validates scroll-to-bottom, mode selector, slash commands, retry-on-error,
  * cancel/move-to-top, PendingTaskInfoPanel, conversation caching,
@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const ACTIVITY_CHAT_DETAIL_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityChatDetail.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatDetail.tsx'
 );
 
 const PENDING_PAYLOAD_PATH = path.join(
@@ -33,7 +33,7 @@ const MODE_CONFIG_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'modeCo
 const QUEUED_BUBBLE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'QueuedBubble.tsx'), 'utf-8');
 const CHAT_UTILS_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'utils', 'chatUtils.ts'), 'utf-8');
 
-describe('ActivityChatDetail', () => {
+describe('ChatDetail', () => {
     let source: string;
     let payloadSource: string;
     let infoSource: string;
@@ -45,8 +45,8 @@ describe('ActivityChatDetail', () => {
     });
 
     describe('exports', () => {
-        it('exports ActivityChatDetail as a named export', () => {
-            expect(source).toContain('export function ActivityChatDetail');
+        it('exports ChatDetail as a named export', () => {
+            expect(source).toContain('export function ChatDetail');
         });
     });
 

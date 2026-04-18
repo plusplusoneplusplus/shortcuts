@@ -1,5 +1,5 @@
 /**
- * ActivityListPane — shared queue-style left rail for Activity and Queue tabs.
+ * ChatListPane — shared queue-style left rail for Activity and Queue tabs.
  *
  * Renders running/queued/history sections with filters, drag/drop,
  * pause markers, context menus, and selection highlighting.
@@ -123,7 +123,7 @@ export function getTaskPromptPreview(task: any): string {
     return text.length > 60 ? text.substring(0, 57) + '…' : text;
 }
 
-export interface ActivityListPaneProps {
+export interface ChatListPaneProps {
     running: any[];
     queued: any[];
     history: any[];
@@ -185,7 +185,7 @@ function formatMetadataText(task: any): string {
     return buildRows(task).map(r => `${r.label}: ${r.value}`).join('\n');
 }
 
-export function ActivityListPane({
+export function ChatListPane({
     running,
     queued,
     history,
@@ -221,7 +221,7 @@ export function ActivityListPane({
     onLoadMoreSearchResults,
     activeTab,
     onNewChat,
-}: ActivityListPaneProps) {
+}: ChatListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
 

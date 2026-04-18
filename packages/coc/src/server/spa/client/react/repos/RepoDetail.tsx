@@ -11,7 +11,7 @@ import { Button, cn } from '../shared';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { TemplatesTab } from './TemplatesTab';
-import { RepoActivityTab } from './RepoActivityTab';
+import { RepoChatTab } from './RepoChatTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { RepoGitTab } from './RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
@@ -429,14 +429,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     <WorkItemsTab key={ws.id} workspaceId={ws.id} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : activeSubTab === 'tasks' ? (
                     <div className="h-full min-w-0 overflow-hidden">
-                        <RepoActivityTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />
+                        <RepoChatTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />
                     </div>
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                         <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                            <RepoActivityTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
+                            <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
                         </div>
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
                         {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">

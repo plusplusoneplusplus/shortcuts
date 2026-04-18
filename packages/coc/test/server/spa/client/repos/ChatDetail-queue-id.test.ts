@@ -1,7 +1,7 @@
 /**
  * @vitest-environment node
  *
- * Regression test: ActivityChatDetail must strip the `queue_` prefix from
+ * Regression test: ChatDetail must strip the `queue_` prefix from
  * processId-style taskIds before calling `/api/queue/:id` endpoints.
  *
  * The component's `taskId` prop may arrive with a `queue_` prefix (when
@@ -66,12 +66,12 @@ describe('bareTaskId derivation', () => {
 
 // ---------------------------------------------------------------------------
 // 3. Source-level regression guard: every `/queue/` API call in
-//    ActivityChatDetail must use `bareTaskId`, not raw `taskId`.
+//    ChatDetail must use `bareTaskId`, not raw `taskId`.
 // ---------------------------------------------------------------------------
 
-describe('ActivityChatDetail source-level regression', () => {
+describe('ChatDetail source-level regression', () => {
     const src = readFileSync(
-        resolve(__dirname, '../../../../../src/server/spa/client/react/repos/ActivityChatDetail.tsx'),
+        resolve(__dirname, '../../../../../src/server/spa/client/react/repos/ChatDetail.tsx'),
         'utf-8',
     );
 

@@ -1,5 +1,5 @@
 /**
- * Tests for ActivityListPane pinned chats feature.
+ * Tests for ChatListPane pinned chats feature.
  *
  * Validates that:
  * - pinnedChatIds/onPinChat/onUnpinChat props are accepted
@@ -15,10 +15,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const ACTIVITY_LIST_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityListPane.tsx'
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatListPane.tsx'
 );
 
-describe('ActivityListPane pinned chats', () => {
+describe('ChatListPane pinned chats', () => {
     let source: string;
 
     beforeAll(() => {
@@ -877,7 +877,7 @@ describe('ActivityListPane pinned chats', () => {
 
 // ── Filter dropdown rework ─────────────────────────────────────────────
 
-describe('ActivityListPane: filter dropdown rework', () => {
+describe('ChatListPane: filter dropdown rework', () => {
     let source: string;
 
     beforeAll(() => {
@@ -1004,7 +1004,7 @@ describe('ActivityListPane: filter dropdown rework', () => {
 
 // ── taskMatchesFilter unit tests (exclusion logic) ────────────────────
 
-import { taskMatchesFilter } from '../../../../src/server/spa/client/react/repos/ActivityListPane';
+import { taskMatchesFilter } from '../../../../src/server/spa/client/react/repos/ChatListPane';
 
 describe('taskMatchesFilter: exclusion logic', () => {
     const chatAsk = { type: 'chat', payload: { mode: 'ask' } };
@@ -1069,7 +1069,7 @@ describe('taskMatchesFilter: exclusion logic', () => {
 
 // ── Mobile long-press context menu (regression) ──────────────────────────────
 
-describe('ActivityListPane mobile long-press context menu', () => {
+describe('ChatListPane mobile long-press context menu', () => {
     let source: string;
 
     beforeAll(() => {
@@ -1181,7 +1181,7 @@ describe('ActivityListPane mobile long-press context menu', () => {
 
 // ── New Chat button uses onNewChat (regression: must not open EnqueueDialog) ──
 
-describe('ActivityListPane: New Chat button uses onNewChat', () => {
+describe('ChatListPane: New Chat button uses onNewChat', () => {
     let source: string;
 
     beforeAll(() => {
@@ -1221,7 +1221,7 @@ describe('ActivityListPane: New Chat button uses onNewChat', () => {
 
 // ── isChatTask: tab routing logic ─────────────────────────────────────────────
 
-import { isChatTask } from '../../../../src/server/spa/client/react/repos/ActivityListPane';
+import { isChatTask } from '../../../../src/server/spa/client/react/repos/ChatListPane';
 
 describe('isChatTask: tab routing', () => {
     it('returns true for a chat task with ask mode', () => {
@@ -1303,7 +1303,7 @@ describe('NewChatArea: chat-only UI', () => {
 import {
     getSessionCategory,
     SESSION_CATEGORY_LABELS,
-} from '../../../../src/server/spa/client/react/repos/ActivityListPane';
+} from '../../../../src/server/spa/client/react/repos/ChatListPane';
 
 describe('getSessionCategory', () => {
     it('returns undefined for tasks without sessionCategory', () => {
@@ -1445,9 +1445,9 @@ describe('session category badge rendering', () => {
 
 // ── Chat search ───────────────────────────────────────────────────────────────
 
-import { taskMatchesSearch } from '../../../../src/server/spa/client/react/repos/ActivityListPane';
+import { taskMatchesSearch } from '../../../../src/server/spa/client/react/repos/ChatListPane';
 
-describe('ActivityListPane: chat search', () => {
+describe('ChatListPane: chat search', () => {
     let source: string;
 
     beforeAll(() => {

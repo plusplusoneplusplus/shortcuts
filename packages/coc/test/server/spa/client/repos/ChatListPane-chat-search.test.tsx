@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Tests for ActivityListPane — focused on FTS5 search wiring in the Chats tab.
+ * Tests for ChatListPane — focused on FTS5 search wiring in the Chats tab.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -132,7 +132,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/HistoryGroupHeader', (
     HistoryGroupHeader: () => null,
 }));
 
-import { ActivityListPane } from '../../../../../src/server/spa/client/react/repos/ActivityListPane';
+import { ChatListPane } from '../../../../../src/server/spa/client/react/repos/ChatListPane';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -141,7 +141,7 @@ import { ActivityListPane } from '../../../../../src/server/spa/client/react/rep
 const noop = () => {};
 const noopAsync = async () => {};
 
-function defaultProps(overrides: Partial<Parameters<typeof ActivityListPane>[0]> = {}) {
+function defaultProps(overrides: Partial<Parameters<typeof ChatListPane>[0]> = {}) {
     return {
         running: [],
         queued: [],
@@ -170,7 +170,7 @@ function defaultProps(overrides: Partial<Parameters<typeof ActivityListPane>[0]>
         onSearchQueryChange: noop,
         onLoadMoreSearchResults: noop,
         ...overrides,
-    } as Parameters<typeof ActivityListPane>[0];
+    } as Parameters<typeof ChatListPane>[0];
 }
 
 function makeChatTask(id: string, title: string) {
@@ -196,7 +196,7 @@ function makeSearchResult(id: string, displayName: string, snippet = '') {
 // Tests — Chats tab FTS5 search wiring
 // ---------------------------------------------------------------------------
 
-describe('ActivityListPane – Chats tab FTS5 search', () => {
+describe('ChatListPane – Chats tab FTS5 search', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -206,7 +206,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
     it('renders normal chat list when searchResults is null', () => {
         const chat = makeChatTask('queue_abc', 'My first chat');
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     history: [chat],
                     activeTab: 'chats',
@@ -222,7 +222,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
 
     it('shows "No chats yet" when there are no chats and search is not active', () => {
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({ activeTab: 'chats', searchResults: null })}
             />,
         );
@@ -235,7 +235,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
     it('renders FTS5 search results section when searchResults is an array', () => {
         const results = [makeSearchResult('queue_r1', 'Chat about auth')];
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     activeTab: 'chats',
                     searchResults: results,
@@ -252,7 +252,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
         const chat = makeChatTask('queue_abc', 'My first chat');
         const results = [makeSearchResult('queue_r1', 'Search result')];
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     history: [chat],
                     activeTab: 'chats',
@@ -270,7 +270,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
 
     it('shows "no results" message when searchResults is empty array and not loading', () => {
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     activeTab: 'chats',
                     searchResults: [],
@@ -285,7 +285,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
     it('renders snippet with dangerouslySetInnerHTML', () => {
         const results = [makeSearchResult('queue_r1', 'Highlighted chat', 'Hello <mark>world</mark>')];
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     activeTab: 'chats',
                     searchResults: results,
@@ -301,7 +301,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
         const onSelectTask = vi.fn();
         const results = [makeSearchResult('queue_r1', 'Clickable result')];
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     activeTab: 'chats',
                     searchResults: results,
@@ -322,7 +322,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
             makeSearchResult('queue_r2', 'Result 2'),
         ];
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     activeTab: 'chats',
                     searchResults: results,
@@ -343,7 +343,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
         const chat1 = makeChatTask('queue_c1', 'Chat 1');
         const chat2 = makeChatTask('queue_c2', 'Chat 2');
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     history: [chat1, chat2],
                     activeTab: 'chats',
@@ -365,7 +365,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
     it('renders Load more button when searchHasMore is true', () => {
         const results = [makeSearchResult('queue_r1', 'Result')];
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     activeTab: 'chats',
                     searchResults: results,
@@ -382,7 +382,7 @@ describe('ActivityListPane – Chats tab FTS5 search', () => {
     it('does not render Load more button when searchHasMore is false', () => {
         const results = [makeSearchResult('queue_r1', 'Result')];
         render(
-            <ActivityListPane
+            <ChatListPane
                 {...defaultProps({
                     activeTab: 'chats',
                     searchResults: results,

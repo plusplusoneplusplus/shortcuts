@@ -1,5 +1,5 @@
 /**
- * Tests for useUnseenActivity — tracks unseen completed tasks in the activity tab.
+ * Tests for useUnseenChat — tracks unseen completed tasks in the activity tab.
  *
  * The hook now uses server-side persistence via seenStateApi.
  * Tests mock the API layer and verify optimistic local state updates.
@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useUnseenActivity, getTaskCompletedAtIso } from '../../../../src/server/spa/client/react/hooks/useUnseenActivity';
+import { useUnseenChat, getTaskCompletedAtIso } from '../../../../src/server/spa/client/react/hooks/useUnseenChat';
 import * as seenStateApi from '../../../../src/server/spa/client/react/hooks/seenStateApi';
 
 // Mock the API module
@@ -41,7 +41,7 @@ function makeHistoryTasks(...ids: string[]) {
     }));
 }
 
-describe('useUnseenActivity', () => {
+describe('useUnseenChat', () => {
     beforeEach(() => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         localStorage.clear();
@@ -61,7 +61,7 @@ describe('useUnseenActivity', () => {
         mockFetchSeenMap.mockResolvedValue(serverMap);
 
         const history = makeTasks('a', 'b');
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         await waitFor(() => {
             expect(result.current.unseenProcessIds.has('a')).toBe(false);
@@ -73,7 +73,7 @@ describe('useUnseenActivity', () => {
     it('seeds all tasks as seen on first visit (empty server map)', async () => {
         mockFetchSeenMap.mockResolvedValue({});
         const history = makeTasks('a', 'b', 'c');
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         await waitFor(() => {
             expect(result.current.unseenCount).toBe(0);
@@ -94,7 +94,7 @@ describe('useUnseenActivity', () => {
         });
 
         const { result, rerender } = renderHook(
-            ({ h }) => useUnseenActivity('ws1', h, null),
+            ({ h }) => useUnseenChat('ws1', h, null),
             { initialProps: { h: history } },
         );
 
@@ -112,7 +112,7 @@ describe('useUnseenActivity', () => {
     it('marks task as seen when markSeen is called', async () => {
         mockFetchSeenMap.mockResolvedValue({});
         const history = makeTasks('a');
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         // Wait for initialization + seeding
         await waitFor(() => {
@@ -121,11 +121,11 @@ describe('useUnseenActivity', () => {
 
         // Simulate re-completion (new timestamp makes it unseen)
         const reCompleted = [{ ...history[0], completedAt: '2026-03-10T00:00:00Z' }];
-        const { result: result2 } = renderHook(() => useUnseenActivity('ws1', reCompleted, null));
+        const { result: result2 } = renderHook(() => useUnseenChat('ws1', reCompleted, null));
 
         // Since this is a new hook instance, we need the server to return the old map
         mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
-        const { result: result3 } = renderHook(() => useUnseenActivity('ws1', reCompleted, null));
+        const { result: result3 } = renderHook(() => useUnseenChat('ws1', reCompleted, null));
 
         await waitFor(() => {
             expect(result3.current.unseenProcessIds.has('a')).toBe(true);
@@ -144,7 +144,7 @@ describe('useUnseenActivity', () => {
 
         // Pre-set server state to make 'a' unseen
         mockFetchSeenMap.mockResolvedValue({});
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         // Wait for seeding
         await waitFor(() => {
@@ -156,7 +156,7 @@ describe('useUnseenActivity', () => {
         // Actually, let's just test markSeen directly after rerender with new task
         const history2 = [...history, ...makeTasks('b')];
         mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
-        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', history2, null));
+        const { result: r2 } = renderHook(() => useUnseenChat('ws1', history2, null));
 
         await waitFor(() => {
             expect(r2.current.unseenProcessIds.has('b')).toBe(true);
@@ -181,7 +181,7 @@ describe('useUnseenActivity', () => {
         mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
 
         const { result, rerender } = renderHook(
-            ({ sel }) => useUnseenActivity('ws1', history, sel),
+            ({ sel }) => useUnseenChat('ws1', history, sel),
             { initialProps: { sel: null as string | null } },
         );
 
@@ -202,7 +202,7 @@ describe('useUnseenActivity', () => {
         mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
 
         const { result, rerender } = renderHook(
-            ({ h }) => useUnseenActivity('ws1', h, null),
+            ({ h }) => useUnseenChat('ws1', h, null),
             { initialProps: { h: history } },
         );
 
@@ -217,7 +217,7 @@ describe('useUnseenActivity', () => {
     });
 
     it('returns empty set for empty history', async () => {
-        const { result } = renderHook(() => useUnseenActivity('ws1', [], null));
+        const { result } = renderHook(() => useUnseenChat('ws1', [], null));
 
         await waitFor(() => {
             expect(mockFetchSeenMap).toHaveBeenCalled();
@@ -230,7 +230,7 @@ describe('useUnseenActivity', () => {
     it('skips tasks without completedAt', async () => {
         mockFetchSeenMap.mockResolvedValue({});
         const history = [{ id: 'x', status: 'running' }];
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         await waitFor(() => {
             expect(mockFetchSeenMap).toHaveBeenCalled();
@@ -242,7 +242,7 @@ describe('useUnseenActivity', () => {
     it('marks all tasks as seen when markAllSeen is called', async () => {
         const history = makeTasks('a', 'b', 'c');
         mockFetchSeenMap.mockResolvedValue({});
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         // Wait for seeding
         await waitFor(() => {
@@ -252,7 +252,7 @@ describe('useUnseenActivity', () => {
         // Make some unseen by simulating new completions
         const newHistory = history.map(t => ({ ...t, completedAt: t.completedAt + '-v2' }));
         mockFetchSeenMap.mockResolvedValue(Object.fromEntries(history.map(t => [t.id, t.completedAt])));
-        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', newHistory, null));
+        const { result: r2 } = renderHook(() => useUnseenChat('ws1', newHistory, null));
 
         await waitFor(() => {
             expect(r2.current.unseenCount).toBe(3);
@@ -272,7 +272,7 @@ describe('useUnseenActivity', () => {
             b: history[1].completedAt,
         });
 
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         await waitFor(() => {
             expect(result.current.unseenCount).toBe(0);
@@ -291,7 +291,7 @@ describe('useUnseenActivity', () => {
         const history = makeTasks('a');
         mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
 
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         await waitFor(() => {
             expect(result.current.unseenCount).toBe(0);
@@ -307,7 +307,7 @@ describe('useUnseenActivity', () => {
     it('markUnseen is a no-op for a task not in seen map', async () => {
         mockFetchSeenMap.mockResolvedValue({});
         const history = makeTasks('a');
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         // Wait for seeding
         await waitFor(() => {
@@ -320,7 +320,7 @@ describe('useUnseenActivity', () => {
         // Actually, after seeding all are seen. Let's test with a truly unseen task
         const history2 = [...history, ...makeTasks('b')];
         mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
-        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', history2, null));
+        const { result: r2 } = renderHook(() => useUnseenChat('ws1', history2, null));
 
         await waitFor(() => {
             expect(r2.current.unseenProcessIds.has('b')).toBe(true);
@@ -336,7 +336,7 @@ describe('useUnseenActivity', () => {
     it('markTasksSeen marks only the provided tasks as seen', async () => {
         const history = makeTasks('a', 'b', 'c');
         mockFetchSeenMap.mockResolvedValue({});
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         // Wait for seeding, then change completedAt to make them unseen
         await waitFor(() => {
@@ -345,7 +345,7 @@ describe('useUnseenActivity', () => {
 
         const newHistory = history.map(t => ({ ...t, completedAt: t.completedAt + '-v2' }));
         mockFetchSeenMap.mockResolvedValue(Object.fromEntries(history.map(t => [t.id, t.completedAt])));
-        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', newHistory, null));
+        const { result: r2 } = renderHook(() => useUnseenChat('ws1', newHistory, null));
 
         await waitFor(() => {
             expect(r2.current.unseenCount).toBe(3);
@@ -364,7 +364,7 @@ describe('useUnseenActivity', () => {
     it('markTasksSeen is a no-op when given an empty list', async () => {
         const history = makeTasks('a', 'b');
         mockFetchSeenMap.mockResolvedValue({});
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         // Wait for seeding, then make unseen
         await waitFor(() => {
@@ -373,7 +373,7 @@ describe('useUnseenActivity', () => {
 
         const newHistory = history.map(t => ({ ...t, completedAt: t.completedAt + '-v2' }));
         mockFetchSeenMap.mockResolvedValue(Object.fromEntries(history.map(t => [t.id, t.completedAt])));
-        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', newHistory, null));
+        const { result: r2 } = renderHook(() => useUnseenChat('ws1', newHistory, null));
 
         await waitFor(() => {
             expect(r2.current.unseenCount).toBe(2);
@@ -389,7 +389,7 @@ describe('useUnseenActivity', () => {
     it('markTasksSeen ignores tasks without completedAt', async () => {
         const history = makeTasks('a');
         mockFetchSeenMap.mockResolvedValue({});
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         await waitFor(() => {
             expect(result.current.unseenCount).toBe(0);
@@ -397,7 +397,7 @@ describe('useUnseenActivity', () => {
 
         const newHistory = [{ ...history[0], completedAt: history[0].completedAt + '-v2' }];
         mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
-        const { result: r2 } = renderHook(() => useUnseenActivity('ws1', newHistory, null));
+        const { result: r2 } = renderHook(() => useUnseenChat('ws1', newHistory, null));
 
         await waitFor(() => {
             expect(r2.current.unseenProcessIds.has('a')).toBe(true);
@@ -417,7 +417,7 @@ describe('useUnseenActivity', () => {
         // Use non-empty seen map so first-visit seeding doesn't fire.
         mockFetchSeenMap.mockResolvedValue({ other: '2026-01-01T00:00:00Z' });
         const { result, rerender } = renderHook(
-            ({ h, sel }) => useUnseenActivity('ws1', h, sel),
+            ({ h, sel }) => useUnseenChat('ws1', h, sel),
             { initialProps: { h: [] as any[], sel: 'a' } },
         );
         await waitFor(() => expect(result.current.unseenCount).toBe(0));
@@ -434,7 +434,7 @@ describe('useUnseenActivity', () => {
         const history = makeTasks('a', 'b');
         mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
         const { result, rerender } = renderHook(
-            ({ sel }) => useUnseenActivity('ws1', history, sel),
+            ({ sel }) => useUnseenChat('ws1', history, sel),
             { initialProps: { sel: null as string | null } },
         );
         await waitFor(() => expect(result.current.unseenProcessIds.has('b')).toBe(true));
@@ -451,7 +451,7 @@ describe('useUnseenActivity', () => {
             localStorage.setItem('coc-unseen-ws1', JSON.stringify(localData));
             mockFetchSeenMap.mockResolvedValue({});
 
-            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
             await waitFor(() => {
                 // 'a' should be seen (migrated from localStorage)
@@ -473,7 +473,7 @@ describe('useUnseenActivity', () => {
             localStorage.setItem('coc-unseen-ws1', JSON.stringify(localData));
             mockFetchSeenMap.mockResolvedValue({ a: history[0].completedAt });
 
-            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
             await waitFor(() => {
                 expect(result.current.unseenProcessIds.has('a')).toBe(false);
@@ -485,7 +485,7 @@ describe('useUnseenActivity', () => {
     it('handles server error gracefully', async () => {
         mockFetchSeenMap.mockRejectedValue(new Error('Server unavailable'));
         const history = makeTasks('a');
-        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
         // Should still render without crashing — starts with empty map
         await waitFor(() => {
@@ -500,7 +500,7 @@ describe('useUnseenActivity', () => {
             const isoA = new Date(history[0].endTime).toISOString();
             mockFetchSeenMap.mockResolvedValue({ a: isoA });
 
-            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
             await waitFor(() => {
                 expect(result.current.unseenProcessIds.has('a')).toBe(false);
@@ -511,7 +511,7 @@ describe('useUnseenActivity', () => {
         it('seeds endTime tasks on first visit', async () => {
             mockFetchSeenMap.mockResolvedValue({});
             const history = makeHistoryTasks('a', 'b');
-            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
             await waitFor(() => {
                 expect(result.current.unseenCount).toBe(0);
@@ -525,7 +525,7 @@ describe('useUnseenActivity', () => {
             mockFetchSeenMap.mockResolvedValue({ a: isoA });
 
             const { result, rerender } = renderHook(
-                ({ sel }) => useUnseenActivity('ws1', history, sel),
+                ({ sel }) => useUnseenChat('ws1', history, sel),
                 { initialProps: { sel: null as string | null } },
             );
 
@@ -545,7 +545,7 @@ describe('useUnseenActivity', () => {
             const isoA = new Date(history[0].endTime).toISOString();
             // Make 'a' unseen by returning a different seenAt
             mockFetchSeenMap.mockResolvedValue({ a: 'old-value' });
-            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
             await waitFor(() => {
                 expect(result.current.unseenProcessIds.has('a')).toBe(true);
@@ -561,7 +561,7 @@ describe('useUnseenActivity', () => {
         it('markAllSeen works with endTime tasks', async () => {
             const history = makeHistoryTasks('a', 'b');
             mockFetchSeenMap.mockResolvedValue({ a: 'old' });
-            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
             await waitFor(() => {
                 expect(result.current.unseenCount).toBeGreaterThan(0);
@@ -577,7 +577,7 @@ describe('useUnseenActivity', () => {
         it('markTasksSeen works with endTime tasks', async () => {
             const history = makeHistoryTasks('a', 'b');
             mockFetchSeenMap.mockResolvedValue({ a: 'old' });
-            const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
 
             await waitFor(() => {
                 expect(result.current.unseenProcessIds.has('a')).toBe(true);

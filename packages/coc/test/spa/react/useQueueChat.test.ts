@@ -1,5 +1,5 @@
 /**
- * Tests for useQueueActivity hook — folderMap aggregation,
+ * Tests for useQueueChat hook — folderMap aggregation,
  * repoQueueMap preference logic, and extractTaskPath with WS-shaped items.
  *
  * Since the hook depends on React context (useQueue, useApp), we test the
@@ -7,13 +7,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { QueueActivityMap, QueueFolderActivityMap } from '../../../src/server/spa/client/react/hooks/useQueueActivity';
+import type { QueueChatMap, QueueFolderChatMap } from '../../../src/server/spa/client/react/hooks/useQueueChat';
 
 /**
- * Replicates the folderMap computation logic from useQueueActivity.
+ * Replicates the folderMap computation logic from useQueueChat.
  */
-function computeFolderMap(fileMap: QueueActivityMap): QueueFolderActivityMap {
-    const folderMap: QueueFolderActivityMap = {};
+function computeFolderMap(fileMap: QueueChatMap): QueueFolderChatMap {
+    const folderMap: QueueFolderChatMap = {};
     for (const [rel, count] of Object.entries(fileMap)) {
         const parts = rel.split('/');
         for (let i = 1; i < parts.length; i++) {
@@ -24,7 +24,7 @@ function computeFolderMap(fileMap: QueueActivityMap): QueueFolderActivityMap {
     return folderMap;
 }
 
-describe('useQueueActivity — folderMap aggregation', () => {
+describe('useQueueChat — folderMap aggregation', () => {
     it('returns empty folderMap for empty fileMap', () => {
         expect(computeFolderMap({})).toEqual({});
     });
@@ -79,7 +79,7 @@ describe('useQueueActivity — folderMap aggregation', () => {
 // ── repoQueueMap preference logic ──────────────────────────────────────
 
 /**
- * Replicates the activeItems selection logic from useQueueActivity.
+ * Replicates the activeItems selection logic from useQueueChat.
  * When repoQueueMap has an entry for the given wsId, its queued/running
  * arrays are preferred over the top-level arrays.
  */
@@ -97,7 +97,7 @@ function resolveActiveItems(
     return [...queued, ...running];
 }
 
-describe('useQueueActivity — repoQueueMap preference', () => {
+describe('useQueueChat — repoQueueMap preference', () => {
     const itemA = { id: 'a' };
     const itemB = { id: 'b' };
     const itemC = { id: 'c' };

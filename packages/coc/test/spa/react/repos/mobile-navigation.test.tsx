@@ -1,7 +1,7 @@
 /**
  * Tests for mobile-first chat/workspace navigation:
  * - Hamburger/menu icon in ChatHeader on mobile (replaces "← Back")
- * - Floating action button (FAB) in ActivityListPane on mobile
+ * - Floating action button (FAB) in ChatListPane on mobile
  * - ProcessesView passes onNewChat for FAB support
  */
 
@@ -13,7 +13,7 @@ import { mockViewport } from '../../helpers/viewport-mock';
 
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
 const CHAT_HEADER_SRC = path.join(REACT_SRC, 'repos', 'ChatHeader.tsx');
-const ACTIVITY_LIST_PANE_SRC = path.join(REACT_SRC, 'repos', 'ActivityListPane.tsx');
+const ACTIVITY_LIST_PANE_SRC = path.join(REACT_SRC, 'repos', 'ChatListPane.tsx');
 const PROCESSES_VIEW_SRC = path.join(REACT_SRC, 'processes', 'ProcessesView.tsx');
 const TAILWIND_CSS_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'tailwind.css');
 
@@ -57,7 +57,7 @@ describe('ChatHeader — mobile back navigation (source)', () => {
     });
 });
 
-describe('ActivityListPane — mobile FAB (source)', () => {
+describe('ChatListPane — mobile FAB (source)', () => {
     let src: string;
 
     beforeAll(() => {
@@ -101,7 +101,7 @@ describe('ProcessesView — onNewChat prop for FAB (source)', () => {
         src = fs.readFileSync(PROCESSES_VIEW_SRC, 'utf-8');
     });
 
-    it('passes onNewChat callback to ActivityListPane', () => {
+    it('passes onNewChat callback to ChatListPane', () => {
         expect(src).toContain('onNewChat={');
     });
 
@@ -296,7 +296,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/preferencesApi', () => ({
     patchWorkspacePreferences: vi.fn().mockResolvedValue({}),
 }));
 
-describe('ActivityListPane — mobile FAB rendering', () => {
+describe('ChatListPane — mobile FAB rendering', () => {
     let cleanup: (() => void) | undefined;
 
     afterEach(() => {
@@ -328,11 +328,11 @@ describe('ActivityListPane — mobile FAB rendering', () => {
     }
 
     async function renderWithProviders(props: Record<string, any>) {
-        const { ActivityListPane } = await import('../../../../src/server/spa/client/react/repos/ActivityListPane');
+        const { ChatListPane } = await import('../../../../src/server/spa/client/react/repos/ChatListPane');
         const { ChatPreferencesProvider } = await import('../../../../src/server/spa/client/react/context/ChatPreferencesContext');
         return render(
             <ChatPreferencesProvider workspaceId="test-ws">
-                <ActivityListPane {...makeListPaneProps(props)} />
+                <ChatListPane {...makeListPaneProps(props)} />
             </ChatPreferencesProvider>
         );
     }

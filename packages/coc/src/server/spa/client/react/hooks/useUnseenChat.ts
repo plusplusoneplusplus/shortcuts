@@ -1,5 +1,5 @@
 /**
- * useUnseenActivity — tracks which completed tasks the user has viewed.
+ * useUnseenChat — tracks which completed tasks the user has viewed.
  *
  * Tasks that complete while the user is viewing another task are "unseen"
  * and surfaced via bold styling + dot indicator in the activity list.
@@ -23,7 +23,7 @@ export function getTaskCompletedAtIso(task: any): string | undefined {
     return undefined;
 }
 
-export interface UseUnseenActivityResult {
+export interface useUnseenChatResult {
     /** Set of process IDs that have unseen activity. */
     unseenProcessIds: Set<string>;
     /** Number of tasks with unseen activity. */
@@ -38,11 +38,11 @@ export interface UseUnseenActivityResult {
     markUnseen: (processId: string) => void;
 }
 
-export function useUnseenActivity(
+export function useUnseenChat(
     workspaceId: string,
     history: any[],
     selectedTaskId: string | null,
-): UseUnseenActivityResult {
+): useUnseenChatResult {
     const [seenMap, setSeenMap] = useState<Record<string, string>>({});
     const initializedRef = useRef(false);
     const seededRef = useRef(false);

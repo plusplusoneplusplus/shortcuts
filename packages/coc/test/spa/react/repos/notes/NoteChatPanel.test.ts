@@ -91,9 +91,9 @@ describe('NoteChatPanel', () => {
     });
 
     describe('active chat state', () => {
-        it('renders ActivityChatDetail when taskId exists', () => {
+        it('renders ChatDetail when taskId exists', () => {
             expect(source).toContain('{taskId && (');
-            expect(source).toContain('<ActivityChatDetail');
+            expect(source).toContain('<ChatDetail');
         });
 
         it('wraps in ChatPreferencesProvider', () => {
