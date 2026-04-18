@@ -228,6 +228,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
     });
     cleanupAllStalePasteFiles(dataDir).catch(() => { /* best-effort */ });
+    bridge.clientCache.initialize().catch(() => { /* best-effort — pool is optional */ });
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
