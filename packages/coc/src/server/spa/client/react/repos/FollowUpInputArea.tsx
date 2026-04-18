@@ -207,7 +207,12 @@ export function FollowUpInputArea({
                         )}
                         onChange={(val, cursorPos) => {
                             setFollowUpInput(val);
-                            slashCommands.handleInputChange(val, cursorPos);
+                            if (modelCommand?.modelMenuVisible) {
+                                // Route typing to model filter when model picker is open
+                                modelCommand.setModelFilter(val);
+                            } else {
+                                slashCommands.handleInputChange(val, cursorPos);
+                            }
                         }}
                         onKeyDown={(e) => {
                             // Priority 1: model command menu
@@ -265,7 +270,7 @@ export function FollowUpInputArea({
                         data-testid="activity-chat-input"
                     />
                     <SlashCommandMenu
-                        skills={modelCommand ? [...skills, { name: 'model', description: 'Switch AI model' }] : skills}
+                        skills={skills}
                         filter={slashCommands.menuFilter}
                         onSelect={(name) => {
                             if (name === 'model' && modelCommand) {

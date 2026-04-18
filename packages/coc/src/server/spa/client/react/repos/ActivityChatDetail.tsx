@@ -123,10 +123,15 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     // Init from current refreshVersion so a fresh mount treats it as "already seen"
     const lastRefreshVersionRef = useRef(queueState.refreshVersion);
     const { state: appState, dispatch: appDispatch } = useApp();
-    const slashCommands = useSlashCommands(skills);
     const { models: availableModels } = useModels();
     const enabledModels = availableModels.filter(m => m.enabled);
     const modelCommand = useModelCommand(enabledModels);
+    // Include synthetic /model entry so useSlashCommands keyboard nav works for it
+    const augmentedSkills = useMemo(
+        () => [...skills, { name: 'model', description: 'Switch AI model' }],
+        [skills],
+    );
+    const slashCommands = useSlashCommands(augmentedSkills);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -717,7 +722,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     setSelectedMode={setSelectedMode}
                     onSend={sendFollowUp}
                     onRetry={retryLastMessage}
-                    skills={skills}
+                    skills={augmentedSkills}
                     images={images}
                     onImagePaste={addFromPaste}
                     onImageRemove={removeImage}

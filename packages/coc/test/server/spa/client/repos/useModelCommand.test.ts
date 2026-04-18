@@ -7,7 +7,7 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useModelCommand, isModelCommandPrefix } from '../../../../../src/server/spa/client/react/repos/useModelCommand';
 import type { ModelInfo } from '../../../../../src/server/spa/client/react/hooks/useModels';
@@ -17,6 +17,10 @@ const MODELS: ModelInfo[] = [
     { id: 'gpt-5.4', name: 'GPT-5.4', tokenLimit: 128000, enabled: true },
     { id: 'claude-haiku-4.5', name: 'Claude Haiku 4.5', tokenLimit: 200000, enabled: true },
 ];
+
+function makeKeyEvent(key: string): React.KeyboardEvent<HTMLElement> {
+    return { key, preventDefault: () => {} } as unknown as React.KeyboardEvent<HTMLElement>;
+}
 
 // ============================================================================
 // isModelCommandPrefix
@@ -108,10 +112,6 @@ describe('useModelCommand', () => {
     });
 
     describe('keyboard navigation', () => {
-        function makeKeyEvent(key: string): React.KeyboardEvent<HTMLElement> {
-            return { key, preventDefault: () => {} } as unknown as React.KeyboardEvent<HTMLElement>;
-        }
-
         it('returns false when menu is hidden', () => {
             const { result } = renderHook(() => useModelCommand(MODELS));
             const consumed = result.current.handleModelKeyDown(makeKeyEvent('ArrowDown'));
@@ -148,5 +148,55 @@ describe('useModelCommand', () => {
             act(() => { result.current.handleModelKeyDown(makeKeyEvent('Escape')); });
             expect(result.current.modelMenuVisible).toBe(false);
         });
+    });
+});
+
+// ============================================================================
+// Regression: useSlashCommands must include "model" for keyboard nav to work
+// ============================================================================
+
+describe('useSlashCommands with model entry (regression)', () => {
+    // This test documents the requirement that the "model" entry must be included
+    // in the skills list passed to useSlashCommands, so that keyboard navigation
+    // (Tab/Enter) correctly identifies the "model" item and transitions to the
+    // model picker instead of falling through.
+
+    let useSlashCommands: typeof import('../../../../../src/server/spa/client/react/repos/useSlashCommands').useSlashCommands;
+    beforeAll(async () => {
+        const mod = await import('../../../../../src/server/spa/client/react/repos/useSlashCommands');
+        useSlashCommands = mod.useSlashCommands;
+    });
+
+    const SKILLS = [
+        { name: 'impl', description: 'Implement changes' },
+        { name: 'model', description: 'Switch AI model' },
+    ];
+
+    it('filteredSkills includes "model" when prefix is "mo"', () => {
+        const { result } = renderHook(() => useSlashCommands(SKILLS));
+        act(() => result.current.handleInputChange('/mo', 3));
+        expect(result.current.menuVisible).toBe(true);
+        expect(result.current.filteredSkills.map(s => s.name)).toContain('model');
+    });
+
+    it('handleKeyDown returns true when "model" matches filter', () => {
+        const { result } = renderHook(() => useSlashCommands(SKILLS));
+        act(() => result.current.handleInputChange('/mo', 3));
+        expect(result.current.filteredSkills.length).toBeGreaterThan(0);
+        let consumed = false;
+        act(() => { consumed = result.current.handleKeyDown(makeKeyEvent('Tab')); });
+        expect(consumed).toBe(true);
+    });
+
+    it('filteredSkills is empty when "model" is NOT in skills (regression scenario)', () => {
+        const skillsWithoutModel = [{ name: 'impl', description: 'Implement changes' }];
+        const { result } = renderHook(() => useSlashCommands(skillsWithoutModel));
+        act(() => result.current.handleInputChange('/mo', 3));
+        // "mo" does not match "impl", so filteredSkills is empty
+        expect(result.current.filteredSkills).toHaveLength(0);
+        // handleKeyDown returns false — this was the bug
+        let consumed = false;
+        act(() => { consumed = result.current.handleKeyDown(makeKeyEvent('Tab')); });
+        expect(consumed).toBe(false);
     });
 });
