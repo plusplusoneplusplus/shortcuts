@@ -14,7 +14,7 @@ import { getConversationTurns } from '../chat/chatConversationUtils';
 import { getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
-import { useImagePaste } from '../hooks/useImagePaste';
+import { useFileAttachments } from '../hooks/useFileAttachments';
 import { useTextPaste } from '../hooks/useTextPaste';
 import { useAttachedContext } from '../hooks/useAttachedContext';
 import { useSlashCommands } from './useSlashCommands';
@@ -109,7 +109,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const turnsContainerRef = useRef<HTMLDivElement>(null);
     const isInitialLoadRef = useRef(true);
 
-    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const textPaste = useTextPaste();
     const attachedContext = useAttachedContext();
     const { isMobile } = useBreakpoint();
@@ -264,7 +264,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         selectedMode,
         selectedModeRef,
         images,
-        clearImages,
+        clearImages: clearAttachments,
+        toPayload,
         clearPaste: textPaste.clearPaste,
         getPastedContent: () => textPaste.pastedContent,
         lastFailedMessageRef,
@@ -335,7 +336,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setResumeFeedback(null);
         setSessionTokenLimit(undefined);
         setSessionCurrentTokens(undefined);
-        clearImages();
+        clearAttachments();
         textPaste.clearPaste();
         stopStreaming();
         closeFollowUpStream();
@@ -704,9 +705,11 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     onSend={sendFollowUp}
                     onRetry={retryLastMessage}
                     skills={skills}
-                    images={images}
-                    onImagePaste={addFromPaste}
-                    onImageRemove={removeImage}
+                    attachments={attachments}
+                    onAttachmentPaste={addFromPaste}
+                    onAttachmentRemove={removeAttachment}
+                    onAttachmentFiles={addFromFileInput}
+                    attachmentError={attachmentError}
                     pastePreview={{
                         charCount: textPaste.charCount,
                         previewLines: textPaste.previewLines,

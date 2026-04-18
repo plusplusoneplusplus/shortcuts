@@ -8,6 +8,8 @@
 
 import * as url from 'url';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment, QueuedTask, SearchFilter,
@@ -21,6 +23,7 @@ import type { QueueExecutorBridge } from '../api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, internalError, APIError } from '../errors';
 import { handleProcessStream, emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../sse-handler';
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../image-utils';
+import { processMessageAttachments } from '../attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { recordUserMessage } from '../memory/conversation-recorder';
@@ -439,30 +442,21 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 try { recordUserMessage(dataDir, recordWsId, body.content); } catch { /* never block the response */ }
             }
 
-            // Validate and extract image data URLs for persistence (cap at 5)
-            let validatedImages: string[] | undefined;
-            if (Array.isArray(body.images) && body.images.length > 0) {
-                const filtered = body.images
-                    .filter((img: unknown): img is string => typeof img === 'string' && isImageDataUrl(img as string))
-                    .slice(0, 5);
-                if (filtered.length > 0) {
-                    validatedImages = filtered;
-                }
-            }
+            // Process both new-style attachments and legacy images
+            const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
+            const {
+                sdkAttachments: processedAttachments,
+                textContext,
+                imageTempDir,
+                validatedImages,
+                fileAttachmentMeta,
+            } = processMessageAttachments(body, tempDir);
+            const attachments: Attachment[] | undefined = processedAttachments.length > 0 ? processedAttachments : undefined;
 
-            // Decode optional base64 images to temp files for SDK attachment
-            let attachments: Attachment[] | undefined;
-            let imageTempDir: string | undefined;
-            if (Array.isArray(body.images) && body.images.length > 0) {
-                const validImages = body.images
-                    .filter((img: unknown) => typeof img === 'string')
-                    .slice(0, 10);
-                if (validImages.length > 0) {
-                    const result = saveImagesToTempFiles(validImages);
-                    imageTempDir = result.tempDir;
-                    attachments = result.attachments.length > 0 ? result.attachments : undefined;
-                }
-            }
+            // Append text file contents to the message for AI context
+            const messageContentWithContext = textContext
+                ? (body.content as string) + textContext
+                : undefined;
 
             // Check session liveness before forwarding the prompt
             if (bridge && !(await bridge.isSessionAlive(id))) {
@@ -566,11 +560,12 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                             priority: 'normal',
                             payload: {
                                 kind: 'chat',
-                                prompt: messageContent,
+                                prompt: messageContentWithContext ?? messageContent,
                                 processId: id,
                                 attachments,
                                 imageTempDir,
                                 images: validatedImages,
+                                ...(fileAttachmentMeta ? { fileAttachmentMeta } : {}),
                                 workingDirectory: proc.workingDirectory,
                                 readonly: (proc as any).payload?.readonly,
                                 ...(selectedSkillNames && selectedSkillNames.length > 0 ? { context: { skills: selectedSkillNames } } : {}),
@@ -582,7 +577,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         });
                     }
                 } else {
-                    bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames).catch(() => {
+                    bridge.executeFollowUp(id, messageContentWithContext ?? messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames).catch(() => {
                     }).finally(() => {
                         if (imageTempDir) { cleanupTempDir(imageTempDir); }
                     });

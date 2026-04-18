@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { Button, SuggestionChips, SendButton } from '../shared';
-import { ImagePreviews } from '../shared/ImagePreviews';
+import { AttachmentPreviews } from '../shared/AttachmentPreviews';
 import { PastePreview } from '../shared/PastePreview';
 import { AttachedContextPreviews } from '../shared/AttachedContextPreviews';
 import { cn } from '../shared/cn';
@@ -12,6 +12,7 @@ import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeCo
 import type { SkillItem } from './SlashCommandMenu';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachedContextItem } from '../hooks/useAttachedContext';
+import type { ChatAttachment } from '../types/attachments';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -27,9 +28,11 @@ export interface FollowUpInputAreaProps {
     onSend: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     onRetry: () => void;
     skills: SkillItem[];
-    images: string[];
-    onImagePaste: (e: React.ClipboardEvent) => void;
-    onImageRemove: (index: number) => void;
+    attachments: ChatAttachment[];
+    onAttachmentPaste: (e: React.ClipboardEvent) => void;
+    onAttachmentRemove: (id: string) => void;
+    onAttachmentFiles: (files: FileList) => void;
+    attachmentError: string | null;
     pastePreview: {
         charCount: number;
         previewLines: string[];
@@ -72,9 +75,11 @@ export function FollowUpInputArea({
     onSend,
     onRetry,
     skills,
-    images,
-    onImagePaste,
-    onImageRemove,
+    attachments,
+    onAttachmentPaste,
+    onAttachmentRemove,
+    onAttachmentFiles,
+    attachmentError,
     pastePreview,
     attachedContext,
     onRemoveAttachedContext,
@@ -83,6 +88,7 @@ export function FollowUpInputArea({
     hideModeSelector = false,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const modHeld = useModifierKey(inputWrapperRef as RefObject<HTMLElement>);
 
     // Sync programmatic followUpInput changes(draft restore, clear after send) to the editor.
@@ -143,7 +149,10 @@ export function FollowUpInputArea({
             {attachedContext && onRemoveAttachedContext && (
                 <AttachedContextPreviews items={attachedContext} onRemove={onRemoveAttachedContext} />
             )}
-            <ImagePreviews images={images} onRemove={onImageRemove} />
+            {attachmentError && (
+                <div className="text-xs text-[#f14c4c]" data-testid="follow-up-attachment-error">{attachmentError}</div>
+            )}
+            <AttachmentPreviews attachments={attachments} onRemove={onAttachmentRemove} />
             {pastePreview && pastePreview.charCount > 0 && (
                 <PastePreview
                     charCount={pastePreview.charCount}
@@ -152,6 +161,32 @@ export function FollowUpInputArea({
                 />
             )}
             <div className="flex flex-row items-center gap-2" data-testid="chat-input-bar">
+                {/* Hidden file input for the + button */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    data-testid="follow-up-file-input-hidden"
+                    onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                            onAttachmentFiles(e.target.files);
+                        }
+                        e.target.value = '';
+                    }}
+                />
+                {/* Attach file button */}
+                <button
+                    type="button"
+                    disabled={inputDisabled}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="shrink-0 h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="follow-up-attach-btn"
+                    aria-label="Attach file"
+                    title="Attach files"
+                >
+                    +
+                </button>
                 {!hideModeSelector && <div className="shrink-0" data-testid="mode-selector">
                     {/* Mobile: icon-only button that cycles modes on tap */}
                     <button
@@ -216,7 +251,7 @@ export function FollowUpInputArea({
                             }
                         }}
                         onPaste={(e: React.ClipboardEvent) => {
-                            onImagePaste(e);
+                            onAttachmentPaste(e);
                             pastePreview?.onTextPaste(e);
                         }}
                         data-testid="activity-chat-input"
@@ -234,11 +269,22 @@ export function FollowUpInputArea({
                         highlightIndex={slashCommands.highlightIndex}
                     />
                 </div>
-                <SendButton
-                    disabled={inputDisabled}
-                    ctrlHeld={modHeld}
-                    onSend={(dm) => { void onSend(undefined, dm); }}
-                />
+                {sending ? (
+                    <button
+                        type="button"
+                        className="shrink-0 h-[34px] px-2 sm:px-3 rounded bg-[#f14c4c] text-white text-sm font-medium hover:bg-[#d93636]"
+                        onClick={() => { void onSend(undefined, 'immediate'); }}
+                        data-testid="activity-chat-stop-btn"
+                    >
+                        Stop
+                    </button>
+                ) : (
+                    <SendButton
+                        disabled={inputDisabled}
+                        ctrlHeld={modHeld}
+                        onSend={(dm) => { void onSend(undefined, dm); }}
+                    />
+                )}
             </div>
         </div>
     );
