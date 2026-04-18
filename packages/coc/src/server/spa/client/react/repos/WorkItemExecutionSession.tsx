@@ -57,7 +57,21 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
         try {
             const data = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
             setProcessDetails(data?.process ?? null);
-            setTurnsAndRef(getConversationTurns(data));
+            const refreshedTurns = getConversationTurns(data);
+            // Preserve client-only costTimeMs across server refresh
+            setTurnsAndRef(prev => {
+                const costMap = new Map<number, number>();
+                for (const t of prev) {
+                    if (t.costTimeMs != null && t.turnIndex != null) {
+                        costMap.set(t.turnIndex, t.costTimeMs);
+                    }
+                }
+                if (costMap.size === 0) return refreshedTurns;
+                return refreshedTurns.map(t => {
+                    const ms = t.turnIndex != null ? costMap.get(t.turnIndex) : undefined;
+                    return ms != null ? { ...t, costTimeMs: ms } : t;
+                });
+            });
         } catch { /* keep current turns on error */ }
     }, [setTurnsAndRef]);
 

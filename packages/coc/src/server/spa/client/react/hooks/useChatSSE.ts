@@ -172,6 +172,18 @@ export function useChatSSE({
         };
 
         const finish = (finalStatus: 'completed' | 'failed' | 'cancelled' = 'completed') => {
+            // Stamp costTimeMs on the last assistant turn (elapsed since its timestamp)
+            const now = Date.now();
+            setTurnsAndRef(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.role === 'assistant' && last.timestamp) {
+                    const ms = now - new Date(last.timestamp).getTime();
+                    if (ms > 0) {
+                        return [...prev.slice(0, -1), { ...last, costTimeMs: ms, streaming: false }];
+                    }
+                }
+                return prev;
+            });
             closeSSE();
             setBackgroundTasks(null);
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);

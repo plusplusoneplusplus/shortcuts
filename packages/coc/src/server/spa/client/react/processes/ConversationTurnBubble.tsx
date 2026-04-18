@@ -572,6 +572,26 @@ function buildRawContent(turn: ClientConversationTurn): string {
 
 export { buildRawContent as _buildRawContent };
 
+/** Small badge showing elapsed time from user send to response completion. */
+function CostTimeBadge({ costTimeMs }: { costTimeMs: number }) {
+    const fmt = (ms: number): string => {
+        if (ms < 1000) return `${ms}ms`;
+        const s = ms / 1000;
+        if (s < 60) return `${s.toFixed(1)}s`;
+        const m = Math.floor(s / 60);
+        const rs = Math.round(s % 60);
+        return rs > 0 ? `${m}m ${rs}s` : `${m}m`;
+    };
+    return (
+        <span
+            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] tabular-nums bg-[#f0f0f0] dark:bg-[#2d2d2d] text-[#848484]"
+            title={`Response time: ${fmt(costTimeMs)}`}
+        >
+            ⏱ {fmt(costTimeMs)}
+        </span>
+    );
+}
+
 /** Small badge showing per-turn token cost on assistant bubbles. */
 function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
     const [expanded, setExpanded] = useState(false);
@@ -870,6 +890,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                     )}
                     {!isUser && turn.tokenUsage && !turn.streaming && (
                         <TokenUsageBadge tokenUsage={turn.tokenUsage} />
+                    )}
+                    {!isUser && turn.costTimeMs != null && !turn.streaming && (
+                        <CostTimeBadge costTimeMs={turn.costTimeMs} />
                     )}
                     {!isUser && turn.isError && onRetry && (
                         <button
