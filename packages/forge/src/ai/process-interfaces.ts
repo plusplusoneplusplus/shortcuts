@@ -277,6 +277,14 @@ export interface PendingMessage {
     id: string;
     /** Message content */
     content: string;
+    /** Content with skill directives prepended (for the conversation bubble when drained) */
+    displayContent?: string;
+    /** Validated image data URIs */
+    images?: string[];
+    /** True when the user's large pasted content was externalized to a temp file reference */
+    pasteExternalized?: boolean;
+    /** Model override used for this turn */
+    model?: string;
     /** Interaction mode when the message was queued */
     mode?: string;
     /** ISO 8601 timestamp of when the message was queued */

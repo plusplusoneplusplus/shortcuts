@@ -501,35 +501,25 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const messageContent = (body.content as string);
             const displayContent = prependSelectedSkillsDirective(messageContent, selectedSkillNames);
 
-            // Persist the user turn and mark the process as running atomically.
-            // This ensures the SSE snapshot always includes the user message,
-            // preventing a race where the snapshot replaces optimistic UI state
-            // before the executor has written the turn.
             const priorStatus = proc.status;
             const isPasteExternalized = messageContent.length > PASTE_THRESHOLD;
-            const appendResult = await store.appendConversationTurn(
-                id,
-                (turnIndex) => ({
-                    role: 'user' as const,
-                    content: displayContent,
-                    timestamp: new Date(),
-                    turnIndex,
-                    timeline: [],
-                    images: validatedImages,
-                    ...(isPasteExternalized ? { pasteExternalized: true } : {}),
-                    ...(modelOverride ? { model: modelOverride } : {}),
-                }),
-                { additionalUpdates: { status: 'running' } },
-            );
-            const turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
 
             // Helper: buffer a follow-up as a pending message for server-side drain.
             // The server drains pending messages when the running task completes,
             // avoiding duplicate task IDs in the queue.
+            // When buffered, the user turn is NOT appended to conversationTurns yet —
+            // it is deferred until drainPendingMessages runs, preserving correct
+            // [user, assistant, user, assistant] ordering.
+            let buffered = false;
             const bufferAsPendingMessage = async () => {
+                buffered = true;
                 const pendingMsg = {
                     id: crypto.randomUUID(),
                     content: messageContent,
+                    displayContent,
+                    ...(validatedImages ? { images: validatedImages } : {}),
+                    ...(isPasteExternalized ? { pasteExternalized: true } : {}),
+                    ...(modelOverride ? { model: modelOverride } : {}),
                     ...(modeOverride ? { mode: modeOverride } : {}),
                     createdAt: new Date().toISOString(),
                 };
@@ -595,6 +585,29 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             } catch (err) {
                 await store.updateProcess(id, { status: priorStatus as AIProcessStatus }).catch(() => {});
                 return handleAPIError(res, new APIError(500, 'Failed to enqueue follow-up', 'ENQUEUE_FAILED'));
+            }
+
+            // Persist the user turn and mark the process as running atomically.
+            // Skipped for the buffered path — the turn is deferred until
+            // drainPendingMessages appends it at the correct position after
+            // the current assistant response completes.
+            let turnIndex = -1;
+            if (!buffered) {
+                const appendResult = await store.appendConversationTurn(
+                    id,
+                    (idx) => ({
+                        role: 'user' as const,
+                        content: displayContent,
+                        timestamp: new Date(),
+                        turnIndex: idx,
+                        timeline: [],
+                        images: validatedImages,
+                        ...(isPasteExternalized ? { pasteExternalized: true } : {}),
+                        ...(modelOverride ? { model: modelOverride } : {}),
+                    }),
+                    { additionalUpdates: { status: 'running' } },
+                );
+                turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
             }
 
             emitMessageQueued(store, id, {

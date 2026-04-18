@@ -776,11 +776,11 @@ describe('POST /api/processes/:id/message', () => {
             // Second follow-up: process is now running → buffered as pending message
             await postJSON(`${baseUrl}/api/processes/proc-8/message`, { content: 'Second' });
 
-            // Handler persists user turns atomically
+            // Handler persists user turns atomically — but NOT for buffered messages.
+            // The buffered (2nd) message is only in pendingMessages.
             const updated = await store.getProcess('proc-8');
-            expect(updated?.conversationTurns).toHaveLength(2);
+            expect(updated?.conversationTurns).toHaveLength(1);
             expect(updated?.conversationTurns![0].content).toBe('First');
-            expect(updated?.conversationTurns![1].content).toBe('Second');
             // First follow-up enqueues (process was completed), second buffers as pending
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             expect(enqueueFn).toHaveBeenCalledTimes(1);
@@ -1203,10 +1203,11 @@ describe('POST /api/processes/:id/message', () => {
             expect(JSON.parse(res1.body).turnIndex).toBe(5);
 
             // Handler persists turns, so array length increments
+            // Second message is buffered (process is now running, no parent task) → turnIndex -1
             const res2 = await postJSON(`${baseUrl}/api/processes/proc-tidx-incr/message`, {
                 content: 'second-follow-up',
             });
-            expect(JSON.parse(res2.body).turnIndex).toBe(6);
+            expect(JSON.parse(res2.body).turnIndex).toBe(-1);
         });
 
         it('should start at turnIndex 0 when conversationTurns is undefined', async () => {
@@ -1295,7 +1296,8 @@ describe('POST /api/processes/:id/message', () => {
             expect(res.status).toBe(202);
 
             const updated = await store.getProcess('proc-st-queued');
-            expect(updated?.status).toBe('running');
+            // Buffered path — status remains unchanged
+            expect(updated?.status).toBe('queued');
         });
     });
 

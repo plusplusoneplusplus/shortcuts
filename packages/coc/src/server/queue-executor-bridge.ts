@@ -192,6 +192,24 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (!proc?.pendingMessages?.length) return;
         if (!this.queueManager) return;
         const [nextMsg, ...rest] = proc.pendingMessages;
+
+        // Append the deferred user turn at the correct position (after the
+        // assistant response that just completed) before enqueuing the follow-up.
+        const turnContent = nextMsg.displayContent ?? nextMsg.content;
+        await this.store.appendConversationTurn(
+            processId,
+            (turnIndex) => ({
+                role: 'user' as const,
+                content: turnContent,
+                timestamp: new Date(nextMsg.createdAt),
+                turnIndex,
+                timeline: [],
+                ...(nextMsg.images ? { images: nextMsg.images } : {}),
+                ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
+                ...(nextMsg.model ? { model: nextMsg.model } : {}),
+            }),
+        );
+
         // Enqueue follow-up first — only remove pending message after success
         // to prevent data loss if enqueue fails.
         this.queueManager.enqueue({
