@@ -1,12 +1,15 @@
 import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../ai/types';
 import type { MemoryStore, MemoryLevel } from './types';
 import { MemoryRetriever } from './memory-retriever';
-import { createWriteMemoryTool } from './write-memory-tool';
+import { createMemoryTool, MemoryToolStores } from './memory-tool';
 import { MemoryAggregator } from './memory-aggregator';
 import { getAIServiceLogger } from '../ai-logger';
 
 export interface WithMemoryOptions {
     store: MemoryStore;
+    /** Bounded stores for the memory tool. When provided, a `memory` tool is
+     *  injected into the AI call. Map target names to store instances. */
+    boundedStores?: MemoryToolStores;
     source: string;
     repoHash?: string;
     /** Explicit repo-level directory, alternative to repoHash. */
@@ -37,18 +40,18 @@ export async function withMemory(
         getAIServiceLogger().warn({ err }, 'withMemory: retrieve failed, proceeding without context');
     }
 
-    // 2. Create write_memory tool and merge with existing tools
-    const { tool: memoryTool } = createWriteMemoryTool(memoryOptions.store, {
-        source: memoryOptions.source,
-        repoHash: memoryOptions.repoHash,
-        level,
-        model: memoryOptions.model,
-        repo: memoryOptions.repo,
-    });
+    // 2. Create memory tool if bounded stores are provided
     const existingTools = invokerOptions.tools ?? [];
+    let mergedTools = existingTools;
+    if (memoryOptions.boundedStores) {
+        const { tool: memoryTool } = createMemoryTool(memoryOptions.boundedStores, {
+            source: memoryOptions.source,
+        });
+        mergedTools = [...existingTools, memoryTool];
+    }
     const mergedOptions: AIInvokerOptions = {
         ...invokerOptions,
-        tools: [...existingTools, memoryTool],
+        tools: mergedTools,
     };
 
     // 3. Invoke AI with enriched prompt and injected tool

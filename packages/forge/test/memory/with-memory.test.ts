@@ -3,7 +3,7 @@ import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../../src/ai/
 import type { MemoryStore, MemoryLevel } from '../../src/memory/types';
 
 vi.mock('../../src/memory/memory-retriever');
-vi.mock('../../src/memory/write-memory-tool');
+vi.mock('../../src/memory/memory-tool');
 vi.mock('../../src/memory/memory-aggregator');
 const mockWarnFn = vi.fn();
 const mockLoggerInstance = { warn: mockWarnFn, debug: vi.fn(), info: vi.fn(), error: vi.fn() };
@@ -15,7 +15,7 @@ vi.mock('../../src/ai-logger', () => ({
 
 import { withMemory, type WithMemoryOptions } from '../../src/memory/with-memory';
 import { MemoryRetriever } from '../../src/memory/memory-retriever';
-import { createWriteMemoryTool } from '../../src/memory/write-memory-tool';
+import { createMemoryTool } from '../../src/memory/memory-tool';
 import { MemoryAggregator } from '../../src/memory/memory-aggregator';
 
 function makeResult(response = 'AI response'): AIInvokerResult {
@@ -37,7 +37,7 @@ function makeMockStore(): MemoryStore {
     } as unknown as MemoryStore;
 }
 
-const mockMemoryTool = { name: 'write_memory' } as any;
+const mockMemoryTool = { name: 'memory' } as any;
 
 describe('withMemory', () => {
     let mockInvoker: Mock<AIInvoker>;
@@ -53,7 +53,7 @@ describe('withMemory', () => {
         mockInvoker = vi.fn<AIInvoker>().mockResolvedValue(makeResult());
         mockStore = makeMockStore();
         baseOpts = { model: 'test-model' };
-        memOpts = { store: mockStore, source: 'test-pipeline' };
+        memOpts = { store: mockStore, source: 'test-pipeline', boundedStores: { memory: {} as any, system: {} as any } };
 
         // Setup MemoryRetriever mock
         mockRetrieve = vi.fn().mockResolvedValue(null);
@@ -61,8 +61,8 @@ describe('withMemory', () => {
             retrieve: mockRetrieve,
         }));
 
-        // Setup createWriteMemoryTool mock
-        (createWriteMemoryTool as Mock).mockReturnValue({
+        // Setup createMemoryTool mock
+        (createMemoryTool as Mock).mockReturnValue({
             tool: mockMemoryTool,
             getWrittenFacts: vi.fn().mockReturnValue([]),
         });
@@ -101,7 +101,7 @@ describe('withMemory', () => {
         );
     });
 
-    it('injects write_memory tool into AI call', async () => {
+    it('injects memory tool into AI call when boundedStores provided', async () => {
         await withMemory(mockInvoker, 'prompt', baseOpts, memOpts);
 
         const calledOpts = mockInvoker.mock.calls[0][1] as AIInvokerOptions;
@@ -178,6 +178,14 @@ describe('withMemory', () => {
 
         const calledOpts = mockInvoker.mock.calls[0][1] as AIInvokerOptions;
         expect(calledOpts.tools).toEqual([existingTool, mockMemoryTool]);
+    });
+
+    it('does not inject tool when boundedStores is not provided', async () => {
+        const optsWithoutBounded: WithMemoryOptions = { store: mockStore, source: 'test-pipeline' };
+        await withMemory(mockInvoker, 'prompt', baseOpts, optsWithoutBounded);
+
+        const calledOpts = mockInvoker.mock.calls[0][1] as AIInvokerOptions;
+        expect(calledOpts.tools ?? []).toEqual([]);
     });
 
     it('full cycle with level: repo → retriever called at repo level', async () => {

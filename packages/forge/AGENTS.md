@@ -47,10 +47,10 @@ Persistent memory that lets AI interactions learn from past executions. Stores o
 | `memory-security-scanner.ts` | `scanMemoryContent` | Stateless security scanner detecting prompt injection, exfiltration, persistence threats, and invisible Unicode characters |
 | `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths (deprecated — prefer `repoDir` option) |
 | `memory-retriever.ts` | `MemoryRetriever` | Loads `consolidated.md` for a repo/system level, formats as a context block for prompt injection |
-| `write-memory-tool.ts` | `createWriteMemoryTool` | Factory returning a `write_memory` tool (via `defineTool`) that AI can call organically during a session to record observations |
+| `memory-tool.ts` | `createMemoryTool` | Factory returning a `memory` tool with add/replace/remove actions against `BoundedMemoryStore`. Hermes-style: capacity-aware, duplicate-preventing, security scanning via store. Takes `MemoryToolStores` map (memory→repo store, system→global store). |
 | `memory-aggregator.ts` | `MemoryAggregator` | Checks batch threshold, consolidates raw observations into `consolidated.md` using an AI invoker |
 | `extraction-prompts.ts` | `EXTRACTION_SYSTEM_PROMPT`, `buildExtractionUserPrompt`, `parseExtractionResponse`, `ExtractedFact` | Prompts and JSON parser for offline fact extraction from conversation transcripts |
-| `with-memory.ts` | `withMemory` | Orchestrator: retrieve context → inject `write_memory` tool → invoke AI → check aggregation threshold |
+| `with-memory.ts` | `withMemory` | Orchestrator: retrieve context → optionally inject `memory` tool (when `boundedStores` provided) → invoke AI → check aggregation threshold |
 
 ### Usage Patterns
 

@@ -27,7 +27,8 @@ export type { BoundedMemoryStoreOptions, MemoryMutationResult, MemoryUsage, Memo
 export { ENTRY_DELIMITER, DEFAULT_CHAR_LIMIT } from './bounded-memory-types';
 export { scanMemoryContent } from './memory-security-scanner';
 export { MemoryRetriever } from './memory-retriever';
-export { createWriteMemoryTool, WriteMemoryToolOptions, WriteMemoryArgs } from './write-memory-tool';
+export { createMemoryTool } from './memory-tool';
+export type { MemoryToolOptions, MemoryToolArgs, MemoryToolStores } from './memory-tool';
 export { MemoryAggregator, MEMORY_CONSOLIDATION_INSTRUCTIONS } from './memory-aggregator';
 export type { AggregatorOptions } from './memory-aggregator';
 export { withMemory } from './with-memory';
