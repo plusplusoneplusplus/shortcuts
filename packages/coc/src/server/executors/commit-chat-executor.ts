@@ -29,7 +29,8 @@ import { ChatBaseExecutor } from './chat-base-executor';
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
-    appendMemoryContext,
+    appendBoundedMemoryContext,
+    buildBoundedMemoryAddon,
     withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
@@ -75,15 +76,15 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             );
         }
 
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId);
         const systemMessage = appendAutoFolderBlock(
-            appendMemoryContext(
+            appendBoundedMemoryContext(
                 await withRepoInstructions(
                     buildModeSystemMessage('ask'),
                     workingDirectory,
                     'ask',
                 ),
-                this.dataDir,
-                wsId,
+                boundedMemory,
             ),
             autoFolderContext,
         );
@@ -115,8 +116,8 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         );
         const searchConversations = buildSearchConversationsAddon(this.store, wsId);
 
-        tools.push(...followUp.tools, ...searchConversations.tools);
-        toolSuffix += followUp.suffix + searchConversations.suffix;
+        tools.push(...followUp.tools, ...searchConversations.tools, ...boundedMemory.tools);
+        toolSuffix += followUp.suffix + searchConversations.suffix + boundedMemory.suffix;
 
         return {
             agentMode: 'interactive' as AgentMode,

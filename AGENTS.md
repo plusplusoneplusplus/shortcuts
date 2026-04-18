@@ -222,7 +222,7 @@ Opt-in, two-level persistence layer that lets AI pipelines learn from past sessi
 
 **Integration:** Features opt in by wrapping AI calls with `withMemory()`. Wiki Ask/Explore handlers in `packages/coc/src/server/` combine TF-IDF context + memory context. Config precedence: CLI flag > pipeline YAML `memory:` field > `~/.coc/config.yaml` > default (disabled).
 
-**Offline Extraction Pipeline** (CoC server integration in `packages/coc/src/server/memory/`): `TranscriptExtractor` reads completed conversation turns, calls AI to extract durable facts, writes them as raw observations. `MemoryExtractionSweep` runs periodically (default 15min), finds idle completed processes, and dispatches extraction. Auto-triggers consolidation via `memory-aggregate` queue task when raw observation count exceeds threshold (default 20). `ExtractionStateManager` tracks per-process extraction state. `appendMemoryContext()` in `prompt-builder.ts` injects `consolidated.md` into chat system prompts. All gated by `PerRepoPreferences.memoryExtraction.enabled` (opt-in per repo, default false).
+**Bounded Memory Addon** (CoC server integration in `packages/coc/src/server/executors/bounded-memory-addon.ts`): `buildBoundedMemoryAddon()` creates a per-request `BoundedMemoryStore` (file-backed at `~/.coc/repos/<workspaceId>/memory/MEMORY.md`), a `MemoryPromptBuilder` snapshot for system prompt injection, and a `write_memory` AI tool via `createMemoryTool()`. Gated by `PerRepoPreferences.boundedMemory.enabled` (opt-in per repo, default false). `appendBoundedMemoryContext()` in `prompt-builder.ts` appends the frozen memory block to chat system messages. All 6 chat executors (chat, autopilot, plan, follow-up, commit-chat, note-chat) wire the addon.
 
 ## Development Notes
 

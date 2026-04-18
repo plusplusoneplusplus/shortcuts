@@ -15,7 +15,6 @@ import { TaskGenerationExecutor } from './task-generation-executor';
 import { ResolveCommentsExecutor } from './resolve-comments-executor';
 import { CommitChatExecutor } from './commit-chat-executor';
 import { NoteChatExecutor } from './note-chat-executor';
-import { MemoryAggregateExecutor } from '../memory/memory-aggregate-executor';
 import { ProcessLifecycleRunner } from './process-lifecycle-runner';
 import { WrappedTaskExecutor } from './wrapped-task-executor';
 import type { SkillExecuteFn } from './wrapped-task-executor';
@@ -46,7 +45,6 @@ export interface ExecutorRegistryOptions {
  */
 export class ExecutorRegistry {
     readonly followUpExecutor: FollowUpExecutor;
-    readonly memoryAggregateExecutor: MemoryAggregateExecutor;
     readonly runner: ProcessLifecycleRunner;
     readonly clientCache: CopilotClientCache;
 
@@ -104,7 +102,6 @@ export class ExecutorRegistry {
         this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.noteChatExecutor = new NoteChatExecutor(store, chatOpts, options.dataDir);
-        this.memoryAggregateExecutor = new MemoryAggregateExecutor(store, options.dataDir ?? '');
         this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, this.clientCache);
     }
 

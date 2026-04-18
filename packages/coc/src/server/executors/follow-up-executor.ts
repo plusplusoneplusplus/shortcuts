@@ -32,7 +32,8 @@ import {
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
-    appendMemoryContext,
+    appendBoundedMemoryContext,
+    buildBoundedMemoryAddon,
     withRepoInstructions,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
@@ -163,15 +164,15 @@ export class FollowUpExecutor extends BaseExecutor {
             const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
             autoFolderContextForFollowUp = { tasksRoot, existingFolders };
         }
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId);
         const systemMessage = appendAutoFolderBlock(
-            appendMemoryContext(
+            appendBoundedMemoryContext(
                 await withRepoInstructions(
                     buildModeSystemMessage(currentMode),
                     workingDirectory,
                     currentMode,
                 ),
-                this.dataDir,
-                wsId,
+                boundedMemory,
             ),
             autoFolderContextForFollowUp,
         );
@@ -193,8 +194,9 @@ export class FollowUpExecutor extends BaseExecutor {
             // only needs to handle the AI call and assistant turn.
 
             const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled, this.followUpSuggestions.count);
+            const combinedSuffix = (followUpSuffix || '') + boundedMemory.suffix;
             const followUpMessage = prependSelectedSkillsDirective(
-                followUpSuffix ? `${message}${followUpSuffix}` : message,
+                combinedSuffix ? `${message}${combinedSuffix}` : message,
                 selectedSkillNames,
             );
             const agentMode = toAgentMode(currentMode);
@@ -227,7 +229,7 @@ export class FollowUpExecutor extends BaseExecutor {
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
-                tools: suggestTools.length > 0 ? suggestTools : undefined,
+                tools: [...suggestTools, ...boundedMemory.tools].length > 0 ? [...suggestTools, ...boundedMemory.tools] : undefined,
                 skillDirectories,
                 disabledSkills,
                 onSessionCreated: (sessionId: string) => {

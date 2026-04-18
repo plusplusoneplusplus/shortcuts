@@ -18,7 +18,8 @@ import type {
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
 import {
-    appendMemoryContext,
+    appendBoundedMemoryContext,
+    buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
@@ -54,11 +55,13 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
         const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId);
 
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId);
+
         return {
             agentMode: 'autopilot' as AgentMode,
-            systemMessage: appendMemoryContext(undefined, this.dataDir, payload.workspaceId),
-            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix,
+            systemMessage: appendBoundedMemoryContext(undefined, boundedMemory),
+            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...boundedMemory.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + boundedMemory.suffix,
         };
     }
 }

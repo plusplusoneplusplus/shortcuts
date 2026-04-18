@@ -22,7 +22,8 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
     appendAutoFolderBlock,
-    appendMemoryContext,
+    appendBoundedMemoryContext,
+    buildBoundedMemoryAddon,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
 } from './prompt-builder';
@@ -63,11 +64,11 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             );
         }
 
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, wsId);
         let systemMessage = appendAutoFolderBlock(
-            appendMemoryContext(
+            appendBoundedMemoryContext(
                 undefined,
-                this.dataDir,
-                wsId,
+                boundedMemory,
             ),
             autoFolderContext,
         );
@@ -88,8 +89,8 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         );
         const searchConversations = buildSearchConversationsAddon(this.store, wsId);
 
-        const tools = [...followUp.tools, ...searchConversations.tools];
-        const toolSuffix = followUp.suffix + searchConversations.suffix;
+        const tools = [...followUp.tools, ...searchConversations.tools, ...boundedMemory.tools];
+        const toolSuffix = followUp.suffix + searchConversations.suffix + boundedMemory.suffix;
 
         // Resolve the absolute note path for comparison against tool-reported paths
         const processId = toQueueProcessId(task.id);

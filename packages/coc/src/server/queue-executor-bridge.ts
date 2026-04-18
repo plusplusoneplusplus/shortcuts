@@ -1,5 +1,5 @@
 import type { ChatPayload, ChatMode } from './task-types';
-import { isChatPayload, isMemoryAggregatePayload } from './task-types';
+import { isChatPayload } from './task-types';
 import { applyFollowUpToTask } from './shared/queue-utils';
 import { processToQueuedTask } from './shared/process-history-mapper';
 import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager } from '@plusplusoneplusplus/forge';
@@ -129,9 +129,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
         try {
-            if (isMemoryAggregatePayload(task.payload)) {
-                return await this.executors.memoryAggregateExecutor.execute(task);
-            }
             return await this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
                 executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl),
@@ -248,7 +245,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
  *   agents that must not interleave with other exclusive tasks in the same repo queue.
  */
 export function defaultIsExclusive(task: QueuedTask): boolean {
-    if (task.type === 'run-workflow' || task.type === 'run-script' || task.type === 'memory-aggregate') return true;
+    if (task.type === 'run-workflow' || task.type === 'run-script') return true;
     if (isChatPayload(task.payload)) { const mode = (task.payload as any).mode; return mode === 'autopilot'; }
     return true;
 }

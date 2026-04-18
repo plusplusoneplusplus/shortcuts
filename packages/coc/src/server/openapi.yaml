@@ -1159,12 +1159,19 @@ components:
           type: string
           enum: [flat, tree]
           description: Preferred file-list display mode across all git views.
-        memoryExtraction:
+        boundedMemory:
           type: object
-          description: Memory extraction settings. Extraction is opt-in per repo (default disabled).
-          required: [enabled]
+          description: >-
+            Bounded memory settings (replaces old memoryExtraction).
+            When enabled, injects a frozen snapshot of MEMORY.md into prompts and
+            provides the AI with a `memory` tool for writing new observations.
           properties:
             enabled: { type: boolean }
+            charLimit:
+              type: integer
+              minimum: 1024
+              default: 16384
+              description: Max characters for MEMORY.md content.
 
     SkillUsageRequest:
       type: object

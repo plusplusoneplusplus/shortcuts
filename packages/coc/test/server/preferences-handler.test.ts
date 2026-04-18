@@ -1218,6 +1218,37 @@ describe('Per-Repo Preferences REST API', () => {
         expect(JSON.parse(res.body).filesViewMode).toBeUndefined();
     });
 
+    // -- boundedMemory --
+
+    it('validates boundedMemory.enabled boolean', async () => {
+        await putJSON(repoUrl(repoId), { boundedMemory: { enabled: true } });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.boundedMemory).toEqual({ enabled: true });
+    });
+
+    it('validates boundedMemory.charLimit number', async () => {
+        await putJSON(repoUrl(repoId), { boundedMemory: { enabled: true, charLimit: 8192 } });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.boundedMemory).toEqual({ enabled: true, charLimit: 8192 });
+    });
+
+    it('rejects invalid charLimit', async () => {
+        await putJSON(repoUrl(repoId), { boundedMemory: { enabled: true, charLimit: -1 } });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.boundedMemory).toEqual({ enabled: true });
+        expect(body.boundedMemory.charLimit).toBeUndefined();
+    });
+
+    it('rejects non-object boundedMemory', async () => {
+        await putJSON(repoUrl(repoId), { boundedMemory: 'yes' });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.boundedMemory).toBeUndefined();
+    });
+
     // -- Isolation --
 
     it('two repos have independent preferences', async () => {

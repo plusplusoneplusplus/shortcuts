@@ -105,8 +105,12 @@ export interface PerRepoPreferences {
     skillTemplates?: SkillTemplateEntry[];
     /** Preferred file-list display mode across all git views (commits, branch changes, working tree). */
     filesViewMode?: 'flat' | 'tree';
-    /** Memory extraction settings. Extraction is opt-in per repo (default: disabled). */
-    memoryExtraction?: { enabled: boolean };
+    /** Bounded memory settings (replaces old memoryExtraction). */
+    boundedMemory?: {
+        enabled: boolean;
+        /** Max characters for MEMORY.md content. Default: 16384. */
+        charLimit?: number;
+    };
 }
 
 /** backward-compat alias */
@@ -309,10 +313,14 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         result.filesViewMode = obj.filesViewMode;
     }
 
-    if (typeof obj.memoryExtraction === 'object' && obj.memoryExtraction !== null) {
-        const me = obj.memoryExtraction as Record<string, unknown>;
-        if (typeof me.enabled === 'boolean') {
-            result.memoryExtraction = { enabled: me.enabled };
+    if (typeof obj.boundedMemory === 'object' && obj.boundedMemory !== null) {
+        const bm = obj.boundedMemory as Record<string, unknown>;
+        if (typeof bm.enabled === 'boolean') {
+            const validated: { enabled: boolean; charLimit?: number } = { enabled: bm.enabled };
+            if (typeof bm.charLimit === 'number' && bm.charLimit > 0) {
+                validated.charLimit = bm.charLimit;
+            }
+            result.boundedMemory = validated;
         }
     }
 

@@ -22,7 +22,8 @@ import type { ChatPayload } from '../task-types';
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
-    appendMemoryContext,
+    appendBoundedMemoryContext,
+    buildBoundedMemoryAddon,
     withRepoInstructions,
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
@@ -66,15 +67,15 @@ export class ChatExecutor extends ChatBaseExecutor {
             );
         }
 
+        const boundedMemory = await buildBoundedMemoryAddon(this.dataDir, payload.workspaceId);
         const systemMessage = appendAutoFolderBlock(
-            appendMemoryContext(
+            appendBoundedMemoryContext(
                 await withRepoInstructions(
                     buildModeSystemMessage('ask'),
                     workingDirectory,
                     'ask',
                 ),
-                this.dataDir,
-                payload.workspaceId,
+                boundedMemory,
             ),
             autoFolderContext,
         );
@@ -116,8 +117,8 @@ export class ChatExecutor extends ChatBaseExecutor {
         return {
             agentMode: 'interactive' as AgentMode,
             systemMessage,
-            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...askUser.tools, ...createWorkItem.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + askUser.suffix + createWorkItem.suffix,
+            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...askUser.tools, ...createWorkItem.tools, ...boundedMemory.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + askUser.suffix + createWorkItem.suffix + boundedMemory.suffix,
         };
     }
 }
