@@ -21,6 +21,7 @@ import * as child_process from 'child_process';
 import type { Route } from '../types';
 import { sendJson, send400, send404, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -72,8 +73,8 @@ function parseRepoRequest(
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerRepoRoutes(routes: Route[], dataDir: string, service?: RepoTreeService): void {
-    const svc = service ?? new RepoTreeService(dataDir);
+export function registerRepoRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore): void {
+    const svc = service ?? new RepoTreeService(dataDir, undefined, store);
 
     // -- List repos ----------------------------------------------------------
 

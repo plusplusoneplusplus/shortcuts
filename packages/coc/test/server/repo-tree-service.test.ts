@@ -679,3 +679,70 @@ describe('RepoTreeService.searchFiles', () => {
         expect(result.truncated).toBe(true);
     });
 });
+
+describe('RepoTreeService with ProcessStore', () => {
+    it('resolveRepo returns repo from store when workspaces.json is absent', async () => {
+        // Simulate post-migration state: no workspaces.json on disk,
+        // but the store has the workspace registered.
+        fs.mkdirSync(repoDir, { recursive: true });
+        const fakeStore = {
+            getWorkspaces: async () => [
+                { id: REPO_ID, name: REPO_NAME, rootPath: repoDir },
+            ],
+        } as any;
+        const svc = new RepoTreeService(dataDir, undefined, fakeStore);
+        const repo = await svc.resolveRepo(REPO_ID);
+        expect(repo).toBeDefined();
+        expect(repo!.id).toBe(REPO_ID);
+        expect(repo!.localPath).toBe(repoDir);
+    });
+
+    it('listRepos returns repos from store when workspaces.json is absent', async () => {
+        fs.mkdirSync(repoDir, { recursive: true });
+        const fakeStore = {
+            getWorkspaces: async () => [
+                { id: REPO_ID, name: REPO_NAME, rootPath: repoDir },
+            ],
+        } as any;
+        const svc = new RepoTreeService(dataDir, undefined, fakeStore);
+        const repos = await svc.listRepos();
+        expect(repos).toHaveLength(1);
+        expect(repos[0].id).toBe(REPO_ID);
+    });
+
+    it('resolveRepo returns undefined for unknown repo even with store', async () => {
+        const fakeStore = {
+            getWorkspaces: async () => [
+                { id: 'other-id', name: 'other', rootPath: '/tmp/other' },
+            ],
+        } as any;
+        const svc = new RepoTreeService(dataDir, undefined, fakeStore);
+        const repo = await svc.resolveRepo(REPO_ID);
+        expect(repo).toBeUndefined();
+    });
+
+    it('store takes priority over workspaces.json on disk', async () => {
+        // Even if workspaces.json exists, the store should be used when provided.
+        fs.mkdirSync(repoDir, { recursive: true });
+        seedWorkspacesJson([{ id: 'disk-id', name: 'disk-repo', rootPath: repoDir }]);
+        const fakeStore = {
+            getWorkspaces: async () => [
+                { id: REPO_ID, name: REPO_NAME, rootPath: repoDir },
+            ],
+        } as any;
+        const svc = new RepoTreeService(dataDir, undefined, fakeStore);
+        // Should find the store repo, not the disk one
+        const storeRepo = await svc.resolveRepo(REPO_ID);
+        expect(storeRepo).toBeDefined();
+        const diskRepo = await svc.resolveRepo('disk-id');
+        expect(diskRepo).toBeUndefined();
+    });
+
+    it('falls back to workspaces.json when no store is provided', async () => {
+        seedDefaultRepo();
+        const svc = new RepoTreeService(dataDir);
+        const repo = await svc.resolveRepo(REPO_ID);
+        expect(repo).toBeDefined();
+        expect(repo!.id).toBe(REPO_ID);
+    });
+});

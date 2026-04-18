@@ -20,6 +20,7 @@ import { RepoTreeService } from './tree-service';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -72,8 +73,8 @@ export function clearPrListCache(): void {
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService): void {
-    const svc = service ?? new RepoTreeService(dataDir);
+export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore): void {
+    const svc = service ?? new RepoTreeService(dataDir, undefined, store);
 
     // -- List PRs -------------------------------------------------------------
 

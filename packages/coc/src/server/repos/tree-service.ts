@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
 
 const execFileAsync = promisify(execFile);
 import type { RepoInfo, TreeEntry, TreeListResult, FileSearchResult, SearchFilesResult } from './types';
@@ -198,6 +198,7 @@ async function getGitIgnoredNames(
 export class RepoTreeService {
     private readonly maxEntries: number;
     private readonly dataDir: string;
+    private readonly store?: ProcessStore;
 
     private static rgAvailable: boolean | undefined;
 
@@ -311,9 +312,10 @@ export class RepoTreeService {
         return { files: allFiles.slice(0, maxEntries), truncated };
     }
 
-    constructor(dataDir: string, options?: RepoTreeServiceOptions) {
+    constructor(dataDir: string, options?: RepoTreeServiceOptions, store?: ProcessStore) {
         this.dataDir = dataDir;
         this.maxEntries = options?.maxEntries ?? 5000;
+        this.store = store;
     }
 
     /**
@@ -729,6 +731,9 @@ export class RepoTreeService {
     }
 
     private async readWorkspaces(): Promise<WorkspaceInfo[]> {
+        if (this.store) {
+            return this.store.getWorkspaces();
+        }
         const workspacesPath = path.join(this.dataDir, 'workspaces.json');
         try {
             const data = await fs.promises.readFile(workspacesPath, 'utf-8');

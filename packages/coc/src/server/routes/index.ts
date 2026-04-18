@@ -81,7 +81,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     } = opts;
 
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer);
-    const repoTreeService = new RepoTreeService(dataDir);
+    const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService);
     registerProviderRoutes(routes, dataDir);
