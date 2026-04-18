@@ -236,6 +236,16 @@ export function ProcessDetail() {
         };
     }, [selectedId, process?.status, dispatch]);
 
+    // Auto-scroll to bottom when new turns arrive and user is near the bottom
+    useEffect(() => {
+        const el = scrollContainerRef.current;
+        if (!el || turns.length === 0) return;
+        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (dist < 150) {
+            requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+        }
+    }, [turns]);
+
     const metadataProcess = processDetails || process;
     const wsId = getProcessWorkspaceId(metadataProcess);
     const wsName = resolveWorkspaceName(wsId, getProcessWorkspaceName(metadataProcess), state.workspaces);
@@ -403,7 +413,7 @@ export function ProcessDetail() {
                     <div className="flex items-center justify-between gap-3 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
                             <Badge status={process.status}>
-                                {statusIcon(process.status)} {statusLabel(process.status)}
+                                {statusIcon(process.status)} {statusLabel(process.status, process.type)}
                             </Badge>
                             {duration && (
                                 <span className="text-xs text-[#848484]">{duration}</span>

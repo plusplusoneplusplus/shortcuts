@@ -164,6 +164,27 @@ describe('statusLabel', () => {
     it('returns empty string for empty status', () => {
         expect(statusLabel('')).toBe('');
     });
+
+    it('returns Running for non-chat types when running', () => {
+        expect(statusLabel('running', 'pipeline')).toBe('Running');
+        expect(statusLabel('running', 'workflow')).toBe('Running');
+        expect(statusLabel('running', 'script')).toBe('Running');
+    });
+
+    it('returns Thinking for chat type when running', () => {
+        expect(statusLabel('running', 'chat')).toBe('Thinking');
+    });
+
+    it('returns Thinking when type is omitted and running', () => {
+        expect(statusLabel('running')).toBe('Thinking');
+        expect(statusLabel('running', undefined)).toBe('Thinking');
+    });
+
+    it('type param does not affect non-running statuses', () => {
+        expect(statusLabel('completed', 'pipeline')).toBe('Completed');
+        expect(statusLabel('failed', 'workflow')).toBe('Failed');
+        expect(statusLabel('queued', 'script')).toBe('Queued');
+    });
 });
 
 describe('typeLabel', () => {

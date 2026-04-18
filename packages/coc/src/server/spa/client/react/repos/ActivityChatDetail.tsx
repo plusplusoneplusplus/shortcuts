@@ -61,9 +61,11 @@ export interface ActivityChatDetailProps {
     title?: string;
     /** Hide the ask/plan/autopilot mode selector */
     hideModeSelector?: boolean;
+    /** When true, hides the follow-up input area (read-only view). */
+    readOnly?: boolean;
 }
 
-export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false }: ActivityChatDetailProps) {
+export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, readOnly = false }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -696,14 +698,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     />
                 )}
             </div>
-            {!isPending && noSessionForFollowUp && (
+            {!isPending && noSessionForFollowUp && !readOnly && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                     <div className="text-[#848484] text-sm text-center">
                         Follow-up chat is not available for this process type.
                     </div>
                 </div>
             )}
-            {!isPending && !noSessionForFollowUp && (
+            {!isPending && !noSessionForFollowUp && !readOnly && (
                 <FollowUpInputArea
                     richTextRef={richTextRef}
                     inputDisabled={inputDisabled}

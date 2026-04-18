@@ -10,7 +10,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Card, Button, cn, FilterDropdown } from '../shared';
 import type { FilterItem } from '../shared';
 import { getApiBase } from '../utils/config';
-import { copyToClipboard, formatDuration, formatRelativeTime } from '../utils/format';
+import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../utils/format';
 import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { buildRows } from '../processes/ConversationMetadataPopover';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
@@ -967,7 +967,7 @@ export function ActivityListPane({
                                                                 {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                                             </span>
                                                             <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                                {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />Thinking</span> : (task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt).toISOString()) : ''}
+                                                                {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />{statusLabel('running', task.type)}</span> : (task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt).toISOString()) : ''}
                                                             </span>
                                                         </div>
                                                         {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}
@@ -1005,7 +1005,7 @@ export function ActivityListPane({
                                                                 {(() => { const cat = getSessionCategory(task); const m = cat ? SESSION_CATEGORY_LABELS[cat] : undefined; return m ? <span className={cn("shrink-0 text-[10px] font-medium", m.color)} data-testid="session-category-badge">{m.icon}</span> : null; })()}
                                                             </span>
                                                             <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                                {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />Thinking</span> : (task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt).toISOString()) : ''}
+                                                                {isRunning ? <span className="inline-flex items-center gap-1" data-testid="thinking-indicator"><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />{statusLabel('running', task.type)}</span> : (task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt) ? formatRelativeTime(new Date(task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt).toISOString()) : ''}
                                                             </span>
                                                         </div>
                                                         {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn('text-[10px] mt-0.5 truncate', isUnseen ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484] dark:text-[#999]')} title={p}>{p}</div> : null; })()}

@@ -320,7 +320,7 @@ export function ChatHeader({
                 </span>
                 {task && (
                     <Badge status={task.status}>
-                        {statusIcon(task.status)}{isWide ? ` ${statusLabel(task.status)}` : ''}
+                        {statusIcon(task.status)}{isWide ? ` ${statusLabel(task.status, task.type)}` : ''}
                     </Badge>
                 )}
                 {/* References, duration, Resume CLI, context window — only in wide tier */}

@@ -94,7 +94,8 @@ export function statusIcon(status: string): string {
     return map[status] || '';
 }
 
-export function statusLabel(status: string): string {
+export function statusLabel(status: string, type?: string): string {
+    if (status === 'running' && type && type !== 'chat') return 'Running';
     const map: Record<string, string> = { running: 'Thinking', cancelling: 'Cancelling…', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', queued: 'Queued' };
     return map[status] || status || '';
 }
