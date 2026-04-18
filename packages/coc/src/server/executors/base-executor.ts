@@ -31,6 +31,13 @@ export interface ProcessSessionState {
     timelineBuffer: TimelineItem[];
     throttleState: { chunksSinceLastFlush: number; lastFlushTime: number };
     pendingSuggestions: string[] | undefined;
+    /** Pending ask-user tool instance for mid-turn user interaction. */
+    pendingAskUser?: {
+        answerQuestion: (questionId: string, answer: string | string[] | boolean) => boolean;
+        skipQuestion: (questionId: string) => boolean;
+        cancelAll: () => void;
+        hasPending: () => boolean;
+    };
 }
 
 // ============================================================================
@@ -80,6 +87,11 @@ export abstract class BaseExecutor {
     /** Delete all session state for a process in one atomic operation. */
     protected cleanupSession(processId: string): void {
         this.sessions.delete(processId);
+    }
+
+    /** Look up the pending ask-user handles for a process (if any). */
+    getAskUserHandles(processId: string): ProcessSessionState['pendingAskUser'] | undefined {
+        return this.sessions.get(processId)?.pendingAskUser;
     }
 
     // ========================================================================

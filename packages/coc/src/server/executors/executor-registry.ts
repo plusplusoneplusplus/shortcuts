@@ -28,6 +28,7 @@ export interface ExecutorRegistryOptions {
     dataDir?: string;
     defaultTimeoutMs: number;
     followUpSuggestions: { enabled: boolean; count: number };
+    askUser?: { enabled: boolean };
     toolCallCacheStore: FileToolCallCacheStore;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
@@ -75,6 +76,7 @@ export class ExecutorRegistry {
             aiService: options.aiService,
             defaultTimeoutMs: options.defaultTimeoutMs,
             followUpSuggestions: options.followUpSuggestions,
+            askUser: options.askUser,
             toolCallCacheStore: options.toolCallCacheStore,
             resolveSkillConfig: options.resolveSkillConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
@@ -158,5 +160,14 @@ export class ExecutorRegistry {
         if (mode === 'plan') return this.planExecutor;
         if (mode === 'autopilot') return this.autopilotExecutor;
         return this.chatExecutor;
+    }
+
+    /**
+     * Look up the pending ask-user handles for a process across all executors
+     * that support the ask_user tool (chat and plan modes).
+     */
+    getAskUserHandles(processId: string): ReturnType<typeof this.chatExecutor.getAskUserHandles> {
+        return this.chatExecutor.getAskUserHandles(processId)
+            ?? this.planExecutor.getAskUserHandles(processId);
     }
 }

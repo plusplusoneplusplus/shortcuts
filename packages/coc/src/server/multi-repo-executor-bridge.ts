@@ -260,6 +260,22 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         return false;
     }
 
+    /** Answer a pending ask-user question across all per-repo bridges. */
+    answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): boolean {
+        for (const { bridge } of this.bridges.values()) {
+            if (bridge.answerAskUserQuestion?.(processId, questionId, answer)) return true;
+        }
+        return false;
+    }
+
+    /** Skip a pending ask-user question across all per-repo bridges. */
+    skipAskUserQuestion(processId: string, questionId: string): boolean {
+        for (const { bridge } of this.bridges.values()) {
+            if (bridge.skipAskUserQuestion?.(processId, questionId)) return true;
+        }
+        return false;
+    }
+
     /**
      * Check whether any per-repo bridge has an active session for this process.
      * If no per-repo bridges exist yet, falls back to checking the store + AI service directly.

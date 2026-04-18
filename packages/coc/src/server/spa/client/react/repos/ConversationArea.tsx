@@ -5,9 +5,10 @@ import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import { cn } from '../shared/cn';
 import { QueuedFollowUps } from './QueuedBubble';
 import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
+import { AskUserInline } from './AskUserInline';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { QueuedMessage } from '../utils/chatUtils';
-import type { BackgroundTasksState } from '../hooks/useChatSSE';
+import type { BackgroundTasksState, AskUserQuestion } from '../hooks/useChatSSE';
 
 export interface ConversationAreaProps {
     loading: boolean;
@@ -15,6 +16,10 @@ export interface ConversationAreaProps {
     turns: ClientConversationTurn[];
     pendingQueue: QueuedMessage[];
     backgroundTasks?: BackgroundTasksState | null;
+    /** Pending ask-user question from the AI, if any. */
+    pendingQuestion?: AskUserQuestion | null;
+    /** Called when the user answers or skips the pending question. */
+    onAskUserAnswered?: () => void;
     isScrolledUp: boolean;
     scrollRef: React.RefObject<HTMLDivElement>;
     /** Ref attached to the inner turns container (for minimap navigation) */
@@ -48,6 +53,8 @@ export function ConversationArea({
     turns,
     pendingQueue,
     backgroundTasks,
+    pendingQuestion,
+    onAskUserAnswered,
     isScrolledUp,
     scrollRef,
     turnsContainerRef,
@@ -144,6 +151,13 @@ export function ConversationArea({
                                 );
                             });
                         })()}
+                        {pendingQuestion && task?.status === 'running' && (
+                            <AskUserInline
+                                question={pendingQuestion}
+                                processId={taskId.startsWith('q-') ? taskId : `q-${taskId}`}
+                                onAnswered={onAskUserAnswered ?? (() => {})}
+                            />
+                        )}
                         {pendingQueue.length > 0 && <QueuedFollowUps queue={pendingQueue} />}
                         {backgroundTasks && backgroundTasks.backgroundTotalActive > 0 && (
                             <BackgroundTasksIndicator backgroundTasks={backgroundTasks} />

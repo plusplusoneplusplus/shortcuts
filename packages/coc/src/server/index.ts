@@ -143,7 +143,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
         store, dataDir, options, defaultTimeoutMs,
-        resolvedConfig.chat.followUpSuggestions, () => wsServer,
+        resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
     );
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
 

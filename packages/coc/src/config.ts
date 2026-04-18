@@ -50,6 +50,9 @@ export interface CLIConfig {
             enabled?: boolean;
             count?: number;
         };
+        askUser?: {
+            enabled?: boolean;
+        };
     };
     /** Serve command defaults */
     serve?: {
@@ -164,6 +167,9 @@ export interface ResolvedCLIConfig {
             enabled: boolean;
             count: number;
         };
+        askUser: {
+            enabled: boolean;
+        };
     };
     serve?: {
         port: number;
@@ -244,6 +250,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
             enabled: true,
             count: 3,
         },
+        askUser: {
+            enabled: true,
+        },
     },
     serve: {
         port: 4000,
@@ -291,6 +300,7 @@ export const CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
     'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
     'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
+    'chat.askUser.enabled',
     'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme', 'serve.serverName',
     'terminal.enabled',
     'notes.enabled',
@@ -413,6 +423,9 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
                 enabled: override.chat?.followUpSuggestions?.enabled ?? base.chat.followUpSuggestions.enabled,
                 count: override.chat?.followUpSuggestions?.count ?? base.chat.followUpSuggestions.count,
             },
+            askUser: {
+                enabled: override.chat?.askUser?.enabled ?? base.chat.askUser.enabled,
+            },
         },
         serve: {
             port: override.serve?.port ?? base.serve?.port ?? 4000,
@@ -490,6 +503,11 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     if (key.startsWith('chat.followUpSuggestions.')) {
         const subKey = key.slice('chat.followUpSuggestions.'.length) as keyof NonNullable<NonNullable<CLIConfig['chat']>['followUpSuggestions']>;
         return fileConfig.chat?.followUpSuggestions?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    if (key.startsWith('chat.askUser.')) {
+        const subKey = key.slice('chat.askUser.'.length) as keyof NonNullable<NonNullable<CLIConfig['chat']>['askUser']>;
+        return fileConfig.chat?.askUser?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     if (key.startsWith('serve.')) {

@@ -49,6 +49,9 @@ export const CLIConfigSchema = z.object({
             enabled: z.boolean().optional(),
             count: z.number().int().min(1).max(5).optional(),
         }).strict().optional(),
+        askUser: z.object({
+            enabled: z.boolean().optional(),
+        }).strict().optional(),
     }).strict().optional(),
     serve: z.object({
         port: z.number().int().positive().max(65535).optional(),

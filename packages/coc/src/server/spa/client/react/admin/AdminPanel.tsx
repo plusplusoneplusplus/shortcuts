@@ -72,6 +72,7 @@ export function AdminPanel() {
     // Chat settings
     const [chatFollowUpEnabled, setChatFollowUpEnabled] = useState(true);
     const [chatFollowUpCount, setChatFollowUpCount] = useState('3');
+    const [chatAskUserEnabled, setChatAskUserEnabled] = useState(true);
 
     // Server name (cosmetic display name in title bar)
     const [serverName, setServerName] = useState('');
@@ -152,6 +153,7 @@ export function AdminPanel() {
             setHistoryGrouping(resolved.historyGrouping ?? true);
             setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
             setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
+            setChatAskUserEnabled(resolved.chat?.askUser?.enabled ?? true);
             setServerName(resolved.serve?.serverName ?? '');
             setTerminalEnabled(resolved.terminal?.enabled ?? false);
             setNotesEnabled(resolved.notes?.enabled ?? false);
@@ -205,6 +207,7 @@ export function AdminPanel() {
                 output: configForm.output,
                 'chat.followUpSuggestions.enabled': chatFollowUpEnabled,
                 'chat.followUpSuggestions.count': count,
+                'chat.askUser.enabled': chatAskUserEnabled,
             };
             if (configForm.model?.trim()) payload.model = configForm.model.trim();
             payload.timeout = timeoutValue;
@@ -224,7 +227,7 @@ export function AdminPanel() {
         } finally {
             setConfigSaving(false);
         }
-    }, [configForm, chatFollowUpEnabled, chatFollowUpCount, addToast, loadConfig]);
+    }, [configForm, chatFollowUpEnabled, chatFollowUpCount, chatAskUserEnabled, addToast, loadConfig]);
 
     const handleToggleShowReportIntent = useCallback(async (newValue: boolean) => {
         const prevValue = showReportIntent;
@@ -945,6 +948,25 @@ export function AdminPanel() {
                                             data-testid="input-chat-followup-count"
                                         />
                                         <SourceBadge source={sources['chat.followUpSuggestions.count']} />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Allow the AI to ask interactive questions during a conversation">
+                                            Ask user (interactive questions)
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['chat.askUser.enabled']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={chatAskUserEnabled}
+                                                    disabled={configSaving}
+                                                    onChange={e => setChatAskUserEnabled(e.target.checked)}
+                                                    data-testid="toggle-chat-askuser-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
 

@@ -57,6 +57,7 @@ export function createQueueInfrastructure(
     options: Pick<ExecutionServerOptions, 'queue' | 'aiService'>,
     defaultTimeoutMs: number,
     followUpSuggestions: { enabled: boolean; count: number } | undefined,
+    askUser: { enabled: boolean } | undefined,
     getWsServer: () => ProcessWebSocketServer,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
@@ -82,6 +83,7 @@ export function createQueueInfrastructure(
         aiService: options.aiService,
         defaultTimeoutMs,
         followUpSuggestions,
+        askUser,
         getWsServer,
         initialDelayMs: options.queue?.restartPickupDelayMs,
     });

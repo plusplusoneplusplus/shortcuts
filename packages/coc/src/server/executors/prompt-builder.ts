@@ -28,6 +28,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
+import { createAskUserTool } from '../llm-tools/ask-user-tool';
+import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { ChatMode, ChatPayload, RunScriptPayload } from '../task-types';
 import {
     hasCommitChatContext,
@@ -396,4 +398,50 @@ export function buildSearchConversationsAddon(
         'Use it when the user references previous discussions or you need context from earlier sessions.';
 
     return { tools: [tool], suffix };
+}
+
+// ============================================================================
+// Ask User
+// ============================================================================
+
+/**
+ * Builds the tools array, prompt suffix, and resolution handles for the
+ * `ask_user` interactive tool. Returns empty tools/suffix when disabled.
+ *
+ * The returned `answerQuestion`, `skipQuestion`, and `cancelAll` are stored
+ * on the session state so the API endpoint and session cleanup can reach them.
+ *
+ * @param enabled  Whether to attach the ask_user tool.
+ * @param deps     Callbacks for emitting the SSE event and computing the current turn index.
+ */
+export function buildAskUserAddon(
+    enabled: boolean,
+    deps: AskUserToolDeps,
+): {
+    tools: Tool<any>[];
+    suffix: string;
+    answerQuestion: (questionId: string, answer: string | string[] | boolean) => boolean;
+    skipQuestion: (questionId: string) => boolean;
+    cancelAll: () => void;
+    hasPending: () => boolean;
+} {
+    if (!enabled) {
+        return {
+            tools: [],
+            suffix: '',
+            answerQuestion: () => false,
+            skipQuestion: () => false,
+            cancelAll: () => {},
+            hasPending: () => false,
+        };
+    }
+
+    const { tool, answerQuestion, skipQuestion, cancelAll, hasPending } = createAskUserTool(deps);
+    const suffix =
+        '\n\nYou have access to the `ask_user` tool. Use it when you need clarification, ' +
+        'confirmation, or a choice from the user. The user will see an interactive widget. ' +
+        'Every question has a Skip option, so the user is never stuck. ' +
+        'Do NOT use ask_user for simple yes/no that can be inferred from context.';
+
+    return { tools: [tool], suffix, answerQuestion, skipQuestion, cancelAll, hasPending };
 }

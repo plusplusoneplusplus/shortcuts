@@ -62,7 +62,7 @@ export interface HookStepEvent {
 }
 
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added' | 'note-file-edit';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added' | 'note-file-edit' | 'ask-user';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -128,6 +128,15 @@ export interface ProcessOutputEvent {
         filePath: string;
         oldStr: string;
         newStr: string;
+    };
+    /** Ask-user question data (for 'ask-user' events). */
+    askUser?: {
+        questionId: string;
+        question: string;
+        type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+        options?: Array<{ value: string; label: string; description?: string }>;
+        defaultValue?: string | string[];
+        turnIndex: number;
     };
 }
 

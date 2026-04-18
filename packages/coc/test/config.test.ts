@@ -56,6 +56,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.timeout).toBeUndefined();
             expect(DEFAULT_CONFIG.chat).toEqual({
                 followUpSuggestions: { enabled: true, count: 3 },
+                askUser: { enabled: true },
             });
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: false });
         });
@@ -332,7 +333,7 @@ timeout: 300
                 approvePermissions: true,
                 persist: false,
                 showReportIntent: true,
-                chat: { followUpSuggestions: { enabled: true, count: 3 } },
+                chat: { followUpSuggestions: { enabled: true, count: 3 }, askUser: { enabled: true } },
                 terminal: { enabled: false },
                 notes: { enabled: false },
                 myWork: { enabled: false },
@@ -632,6 +633,8 @@ timeout: 300
                 '  followUpSuggestions:',
                 '    enabled: false',
                 '    count: 2',
+                '  askUser:',
+                '    enabled: false',
                 'serve:',
                 '  port: 9000',
                 '  host: 0.0.0.0',

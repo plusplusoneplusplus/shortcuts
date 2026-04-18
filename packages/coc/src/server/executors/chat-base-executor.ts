@@ -62,6 +62,8 @@ export interface ChatModeExecutorOptions {
     defaultTimeoutMs: number;
     /** Follow-up suggestions configuration */
     followUpSuggestions: { enabled: boolean; count: number };
+    /** Ask-user interactive tool configuration */
+    askUser?: { enabled: boolean };
     /** Shared store for tool-call Q&A capture (explore cache) */
     toolCallCacheStore: FileToolCallCacheStore;
     /** Resolve skill configuration for a workspace */
@@ -106,6 +108,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly aiService: CopilotSDKService;
     protected readonly defaultTimeoutMs: number;
     protected readonly followUpSuggestions: { enabled: boolean; count: number };
+    protected readonly askUser: { enabled: boolean };
     protected readonly toolCallCacheStore: FileToolCallCacheStore;
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
@@ -117,6 +120,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.aiService = options.aiService;
         this.defaultTimeoutMs = options.defaultTimeoutMs;
         this.followUpSuggestions = options.followUpSuggestions;
+        this.askUser = options.askUser ?? { enabled: true };
         this.toolCallCacheStore = options.toolCallCacheStore;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
@@ -300,6 +304,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         } finally {
             if (imageTempDir) { cleanupTempDir(imageTempDir); }
             if (pasteCleanup) { pasteCleanup(); }
+            // Cancel any pending ask-user questions before cleanup
+            this.sessions.get(processId)?.pendingAskUser?.cancelAll();
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);

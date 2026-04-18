@@ -618,6 +618,49 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     });
 
     // ------------------------------------------------------------------
+    // Ask-user response endpoint
+    // ------------------------------------------------------------------
+
+    // POST /api/processes/:id/ask-user-response — Answer or skip a pending ask-user question
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/processes\/([^/]+)\/ask-user-response$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!body.questionId || typeof body.questionId !== 'string') {
+                return handleAPIError(res, missingFields(['questionId']));
+            }
+
+            const questionId = body.questionId as string;
+            const skipped = body.skipped === true;
+
+            if (!bridge) {
+                return handleAPIError(res, notFound('Bridge not available'));
+            }
+
+            let resolved: boolean;
+            if (skipped) {
+                resolved = bridge.skipAskUserQuestion?.(id, questionId) ?? false;
+            } else {
+                if (body.answer === undefined) {
+                    return handleAPIError(res, missingFields(['answer']));
+                }
+                resolved = bridge.answerAskUserQuestion?.(id, questionId, body.answer as string | string[] | boolean) ?? false;
+            }
+
+            if (!resolved) {
+                return handleAPIError(res, notFound('Question not found or already answered'));
+            }
+
+            sendJSON(res, 200, { ok: true });
+        },
+    });
+
+    // ------------------------------------------------------------------
     // Pending messages endpoints
     // ------------------------------------------------------------------
 

@@ -131,6 +131,7 @@ describe('suggest_follow_ups tool injection', () => {
     it('passes undefined tools when disabled and no other tools', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             followUpSuggestions: { enabled: false, count: 3 },
+            askUser: { enabled: false },
         }));
         const task = makeChatTask('ask');
 

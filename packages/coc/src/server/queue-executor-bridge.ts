@@ -16,6 +16,7 @@ export interface CLITaskExecutorOptions {
     approvePermissions?: boolean; workingDirectory?: string; dataDir?: string;
     aiService?: CopilotSDKService; defaultTimeoutMs?: number;
     followUpSuggestions?: { enabled: boolean; count: number };
+    askUser?: { enabled: boolean };
     getWsServer?: () => import('./websocket').ProcessWebSocketServer | undefined;
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
@@ -28,6 +29,10 @@ export interface QueueExecutorBridge {
     isSessionAlive(processId: string): Promise<boolean>;
     cancelProcess?(processId: string): Promise<void>;
     steerProcess?(processId: string, message: string): Promise<boolean>;
+    /** Answer a pending ask-user question. Returns true if the question was found and answered. */
+    answerAskUserQuestion?(processId: string, questionId: string, answer: string | string[] | boolean): boolean;
+    /** Skip a pending ask-user question. Returns true if the question was found and skipped. */
+    skipAskUserQuestion?(processId: string, questionId: string): boolean;
 }
 
 function pathsReferToSameWorkspace(leftPath: string, rightPath: string): boolean {
@@ -71,6 +76,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             dataDir: this.dataDir,
             defaultTimeoutMs: options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS,
             followUpSuggestions: options.followUpSuggestions ?? DEFAULT_FOLLOW_UP_SUGGESTIONS,
+            askUser: options.askUser,
             toolCallCacheStore: cacheStore,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
@@ -154,6 +160,18 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             if (!proc?.sdkSessionId) return false;
             return await this.aiService.steerSession(proc.sdkSessionId, message);
         } catch { return false; }
+    }
+
+    answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): boolean {
+        const handles = this.executors.getAskUserHandles(processId);
+        if (!handles) return false;
+        return handles.answerQuestion(questionId, answer);
+    }
+
+    skipAskUserQuestion(processId: string, questionId: string): boolean {
+        const handles = this.executors.getAskUserHandles(processId);
+        if (!handles) return false;
+        return handles.skipQuestion(questionId);
     }
 
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string): Promise<void> {

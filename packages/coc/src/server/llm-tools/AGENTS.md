@@ -7,6 +7,7 @@ AI tool factories injected into chat executor sessions. Each factory follows a p
 | File | Tool Name | Description |
 |------|-----------|-------------|
 | `add-diff-comment-tool.ts` | `add_diff_comment` | Leaves anchored review comments on commit diff lines. Pre-binds workspace/commit context; AI provides filePath, lineStart, side, comment. Persists via `DiffCommentsManager`, broadcasts via WebSocket. |
+| `ask-user-tool.ts` | `ask_user` | Poses structured questions to the user (select, multi-select, yes/no, confirm, text) and blocks until the user responds. Returns a Promise resolved by `answerQuestion()`/`skipQuestion()`. Emits an SSE event so the SPA renders the interactive widget. |
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments as resolved during AI-assisted comment resolution. Tracks resolved IDs in a per-invocation Map. |
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversation history. Requires SQLite-backed `ProcessStore`. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions displayed after the AI response. |

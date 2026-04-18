@@ -192,6 +192,13 @@ function getToolSummary(toolName: string, args: any): string {
             }
             return '';
         }
+        case 'ask_user': {
+            if (typeof args.question === 'string') {
+                const q = args.question.trim();
+                return q.length > 80 ? `${q.slice(0, 77)}...` : q;
+            }
+            return 'Ask user';
+        }
         default: {
             for (const key of ['path', 'filePath', 'file', 'pattern', 'query', 'command', 'url']) {
                 if (typeof args[key] === 'string' && args[key]) {

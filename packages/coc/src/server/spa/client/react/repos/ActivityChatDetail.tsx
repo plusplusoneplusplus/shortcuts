@@ -102,6 +102,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
     const [backgroundTasks, setBackgroundTasks] = useState<import('../hooks/useChatSSE').BackgroundTasksState | null>(null);
+    const [pendingAskUserQuestion, setPendingAskUserQuestion] = useState<import('../hooks/useChatSSE').AskUserQuestion | null>(null);
     const lastFailedMessageRef = useRef<string>('');
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
@@ -296,6 +297,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         refreshConversation,
         onSendComplete,
         onNoteFileEdit,
+        onAskUserQuestion: setPendingAskUserQuestion,
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
@@ -350,6 +352,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
         setPendingQueue([]);
+        setPendingAskUserQuestion(null);
         setSending(false);
         setIsStreaming(false);
 
@@ -663,6 +666,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     turns={turns}
                     pendingQueue={pendingQueue}
                     backgroundTasks={backgroundTasks}
+                    pendingQuestion={pendingAskUserQuestion}
+                    onAskUserAnswered={() => setPendingAskUserQuestion(null)}
                     isScrolledUp={isScrolledUp}
                     scrollRef={conversationContainerRef}
                     turnsContainerRef={turnsContainerRef}

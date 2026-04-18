@@ -224,7 +224,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -320,6 +320,13 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 }
             }
 
+            // Validate nested chat.askUser fields
+            if ('chat.askUser.enabled' in body) {
+                if (typeof body['chat.askUser.enabled'] !== 'boolean') {
+                    errors.push('chat.askUser.enabled must be a boolean');
+                }
+            }
+
             if (errors.length > 0) {
                 return handleAPIError(res, badRequest(errors.join('; ')));
             }
@@ -362,6 +369,13 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 if (!existing.chat) { existing.chat = {}; }
                 if (!existing.chat.followUpSuggestions) { existing.chat.followUpSuggestions = {}; }
                 existing.chat.followUpSuggestions.count = body['chat.followUpSuggestions.count'] as number;
+            }
+
+            // Handle nested chat.askUser fields
+            if ('chat.askUser.enabled' in body) {
+                if (!existing.chat) { existing.chat = {}; }
+                if (!existing.chat.askUser) { existing.chat.askUser = {}; }
+                existing.chat.askUser.enabled = body['chat.askUser.enabled'] as boolean;
             }
 
             // Handle nested terminal.enabled field

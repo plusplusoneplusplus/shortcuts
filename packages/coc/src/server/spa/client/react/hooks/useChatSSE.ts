@@ -14,6 +14,16 @@ export interface BackgroundTasksState {
     backgroundWaitingForDrain: boolean;
 }
 
+/** Data for a pending ask-user question from the AI. */
+export interface AskUserQuestion {
+    questionId: string;
+    question: string;
+    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+    options?: Array<{ value: string; label: string; description?: string }>;
+    defaultValue?: string | string[];
+    turnIndex: number;
+}
+
 export interface UseChatSSEOptions {
     taskId: string;
     task: any;
@@ -30,6 +40,8 @@ export interface UseChatSSEOptions {
     onSendComplete: () => void;
     /** Called when the server emits a `note-file-edit` SSE event. */
     onNoteFileEdit?: (data: { toolCallId: string; filePath: string; oldStr: string; newStr: string }) => void;
+    /** Called when the server emits an `ask-user` SSE event. */
+    onAskUserQuestion?: (question: AskUserQuestion) => void;
 }
 
 /** Manages the SSE EventSource for a running process and drives all streaming state updates. */
@@ -48,6 +60,7 @@ export function useChatSSE({
     refreshConversation,
     onSendComplete,
     onNoteFileEdit,
+    onAskUserQuestion,
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -234,6 +247,15 @@ export function useChatSSE({
             try {
                 const data = JSON.parse((event as MessageEvent).data);
                 onNoteFileEdit?.(data);
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('ask-user', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                if (data.questionId && data.question) {
+                    onAskUserQuestion?.(data as AskUserQuestion);
+                }
             } catch { /* ignore */ }
         });
 

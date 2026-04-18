@@ -27,9 +27,11 @@ import {
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
+    buildAskUserAddon,
 } from './prompt-builder';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // PlanExecutor
@@ -78,11 +80,29 @@ export class PlanExecutor extends ChatBaseExecutor {
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
         const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId);
 
+        const processId = toQueueProcessId(task.id);
+        const askUser = buildAskUserAddon(this.askUser.enabled, {
+            emitQuestion: (questionPayload) => {
+                this.store.emitProcessEvent(processId, {
+                    type: 'ask-user',
+                    askUser: questionPayload,
+                });
+            },
+            computeTurnIndex: () => 1,
+        });
+        const session = this.getOrCreateSession(processId);
+        session.pendingAskUser = {
+            answerQuestion: askUser.answerQuestion,
+            skipQuestion: askUser.skipQuestion,
+            cancelAll: askUser.cancelAll,
+            hasPending: askUser.hasPending,
+        };
+
         return {
             agentMode: 'plan' as AgentMode,
             systemMessage,
-            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix,
+            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...askUser.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + askUser.suffix,
         };
     }
 }

@@ -6721,7 +6721,11 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeDefined();
-        expect(callOpts.tools).toHaveLength(1);
+        // ask mode gets suggest_follow_ups + ask_user
+        expect(callOpts.tools).toHaveLength(2);
+        expect(callOpts.tools.map((t: any) => t.name)).toEqual(
+            expect.arrayContaining(['suggest_follow_ups', 'ask_user'])
+        );
     });
 
     it('should include suggest_follow_ups tool for autopilot chat tasks', async () => {

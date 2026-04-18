@@ -98,6 +98,7 @@ export function emitPendingMessageAdded(store: ProcessStore, processId: string, 
  *   event: workflow-progress → { phase, totalItems, completedItems, failedItems, percentage, message? }
  *   event: item-process     → { itemIndex, processId, status, phase, itemLabel?, error? }
  *   event: suggestions       → { suggestions: string[], turnIndex: number }
+ *   event: ask-user          → { questionId, question, type, options?, defaultValue?, turnIndex }
  *   event: token-usage       → { turnIndex, tokenUsage, sessionTokenLimit?, sessionCurrentTokens? }
  *   event: background-tasks  → { backgroundAgents, backgroundShells, backgroundTotalActive, backgroundWaitingForDrain }
  *   event: status             → { status, result?, error?, duration? }
@@ -238,6 +239,8 @@ export async function handleProcessStream(
             });
         } else if (event.type === 'note-file-edit' && event.noteFileEdit) {
             sendEvent(res, 'note-file-edit', event.noteFileEdit);
+        } else if (event.type === 'ask-user' && event.askUser) {
+            sendEvent(res, 'ask-user', event.askUser);
         } else if (event.type === 'hook-step') {
             sendEvent(res, 'hook-step', { hookStep: event.hookStep });
         } else if (event.type === 'background-tasks') {

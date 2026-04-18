@@ -38,6 +38,9 @@ export interface CLIConfig {
             enabled?: boolean;
             count?: number;
         };
+        askUser?: {
+            enabled?: boolean;
+        };
     };
     serve?: {
         port?: number;
