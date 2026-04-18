@@ -189,7 +189,7 @@ export class RequestRunner {
 
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && typeof session.on === 'function' && typeof session.send === 'function') {
                 const idleTimeoutMs = options.idleTimeoutMs ?? this.defaultIdleTimeoutMs;
-                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, preparedAttachments, options.deliveryMode, options.sessionId, options.onBackgroundTasksChanged);
+                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, preparedAttachments, options.deliveryMode, options.sessionId, options.onBackgroundTasksChanged, options.toolResultInterceptors);
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
                 turnCount = streamingResult.turnCount;
@@ -323,6 +323,7 @@ export class RequestRunner {
         deliveryMode?: DeliveryMode,
         callerSessionId?: string,
         onBackgroundTasksChanged?: SendMessageOptions['onBackgroundTasksChanged'],
+        toolResultInterceptors?: SendMessageOptions['toolResultInterceptors'],
     ): Promise<StreamingResult> {
         return new StreamingSession().run(session as Parameters<StreamingSession['run']>[0], {
             prompt,
@@ -335,6 +336,7 @@ export class RequestRunner {
             attachments,
             deliveryMode,
             callerSessionId,
+            toolResultInterceptors,
         });
     }
 

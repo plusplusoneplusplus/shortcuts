@@ -121,6 +121,8 @@ export interface StreamingSessionRunOptions {
     /** Shared map; mutated in place so callers can read captured calls after run(). */
     toolCallsMap?: Map<string, ToolCall>;
     onToolEvent?: (event: ToolEvent) => void;
+    /** Per-tool-name observational callbacks. See SendMessageOptions.toolResultInterceptors. */
+    toolResultInterceptors?: Record<string, import('./types').ToolResultInterceptor>;
     /** Callback invoked whenever background task state changes (agents/shells start or stop). */
     onBackgroundTasksChanged?: (tasks: BackgroundTasksInfo) => void;
     idleTimeoutMs?: number;
@@ -504,6 +506,19 @@ export class StreamingSession {
 
         if (this.options.onToolEvent) {
             try { this.options.onToolEvent(toolEvent); } catch { /* non-fatal */ }
+        }
+
+        const interceptors = this.options.toolResultInterceptors;
+        if (interceptors && toolEvent.toolName && event.data?.success) {
+            const fn = interceptors[toolEvent.toolName];
+            if (fn) {
+                try {
+                    const resultStr = typeof event.data?.result?.content === 'string'
+                        ? event.data.result.content
+                        : (typeof event.data?.result === 'string' ? event.data.result : undefined);
+                    fn(toolEvent.parameters ?? {}, resultStr, toolEvent.toolCallId);
+                } catch { /* non-fatal */ }
+            }
         }
     }
 

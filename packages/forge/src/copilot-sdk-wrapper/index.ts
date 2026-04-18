@@ -33,6 +33,8 @@ export {
     READ_ONLY_SYSTEM_MESSAGE,
     // Tool event types
     ToolEvent,
+    // Tool result interceptor
+    ToolResultInterceptor,
     // Dynamic model info types
     ModelInfo,
     ModelPolicy,

@@ -347,6 +347,13 @@ export interface SendMessageOptions {
     onToolEvent?: (event: ToolEvent) => void;
 
     /**
+     * Per-tool-name observational callbacks. Keyed by exact tool name
+     * (e.g. 'edit_file', 'str_replace_editor'). Each fires once per successful
+     * tool completion. Does not affect tool execution or onToolEvent semantics.
+     */
+    toolResultInterceptors?: Record<string, ToolResultInterceptor>;
+
+    /**
      * Callback invoked whenever background task state changes (agents/shells start or stop).
      * Receives a snapshot of active background tasks.
      */
@@ -385,6 +392,20 @@ export interface SendMessageOptions {
      */
     deliveryMode?: DeliveryMode;
 }
+
+/**
+ * Observational callback invoked after a specific MCP or SDK tool completes
+ * successfully. The tool's own execution is unaffected — this is a pure
+ * side-channel for callers that want to react to tool results (e.g. for
+ * UI feedback, auditing, caching).
+ *
+ * Called after onToolEvent fires, so timeline state is already committed.
+ */
+export type ToolResultInterceptor = (
+    params: Record<string, unknown>,
+    result: string | undefined,
+    toolCallId: string,
+) => void;
 
 /**
  * Tool execution lifecycle event emitted during streaming.

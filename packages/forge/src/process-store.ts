@@ -62,7 +62,7 @@ export interface HookStepEvent {
 }
 
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added' | 'note-file-edit';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -121,6 +121,14 @@ export interface ProcessOutputEvent {
     backgroundWaitingForDrain?: boolean;
     /** The pending message that was added (for 'pending-message-added' events). */
     pendingMessage?: { id: string; content: string; mode?: string; createdAt: string };
+    /** Note file edit event data (for 'note-file-edit' events). */
+    noteFileEdit?: {
+        toolCallId: string;
+        /** Path as reported by the AI tool (absolute or relative). */
+        filePath: string;
+        oldStr: string;
+        newStr: string;
+    };
 }
 
 /**
