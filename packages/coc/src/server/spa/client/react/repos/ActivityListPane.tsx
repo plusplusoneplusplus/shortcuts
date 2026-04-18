@@ -374,7 +374,7 @@ export function ActivityListPane({
         // Deduplicate by processId — running tasks take priority
         const seenProcessIds = new Set<string>();
         const deduped = all.filter(t => {
-            const key = t.processId || t.id;
+            const key = t.processId || t.payload?.processId || t.id;
             if (seenProcessIds.has(key)) return false;
             seenProcessIds.add(key);
             return true;

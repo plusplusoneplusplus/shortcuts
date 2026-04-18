@@ -554,8 +554,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         await bufferAsPendingMessage();
                     } else {
                         // Terminal status (failed/cancelled) or restart fallback → enqueue
+                        const enqueueWsId = (proc.metadata?.workspaceId as string) ?? undefined;
                         await bridge.enqueue({
-                            ...(isQueueProcessId(id) ? { id: toTaskId(id), processId: id } : {}),
+                            ...(isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
+                            processId: id,
                             type: 'chat',
                             priority: 'normal',
                             payload: {
@@ -567,6 +569,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                                 images: validatedImages,
                                 ...(fileAttachmentMeta ? { fileAttachmentMeta } : {}),
                                 workingDirectory: proc.workingDirectory,
+                                ...(enqueueWsId ? { workspaceId: enqueueWsId } : {}),
                                 readonly: (proc as any).payload?.readonly,
                                 ...(selectedSkillNames && selectedSkillNames.length > 0 ? { context: { skills: selectedSkillNames } } : {}),
                                 ...(modeOverride ? { mode: modeOverride } : {}),
