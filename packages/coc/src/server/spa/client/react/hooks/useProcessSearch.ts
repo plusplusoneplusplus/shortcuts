@@ -31,6 +31,7 @@ export interface ProcessSearchResponse {
 export interface UseProcessSearchOptions {
     workspace?: string;
     statusFilter?: string;
+    typeFilter?: string;
     debounceMs?: number;
     minQueryLength?: number;
     limit?: number;
@@ -53,6 +54,7 @@ export function useProcessSearch(
     const {
         workspace,
         statusFilter,
+        typeFilter,
         debounceMs = 300,
         minQueryLength = 2,
         limit = 50,
@@ -78,6 +80,9 @@ export function useProcessSearch(
         if (statusFilter && statusFilter !== '__all') {
             params.set('status', statusFilter);
         }
+        if (typeFilter) {
+            params.set('type', typeFilter);
+        }
         params.set('limit', String(limit));
         if (offset > 0) params.set('offset', String(offset));
         const url = getApiBase() + '/processes/search?' + params.toString();
@@ -86,7 +91,7 @@ export function useProcessSearch(
             throw new Error(`Search failed: ${res.status}`);
         }
         return res.json() as Promise<ProcessSearchResponse>;
-    }, [workspace, statusFilter, limit]);
+    }, [workspace, statusFilter, typeFilter, limit]);
 
     useEffect(() => {
         // Clear debounce on every query/filter change

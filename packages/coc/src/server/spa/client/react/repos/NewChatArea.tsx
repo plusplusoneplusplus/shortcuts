@@ -13,6 +13,7 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
 import { useFileAttachments } from '../hooks/useFileAttachments';
+import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -68,7 +69,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             }
 
             const newTask = await res.json();
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newTask.task?.id ?? newTask.id, repoId: workspaceId });
+            const rawId = newTask.task?.id ?? newTask.id;
+            const processId = isQueueProcessId(rawId) ? rawId : toQueueProcessId(rawId);
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
             if (!appState.onboardingProgress?.hasUsedChat) {
                 appDispatch({ type: 'UPDATE_ONBOARDING', payload: { hasUsedChat: true } });
             }

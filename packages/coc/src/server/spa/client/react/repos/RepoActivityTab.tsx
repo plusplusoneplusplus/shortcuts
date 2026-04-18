@@ -57,7 +57,7 @@ export function RepoActivityTab({ workspaceId, mode }: RepoActivityTabProps) {
         hasMore: searchHasMore,
         loadMore: searchLoadMore,
         loadingMore: searchLoadingMore,
-    } = useProcessSearch(searchQuery, { workspace: workspaceId });
+    } = useProcessSearch(searchQuery, { workspace: workspaceId, ...(mode === 'chats' ? { typeFilter: 'chat' } : {}) });
     const searchResults = useMemo(
         () => searchQuery.length >= 2 ? adaptSearchResults(rawSearchResults) : null,
         [rawSearchResults, searchQuery],
