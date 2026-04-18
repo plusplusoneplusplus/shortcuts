@@ -7,9 +7,11 @@ import { cn } from '../shared/cn';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
+import { ModelCommandMenu } from './ModelCommandMenu';
 import { useModifierKey } from '../hooks/useModifierKey';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_LABELS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
+import type { ModelInfo } from '../hooks/useModels';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachedContextItem } from '../hooks/useAttachedContext';
 
@@ -54,6 +56,22 @@ export interface FollowUpInputAreaProps {
         filteredSkills: SkillItem[];
         highlightIndex: number;
     };
+    /** Model command state for the /model meta-command */
+    modelCommand?: {
+        modelMenuVisible: boolean;
+        modelFilter: string;
+        filteredModels: ModelInfo[];
+        modelHighlightIndex: number;
+        modelOverride: string | null;
+        setModelOverride: (model: string | null) => void;
+        handleModelSelect: (modelId: string) => void;
+        showModelMenu: (filter?: string) => void;
+        dismissModelMenu: () => void;
+        handleModelKeyDown: (e: React.KeyboardEvent<HTMLElement>) => boolean;
+        setModelFilter: (filter: string) => void;
+    };
+    /** Current session model ID (for showing checkmark in model picker) */
+    sessionModel?: string;
     /** When true, the ask/plan/autopilot mode selector is hidden */
     hideModeSelector?: boolean;
 }
@@ -80,6 +98,8 @@ export function FollowUpInputArea({
     onRemoveAttachedContext,
     task,
     slashCommands,
+    modelCommand,
+    sessionModel,
     hideModeSelector = false,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
@@ -179,7 +199,7 @@ export function FollowUpInputArea({
                     <RichTextInput
                         ref={richTextRef}
                         disabled={inputDisabled}
-                        placeholder={inputDisabled && !sending ? 'Session expired.' : 'Send a message... (type / for skills)'}
+                        placeholder={inputDisabled && !sending ? 'Session expired.' : 'Send a message... (type / for commands)'}
                         className={cn(
                             'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
                             MODE_BORDER_COLORS[selectedMode].border,
@@ -190,12 +210,35 @@ export function FollowUpInputArea({
                             slashCommands.handleInputChange(val, cursorPos);
                         }}
                         onKeyDown={(e) => {
+                            // Priority 1: model command menu
+                            if (modelCommand?.handleModelKeyDown(e)) {
+                                if (e.key === 'Enter' || e.key === 'Tab') {
+                                    const model = modelCommand.filteredModels[modelCommand.modelHighlightIndex];
+                                    if (model) {
+                                        modelCommand.handleModelSelect(model.id);
+                                        // Clear the input text (the /model prefix)
+                                        setFollowUpInput('');
+                                        richTextRef.current?.setValue('');
+                                    }
+                                }
+                                return;
+                            }
+                            // Priority 2: slash command menu (skills + /model entry)
                             if (slashCommands.handleKeyDown(e)) {
                                 if (e.key === 'Enter' || e.key === 'Tab') {
                                     const skill = slashCommands.filteredSkills[slashCommands.highlightIndex];
                                     if (skill) {
-                                        skipNextSyncRef.current = true;
-                                        slashCommands.selectSkill(skill.name, followUpInput, setFollowUpInput, richTextRef);
+                                        // Check if the selected "skill" is actually the /model meta-command
+                                        if (skill.name === 'model' && modelCommand) {
+                                            // Transition to model picker mode
+                                            setFollowUpInput('');
+                                            richTextRef.current?.setValue('');
+                                            slashCommands.dismissMenu();
+                                            modelCommand.showModelMenu();
+                                        } else {
+                                            skipNextSyncRef.current = true;
+                                            slashCommands.selectSkill(skill.name, followUpInput, setFollowUpInput, richTextRef);
+                                        }
                                     }
                                 }
                                 return;
@@ -222,18 +265,57 @@ export function FollowUpInputArea({
                         data-testid="activity-chat-input"
                     />
                     <SlashCommandMenu
-                        skills={skills}
+                        skills={modelCommand ? [...skills, { name: 'model', description: 'Switch AI model' }] : skills}
                         filter={slashCommands.menuFilter}
                         onSelect={(name) => {
-                            skipNextSyncRef.current = true;
-                            slashCommands.selectSkill(name, followUpInput, setFollowUpInput, richTextRef);
-                            richTextRef.current?.focus();
+                            if (name === 'model' && modelCommand) {
+                                // Transition to model picker mode
+                                setFollowUpInput('');
+                                richTextRef.current?.setValue('');
+                                slashCommands.dismissMenu();
+                                modelCommand.showModelMenu();
+                                richTextRef.current?.focus();
+                            } else {
+                                skipNextSyncRef.current = true;
+                                slashCommands.selectSkill(name, followUpInput, setFollowUpInput, richTextRef);
+                                richTextRef.current?.focus();
+                            }
                         }}
                         onDismiss={slashCommands.dismissMenu}
                         visible={slashCommands.menuVisible}
                         highlightIndex={slashCommands.highlightIndex}
                     />
+                    {modelCommand && (
+                        <ModelCommandMenu
+                            models={modelCommand.filteredModels}
+                            filter={modelCommand.modelFilter}
+                            onSelect={(modelId) => {
+                                modelCommand.handleModelSelect(modelId);
+                                setFollowUpInput('');
+                                richTextRef.current?.setValue('');
+                                richTextRef.current?.focus();
+                            }}
+                            onDismiss={modelCommand.dismissModelMenu}
+                            visible={modelCommand.modelMenuVisible}
+                            highlightIndex={modelCommand.modelHighlightIndex}
+                            currentModelId={modelCommand.modelOverride || sessionModel}
+                        />
+                    )}
                 </div>
+                {modelCommand?.modelOverride && (
+                    <div
+                        className="shrink-0 flex items-center gap-1 px-2 py-1 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-xs text-[#1e1e1e] dark:text-[#cccccc]"
+                        data-testid="model-override-badge"
+                    >
+                        <span className="truncate max-w-[120px]">{modelCommand.modelOverride}</span>
+                        <button
+                            type="button"
+                            className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
+                            onClick={() => modelCommand.setModelOverride(null)}
+                            aria-label="Clear model override"
+                        >✕</button>
+                    </div>
+                )}
                 <SendButton
                     disabled={inputDisabled}
                     ctrlHeld={modHeld}

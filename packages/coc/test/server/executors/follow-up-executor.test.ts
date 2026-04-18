@@ -434,4 +434,67 @@ describe('FollowUpExecutor', () => {
         // when there are already assistant turns in the conversation.
         expect(mockBuildFollowUpSuggestionsAddon).toHaveBeenCalledWith(true, 3);
     });
+
+    // -------------------------------------------------------------------------
+    // Model override
+    // -------------------------------------------------------------------------
+
+    it('passes model to sendMessage when model override is provided', async () => {
+        const proc = makeProcess({ id: 'proc-model', sdkSessionId: 'sess-model' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-model', 'msg', undefined, undefined, undefined, undefined, undefined, 'gpt-5.4');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ model: 'gpt-5.4' }),
+        );
+    });
+
+    it('does not include model in sendMessage when no override', async () => {
+        const proc = makeProcess({ id: 'proc-no-model', sdkSessionId: 'sess-no-model' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-no-model', 'msg');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.model).toBeUndefined();
+    });
+
+    it('updates process metadata with new model', async () => {
+        const proc = makeProcess({
+            id: 'proc-model-meta',
+            metadata: { type: 'chat', model: 'claude-sonnet-4.6' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-model-meta', 'msg', undefined, undefined, undefined, undefined, undefined, 'gpt-5.4');
+
+        expect(store.updateProcess).toHaveBeenCalledWith('proc-model-meta', expect.objectContaining({
+            metadata: expect.objectContaining({
+                model: 'gpt-5.4',
+            }),
+        }));
+    });
+
+    it('does not update model metadata when model unchanged', async () => {
+        const proc = makeProcess({
+            id: 'proc-same-model',
+            metadata: { type: 'chat', model: 'gpt-5.4' },
+        });
+        await store.addProcess(proc);
+        const updateSpy = vi.mocked(store.updateProcess);
+        updateSpy.mockClear();
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-same-model', 'msg', undefined, undefined, undefined, undefined, undefined, 'gpt-5.4');
+
+        // Should not have a metadata update with model since it's unchanged
+        const metadataUpdateCall = updateSpy.mock.calls.find(
+            ([, updates]) => 'metadata' in updates && (updates as any).metadata?.model === 'gpt-5.4',
+        );
+        expect(metadataUpdateCall).toBeUndefined();
+    });
 });

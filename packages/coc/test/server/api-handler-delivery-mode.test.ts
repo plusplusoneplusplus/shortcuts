@@ -114,6 +114,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             'enqueue',
             undefined,
             undefined,
+            undefined,
         );
     });
 
@@ -132,6 +133,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             'immediate',
             undefined,
             undefined,
+            undefined,
         );
     });
 
@@ -148,6 +150,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined,
             undefined,
             'enqueue',
+            undefined,
             undefined,
             undefined,
         );

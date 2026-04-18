@@ -121,6 +121,7 @@ export class FollowUpExecutor extends BaseExecutor {
         deliveryMode?: string,
         images?: string[],
         selectedSkillNames?: string[],
+        model?: string,
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -136,13 +137,20 @@ export class FollowUpExecutor extends BaseExecutor {
         const previousMode = process.metadata?.mode as ChatMode | undefined;
         const currentMode = mode ?? previousMode;
 
+        const metadataUpdates: Record<string, unknown> = {};
         if (mode && mode !== previousMode) {
+            metadataUpdates.previousMode = previousMode;
+            metadataUpdates.mode = currentMode;
+        }
+        if (model && model !== process.metadata?.model) {
+            metadataUpdates.model = model;
+        }
+        if (Object.keys(metadataUpdates).length > 0) {
             await this.store.updateProcess(processId, {
                 metadata: {
                     type: process.metadata?.type ?? 'chat',
                     ...(process.metadata ?? {}),
-                    previousMode,
-                    mode: currentMode,
+                    ...metadataUpdates,
                 },
             });
         }
@@ -200,6 +208,7 @@ export class FollowUpExecutor extends BaseExecutor {
             const result = await this.aiService.sendMessage({
                 prompt: followUpMessage,
                 sessionId: process.sdkSessionId,
+                ...(model ? { model } : {}),
                 mode: agentMode,
                 workingDirectory,
                 reasoningEffort: 'high',

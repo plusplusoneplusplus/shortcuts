@@ -24,7 +24,7 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     cancelProcess?(processId: string): Promise<void>;
     steerProcess?(processId: string, message: string): Promise<boolean>;
@@ -122,7 +122,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             }
             return await this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
-                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills),
+                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl),
                 executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
@@ -156,8 +156,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         } catch { return false; }
     }
 
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
-        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames);
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string): Promise<void> {
+        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model);
     }
 
     /**

@@ -1,11 +1,11 @@
 /**
  * Tests for slash-command-parser utility.
  *
- * Covers parseSlashCommands and getSlashCommandContext.
+ * Covers parseSlashCommands, getSlashCommandContext, and isMetaCommand.
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSlashCommands, getSlashCommandContext } from '../../../src/server/spa/client/react/repos/slash-command-parser';
+import { parseSlashCommands, getSlashCommandContext, isMetaCommand, META_COMMANDS } from '../../../src/server/spa/client/react/repos/slash-command-parser';
 
 const AVAILABLE_SKILLS = ['impl', 'go-deep', 'draft', 'pipeline-generator', 'review'];
 
@@ -165,5 +165,88 @@ describe('getSlashCommandContext', () => {
         expect(ctx).not.toBeNull();
         expect(ctx!.prefix).toBe('go');
         expect(ctx!.startIndex).toBe(6);
+    });
+});
+
+// ============================================================================
+// isMetaCommand
+// ============================================================================
+
+describe('isMetaCommand', () => {
+    it('recognizes "model" as a meta-command', () => {
+        expect(isMetaCommand('model')).toBe(true);
+    });
+
+    it('is case-insensitive', () => {
+        expect(isMetaCommand('MODEL')).toBe(true);
+        expect(isMetaCommand('Model')).toBe(true);
+    });
+
+    it('rejects unknown commands', () => {
+        expect(isMetaCommand('impl')).toBe(false);
+        expect(isMetaCommand('foo')).toBe(false);
+    });
+});
+
+// ============================================================================
+// parseSlashCommands — meta-commands
+// ============================================================================
+
+describe('parseSlashCommands — meta-commands', () => {
+    it('detects /model as a meta-command', () => {
+        const result = parseSlashCommands('/model', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toEqual(['model']);
+        expect(result.skills).toEqual([]);
+        expect(result.prompt).toBe('');
+    });
+
+    it('strips /model from the prompt', () => {
+        const result = parseSlashCommands('/model some text', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toEqual(['model']);
+        expect(result.prompt).toBe('some text');
+    });
+
+    it('handles /model mixed with skills', () => {
+        const result = parseSlashCommands('/impl /model fix the bug', AVAILABLE_SKILLS);
+        expect(result.skills).toEqual(['impl']);
+        expect(result.metaCommands).toEqual(['model']);
+        expect(result.prompt).toBe('fix the bug');
+    });
+
+    it('deduplicates /model', () => {
+        const result = parseSlashCommands('/model /model test', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toEqual(['model']);
+        expect(result.prompt).toBe('test');
+    });
+
+    it('is case-insensitive for meta-commands', () => {
+        const result = parseSlashCommands('/MODEL test', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toEqual(['model']);
+        expect(result.prompt).toBe('test');
+    });
+
+    it('returns empty metaCommands array when none present', () => {
+        const result = parseSlashCommands('/impl fix it', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toEqual([]);
+    });
+
+    it('returns empty metaCommands for empty input', () => {
+        const result = parseSlashCommands('', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toEqual([]);
+    });
+
+    it('meta-commands have priority over skills with same name', () => {
+        // If there were a skill named "model", meta-command wins
+        const skills = [...AVAILABLE_SKILLS, 'model'];
+        const result = parseSlashCommands('/model test', skills);
+        expect(result.metaCommands).toEqual(['model']);
+        expect(result.skills).toEqual([]);
+        expect(result.prompt).toBe('test');
+    });
+});
+
+describe('META_COMMANDS constant', () => {
+    it('contains model', () => {
+        expect(META_COMMANDS).toContain('model');
     });
 });

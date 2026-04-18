@@ -18,6 +18,7 @@ import { useImagePaste } from '../hooks/useImagePaste';
 import { useTextPaste } from '../hooks/useTextPaste';
 import { useAttachedContext } from '../hooks/useAttachedContext';
 import { useSlashCommands } from './useSlashCommands';
+import { useModelCommand } from './useModelCommand';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles } from '../utils/conversationScan';
@@ -30,6 +31,7 @@ import { useChatSSE } from '../hooks/useChatSSE';
 import { useSendMessage } from '../hooks/useSendMessage';
 import { useQueuedTaskPoll } from '../hooks/useQueuedTaskPoll';
 import { useChatWindowActions } from '../hooks/useChatWindowActions';
+import { useModels } from '../hooks/useModels';
 import type { ModelInfo } from '../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
@@ -121,6 +123,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const lastRefreshVersionRef = useRef(queueState.refreshVersion);
     const { state: appState, dispatch: appDispatch } = useApp();
     const slashCommands = useSlashCommands(skills);
+    const { models: availableModels } = useModels();
+    const enabledModels = availableModels.filter(m => m.enabled);
+    const modelCommand = useModelCommand(enabledModels);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -273,6 +278,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setTask,
         getAttachedContext: attachedContext.getItems,
         clearAttachedContext: attachedContext.clear,
+        modelOverride: modelCommand.modelOverride,
     });
 
     const { stopStreaming } = useChatSSE({
@@ -720,6 +726,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     onRemoveAttachedContext={attachedContext.remove}
                     task={task}
                     slashCommands={slashCommands}
+                    modelCommand={modelCommand}
+                    sessionModel={sessionModel}
                     hideModeSelector={hideModeSelector}
                 />
             )}

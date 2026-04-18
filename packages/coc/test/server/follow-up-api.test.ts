@@ -551,6 +551,57 @@ describe('POST /api/processes/:id/message', () => {
     });
 
     // ========================================================================
+    // Model override
+    // ========================================================================
+
+    describe('model override', () => {
+        it('should pass model to enqueue payload', async () => {
+            const proc: AIProcess = {
+                id: 'proc-model',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-model',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-model/message`, {
+                content: 'hello',
+                model: 'gpt-5.4',
+            });
+
+            expect(res.status).toBe(202);
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledOnce();
+            expect(enqueueFn.mock.calls[0][0].payload.model).toBe('gpt-5.4');
+        });
+
+        it('should not include model in payload when not provided', async () => {
+            const proc: AIProcess = {
+                id: 'proc-no-model',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-no-model',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-no-model/message`, {
+                content: 'hello',
+            });
+
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn.mock.calls[0][0].payload.model).toBeUndefined();
+        });
+    });
+
+    // ========================================================================
     // Error: unknown process
     // ========================================================================
 

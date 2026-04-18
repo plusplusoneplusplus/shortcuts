@@ -493,6 +493,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // Read optional client-provided optimistic ID for reconciliation
             const optimisticId: string | undefined = typeof body.optimisticId === 'string' ? body.optimisticId : undefined;
 
+            // Validate optional model override
+            const modelOverride: string | undefined = typeof body.model === 'string' && body.model.trim().length > 0 ? body.model.trim() : undefined;
+
             // Pass content through as-is — /skill tokens are kept in the prompt
             // so the AI SDK receives the full user intent (e.g. "/impl fix the bug").
             const messageContent = (body.content as string);
@@ -575,6 +578,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                                 readonly: (proc as any).payload?.readonly,
                                 ...(selectedSkillNames && selectedSkillNames.length > 0 ? { context: { skills: selectedSkillNames } } : {}),
                                 ...(modeOverride ? { mode: modeOverride } : {}),
+                                ...(modelOverride ? { model: modelOverride } : {}),
                                 deliveryMode,
                             },
                             config: {},
@@ -582,7 +586,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         });
                     }
                 } else {
-                    bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames).catch(() => {
+                    bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames, modelOverride).catch(() => {
                     }).finally(() => {
                         if (imageTempDir) { cleanupTempDir(imageTempDir); }
                     });

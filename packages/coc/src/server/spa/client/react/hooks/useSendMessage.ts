@@ -42,6 +42,8 @@ export interface UseSendMessageOptions {
     getAttachedContext?: () => AttachedContextItem[];
     /** Clears attached context after send. */
     clearAttachedContext?: () => void;
+    /** Optional model override to include in the POST body. */
+    modelOverride?: string | null;
 }
 
 export function useSendMessage({
@@ -70,6 +72,7 @@ export function useSendMessage({
     setTask,
     getAttachedContext,
     clearAttachedContext,
+    modelOverride,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
     closeFollowUpStream: () => void;
@@ -167,6 +170,7 @@ export function useSendMessage({
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
+                    ...(modelOverride ? { model: modelOverride } : {}),
                 }),
             }).catch(() => {});
 
@@ -201,6 +205,7 @@ export function useSendMessage({
                     mode: selectedMode,
                     deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
+                    ...(modelOverride ? { model: modelOverride } : {}),
                 }),
             });
 
@@ -234,7 +239,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

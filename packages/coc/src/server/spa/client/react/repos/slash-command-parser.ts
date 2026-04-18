@@ -2,13 +2,23 @@
  * Slash-command parser for extracting `/skill-name` tokens from chat input.
  *
  * Pure utility — no React dependency.
+ *
+ * Supports two token types:
+ * - **Skill tokens**: `/skill-name` where the name matches an available skill
+ * - **Meta-command tokens**: `/model` (built-in commands that are not skills)
  */
+
+/** Built-in meta-commands (not skills). */
+export const META_COMMANDS = ['model'] as const;
+export type MetaCommand = (typeof META_COMMANDS)[number];
 
 export interface ParsedSlashCommands {
     /** Matched skill names (lowercased to match availableSkills) */
     skills: string[];
     /** Remaining prompt text with skill tokens stripped and whitespace normalized */
     prompt: string;
+    /** Matched meta-commands (e.g., 'model') */
+    metaCommands: MetaCommand[];
 }
 
 export interface SlashCommandContext {
@@ -26,20 +36,29 @@ export interface SlashCommandContext {
  */
 const SLASH_TOKEN_REGEX = /(?:^|\s)(\/[a-zA-Z][a-zA-Z0-9_-]*)(?=\s|$)/g;
 
+/** Check whether a token name is a built-in meta-command. */
+export function isMetaCommand(name: string): name is MetaCommand {
+    return (META_COMMANDS as readonly string[]).includes(name.toLowerCase());
+}
+
 /**
- * Parse all `/skill-name` tokens from text, validating against known skills.
+ * Parse all `/skill-name` and `/meta-command` tokens from text,
+ * validating against known skills and built-in meta-commands.
  *
- * - Case-insensitive matching against availableSkills
+ * - Case-insensitive matching against availableSkills and META_COMMANDS
  * - Unknown `/tokens` are left as-is in the prompt
  * - Duplicate skills are deduplicated (first occurrence wins)
+ * - Meta-command tokens (e.g., `/model`) are stripped and returned separately
  */
 export function parseSlashCommands(text: string, availableSkills: string[]): ParsedSlashCommands {
     if (!text.trim()) {
-        return { skills: [], prompt: '' };
+        return { skills: [], prompt: '', metaCommands: [] };
     }
 
     const skillSet = new Set(availableSkills.map(s => s.toLowerCase()));
+    const metaSet = new Set<string>(META_COMMANDS);
     const matchedSkills: string[] = [];
+    const matchedMeta: MetaCommand[] = [];
     const seen = new Set<string>();
 
     // Collect all /token matches and their positions for removal
@@ -52,14 +71,18 @@ export function parseSlashCommands(text: string, availableSkills: string[]): Par
         const token = match[1]; // the /word part
         const name = token.slice(1).toLowerCase(); // strip leading /
 
-        if (skillSet.has(name) && !seen.has(name)) {
+        if (metaSet.has(name) && !seen.has(name)) {
             seen.add(name);
-            matchedSkills.push(name);
-            // Calculate precise position of the /token within the full match
+            matchedMeta.push(name as MetaCommand);
             const tokenStart = match.index + fullMatch.indexOf(token);
             tokensToRemove.push({ start: tokenStart, end: tokenStart + token.length });
-        } else if (skillSet.has(name) && seen.has(name)) {
-            // Duplicate of a matched skill — still remove from prompt
+        } else if (skillSet.has(name) && !seen.has(name)) {
+            seen.add(name);
+            matchedSkills.push(name);
+            const tokenStart = match.index + fullMatch.indexOf(token);
+            tokensToRemove.push({ start: tokenStart, end: tokenStart + token.length });
+        } else if ((skillSet.has(name) || metaSet.has(name)) && seen.has(name)) {
+            // Duplicate — still remove from prompt
             const tokenStart = match.index + fullMatch.indexOf(token);
             tokensToRemove.push({ start: tokenStart, end: tokenStart + token.length });
         }
@@ -76,7 +99,7 @@ export function parseSlashCommands(text: string, availableSkills: string[]): Par
     // Normalize whitespace
     prompt = prompt.replace(/\s+/g, ' ').trim();
 
-    return { skills: matchedSkills, prompt };
+    return { skills: matchedSkills, prompt, metaCommands: matchedMeta };
 }
 
 /**

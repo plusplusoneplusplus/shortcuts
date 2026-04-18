@@ -237,10 +237,10 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      * Execute a follow-up message on an existing AI session.
      * Searches across all per-repo bridges for the process.
      */
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string): Promise<void> {
         for (const { bridge } of this.bridges.values()) {
             if (await bridge.isSessionAlive(processId)) {
-                return bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames);
+                return bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model);
             }
         }
         throw new Error(`No active session found for process ${processId}`);

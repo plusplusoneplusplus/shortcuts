@@ -184,6 +184,9 @@ src/
 │               │   └── dag/             # Workflow DAG visualization (25+ components)
 │               ├── queue/               # Queue management UI (EnqueueDialog, QueueView)
 │               ├── repos/               # Repository management (45+ components: git, workflows, branches, diffs)
+│               │   ├── slash-command-parser.ts  # Parses `/skill` and `/model` (meta-command) tokens from chat input
+│               │   ├── ModelCommandMenu.tsx      # Model picker dropdown for the `/model` meta-command
+│               │   ├── useModelCommand.ts        # Hook managing model picker state and modelOverride
 │               │   └── explorer/        # File explorer with Monaco Editor
 │               ├── shared/              # Shared components (MarkdownReviewEditor, Dialog, Button, SourceEditor, etc.)
 │               ├── tasks/               # Task management UI (TaskTree, TaskPreview, TaskActions)
