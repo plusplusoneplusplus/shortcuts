@@ -82,6 +82,8 @@ export interface ClientConversationTurn {
     pinnedAt?: string;
     /** True when this turn is archived (collapsed/hidden by default) */
     archived?: boolean;
+    /** Client-side elapsed time in ms from user send to response completion */
+    costTimeMs?: number;
 }
 
 /** Cached conversation data for a historical process. */

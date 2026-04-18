@@ -65,6 +65,7 @@ export function useChatSSE({
         const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(processId)}/stream`);
         eventSourceRef.current = es;
         setIsStreaming(true);
+        const sseStartTime = Date.now();
 
         const ensureAssistantTurn = (prev: ClientConversationTurn[]): ClientConversationTurn[] => {
             const last = prev[prev.length - 1];
@@ -172,9 +173,21 @@ export function useChatSSE({
         };
 
         const finish = (finalStatus: 'completed' | 'failed' | 'cancelled' = 'completed') => {
+            const costTimeMs = Date.now() - sseStartTime;
             closeSSE();
             setBackgroundTasks(null);
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
+            // Stamp costTimeMs on the last assistant turn before server refresh
+            setTurnsAndRef(prev => {
+                for (let i = prev.length - 1; i >= 0; i--) {
+                    if (prev[i].role === 'assistant') {
+                        const updated = [...prev];
+                        updated[i] = { ...updated[i], costTimeMs };
+                        return updated;
+                    }
+                }
+                return prev;
+            });
             void refreshConversation(processId);
             // Server drains one pending message on task completion; sync
             // the queued section from the refreshed process data.

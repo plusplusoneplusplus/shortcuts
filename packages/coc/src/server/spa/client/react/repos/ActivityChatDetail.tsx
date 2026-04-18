@@ -234,7 +234,20 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             const data = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
             setProcessDetails(data?.process || null);
             const refreshedTurns = getConversationTurns(data);
-            setTurnsAndRef(refreshedTurns);
+            // Preserve client-only costTimeMs across server refresh
+            setTurnsAndRef(prev => {
+                const costTimeMap = new Map<number, number>();
+                for (const t of prev) {
+                    if (t.costTimeMs != null && t.turnIndex != null) {
+                        costTimeMap.set(t.turnIndex, t.costTimeMs);
+                    }
+                }
+                if (costTimeMap.size === 0) return refreshedTurns;
+                return refreshedTurns.map(t => {
+                    const ct = t.turnIndex != null ? costTimeMap.get(t.turnIndex) : undefined;
+                    return ct != null ? { ...t, costTimeMs: ct } : t;
+                });
+            });
             // Sync queued follow-ups from server state
             const serverPending: any[] = data?.process?.pendingMessages ?? [];
             setPendingQueue(serverPending.map((m: any) => ({
