@@ -56,7 +56,7 @@ import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
-import { handleWorkItemTaskComplete } from '../work-items/work-item-executor';
+import { handleWorkItemTaskComplete, reconcileExecutingWorkItems } from '../work-items/work-item-executor';
 import type { EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile, toTaskFileStatus } from '../work-items/work-item-task-file';
 import { execGit } from '@plusplusoneplusplus/forge';
@@ -209,6 +209,22 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
+
+    // Reconcile work items stuck in 'executing' after server restart.
+    // Queue persistence already re-enqueued running tasks with new IDs —
+    // patch work item references so handleWorkItemTaskComplete can match them.
+    reconcileExecutingWorkItems(workItemStore, {
+        getQueuedTasks: () => [...queueFacade.getQueued(), ...queueFacade.getRunning()],
+        getTask: (id: string) => queueFacade.getTask(id),
+    }).then(result => {
+        const total = result.relinked.length + result.failed.length;
+        if (total > 0) {
+            process.stderr.write(
+                `[WorkItem] Reconciled ${total} executing work item(s): ` +
+                `${result.relinked.length} relinked, ${result.failed.length} failed\n`
+            );
+        }
+    }).catch(() => { /* non-fatal */ });
 
     // Wire queue task completion → work item status update + commit collection
     bridge.on('queueChange', (event: { type: string; task?: any }) => {

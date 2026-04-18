@@ -30,9 +30,12 @@ export {
     buildExecutionPrompt,
     resolveWorkItemComments,
     isResolveSessionCategory,
+    reconcileExecutingWorkItems,
     type EnqueueFunction,
     type ExecuteWorkItemOptions,
     type ResolveWorkItemCommentsOptions,
+    type ReconcileOptions,
+    type ReconcileResult,
 } from './work-item-executor';
 
 export type { WorkItemChange, WorkItemChangeCommit } from './types';

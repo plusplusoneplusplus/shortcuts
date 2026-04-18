@@ -299,3 +299,98 @@ export async function handleWorkItemTaskComplete(
         }
     } catch { /* non-fatal */ }
 }
+
+// ============================================================================
+// Reconciliation After Server Restart
+// ============================================================================
+
+export interface ReconcileOptions {
+    /** Get all queued + running tasks from the live queue. */
+    getQueuedTasks: () => { id: string; payload: Record<string, unknown> }[];
+    /** Get a single task by ID from the live queue (queued, running, or history). */
+    getTask: (id: string) => { id: string } | undefined;
+}
+
+export interface ReconcileResult {
+    /** Work items whose taskId was updated to the re-queued task's new ID. */
+    relinked: string[];
+    /** Work items transitioned to aiFailed because no matching task was found. */
+    failed: string[];
+}
+
+/**
+ * Reconcile executing work items after a server restart.
+ *
+ * When the queue persistence layer re-enqueues running tasks, it assigns new
+ * task IDs. Work items still reference the old IDs — this function patches
+ * `workItem.taskId`, the matching `executionHistory` entry, and the open
+ * `Change` entry so that `handleWorkItemTaskComplete` can find them when the
+ * re-queued task completes.
+ *
+ * If no matching re-queued task is found (e.g. restart policy = 'fail'),
+ * the work item is transitioned to `aiFailed`.
+ *
+ * Idempotent: if `taskId` already matches a live task, no changes are made.
+ */
+export async function reconcileExecutingWorkItems(
+    store: WorkItemStore,
+    options: ReconcileOptions,
+): Promise<ReconcileResult> {
+    const result: ReconcileResult = { relinked: [], failed: [] };
+
+    const executingItems = await store.listWorkItems({ status: 'executing' });
+    if (executingItems.items.length === 0) return result;
+
+    const queuedTasks = options.getQueuedTasks();
+
+    for (const entry of executingItems.items) {
+        const item = await store.getWorkItem(entry.id);
+        if (!item || item.status !== 'executing') continue;
+
+        const oldTaskId = item.taskId;
+        if (!oldTaskId) {
+            // No taskId recorded — cannot reconcile; fail the work item
+            await store.updateWorkItem(item.id, { status: 'aiFailed' });
+            result.failed.push(item.id);
+            continue;
+        }
+
+        // Check if the current taskId still exists in the live queue
+        const existingTask = options.getTask(oldTaskId);
+        if (existingTask) {
+            // Task is still live — no reconciliation needed
+            continue;
+        }
+
+        // Search for a re-queued task that carries this work item's ID
+        const requeued = queuedTasks.find(
+            t => (t.payload?.workItemId as string) === item.id,
+        );
+
+        if (requeued) {
+            const newTaskId = requeued.id;
+
+            // Patch the execution history entry (must happen before updateWorkItem
+            // so the lookup key — the old taskId — is still valid)
+            await store.updateExecution(item.id, oldTaskId, { taskId: newTaskId });
+
+            // Update the work item's top-level taskId
+            await store.updateWorkItem(item.id, { taskId: newTaskId });
+
+            // Patch the open Change entry
+            const changes = await store.getChanges(item.id);
+            const openChange = changes.find(c => c.taskId === oldTaskId && c.status === 'open');
+            if (openChange) {
+                await store.updateChange(item.id, openChange.id, { taskId: newTaskId });
+            }
+
+            result.relinked.push(item.id);
+        } else {
+            // No re-queued task found — task was not re-enqueued (restart policy = 'fail')
+            await store.updateWorkItem(item.id, { status: 'aiFailed' });
+            result.failed.push(item.id);
+        }
+    }
+
+    return result;
+}
