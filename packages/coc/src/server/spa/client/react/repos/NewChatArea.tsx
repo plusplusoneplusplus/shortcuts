@@ -39,7 +39,8 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const { state: appState, dispatch: appDispatch } = useApp();
 
     // Model command support
-    const { enabledModels } = useModels();
+    const { models: availableModels } = useModels();
+    const enabledModels = availableModels.filter(m => m.enabled);
     const augmentedSkills = useMemo(
         () => [{ name: 'model', description: 'Switch AI model' }],
         [],

@@ -54,7 +54,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
-    useModels: () => ({ enabledModels: [] }),
+    useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({

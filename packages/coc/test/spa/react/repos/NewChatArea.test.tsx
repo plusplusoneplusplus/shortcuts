@@ -56,7 +56,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
-    useModels: () => ({ enabledModels: [{ id: 'gpt-5.4', name: 'GPT-5.4', tokenLimit: 128000, enabled: true }] }),
+    useModels: () => ({ models: [{ id: 'gpt-5.4', name: 'GPT-5.4', tokenLimit: 128000, enabled: true }], loading: false, error: null, reload: vi.fn() }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
