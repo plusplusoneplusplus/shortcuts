@@ -53,6 +53,7 @@ interface WorkItemFull {
     id: string; workItemNumber?: number; title: string; description: string; status: string;
     priority?: string; source: string; sourceId?: string;
     createdAt: string; updatedAt: string; completedAt?: string;
+    pinnedAt?: string; archivedAt?: string;
     plan?: { version: number; content: string; updatedAt: string; resolvedBy?: string };
     taskId?: string; processId?: string;
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
@@ -395,7 +396,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         <span>{formatRelativeTime(item.updatedAt)}</span>
                     </div>
                 </div>
-                {/* Execute + Auto in header */}
+                {/* Execute + Actions in header */}
                 <div className="flex items-center gap-2 shrink-0">
                     <label className="flex items-center gap-1 text-[10px] cursor-pointer" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
                         <input
@@ -425,6 +426,38 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         data-testid="work-item-execute-btn"
                     >
                         ▶ Execute
+                    </Button>
+                    <Button variant="ghost" size="sm" data-testid="work-item-pin-btn"
+                        title={item.pinnedAt ? 'Unpin' : 'Pin'}
+                        onClick={async () => {
+                            try {
+                                await fetchApi(basePath + '/pin', {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ pinned: !item.pinnedAt }),
+                                });
+                                await fetchItem();
+                            } catch (err: any) {
+                                setError(err.message || 'Failed to update pin');
+                            }
+                        }}>
+                        {item.pinnedAt ? '📌' : '📌'}
+                    </Button>
+                    <Button variant="ghost" size="sm" data-testid="work-item-archive-btn"
+                        title={item.archivedAt ? 'Unarchive' : 'Archive'}
+                        onClick={async () => {
+                            try {
+                                await fetchApi(basePath + '/archive', {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ archived: !item.archivedAt }),
+                                });
+                                await fetchItem();
+                            } catch (err: any) {
+                                setError(err.message || 'Failed to update archive');
+                            }
+                        }}>
+                        {item.archivedAt ? '📂' : '🗄️'}
                     </Button>
                     <Button variant="ghost" size="sm" className="text-red-500" data-testid="work-item-delete-btn"
                         onClick={async () => {

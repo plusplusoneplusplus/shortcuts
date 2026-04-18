@@ -5,14 +5,20 @@
  *
  * Uses server-side grouped endpoint for initial load and search.
  * Per-status infinite scroll auto-loads more items when scrolling to the end of a group.
+ *
+ * Supports right-click context menu with Pin/Archive/Delete actions on each card.
+ * Pinned items sort to the top within each status group.
+ * Archived items are hidden by default with a toggle to show them.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Card, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
-import { useWorkItems } from '../context/WorkItemContext';
+import { useWorkItems, type WorkItemSummary } from '../context/WorkItemContext';
 import { useWorkItemSearch } from '../hooks/useWorkItemSearch';
 import { formatRelativeTime } from '../utils/format';
+import { ContextMenu } from '../tasks/comments/ContextMenu';
+import type { ContextMenuItem } from '../tasks/comments/ContextMenu';
 
 const PAGE_SIZE = 20;
 
@@ -91,6 +97,12 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const prevSearchRef = useRef(searchQuery);
     const loadingStatusesRef = useRef(new Set<string>());
 
+    // Context menu state
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: WorkItemSummary } | null>(null);
+
+    // Show/hide archived items toggle
+    const [showArchived, setShowArchived] = useState(false);
+
     // Per-status collapse state; persisted in localStorage (workspace-scoped)
     const storageKey = `coc-wi-categories-${workspaceId}`;
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -165,6 +177,81 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
         }
     }, [searchQuery, fetchGroupedWorkItems]);
 
+    // ── Context menu actions ──
+
+    const basePath = useCallback((itemId: string) =>
+        `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(itemId)}`, [workspaceId]);
+
+    const handlePin = useCallback(async (item: WorkItemSummary) => {
+        const pinned = !item.pinnedAt;
+        // Optimistic update
+        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: { ...item, pinnedAt: pinned ? new Date().toISOString() : undefined } });
+        try {
+            await fetchApi(`${basePath(item.id)}/pin`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pinned }),
+            });
+        } catch {
+            // Revert on failure
+            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item });
+        }
+    }, [workspaceId, dispatch, basePath]);
+
+    const handleArchive = useCallback(async (item: WorkItemSummary) => {
+        const archived = !item.archivedAt;
+        dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: { ...item, archivedAt: archived ? new Date().toISOString() : undefined } });
+        try {
+            await fetchApi(`${basePath(item.id)}/archive`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ archived }),
+            });
+        } catch {
+            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item });
+        }
+    }, [workspaceId, dispatch, basePath]);
+
+    const handleDelete = useCallback(async (item: WorkItemSummary) => {
+        if (!confirm('Delete this work item?')) return;
+        dispatch({ type: 'WORK_ITEM_REMOVED', repoId: workspaceId, id: item.id });
+        try {
+            await fetchApi(basePath(item.id), { method: 'DELETE' });
+        } catch {
+            // Re-add on failure
+            dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
+        }
+    }, [workspaceId, dispatch, basePath]);
+
+    const handleContextMenu = useCallback((e: React.MouseEvent, item: WorkItemSummary) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY, item });
+    }, []);
+
+    const contextMenuItems = useMemo((): ContextMenuItem[] => {
+        if (!contextMenu) return [];
+        const item = contextMenu.item;
+        return [
+            {
+                label: item.pinnedAt ? 'Unpin' : 'Pin',
+                icon: '📌',
+                onClick: () => handlePin(item),
+            },
+            {
+                label: item.archivedAt ? 'Unarchive' : 'Archive',
+                icon: item.archivedAt ? '📂' : '🗄️',
+                onClick: () => handleArchive(item),
+            },
+            { label: '', separator: true, onClick: () => {} },
+            {
+                label: 'Delete',
+                icon: '🗑️',
+                onClick: () => handleDelete(item),
+            },
+        ];
+    }, [contextMenu, handlePin, handleArchive, handleDelete]);
+
     if (items.length === 0 && !isLoading && !searchInput) return null;
 
     const toggleGroup = (status: string) =>
@@ -174,15 +261,24 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
             return next;
         });
 
-    // Group items by status, sorted by last run time descending within each group
+    // Count archived items for the toggle label
+    const archivedCount = items.filter(i => !!i.archivedAt).length;
+
+    // Filter out archived items unless showArchived is enabled
+    const visibleItems = showArchived ? items : items.filter(i => !i.archivedAt);
+
+    // Group items by status, pinned items first, then sorted by last run time descending
     const grouped = Object.fromEntries(
         STATUS_ORDER.map(s => [
             s,
-            items
+            visibleItems
                 .filter(i => i.status === s)
                 .sort((a, b) => {
-                    const aTime = (a as any).lastRunAt || a.updatedAt;
-                    const bTime = (b as any).lastRunAt || b.updatedAt;
+                    // Pinned items sort to top
+                    if (a.pinnedAt && !b.pinnedAt) return -1;
+                    if (!a.pinnedAt && b.pinnedAt) return 1;
+                    const aTime = a.lastRunAt || a.updatedAt;
+                    const bTime = b.lastRunAt || b.updatedAt;
                     return bTime.localeCompare(aTime);
                 }),
         ])
@@ -191,6 +287,8 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
     const totalCount = pagination
         ? Object.values(pagination).reduce((sum, p) => sum + (p?.total ?? 0), 0)
         : items.length;
+    // Subtract archived from displayed count when hidden
+    const displayCount = showArchived ? totalCount : totalCount - archivedCount;
 
     return (
         <div data-testid="work-items-section">
@@ -198,8 +296,23 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
             <div className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-2">
                 <span>Work Items</span>
                 <span className="text-[10px] bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#606060] dark:text-[#aaa] px-1.5 py-0.5 rounded-full">
-                    {totalCount}
+                    {displayCount}
                 </span>
+                {archivedCount > 0 && (
+                    <button
+                        className={cn(
+                            'ml-auto text-[10px] px-1.5 py-0.5 rounded transition-colors',
+                            showArchived
+                                ? 'bg-[#0078d4]/10 text-[#0078d4] dark:text-[#3794ff]'
+                                : 'text-[#848484] hover:text-[#333] dark:hover:text-[#eee]',
+                        )}
+                        onClick={() => setShowArchived(v => !v)}
+                        title={showArchived ? 'Hide archived items' : `Show ${archivedCount} archived item(s)`}
+                        data-testid="work-items-archive-toggle"
+                    >
+                        🗄️ {archivedCount}
+                    </button>
+                )}
             </div>
 
             {/* Search input */}
@@ -239,7 +352,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                     const statusTotal = Math.max(statusPag?.total ?? 0, group.length);
                     const statusHasMore = statusPag?.hasMore ?? false;
 
-                    if (statusTotal === 0) return null;
+                    if (statusTotal === 0 && group.length === 0) return null;
 
                     const cfg = STATUS_CONFIG[status];
                     const isCollapsed = collapsed[status] ?? false;
@@ -256,7 +369,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                 <span>{cfg.icon}</span>
                                 <span className="font-medium">{cfg.label}</span>
                                 <span className={cn('text-[9px] px-1.5 py-0.5 rounded-full', cfg.badgeColor)}>
-                                    {statusTotal}
+                                    {group.length}
                                 </span>
                             </button>
 
@@ -268,24 +381,29 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                             key={item.id}
                                             className={cn(
                                                 'p-2 cursor-pointer',
-                                                selectedWorkItemId === item.id && 'ring-2 ring-[#0078d4]'
+                                                selectedWorkItemId === item.id && 'ring-2 ring-[#0078d4]',
+                                                item.archivedAt && 'opacity-50',
                                             )}
                                             onClick={() => onSelectWorkItem(item.id)}
+                                            onContextMenu={(e) => handleContextMenu(e, item)}
                                             data-testid={`work-item-card-${item.id}`}
                                         >
                                             <div className="flex items-center gap-1 min-w-0 text-xs">
-                                                {(item as any).workItemNumber != null && (
-                                                    <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999] font-mono" data-testid={`work-item-number-${item.id}`}>WI-{(item as any).workItemNumber}</span>
+                                                {item.pinnedAt && (
+                                                    <span className="shrink-0 text-[10px]" title="Pinned" data-testid={`work-item-pin-${item.id}`}>📌</span>
                                                 )}
-                                                {(item as any).type === 'bug' && (
+                                                {item.workItemNumber != null && (
+                                                    <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999] font-mono" data-testid={`work-item-number-${item.id}`}>WI-{item.workItemNumber}</span>
+                                                )}
+                                                {item.type === 'bug' && (
                                                     <span className="shrink-0 text-[10px]" title="Bug">🐛</span>
                                                 )}
                                                 {item.priority && PRIORITY_ICON[item.priority] && (
                                                     <span className="shrink-0 text-[10px]">{PRIORITY_ICON[item.priority]}</span>
                                                 )}
-                                                <span className="truncate" title={item.title}>{item.title}</span>
+                                                <span className={cn('truncate', item.archivedAt && 'line-through')} title={item.title}>{item.title}</span>
                                                 {(() => {
-                                                    const ts = (item as any).lastRunAt || item.updatedAt;
+                                                    const ts = item.lastRunAt || item.updatedAt;
                                                     const label = formatRelativeTime(ts);
                                                     return label ? (
                                                         <span className="ml-auto shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title={ts}>
@@ -320,6 +438,15 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                     );
                 })}
             </div>
+
+            {/* Context menu */}
+            {contextMenu && (
+                <ContextMenu
+                    position={{ x: contextMenu.x, y: contextMenu.y }}
+                    items={contextMenuItems}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
         </div>
     );
 }

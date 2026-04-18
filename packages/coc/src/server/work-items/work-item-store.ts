@@ -631,4 +631,22 @@ export class FileWorkItemStore implements WorkItemStore {
             return [];
         }
     }
+
+    // ── Pin/archive ─────────────────────────────────────────────
+
+    async pinWorkItem(id: string, pinnedAt: string): Promise<WorkItem | undefined> {
+        return this.updateWorkItem(id, { pinnedAt });
+    }
+
+    async unpinWorkItem(id: string): Promise<WorkItem | undefined> {
+        return this.updateWorkItem(id, { pinnedAt: undefined });
+    }
+
+    async archiveWorkItem(id: string, archivedAt: string): Promise<WorkItem | undefined> {
+        return this.updateWorkItem(id, { archivedAt });
+    }
+
+    async unarchiveWorkItem(id: string): Promise<WorkItem | undefined> {
+        return this.updateWorkItem(id, { archivedAt: undefined });
+    }
 }

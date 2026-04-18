@@ -369,4 +369,76 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             sendJSON(res, 204, null);
         },
     });
+
+    // PATCH /api/workspaces/:id/work-items/:workItemId/pin — Pin/unpin work item
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/pin$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            const repoId = decodeURIComponent(match![1]);
+            const workItemId = decodeURIComponent(match![2]);
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, badRequest('Invalid JSON body'));
+            }
+
+            const pinned = body.pinned;
+            if (typeof pinned !== 'boolean') {
+                return handleAPIError(res, badRequest('Missing or invalid "pinned" field (boolean)'));
+            }
+
+            let updated: WorkItem | undefined;
+            if (pinned) {
+                updated = await workItemStore.pinWorkItem(workItemId, new Date().toISOString());
+            } else {
+                updated = await workItemStore.unpinWorkItem(workItemId);
+            }
+
+            if (!updated) {
+                return handleAPIError(res, notFound('Work item'));
+            }
+
+            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+            sendJSON(res, 200, updated);
+        },
+    });
+
+    // PATCH /api/workspaces/:id/work-items/:workItemId/archive — Archive/unarchive work item
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/archive$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            const repoId = decodeURIComponent(match![1]);
+            const workItemId = decodeURIComponent(match![2]);
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, badRequest('Invalid JSON body'));
+            }
+
+            const archived = body.archived;
+            if (typeof archived !== 'boolean') {
+                return handleAPIError(res, badRequest('Missing or invalid "archived" field (boolean)'));
+            }
+
+            let updated: WorkItem | undefined;
+            if (archived) {
+                updated = await workItemStore.archiveWorkItem(workItemId, new Date().toISOString());
+            } else {
+                updated = await workItemStore.unarchiveWorkItem(workItemId);
+            }
+
+            if (!updated) {
+                return handleAPIError(res, notFound('Work item'));
+            }
+
+            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+            sendJSON(res, 200, updated);
+        },
+    });
 }

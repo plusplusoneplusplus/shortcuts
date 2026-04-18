@@ -4,6 +4,7 @@ export const UNSEEN_STORAGE_PREFIX = 'coc-unseen-work-items-';
 
 export interface WorkItemSummary {
     id: string;
+    workItemNumber?: number;
     title: string;
     description?: string;
     status: string;
@@ -13,6 +14,8 @@ export interface WorkItemSummary {
     createdAt: string;
     updatedAt: string;
     lastRunAt?: string;
+    pinnedAt?: string;
+    archivedAt?: string;
     plan?: { version: number };
     tags?: string[];
 }

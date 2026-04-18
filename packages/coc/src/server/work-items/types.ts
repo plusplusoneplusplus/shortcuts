@@ -161,6 +161,10 @@ export interface WorkItem {
     updatedAt: string;
     /** ISO timestamp when the work item reached a terminal state. */
     completedAt?: string;
+    /** ISO timestamp when the work item was pinned (undefined = not pinned). */
+    pinnedAt?: string;
+    /** ISO timestamp when the work item was archived (undefined = not archived). */
+    archivedAt?: string;
 
     // Source tracking
     /** How this work item was created. */
@@ -236,6 +240,10 @@ export interface WorkItemIndexEntry {
     createdAt: string;
     updatedAt: string;
     completedAt?: string;
+    /** ISO timestamp when pinned (undefined = not pinned). */
+    pinnedAt?: string;
+    /** ISO timestamp when archived (undefined = not archived). */
+    archivedAt?: string;
     /** ISO timestamp of the most recent execution activity (derived from executionHistory). */
     lastRunAt?: string;
     tags?: string[];
@@ -304,6 +312,12 @@ export interface WorkItemStore {
     addChange(workItemId: string, change: WorkItemChange): Promise<void>;
     updateChange(workItemId: string, changeId: string, updates: Partial<WorkItemChange>): Promise<void>;
     getChanges(workItemId: string): Promise<WorkItemChange[]>;
+
+    // Pin/archive
+    pinWorkItem(id: string, pinnedAt: string): Promise<WorkItem | undefined>;
+    unpinWorkItem(id: string): Promise<WorkItem | undefined>;
+    archiveWorkItem(id: string, archivedAt: string): Promise<WorkItem | undefined>;
+    unarchiveWorkItem(id: string): Promise<WorkItem | undefined>;
 }
 
 // ============================================================================
@@ -363,6 +377,8 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
         completedAt: item.completedAt,
+        pinnedAt: item.pinnedAt,
+        archivedAt: item.archivedAt,
         lastRunAt: getLastRunTime(item.executionHistory),
         tags: item.tags,
     };
