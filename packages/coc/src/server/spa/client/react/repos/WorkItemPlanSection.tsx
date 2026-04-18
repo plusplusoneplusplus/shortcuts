@@ -94,9 +94,6 @@ export function WorkItemPlanSection({
     const [planDraft, setPlanDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const [resolving, setResolving] = useState(false);
-    const [batchResolving, setBatchResolving] = useState(false);
-    const [resolvePreview, setResolvePreview] = useState<string | null>(null);
-    const [accepting, setAccepting] = useState(false);
 
     const currentVersion = plan?.version ?? null;
 
@@ -159,7 +156,6 @@ export function WorkItemPlanSection({
         setSelectedVersion(null);
         setSelectedContent(null);
         setEditMode(false);
-        setResolvePreview(null);
     }, [plan?.version]);
 
     const handleSelectVersion = async (v: number) => {
@@ -202,63 +198,30 @@ export function WorkItemPlanSection({
         }
     };
 
-    // Resolve inline comments with AI — creates a new plan version
+    // Resolve inline comments with AI — creates a Run# execution session
     const handleResolveAllWithAI = useCallback(async () => {
         const open = planComments.filter(c => c.status === 'open');
         if (open.length === 0) return;
-        const instructions = open
-            .map((c, i) => `${i + 1}. [Line ${c.selection.startLine}] ${c.comment}`)
-            .join('\n');
         setResolving(true);
         try {
-            const data = await fetchApi(basePath + '/refine', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instructions,
-                    summary: `Resolved ${open.length} inline comment(s)`,
-                }),
-            });
-            setResolvePreview(data.plan?.content ?? data.content ?? '');
-        } catch (err: any) {
-            onError(err.message || 'Failed to refine plan');
-        } finally {
-            setResolving(false);
-        }
-    }, [planComments, basePath, onError]);
-
-    const handleAcceptResolve = async () => {
-        setAccepting(true);
-        setResolvePreview(null);
-        await onUpdated();
-        await loadVersions();
-        setAccepting(false);
-    };
-
-    // Enqueue a batch-resolve task through the queue (creates a categorized session)
-    const handleBatchResolve = useCallback(async () => {
-        const open = planComments.filter(c => c.status === 'open');
-        if (open.length === 0) return;
-        setBatchResolving(true);
-        try {
-            const taskPath = planCommentPath(workItemId);
             const result = await fetchApi(
-                `/comments/${encodeURIComponent(workspaceId)}/${encodeURIComponent(taskPath)}/batch-resolve`,
+                `/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/resolve-comments`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ documentContent: plan?.content ?? '' }),
+                    body: JSON.stringify({ type: 'plan' }),
                 },
             );
             if (result?.taskId && onNavigateToTasksTab) {
                 onNavigateToTasksTab(result.taskId);
             }
+            onUpdated();
         } catch (err: any) {
-            onError(err.message || 'Failed to enqueue plan comment resolve task');
+            onError(err.message || 'Failed to resolve plan comments');
         } finally {
-            setBatchResolving(false);
+            setResolving(false);
         }
-    }, [planComments, workspaceId, workItemId, plan?.content, onNavigateToTasksTab, onError]);
+    }, [planComments, workspaceId, workItemId, onNavigateToTasksTab, onUpdated, onError]);
 
     // Enqueue an AI run session to resolve a single plan comment.
     // Intentionally does NOT call onNavigateToTasksTab — user stays on the work item page.
@@ -513,7 +476,7 @@ export function WorkItemPlanSection({
                         />
                     )}
                     {/* Edit button (current version only) */}
-                    {isCurrentSelected && canEdit && !resolvePreview && (
+                    {isCurrentSelected && canEdit && (
                         <div className="flex items-center gap-2 mt-1.5">
                             <Button variant="ghost" size="sm"
                                 onClick={() => { setPlanDraft(plan?.content || ''); setEditMode(true); }}
@@ -531,39 +494,8 @@ export function WorkItemPlanSection({
                                     🤖 Resolve {openCommentCount} comment{openCommentCount !== 1 ? 's' : ''} with AI
                                 </Button>
                             )}
-                            {openCommentCount > 0 && (
-                                <Button
-                                    variant="ghost" size="sm"
-                                    onClick={handleBatchResolve}
-                                    disabled={batchResolving}
-                                    loading={batchResolving}
-                                    data-testid="work-item-plan-batch-resolve-btn"
-                                >
-                                    🔧 Resolve via task
-                                </Button>
-                            )}
                         </div>
                     )}
-                </div>
-            )}
-
-            {/* AI-resolved preview — show before accepting */}
-            {resolvePreview !== null && (
-                <div className="space-y-2" data-testid="work-item-resolve-preview">
-                    <div className="text-[10px] font-semibold text-green-700 dark:text-green-400 uppercase">
-                        ✅ AI resolved — new version preview
-                    </div>
-                    <div className="text-xs whitespace-pre-wrap font-mono bg-green-50 dark:bg-green-900/20 rounded p-3 border border-green-300 dark:border-green-700 max-h-64 overflow-y-auto">
-                        {resolvePreview}
-                    </div>
-                    <div className="flex gap-2">
-                        <Button variant="primary" size="sm" onClick={handleAcceptResolve} disabled={accepting} loading={accepting} data-testid="work-item-resolve-accept-btn">
-                            ✅ Accept new version
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setResolvePreview(null)} data-testid="work-item-resolve-reject-btn">
-                            ✕ Discard
-                        </Button>
-                    </div>
                 </div>
             )}
 

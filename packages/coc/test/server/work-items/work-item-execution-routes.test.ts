@@ -341,4 +341,120 @@ describe('Work Item Execution Routes', () => {
             expect(res.body.taskId).toBe('task-xyz');
         });
     });
+
+    describe('POST /resolve-comments', () => {
+        let capturedEnqueuePayload: any;
+        let enqueue: any;
+
+        beforeEach(async () => {
+            tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-resolve-'));
+            store = new FileWorkItemStore({ dataDir: tmpDir });
+            capturedEnqueuePayload = undefined;
+            enqueue = vi.fn().mockImplementation(async (task: any) => {
+                capturedEnqueuePayload = task;
+                return 'task-resolve-abc';
+            });
+            server = makeServer(enqueue, { dataDir: tmpDir });
+            await startServer();
+        });
+
+        afterEach(async () => {
+            await stopServer();
+            await fs.rm(tmpDir, { recursive: true, force: true });
+        });
+
+        it('returns 404 for non-existent work item', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/nonexistent/resolve-comments`, {
+                type: 'plan',
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('rejects missing type field', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Resolve test' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/resolve-comments`, {});
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('type');
+        });
+
+        it('rejects invalid type field', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Resolve test' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/resolve-comments`, {
+                type: 'invalid',
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('type');
+        });
+
+        it('rejects plan resolve when no open comments exist', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'No comments' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/resolve-comments`, {
+                type: 'plan',
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('No open plan comments');
+        });
+
+        it('rejects commit resolve when commitSha is missing', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'No sha' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/resolve-comments`, {
+                type: 'commit',
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('commitSha');
+        });
+
+        it('resolves plan comments and creates a Run# session', async () => {
+            // Create work item
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Plan resolve test',
+                plan: { version: 1, content: 'Step 1: do stuff', updatedAt: new Date().toISOString() },
+            });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+
+            // Add a plan comment using TaskCommentsManager
+            const { TaskCommentsManager: TCM } = await import('../../../src/server/task-comments-manager');
+            const tcm = new TCM(tmpDir);
+            await tcm.addComment(REPO_ID, `__wi-plan__/${id}`, {
+                filePath: `__wi-plan__/${id}`,
+                selection: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 10 },
+                selectedText: 'Step 1',
+                comment: 'Please add more detail',
+                status: 'open',
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/resolve-comments`, {
+                type: 'plan',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.taskId).toBe('task-resolve-abc');
+
+            // Verify the enqueue payload
+            expect(capturedEnqueuePayload).toBeDefined();
+            expect(capturedEnqueuePayload.payload.sessionCategory).toBe('resolve-plan-comments');
+            expect(capturedEnqueuePayload.payload.workItemId).toBe(id);
+            expect(capturedEnqueuePayload.payload.tools).toEqual(['resolve-comments']);
+            expect(capturedEnqueuePayload.displayName).toContain('Comment Resolve');
+
+            // Verify execution history was updated
+            const updated = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${id}`);
+            expect(updated.body.executionHistory).toHaveLength(1);
+            expect(updated.body.executionHistory[0].sessionCategory).toBe('resolve-plan-comments');
+            expect(updated.body.executionHistory[0].title).toBe('Comment Resolve');
+        });
+    });
 });

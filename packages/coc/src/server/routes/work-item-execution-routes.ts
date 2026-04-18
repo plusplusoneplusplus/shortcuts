@@ -2,11 +2,13 @@
  * Work Item Execution & Chat Integration Routes
  *
  * Routes:
- *   POST /api/workspaces/:id/work-items/:wid/execute    — Execute work item as queue task
- *   POST /api/workspaces/:id/work-items/from-chat        — Create work item from chat session
+ *   POST /api/workspaces/:id/work-items/:wid/execute             — Execute work item as queue task
+ *   POST /api/workspaces/:id/work-items/:wid/resolve-comments    — Resolve comments as a Run# session
+ *   POST /api/workspaces/:id/work-items/from-chat                — Create work item from chat session
  */
 
 import * as http from 'http';
+import * as path from 'path';
 import * as crypto from 'crypto';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -14,10 +16,14 @@ import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItem } from '../work-items/types';
-import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
+import { executeWorkItem, resolveWorkItemComments, type EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile } from '../work-items/work-item-task-file';
 import { buildPlanFromContext } from '../work-items/plan-template';
 import type { ProcessWebSocketServer } from '../websocket';
+import { TaskCommentsManager } from '../task-comments-manager';
+import { DiffCommentsManager } from '../diff-comments-manager';
+import { buildBatchResolvePrompt } from '../task-comments-ai';
+import { buildMultiFileBatchResolvePrompt } from '../diff-comments-ai';
 
 export interface WorkItemExecutionRouteContext {
     routes: Route[];
@@ -97,6 +103,156 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
                 }
                 sendJSON(res, 200, result);
+            } catch (err: any) {
+                return handleAPIError(res, badRequest(err.message));
+            }
+        },
+    });
+
+    // POST /api/workspaces/:id/work-items/:wid/resolve-comments — Resolve comments as Run#
+    const taskCommentsManager = new TaskCommentsManager(dataDir ?? '');
+    const diffCommentsManager = new DiffCommentsManager(dataDir ?? '');
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/resolve-comments$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            const repoId = decodeURIComponent(match![1]);
+            const workItemId = decodeURIComponent(match![2]);
+
+            if (!enqueue) {
+                return handleAPIError(res, badRequest('Task execution is not available'));
+            }
+
+            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            if (!item) {
+                return handleAPIError(res, notFound('Work item'));
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, badRequest('Invalid JSON body'));
+            }
+
+            const resolveType: 'plan' | 'commit' = body.type;
+            if (resolveType !== 'plan' && resolveType !== 'commit') {
+                return handleAPIError(res, badRequest('Missing or invalid field: type (must be "plan" or "commit")'));
+            }
+
+            try {
+                if (resolveType === 'plan') {
+                    // ── Plan comment resolve ──
+                    const planCommentPath = `__wi-plan__/${workItemId}`;
+                    const allComments = await taskCommentsManager.getComments(repoId, planCommentPath);
+                    const openComments = allComments.filter(c => c.status === 'open');
+                    if (openComments.length === 0) {
+                        return handleAPIError(res, badRequest('No open plan comments to resolve'));
+                    }
+
+                    const documentContent = item.plan?.content ?? '';
+                    const prompt = buildBatchResolvePrompt(openComments, planCommentPath, planCommentPath);
+                    const commentIds = openComments.map(c => c.id);
+
+                    const result = await resolveWorkItemComments(workItemId, workItemStore, enqueue, {
+                        type: 'plan',
+                        model: body.model,
+                        prompt,
+                        resolveContext: {
+                            files: [planCommentPath],
+                            resolveComments: {
+                                documentUri: planCommentPath,
+                                commentIds,
+                                documentContent,
+                                filePath: planCommentPath,
+                                wsId: repoId,
+                            },
+                        },
+                    });
+
+                    const updatedItem = await workItemStore.getWorkItem(workItemId);
+                    if (updatedItem) {
+                        getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
+                    }
+                    sendJSON(res, 200, result);
+                } else {
+                    // ── Commit comment resolve ──
+                    const commitSha: string | undefined = body.commitSha;
+                    if (!commitSha) {
+                        return handleAPIError(res, badRequest('Missing required field: commitSha'));
+                    }
+                    const oldRef = `${commitSha}^`;
+                    const newRef = commitSha;
+
+                    const allComments = await diffCommentsManager.listAllComments(repoId);
+                    let targetComments: Array<{ comment: any; storageKey: string }> = [];
+                    for (const c of allComments) {
+                        if (c.context.oldRef === oldRef && c.context.newRef === newRef) {
+                            const sk = diffCommentsManager.hashContext(c.context);
+                            targetComments.push({ comment: c, storageKey: sk });
+                        }
+                    }
+                    targetComments = targetComments.filter(tc => tc.comment.status === 'open');
+
+                    if (targetComments.length === 0) {
+                        return handleAPIError(res, badRequest('No open diff comments for this commit'));
+                    }
+
+                    // Group by storageKey
+                    const grouped = new Map<string, { storageKey: string; commentIds: string[]; filePath: string }>();
+                    for (const tc of targetComments) {
+                        const sk = tc.storageKey;
+                        if (!grouped.has(sk)) {
+                            grouped.set(sk, { storageKey: sk, commentIds: [], filePath: tc.comment.context.filePath });
+                        }
+                        grouped.get(sk)!.commentIds.push(tc.comment.id);
+                    }
+                    const files = Array.from(grouped.values());
+
+                    const fileEntries = files.map(f => ({
+                        filePath: f.filePath,
+                        comments: targetComments
+                            .filter(tc => tc.storageKey === f.storageKey)
+                            .map(tc => tc.comment),
+                    }));
+
+                    const prompt = buildMultiFileBatchResolvePrompt(fileEntries, oldRef, newRef);
+                    if (!prompt) {
+                        return handleAPIError(res, badRequest('No open diff comments for this commit'));
+                    }
+
+                    // Resolve workspace root for file paths
+                    let wsRootPath = process.cwd();
+                    try {
+                        const workspaces = await processStore.getWorkspaces();
+                        const ws = workspaces.find(w => w.id === repoId);
+                        if (ws?.rootPath) wsRootPath = ws.rootPath;
+                    } catch { /* use cwd fallback */ }
+
+                    const result = await resolveWorkItemComments(workItemId, workItemStore, enqueue, {
+                        type: 'commit',
+                        commitSha,
+                        sourceRunIndex: body.sourceRunIndex,
+                        model: body.model,
+                        prompt,
+                        resolveContext: {
+                            files: files.map(f => path.resolve(wsRootPath, f.filePath)),
+                            resolveDiffCommentsMulti: {
+                                files,
+                                wsId: repoId,
+                                oldRef,
+                                newRef,
+                            },
+                        },
+                    });
+
+                    const updatedItem = await workItemStore.getWorkItem(workItemId);
+                    if (updatedItem) {
+                        getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updatedItem });
+                    }
+                    sendJSON(res, 200, result);
+                }
             } catch (err: any) {
                 return handleAPIError(res, badRequest(err.message));
             }

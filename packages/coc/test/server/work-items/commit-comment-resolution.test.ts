@@ -268,11 +268,12 @@ describe('autoExecute triggers re-execution after comment resolution', () => {
         expect(src).toContain('!item.autoResolveAndReExecute && !resolveCtx.autoReExecute && !item.autoExecute');
     });
 
-    it('WorkItemDetail.tsx passes autoReExecute when autoExecute is enabled', async () => {
+    it('WorkItemDetail.tsx resolves commits via resolve-comments endpoint', async () => {
         const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'WorkItemDetail.tsx');
         const src = await fs.readFile(srcPath, 'utf-8');
-        // handleAutoResolveChange should conditionally pass autoReExecute: true
-        expect(src).toContain('item.autoExecute ? { autoReExecute: true }');
+        // handleAutoResolveChange should call the work-item resolve-comments endpoint
+        expect(src).toContain('/resolve-comments');
+        expect(src).toContain("type: 'commit'");
     });
 });
 
@@ -303,13 +304,13 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
         expect(src).toContain('handlePerCommitResolve');
     });
 
-    it('per-commit resolve button calls resolve-with-ai endpoint', () => {
-        expect(src).toContain('/diff-comments/');
-        expect(src).toContain('/resolve-with-ai');
+    it('per-commit resolve button calls resolve-comments endpoint', () => {
+        expect(src).toContain('/resolve-comments');
+        expect(src).toContain("type: 'commit'");
     });
 
-    it('per-commit resolve button passes workItemId in body', () => {
-        expect(src).toContain('workItemId: item.id');
+    it('per-commit resolve button passes commitSha in body', () => {
+        expect(src).toContain('commitSha: sha');
     });
 
     it('renders auto re-execute badge on execution entries', () => {
@@ -332,12 +333,13 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
         expect(surroundingCode).not.toContain('isAiDone &&');
     });
 
-    it('per-change Auto Resolve button passes autoReExecute: true in body', () => {
-        expect(src).toContain('autoReExecute: true');
+    it('per-change Auto Resolve button sends resolve for each commit', () => {
+        expect(src).toContain('handleAutoResolveChange');
+        expect(src).toContain("type: 'commit'");
     });
 
     it('Auto Resolve button shows per-change resolve count', () => {
-        expect(src).toContain('Resolve with agent (');
+        expect(src).toContain('Resolve all (');
     });
 
     it('does NOT render the top-level auto-resolve toggle', () => {
@@ -363,14 +365,14 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
         expect(src).toContain('exec.title');
     });
 
-    it('per-commit resolve button says "Resolve with agent"', () => {
-        expect(src).toContain('Resolve with agent');
-        expect(src).not.toContain("'🔧'} Resolve");
+    it('per-commit resolve button says "Resolve"', () => {
+        // The per-commit button renders just "Resolve" (optionally with spinner prefix)
+        expect(src).toContain("}Resolve");
+        expect(src).toContain("commit-resolve-btn-");
     });
 
-    it('session-level resolve button says "Resolve with agent"', () => {
-        expect(src).toContain('Resolve with agent (');
-        expect(src).not.toContain('🤖 Auto Resolve');
+    it('session-level resolve button says "Resolve all"', () => {
+        expect(src).toContain('Resolve all (');
     });
 
     it('per-commit resolve passes sourceRunIndex', () => {

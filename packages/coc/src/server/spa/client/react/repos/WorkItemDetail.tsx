@@ -55,7 +55,7 @@ interface WorkItemFull {
     createdAt: string; updatedAt: string; completedAt?: string;
     plan?: { version: number; content: string; updatedAt: string; resolvedBy?: string };
     taskId?: string; processId?: string;
-    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string }>;
+    executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
     tags?: string[];
     autoExecute?: boolean;
     autoResolveAndReExecute?: boolean;
@@ -263,21 +263,27 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     };
 
-    /** Enqueue a per-commit AI resolve task via POST /api/diff-comments/:wsId/resolve-with-ai. */
+    /** Resolve commit diff comments as a Run# execution session. */
     const handlePerCommitResolve = async (sha: string, sourceRunIndex?: number) => {
         if (!item) return;
         setResolvingCommitSha(sha);
         try {
-            const result = await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}/resolve-with-ai`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    oldRef: `${sha}^`,
-                    newRef: sha,
-                    workItemId: item.id,
-                    ...(sourceRunIndex != null ? { sourceRunIndex } : {}),
-                }),
-            });
+            const result = await fetchApi(
+                `${basePath}/resolve-comments`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'commit',
+                        commitSha: sha,
+                        ...(sourceRunIndex != null ? { sourceRunIndex } : {}),
+                    }),
+                },
+            );
+            if (result?.taskId && onViewTask) {
+                onViewTask(result.taskId);
+            }
+            fetchItem();
         } catch (err: any) {
             setError(err.message || 'Failed to enqueue resolve task');
         } finally {
@@ -285,7 +291,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     };
 
-    /** Resolve all open diff comments for a change's commits. */
+    /** Resolve all open diff comments for a change's commits via Run# sessions. */
     const handleAutoResolveChange = async (idx: number, commits: Array<{ sha: string }>) => {
         if (!item) return;
         setResolvingChangeIdx(idx);
@@ -294,18 +300,20 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             for (const commit of commits) {
                 const openCount = commentTotals.get(commit.sha)?.open ?? 0;
                 if (openCount === 0) continue;
-                await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}/resolve-with-ai`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        oldRef: `${commit.sha}^`,
-                        newRef: commit.sha,
-                        workItemId: item.id,
-                        sourceRunIndex,
-                        ...(item.autoExecute ? { autoReExecute: true } : {}),
-                    }),
-                });
+                await fetchApi(
+                    `${basePath}/resolve-comments`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'commit',
+                            commitSha: commit.sha,
+                            sourceRunIndex,
+                        }),
+                    },
+                );
             }
+            fetchItem();
         } catch (err: any) {
             setError(err.message || 'Failed to enqueue resolve tasks');
         } finally {
@@ -572,6 +580,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                             {exec.autoReExecuted && (
                                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[9px]" data-testid={`exec-auto-reexecute-badge-${i}`}>
                                                     🔄 Auto re-executed
+                                                </span>
+                                            )}
+                                            {(exec.sessionCategory === 'resolve-plan-comments' || exec.sessionCategory === 'resolve-commit-comments') && (
+                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 text-[9px]" data-testid={`exec-comment-resolve-badge-${i}`}>
+                                                    💬 {exec.sessionCategory === 'resolve-plan-comments' ? 'Plan' : 'Code'} comment resolve
                                                 </span>
                                             )}
                                             <span className="text-[#848484]">{formatRelativeTime(exec.startedAt)}</span>

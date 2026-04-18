@@ -28,8 +28,11 @@ export {
     executeWorkItem,
     handleWorkItemTaskComplete,
     buildExecutionPrompt,
+    resolveWorkItemComments,
+    isResolveSessionCategory,
     type EnqueueFunction,
     type ExecuteWorkItemOptions,
+    type ResolveWorkItemCommentsOptions,
 } from './work-item-executor';
 
 export type { WorkItemChange, WorkItemChangeCommit } from './types';

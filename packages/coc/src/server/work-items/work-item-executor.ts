@@ -153,14 +153,101 @@ export async function executeWorkItem(
     return { taskId };
 }
 
+// ============================================================================
+// Comment Resolve Execution
+// ============================================================================
+
+export interface ResolveWorkItemCommentsOptions {
+    /** Model override for the AI task. */
+    model?: string;
+    /** Resolve type: plan inline comments or commit diff comments. */
+    type: 'plan' | 'commit';
+    /** For commit resolve: the commit SHA being resolved. */
+    commitSha?: string;
+    /** Which Run# triggered the comments being resolved (display only). */
+    sourceRunIndex?: number;
+    /** Pre-built prompt for the AI resolve session. */
+    prompt: string;
+    /** Context payload for the resolve executor (resolveComments or resolveDiffCommentsMulti). */
+    resolveContext: Record<string, unknown>;
+    /** Chat mode override (default: 'ask' for plan, 'autopilot' for commit). */
+    mode?: 'ask' | 'plan' | 'autopilot';
+}
+
+/**
+ * Resolve work item comments by creating a Run# execution session.
+ *
+ * Unlike `executeWorkItem`, this does **not** transition the work item status
+ * or create/update Change entries. The resolve task appears in `executionHistory`
+ * alongside regular code-implement runs.
+ */
+export async function resolveWorkItemComments(
+    workItemId: string,
+    store: WorkItemStore,
+    enqueue: EnqueueFunction,
+    options: ResolveWorkItemCommentsOptions,
+): Promise<{ taskId: string }> {
+    const item = await store.getWorkItem(workItemId);
+    if (!item) {
+        throw new Error(`Work item not found: ${workItemId}`);
+    }
+
+    const runNumber = (item.executionHistory?.length ?? 0) + 1;
+    const isPlan = options.type === 'plan';
+    const sessionCategory = isPlan ? 'resolve-plan-comments' : 'resolve-commit-comments';
+    const title = isPlan
+        ? 'Comment Resolve'
+        : `Code Comment Resolve${options.commitSha ? ` (${options.commitSha.slice(0, 7)})` : ''}`;
+    const displayName = `Run #${runNumber}: ${title}`;
+    const mode = options.mode ?? (isPlan ? 'ask' : 'autopilot');
+
+    const taskId = await enqueue({
+        type: 'run-workflow',
+        priority: item.priority ?? 'normal',
+        payload: {
+            kind: 'chat',
+            mode,
+            prompt: options.prompt,
+            workspaceId: item.repoId,
+            sessionCategory,
+            workItemId: item.id,
+            tools: ['resolve-comments'],
+            context: options.resolveContext,
+        },
+        config: {
+            ...(options.model ? { model: options.model } : {}),
+        },
+        displayName,
+    });
+
+    const execution: WorkItemExecution = {
+        taskId,
+        startedAt: new Date().toISOString(),
+        status: 'running',
+        sessionCategory,
+        title,
+    };
+    await store.addExecution(workItemId, execution);
+
+    return { taskId };
+}
+
+/** Check whether a session category represents a comment-resolve task. */
+export function isResolveSessionCategory(category: string | undefined): boolean {
+    return category === 'resolve-plan-comments' || category === 'resolve-commit-comments';
+}
+
 /**
  * Handle task completion for a work item.
  * Called when a queue task linked to a work item finishes.
  *
- * Status mapping:
+ * Status mapping (regular executions only):
  *   completed  → aiDone (AI finished successfully; awaiting user review)
  *   failed     → aiFailed (AI execution failed; user can retry)
  *   cancelled  → readyToExecute (execution was cancelled; user can retry)
+ *
+ * Comment-resolve sessions update the execution entry but do NOT
+ * transition the work item's status.
  */
 export async function handleWorkItemTaskComplete(
     workItemId: string,
@@ -174,6 +261,15 @@ export async function handleWorkItemTaskComplete(
         error: result.error,
         processId: result.processId,
     });
+
+    // Check if this is a comment-resolve session — skip status transition
+    const item = await store.getWorkItem(workItemId);
+    const matchedExec = item?.executionHistory?.find(e => e.taskId === taskId);
+    if (isResolveSessionCategory(matchedExec?.sessionCategory)) {
+        // Only update the processId reference, do not change work item status
+        await store.updateWorkItem(workItemId, { processId: result.processId });
+        return;
+    }
 
     let newStatus: import('./types').WorkItemStatus;
     if (result.status === 'completed') {

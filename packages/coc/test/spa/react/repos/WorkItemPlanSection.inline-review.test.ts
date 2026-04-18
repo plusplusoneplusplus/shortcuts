@@ -216,14 +216,13 @@ describe('WorkItemPlanSection — inline review', () => {
 
     // ── Resolve All with AI ───────────────────────────────────────────────────
 
-    it('implements handleResolveAllWithAI that calls plan/refine endpoint', () => {
+    it('implements handleResolveAllWithAI that calls resolve-comments endpoint', () => {
         expect(src).toContain('handleResolveAllWithAI');
-        expect(src).toContain("basePath + '/refine'");
+        expect(src).toContain('/resolve-comments');
     });
 
-    it('builds instructions from open inline comments', () => {
+    it('filters open inline comments before resolving', () => {
         expect(src).toContain("planComments.filter(c => c.status === 'open')");
-        expect(src).toContain('[Line ${c.selection.startLine}]');
     });
 
     it('renders Resolve N comments with AI button when open comments exist', () => {
@@ -270,9 +269,9 @@ describe('WorkItemPlanSection — inline review', () => {
         expect(src).toContain('data-testid="work-item-plan-editor"');
     });
 
-    it('still renders AI resolve preview with accept/discard buttons', () => {
-        expect(src).toContain('data-testid="work-item-resolve-accept-btn"');
-        expect(src).toContain('data-testid="work-item-resolve-reject-btn"');
+    it('no longer renders AI resolve preview with accept/discard buttons', () => {
+        expect(src).not.toContain('data-testid="work-item-resolve-accept-btn"');
+        expect(src).not.toContain('data-testid="work-item-resolve-reject-btn"');
     });
 
     it('no longer has the old whole-plan textarea', () => {

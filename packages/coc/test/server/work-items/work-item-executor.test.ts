@@ -7,6 +7,8 @@ import {
     executeWorkItem,
     handleWorkItemTaskComplete,
     buildExecutionPrompt,
+    resolveWorkItemComments,
+    isResolveSessionCategory,
 } from '../../../src/server/work-items/work-item-executor';
 import type { WorkItem } from '../../../src/server/work-items/types';
 
@@ -322,5 +324,211 @@ describe('executeWorkItem taskFilePath (live task visibility)', () => {
         expect(call.payload.workspaceId).toBe('test-repo');
         expect(call.payload.context).toEqual({ files: [taskFilePath] });
         expect(call.config.model).toBe('gpt-4');
+    });
+});
+
+describe('resolveWorkItemComments', () => {
+    it('creates a plan comment resolve Run# session', async () => {
+        const item = makeWorkItem({ id: 'wi-plan-resolve', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-1');
+        const result = await resolveWorkItemComments('wi-plan-resolve', store, enqueue, {
+            type: 'plan',
+            prompt: 'Resolve these plan comments...',
+            resolveContext: { files: ['__wi-plan__/wi-plan-resolve'] },
+        });
+
+        expect(result.taskId).toBe('task-resolve-1');
+        expect(enqueue).toHaveBeenCalledOnce();
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.type).toBe('run-workflow');
+        expect(call.payload.kind).toBe('chat');
+        expect(call.payload.mode).toBe('ask');
+        expect(call.payload.sessionCategory).toBe('resolve-plan-comments');
+        expect(call.payload.workItemId).toBe('wi-plan-resolve');
+        expect(call.payload.tools).toEqual(['resolve-comments']);
+        expect(call.displayName).toBe('Run #1: Comment Resolve');
+
+        const updated = await store.getWorkItem('wi-plan-resolve', 'test-repo');
+        expect(updated!.executionHistory).toHaveLength(1);
+        expect(updated!.executionHistory![0].taskId).toBe('task-resolve-1');
+        expect(updated!.executionHistory![0].status).toBe('running');
+        expect(updated!.executionHistory![0].sessionCategory).toBe('resolve-plan-comments');
+        expect(updated!.executionHistory![0].title).toBe('Comment Resolve');
+
+        // Should NOT change the work item status
+        expect(updated!.status).toBe('readyToExecute');
+    });
+
+    it('creates a commit comment resolve Run# session with SHA in title', async () => {
+        const item = makeWorkItem({ id: 'wi-commit-resolve', status: 'aiDone' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-2');
+        await resolveWorkItemComments('wi-commit-resolve', store, enqueue, {
+            type: 'commit',
+            commitSha: 'abc1234567890',
+            prompt: 'Resolve commit diff comments...',
+            resolveContext: { files: ['/repo/src/file.ts'] },
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.mode).toBe('autopilot');
+        expect(call.payload.sessionCategory).toBe('resolve-commit-comments');
+        expect(call.displayName).toBe('Run #1: Code Comment Resolve (abc1234)');
+
+        const updated = await store.getWorkItem('wi-commit-resolve', 'test-repo');
+        expect(updated!.executionHistory![0].title).toBe('Code Comment Resolve (abc1234)');
+        expect(updated!.executionHistory![0].sessionCategory).toBe('resolve-commit-comments');
+    });
+
+    it('increments run number based on existing execution history', async () => {
+        const item = makeWorkItem({
+            id: 'wi-resolve-num',
+            status: 'aiDone',
+            executionHistory: [
+                { taskId: 'prev-1', startedAt: '2026-01-01T00:00:00Z', status: 'completed', title: 'Code Implement' },
+            ],
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-num');
+        await resolveWorkItemComments('wi-resolve-num', store, enqueue, {
+            type: 'plan',
+            prompt: 'Resolve...',
+            resolveContext: {},
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.displayName).toBe('Run #2: Comment Resolve');
+    });
+
+    it('throws for non-existent work items', async () => {
+        const enqueue = vi.fn();
+        await expect(
+            resolveWorkItemComments('nonexistent', store, enqueue, {
+                type: 'plan',
+                prompt: 'test',
+                resolveContext: {},
+            }),
+        ).rejects.toThrow('not found');
+    });
+
+    it('respects model override', async () => {
+        const item = makeWorkItem({ id: 'wi-resolve-model', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-model');
+        await resolveWorkItemComments('wi-resolve-model', store, enqueue, {
+            type: 'plan',
+            model: 'claude-sonnet',
+            prompt: 'Resolve...',
+            resolveContext: {},
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.config.model).toBe('claude-sonnet');
+    });
+
+    it('respects mode override', async () => {
+        const item = makeWorkItem({ id: 'wi-resolve-mode', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-mode');
+        await resolveWorkItemComments('wi-resolve-mode', store, enqueue, {
+            type: 'commit',
+            commitSha: 'abc123',
+            mode: 'ask',
+            prompt: 'Resolve...',
+            resolveContext: {},
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.mode).toBe('ask');
+    });
+});
+
+describe('isResolveSessionCategory', () => {
+    it('returns true for resolve-plan-comments', () => {
+        expect(isResolveSessionCategory('resolve-plan-comments')).toBe(true);
+    });
+
+    it('returns true for resolve-commit-comments', () => {
+        expect(isResolveSessionCategory('resolve-commit-comments')).toBe(true);
+    });
+
+    it('returns false for generating-code', () => {
+        expect(isResolveSessionCategory('generating-code')).toBe(false);
+    });
+
+    it('returns false for undefined', () => {
+        expect(isResolveSessionCategory(undefined)).toBe(false);
+    });
+});
+
+describe('handleWorkItemTaskComplete — comment-resolve sessions', () => {
+    it('skips status transition for plan comment resolve sessions', async () => {
+        const item = makeWorkItem({ id: 'wi-plan-done', status: 'aiDone' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-plan-done', {
+            taskId: 'task-plan-resolve',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+            sessionCategory: 'resolve-plan-comments',
+        });
+
+        await handleWorkItemTaskComplete('wi-plan-done', 'task-plan-resolve', {
+            status: 'completed',
+            processId: 'proc-plan',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-plan-done', 'test-repo');
+        // Status should NOT change from aiDone
+        expect(updated!.status).toBe('aiDone');
+        // Execution entry should be updated
+        expect(updated!.executionHistory![0].status).toBe('completed');
+        expect(updated!.executionHistory![0].processId).toBe('proc-plan');
+    });
+
+    it('skips status transition for commit comment resolve sessions', async () => {
+        const item = makeWorkItem({ id: 'wi-commit-done', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-commit-done', {
+            taskId: 'task-commit-resolve',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+            sessionCategory: 'resolve-commit-comments',
+        });
+
+        await handleWorkItemTaskComplete('wi-commit-done', 'task-commit-resolve', {
+            status: 'completed',
+            processId: 'proc-commit',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-commit-done', 'test-repo');
+        // Status should NOT change
+        expect(updated!.status).toBe('executing');
+        expect(updated!.executionHistory![0].status).toBe('completed');
+    });
+
+    it('still transitions status for regular executions', async () => {
+        const item = makeWorkItem({ id: 'wi-regular-done', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-regular-done', {
+            taskId: 'task-regular',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+            sessionCategory: 'generating-code',
+        });
+
+        await handleWorkItemTaskComplete('wi-regular-done', 'task-regular', {
+            status: 'completed',
+            processId: 'proc-regular',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-regular-done', 'test-repo');
+        expect(updated!.status).toBe('aiDone');
     });
 });
