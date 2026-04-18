@@ -53,6 +53,48 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfig: () => ({ apiBasePath: '/api' }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
+    useModels: () => ({ enabledModels: [] }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
+    useSlashCommands: () => ({
+        menuVisible: false,
+        menuFilter: '',
+        filteredSkills: [],
+        highlightIndex: 0,
+        handleInputChange: vi.fn(),
+        handleKeyDown: vi.fn(() => false),
+        selectSkill: vi.fn(),
+        parseAndExtract: vi.fn(() => ({ skills: [], prompt: '' })),
+        dismissMenu: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/useModelCommand', () => ({
+    useModelCommand: () => ({
+        modelMenuVisible: false,
+        modelFilter: '',
+        filteredModels: [],
+        modelHighlightIndex: 0,
+        modelOverride: null,
+        setModelOverride: vi.fn(),
+        handleModelSelect: vi.fn(),
+        showModelMenu: vi.fn(),
+        dismissModelMenu: vi.fn(),
+        handleModelKeyDown: vi.fn(() => false),
+        setModelFilter: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/SlashCommandMenu', () => ({
+    SlashCommandMenu: () => null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/ModelCommandMenu', () => ({
+    ModelCommandMenu: () => null,
+}));
+
 import { FollowUpInputArea } from '../../../../src/server/spa/client/react/repos/FollowUpInputArea';
 import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/repos/FollowUpInputArea';
 import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';

@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -16,6 +16,30 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch } = vi.hoist
     } as Record<string, any>,
     mockFetch: vi.fn(),
     mockAppDispatch: vi.fn(),
+    mockModelCommand: {
+        modelMenuVisible: false,
+        modelFilter: '',
+        filteredModels: [],
+        modelHighlightIndex: 0,
+        modelOverride: null as string | null,
+        setModelOverride: vi.fn(),
+        handleModelSelect: vi.fn(),
+        showModelMenu: vi.fn(),
+        dismissModelMenu: vi.fn(),
+        handleModelKeyDown: vi.fn(() => false),
+        setModelFilter: vi.fn(),
+    },
+    mockSlashCommands: {
+        menuVisible: false,
+        menuFilter: '',
+        filteredSkills: [],
+        highlightIndex: 0,
+        handleInputChange: vi.fn(),
+        handleKeyDown: vi.fn(() => false),
+        selectSkill: vi.fn(),
+        parseAndExtract: vi.fn(() => ({ skills: [], prompt: '' })),
+        dismissMenu: vi.fn(),
+    },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
@@ -29,6 +53,26 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
+    useModels: () => ({ enabledModels: [{ id: 'gpt-5.4', name: 'GPT-5.4', tokenLimit: 128000, enabled: true }] }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/useSlashCommands', () => ({
+    useSlashCommands: () => mockSlashCommands,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/useModelCommand', () => ({
+    useModelCommand: () => mockModelCommand,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/SlashCommandMenu', () => ({
+    SlashCommandMenu: () => null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/ModelCommandMenu', () => ({
+    ModelCommandMenu: () => null,
 }));
 
 // Minimal RichTextInput mock
@@ -63,6 +107,8 @@ beforeEach(() => {
     vi.clearAllMocks();
     mockAppState.workspaces = [{ id: 'ws-1', rootPath: '/home/user/repo' }];
     mockAppState.onboardingProgress = { hasUsedChat: false };
+    mockModelCommand.modelOverride = null;
+    mockModelCommand.modelMenuVisible = false;
     globalThis.fetch = mockFetch;
 });
 
@@ -331,5 +377,65 @@ describe('NewChatArea', () => {
         });
 
         expect(mockAppDispatch).not.toHaveBeenCalled();
+    });
+
+    describe('model command in new chat', () => {
+        it('shows model badge when modelOverride is set', () => {
+            mockModelCommand.modelOverride = 'gpt-5.4';
+            render(<NewChatArea workspaceId="ws-1" />);
+            const badge = screen.getByTestId('new-chat-model-badge');
+            expect(badge).toBeTruthy();
+            expect(badge.textContent).toContain('gpt-5.4');
+        });
+
+        it('does not show model badge when modelOverride is null', () => {
+            mockModelCommand.modelOverride = null;
+            render(<NewChatArea workspaceId="ws-1" />);
+            expect(screen.queryByTestId('new-chat-model-badge')).toBeNull();
+        });
+
+        it('includes model in payload when modelOverride is set', async () => {
+            mockModelCommand.modelOverride = 'claude-sonnet-4.6';
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ id: 'model-task' }),
+            });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Hello' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+            expect(body.payload.model).toBe('claude-sonnet-4.6');
+        });
+
+        it('does not include model in payload when modelOverride is null', async () => {
+            mockModelCommand.modelOverride = null;
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ id: 'no-model-task' }),
+            });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Hello' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+            expect(body.payload.model).toBeUndefined();
+        });
+
+        it('placeholder mentions slash commands', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            expect(input.placeholder).toContain('type / for commands');
+        });
     });
 });

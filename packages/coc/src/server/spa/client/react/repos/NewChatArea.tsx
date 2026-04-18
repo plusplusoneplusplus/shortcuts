@@ -3,7 +3,7 @@
  * on the Activity tab. Lets the user type a message and start a new conversation.
  */
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
 import { AttachmentPreviews } from '../shared/AttachmentPreviews';
@@ -14,6 +14,11 @@ import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
 import { useFileAttachments } from '../hooks/useFileAttachments';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
+import { useModels } from '../hooks/useModels';
+import { useSlashCommands } from './useSlashCommands';
+import { useModelCommand } from './useModelCommand';
+import { SlashCommandMenu } from './SlashCommandMenu';
+import { ModelCommandMenu } from './ModelCommandMenu';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -32,6 +37,15 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     const { dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
+
+    // Model command support
+    const { enabledModels } = useModels();
+    const augmentedSkills = useMemo(
+        () => [{ name: 'model', description: 'Switch AI model' }],
+        [],
+    );
+    const slashCommands = useSlashCommands(augmentedSkills);
+    const modelCommand = useModelCommand(enabledModels);
 
     async function handleSend() {
         const trimmed = input.trim();
@@ -58,6 +72,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         workingDirectory: ws?.rootPath,
                         workspaceId,
                         ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
+                        ...(modelCommand.modelOverride ? { model: modelCommand.modelOverride } : {}),
                     },
                 }),
             });
@@ -154,18 +169,50 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     >
                         +
                     </button>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 relative">
                         <RichTextInput
                             ref={richTextRef}
                             disabled={sending}
-                            placeholder="Send a message..."
+                            placeholder="Send a message... (type / for commands)"
                             className={cn(
                                 'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
                                 MODE_BORDER_COLORS['ask'].border,
                                 MODE_BORDER_COLORS['ask'].ring,
                             )}
-                            onChange={(val) => setInput(val)}
+                            onChange={(val, cursorPos) => {
+                                setInput(val);
+                                if (modelCommand.modelMenuVisible) {
+                                    modelCommand.setModelFilter(val);
+                                } else {
+                                    slashCommands.handleInputChange(val, cursorPos);
+                                }
+                            }}
                             onKeyDown={(e) => {
+                                // Priority 1: model command menu
+                                if (modelCommand.handleModelKeyDown(e)) {
+                                    if (e.key === 'Enter' || e.key === 'Tab') {
+                                        const model = modelCommand.filteredModels[modelCommand.modelHighlightIndex];
+                                        if (model) {
+                                            modelCommand.handleModelSelect(model.id);
+                                            setInput('');
+                                            richTextRef.current?.setValue('');
+                                        }
+                                    }
+                                    return;
+                                }
+                                // Priority 2: slash command menu
+                                if (slashCommands.handleKeyDown(e)) {
+                                    if (e.key === 'Enter' || e.key === 'Tab') {
+                                        const skill = slashCommands.filteredSkills[slashCommands.highlightIndex];
+                                        if (skill?.name === 'model') {
+                                            setInput('');
+                                            richTextRef.current?.setValue('');
+                                            slashCommands.dismissMenu();
+                                            modelCommand.showModelMenu();
+                                        }
+                                    }
+                                    return;
+                                }
                                 if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
                                     void handleSend();
@@ -174,7 +221,51 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             onPaste={addFromPaste}
                             data-testid="new-chat-input"
                         />
+                        <SlashCommandMenu
+                            skills={augmentedSkills}
+                            filter={slashCommands.menuFilter}
+                            onSelect={(name) => {
+                                if (name === 'model') {
+                                    setInput('');
+                                    richTextRef.current?.setValue('');
+                                    slashCommands.dismissMenu();
+                                    modelCommand.showModelMenu();
+                                    richTextRef.current?.focus();
+                                }
+                            }}
+                            onDismiss={slashCommands.dismissMenu}
+                            visible={slashCommands.menuVisible}
+                            highlightIndex={slashCommands.highlightIndex}
+                        />
+                        <ModelCommandMenu
+                            models={modelCommand.filteredModels}
+                            filter={modelCommand.modelFilter}
+                            onSelect={(modelId) => {
+                                modelCommand.handleModelSelect(modelId);
+                                setInput('');
+                                richTextRef.current?.setValue('');
+                                richTextRef.current?.focus();
+                            }}
+                            onDismiss={modelCommand.dismissModelMenu}
+                            visible={modelCommand.modelMenuVisible}
+                            highlightIndex={modelCommand.modelHighlightIndex}
+                            currentModelId={modelCommand.modelOverride ?? undefined}
+                        />
                     </div>
+                    {modelCommand.modelOverride && (
+                        <div
+                            className="shrink-0 flex items-center gap-1 px-2 py-1 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-xs text-[#1e1e1e] dark:text-[#cccccc]"
+                            data-testid="new-chat-model-badge"
+                        >
+                            <span className="truncate max-w-[120px]">{modelCommand.modelOverride}</span>
+                            <button
+                                type="button"
+                                className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
+                                onClick={() => modelCommand.setModelOverride(null)}
+                                aria-label="Clear model override"
+                            >✕</button>
+                        </div>
+                    )}
                     {sending ? (
                         <button
                             type="button"
