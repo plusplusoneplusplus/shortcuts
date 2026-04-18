@@ -16,6 +16,7 @@ import type {
     ProcessStore,
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
@@ -30,6 +31,8 @@ import { getRepoDataPath } from '../paths';
 // ============================================================================
 // NoteChatExecutor
 // ============================================================================
+
+const FILE_EDIT_TOOLS = ['edit_file', 'str_replace_editor', 'str_replace_based_edit_tool'];
 
 export class NoteChatExecutor extends ChatBaseExecutor {
     constructor(
@@ -88,11 +91,38 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         const tools = [...followUp.tools, ...searchConversations.tools];
         const toolSuffix = followUp.suffix + searchConversations.suffix;
 
+        // Resolve the absolute note path for comparison against tool-reported paths
+        const processId = toQueueProcessId(task.id);
+        const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
+        const notesRoot = wsId ? getRepoDataPath(effectiveDataDir, wsId, 'notes') : undefined;
+        const absoluteNotePath = notesRoot && notePath
+            ? path.resolve(notesRoot, notePath)
+            : undefined;
+
+        let toolResultInterceptors: ChatModeAIOptions['toolResultInterceptors'];
+
+        if (absoluteNotePath && wsId) {
+            const store = this.store;
+            const interceptor = (params: Record<string, unknown>, _result: string | undefined, toolCallId: string) => {
+                const filePath = String(params.path ?? params.filePath ?? '');
+                const oldStr = String(params.old_str ?? params.oldStr ?? '');
+                const newStr = String(params.new_str ?? params.newStr ?? '');
+                if (!filePath || !isNoteFile(filePath, absoluteNotePath, notesRoot)) return;
+                store.emitProcessEvent(processId, {
+                    type: 'note-file-edit',
+                    noteFileEdit: { toolCallId, filePath, oldStr, newStr },
+                });
+            };
+
+            toolResultInterceptors = Object.fromEntries(FILE_EDIT_TOOLS.map(n => [n, interceptor]));
+        }
+
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage,
             tools,
             effectivePrompt: prompt + toolSuffix,
+            toolResultInterceptors,
         };
     }
 
@@ -119,6 +149,27 @@ export class NoteChatExecutor extends ChatBaseExecutor {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Check whether a file path reported by the AI tool corresponds to the currently
+ * open note. Normalizes both to forward-slash to handle OS differences.
+ */
+function isNoteFile(filePath: string, absoluteNotePath: string, notesRoot: string | undefined): boolean {
+    const normalizeSlashes = (p: string) => p.replace(/\\/g, '/');
+
+    const normalizedFilePath = normalizeSlashes(path.resolve(filePath));
+    const normalizedNotePath = normalizeSlashes(absoluteNotePath);
+
+    if (normalizedFilePath === normalizedNotePath) return true;
+
+    // Also try resolving relative to notes root
+    if (notesRoot) {
+        const resolvedFromRoot = normalizeSlashes(path.resolve(notesRoot, filePath));
+        if (resolvedFromRoot === normalizedNotePath) return true;
+    }
+
+    return false;
+}
 
 function buildNoteContextBlock(notePath: string, noteTitle: string, content: string): string {
     const truncated = content.length > 8000

@@ -88,6 +88,12 @@ export interface ChatModeAIOptions {
     tools: Tool<unknown>[];
     /** Prompt with any mode-specific suffix already appended. */
     effectivePrompt: string;
+    /**
+     * Optional per-tool-name observational callbacks.
+     * Subclasses may provide these to react to specific tool completions
+     * (e.g. 'edit_file') without affecting tool execution or onToolEvent.
+     */
+    toolResultInterceptors?: Record<string, (params: Record<string, unknown>, result: string | undefined, toolCallId: string) => void>;
 }
 
 // ============================================================================
@@ -177,7 +183,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const workingDirectory = payload.workingDirectory || payload.folderPath || this.defaultWorkingDirectory;
 
-        let { agentMode, systemMessage, tools, effectivePrompt } = await this.buildModeOptions(task, prompt, workingDirectory);
+        let { agentMode, systemMessage, tools, effectivePrompt, toolResultInterceptors } = await this.buildModeOptions(task, prompt, workingDirectory);
 
         this.getOrCreateSession(processId).outputBuffer = '';
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
@@ -270,6 +276,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     }
                     : toolEventHandler,
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
+                toolResultInterceptors,
             });
 
             if (!result.success) {

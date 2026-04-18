@@ -236,6 +236,8 @@ export async function handleProcessStream(
             sendEvent(res, 'pending-message-added', {
                 pendingMessage: event.pendingMessage,
             });
+        } else if (event.type === 'note-file-edit' && event.noteFileEdit) {
+            sendEvent(res, 'note-file-edit', event.noteFileEdit);
         } else if (event.type === 'hook-step') {
             sendEvent(res, 'hook-step', { hookStep: event.hookStep });
         } else if (event.type === 'background-tasks') {
