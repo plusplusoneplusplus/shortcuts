@@ -472,7 +472,7 @@ describe('CopilotClientCache', () => {
     // ========================================================================
 
     describe('default configuration', () => {
-        it('uses 10-minute default idle timeout', async () => {
+        it('uses 5-minute default idle timeout', async () => {
             const defaultCache = new CopilotClientCache({ poolEnabled: false }); // disable pool for this test
             const { service, mockClient } = createMockAIService();
             defaultCache.setAIService(service as any);
@@ -480,11 +480,11 @@ describe('CopilotClientCache', () => {
             await defaultCache.acquire('proc-1');
             defaultCache.markIdle('proc-1');
 
-            // 9 minutes — should still be cached
-            vi.advanceTimersByTime(9 * 60 * 1000);
+            // 4 minutes — should still be cached
+            vi.advanceTimersByTime(4 * 60 * 1000);
             expect(defaultCache.has('proc-1')).toBe(true);
 
-            // 10 minutes + 1ms — should be disposed
+            // 5 minutes + 1ms — should be disposed
             vi.advanceTimersByTime(1 * 60 * 1000 + 1);
             await vi.runAllTimersAsync();
 

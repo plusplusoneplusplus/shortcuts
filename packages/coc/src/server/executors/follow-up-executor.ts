@@ -201,19 +201,19 @@ export class FollowUpExecutor extends BaseExecutor {
             let cachedClient: import('@github/copilot-sdk').CopilotClient | undefined;
             if (this.clientCache) {
                 try {
-                    cachedClient = await this.clientCache.getOrCreate(processId, workingDirectory);
+                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
                 } catch {
                     // Non-fatal: fall back to session-per-request (no cached client)
                 }
             }
 
-            const result = await this.aiService.sendMessage({
+            const sendOptions = {
                 prompt: followUpMessage,
                 client: cachedClient,
                 sessionId: process.sdkSessionId,
                 mode: agentMode,
                 workingDirectory,
-                reasoningEffort: 'high',
+                reasoningEffort: 'high' as const,
                 systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
@@ -239,7 +239,37 @@ export class FollowUpExecutor extends BaseExecutor {
                     () => process.conversationTurns?.length ?? 0,
                 ),
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
-            });
+            };
+
+            let result;
+            try {
+                result = await this.aiService.sendMessage(sendOptions);
+            } catch (firstError) {
+                // If we used a cached client and it failed, the client process may
+                // have died mid-request. Release the dead client, reset streaming
+                // state, and retry once with a fresh client from the pool.
+                if (!cachedClient || !this.clientCache) throw firstError;
+
+                logger.debug(LogCategory.AI,
+                    `[FollowUp] Cached client failed for ${processId}; retrying with fresh client`);
+
+                await this.clientCache.release(processId);
+                this.resetSessionStreamingState(processId);
+
+                try {
+                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
+                    sendOptions.client = cachedClient;
+                } catch {
+                    sendOptions.client = undefined;
+                }
+
+                // On retry without a session, fall back to history context
+                if (!sendOptions.client) {
+                    sendOptions.sessionId = undefined;
+                }
+
+                result = await this.aiService.sendMessage(sendOptions);
+            }
 
             if (resolvedDeliveryMode === 'immediate') {
                 const turnIndex = process.conversationTurns?.length ?? 0;

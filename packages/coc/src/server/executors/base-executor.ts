@@ -88,6 +88,20 @@ export abstract class BaseExecutor {
         this.clientCache?.markIdle(processId);
     }
 
+    /**
+     * Reset streaming state for a process so a retry starts with a clean slate.
+     * Clears the output buffer, timeline, suggestions, and throttle counters
+     * without deleting the session entry itself.
+     */
+    protected resetSessionStreamingState(processId: string): void {
+        const session = this.getOrCreateSession(processId);
+        session.outputBuffer = '';
+        session.timelineBuffer.length = 0;
+        session.pendingSuggestions = undefined;
+        session.throttleState.chunksSinceLastFlush = 0;
+        session.throttleState.lastFlushTime = 0;
+    }
+
     // ========================================================================
     // Streaming / throttling
     // ========================================================================

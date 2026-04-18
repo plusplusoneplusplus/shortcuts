@@ -44,7 +44,7 @@ export interface PoolEntry {
 }
 
 export interface CopilotClientCacheOptions {
-    /** Idle timeout in milliseconds before a cached client is auto-disposed. Default: 10 minutes. */
+    /** Idle timeout in milliseconds before a cached client is auto-disposed. Default: 5 minutes. */
     idleTimeoutMs?: number;
     /** Number of pre-warmed idle clients to maintain. Default: 3. Set to 0 to disable. */
     poolSize?: number;
@@ -54,7 +54,7 @@ export interface CopilotClientCacheOptions {
     poolEnabled?: boolean;
 }
 
-const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const DEFAULT_POOL_SIZE = 3;
 const DEFAULT_POOL_IDLE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 const ROTATION_INTERVAL_MS = 60 * 1000; // check every minute

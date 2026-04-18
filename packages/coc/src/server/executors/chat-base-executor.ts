@@ -240,13 +240,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             let cachedClient: import('@github/copilot-sdk').CopilotClient | undefined;
             if (this.clientCache) {
                 try {
-                    cachedClient = await this.clientCache.getOrCreate(processId, workingDirectory);
+                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
                 } catch {
                     // Non-fatal: fall back to session-per-request (no cached client)
                 }
             }
 
-            const result = await this.aiService.sendMessage({
+            const sendOptions = {
                 prompt: effectivePrompt,
                 client: cachedClient,
                 mode: agentMode,
@@ -282,7 +282,32 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     }
                     : toolEventHandler,
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
-            });
+            };
+
+            let result;
+            try {
+                result = await this.aiService.sendMessage(sendOptions);
+            } catch (firstError) {
+                // If we used a cached client and it failed, the client process may
+                // have died mid-request. Release the dead client, reset streaming
+                // state, and retry once with a fresh client from the pool.
+                if (!cachedClient || !this.clientCache) throw firstError;
+
+                getLogger().debug(LogCategory.AI,
+                    `[ChatModeExecutor] Cached client failed for ${processId}; retrying with fresh client`);
+
+                await this.clientCache.release(processId);
+                this.resetSessionStreamingState(processId);
+
+                try {
+                    cachedClient = await this.clientCache.acquire(processId, workingDirectory);
+                    sendOptions.client = cachedClient;
+                } catch {
+                    sendOptions.client = undefined;
+                }
+
+                result = await this.aiService.sendMessage(sendOptions);
+            }
 
             if (!result.success) {
                 throw new Error(result.error || 'AI execution failed');
