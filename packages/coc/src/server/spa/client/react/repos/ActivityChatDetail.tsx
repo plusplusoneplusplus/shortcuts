@@ -605,6 +605,69 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         void sendFollowUp(lastFailedMessageRef.current);
     };
 
+    // ── Per-turn actions: delete, pin, archive ──
+    const [undoDelete, setUndoDelete] = useState<{ turnIndex: number; timer: ReturnType<typeof setTimeout> } | null>(null);
+
+    const handleDeleteTurn = useCallback((turnIndex: number) => {
+        if (!processId) return;
+        setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
+        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}`, { method: 'DELETE' }).catch(() => {
+            setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
+        });
+        if (undoDelete) clearTimeout(undoDelete.timer);
+        const timer = setTimeout(() => setUndoDelete(null), 5000);
+        setUndoDelete({ turnIndex, timer });
+    }, [processId, undoDelete]);
+
+    const handleUndoDelete = useCallback(() => {
+        if (!undoDelete || !processId) return;
+        clearTimeout(undoDelete.timer);
+        const { turnIndex } = undoDelete;
+        setUndoDelete(null);
+        setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
+        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/restore`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        }).catch(() => {});
+    }, [undoDelete, processId]);
+
+    const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
+        if (!processId) return;
+        setTurns(prev => prev.map(t =>
+            t.turnIndex === turnIndex
+                ? { ...t, pinnedAt: pinned ? new Date().toISOString() : undefined, archived: pinned ? false : t.archived }
+                : t
+        ));
+        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/pin`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pinned }),
+        }).catch(() => {
+            setTurns(prev => prev.map(t =>
+                t.turnIndex === turnIndex
+                    ? { ...t, pinnedAt: pinned ? undefined : new Date().toISOString() }
+                    : t
+            ));
+        });
+    }, [processId]);
+
+    const handleArchiveTurn = useCallback((turnIndex: number, archived: boolean) => {
+        if (!processId) return;
+        setTurns(prev => prev.map(t =>
+            t.turnIndex === turnIndex ? { ...t, archived } : t
+        ));
+        fetchApi(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/archive`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived }),
+        }).catch(() => {
+            setTurns(prev => prev.map(t =>
+                t.turnIndex === turnIndex ? { ...t, archived: !archived } : t
+            ));
+        });
+    }, [processId]);
+
     const launchInteractiveResume = async () => {
         if (!processId || !resumeSessionId) return;
         setResumeLaunching(true);
@@ -688,6 +751,11 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     onCopySelected={handleCopySelected}
                     onCancelSelection={selection.stopSelecting}
                     onAttachContext={attachedContext.add}
+                    onDeleteTurn={handleDeleteTurn}
+                    onPinTurn={handlePinTurn}
+                    onArchiveTurn={handleArchiveTurn}
+                    undoDeleteTurnIndex={undoDelete?.turnIndex ?? null}
+                    onUndoDelete={handleUndoDelete}
                 />
                 {variant !== 'floating' && !isMobile && (
                     <ConversationMiniMap

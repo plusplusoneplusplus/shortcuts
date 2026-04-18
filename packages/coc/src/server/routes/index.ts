@@ -157,7 +157,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerPreferencesRoutes(routes, dataDir);
     registerSeenStateRoutes(routes, store as any);
     registerPinArchiveRoutes(routes, store as any);
-    registerTurnActionRoutes(routes, store as any);
+    registerTurnActionRoutes(routes, store as any, getWsServer);
     registerProcessHistoryRoutes(routes, store as any);
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);

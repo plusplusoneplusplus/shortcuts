@@ -10,6 +10,7 @@ import { parseBodyOrReject } from './shared/handler-utils';
 import { handleAPIError, notFound } from './errors';
 import type { Route } from './types';
 import type { ConversationTurn } from '@plusplusoneplusplus/forge';
+import type { ProcessWebSocketServer } from './websocket';
 
 // ============================================================================
 // Types
@@ -32,7 +33,7 @@ export interface TurnActionStore {
 // Route registration
 // ============================================================================
 
-export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore): void {
+export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore, getWsServer?: () => ProcessWebSocketServer): void {
     // DELETE /api/processes/:id/turns/:turnIndex — soft-delete a turn
     routes.push({
         method: 'DELETE',
@@ -45,7 +46,9 @@ export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore
             if (!proc) return handleAPIError(res, notFound('Process'));
 
             store.softDeleteTurn(processId, turnIndex);
-            sendJSON(res, 200, { id: processId, turnIndex, deletedAt: new Date().toISOString() });
+            const deletedAt = new Date().toISOString();
+            sendJSON(res, 200, { id: processId, turnIndex, deletedAt });
+            getWsServer?.()?.broadcastProcessEvent({ type: 'turn-deleted', processId, turnIndex, deletedAt });
         },
     });
 
@@ -62,6 +65,7 @@ export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore
 
             store.restoreTurn(processId, turnIndex);
             sendJSON(res, 200, { id: processId, turnIndex, deletedAt: null });
+            getWsServer?.()?.broadcastProcessEvent({ type: 'turn-deleted', processId, turnIndex, deletedAt: null });
         },
     });
 
@@ -83,10 +87,12 @@ export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore
             if (pinned === false) {
                 store.unpinTurn(processId, turnIndex);
                 sendJSON(res, 200, { id: processId, turnIndex, pinnedAt: null });
+                getWsServer?.()?.broadcastProcessEvent({ type: 'turn-pinned', processId, turnIndex, pinnedAt: null });
             } else {
                 const pinnedAt = new Date().toISOString();
                 store.pinTurn(processId, turnIndex, pinnedAt);
                 sendJSON(res, 200, { id: processId, turnIndex, pinnedAt, archived: false });
+                getWsServer?.()?.broadcastProcessEvent({ type: 'turn-pinned', processId, turnIndex, pinnedAt });
             }
         },
     });
@@ -113,6 +119,7 @@ export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore
                 store.archiveTurn(processId, turnIndex);
                 sendJSON(res, 200, { id: processId, turnIndex, archived: true });
             }
+            getWsServer?.()?.broadcastProcessEvent({ type: 'turn-archived', processId, turnIndex, archived: !!archived });
         },
     });
 
