@@ -9,7 +9,7 @@
  * - Idle timeout auto-disposal only after markIdle
  * - disposeAll on server shutdown
  * - Graceful handling of missing aiService
- * - Pre-warmed idle pool: initialize, pop, recycle, rotation, dispose
+ * - Pre-warmed idle pool: initialize, pop, recycle, dispose
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -660,31 +660,6 @@ describe('CopilotClientCache', () => {
             });
         });
 
-        describe('stale rotation', () => {
-            it('rotates stale pool clients after maxAge', async () => {
-                const poolCache = new CopilotClientCache({
-                    idleTimeoutMs: 60_000,
-                    poolSize: 2,
-                    poolIdleMaxAgeMs: 120_000, // 2 min for test
-                });
-                const { service } = createMultiClientAIService();
-                poolCache.setAIService(service as any);
-
-                await poolCache.initialize();
-                const initialCreateCount = service.createClient.mock.calls.length;
-                expect(poolCache.poolCurrentSize).toBe(2);
-
-                // Advance past the pool idle max age + rotation interval (1 min check)
-                // Use advanceTimersByTimeAsync to flush microtasks between intervals
-                await vi.advanceTimersByTimeAsync(180_000); // 3 minutes
-
-                // Stale clients should have been rotated — new ones created
-                expect(service.createClient.mock.calls.length).toBeGreaterThan(initialCreateCount);
-
-                await poolCache.disposeAll();
-            });
-        });
-
         describe('disposeAll with pool', () => {
             it('stops all cached clients AND pool clients', async () => {
                 const poolCache = new CopilotClientCache({ idleTimeoutMs: 60_000, poolSize: 2 });
@@ -709,21 +684,6 @@ describe('CopilotClientCache', () => {
                 expect(poolCache.poolCurrentSize).toBe(0);
             });
 
-            it('clears the rotation timer', async () => {
-                const poolCache = new CopilotClientCache({ idleTimeoutMs: 60_000, poolSize: 2 });
-                const { service } = createMultiClientAIService();
-                poolCache.setAIService(service as any);
-
-                await poolCache.initialize();
-
-                await poolCache.disposeAll();
-
-                // Advance time — rotation should NOT fire and create new clients
-                const callCountAfterDispose = service.createClient.mock.calls.length;
-                vi.advanceTimersByTime(300_000);
-                await vi.runAllTimersAsync();
-                expect(service.createClient.mock.calls.length).toBe(callCountAfterDispose);
-            });
         });
 
         describe('poolCurrentSize', () => {

@@ -21,8 +21,8 @@
  * configurable number of "blank" CopilotClient processes (no cwd). When
  * `acquire()` needs a new client, it pops one from the pool instead of
  * spawning — reducing first-message latency. Released clients are recycled
- * back into the pool when under capacity. Idle pool clients older than
- * `poolIdleMaxAgeMs` (default 5 min) are rotated out and replaced.
+ * back into the pool when under capacity. Pool clients are kept alive
+ * until the pool is disabled or the server shuts down.
  */
 
 import type { CopilotSDKService } from '@plusplusoneplusplus/forge';
@@ -48,16 +48,12 @@ export interface CopilotClientCacheOptions {
     idleTimeoutMs?: number;
     /** Number of pre-warmed idle clients to maintain. Default: 3. Set to 0 to disable. */
     poolSize?: number;
-    /** Maximum age (ms) for idle pool clients before rotation. Default: 5 minutes. */
-    poolIdleMaxAgeMs?: number;
     /** Whether the pool feature is enabled. Default: true. */
     poolEnabled?: boolean;
 }
 
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const DEFAULT_POOL_SIZE = 3;
-const DEFAULT_POOL_IDLE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
-const ROTATION_INTERVAL_MS = 60 * 1000; // check every minute
 
 export class CopilotClientCache {
     private readonly cache = new Map<string, CachedClient>();
@@ -67,15 +63,12 @@ export class CopilotClientCache {
     // Pool state
     private readonly pool: PoolEntry[] = [];
     private poolSize: number;
-    private readonly poolIdleMaxAgeMs: number;
     private poolEnabled: boolean;
-    private rotationTimer: ReturnType<typeof setInterval> | null = null;
     private replenishing = false;
 
     constructor(options?: CopilotClientCacheOptions) {
         this.idleTimeoutMs = options?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
         this.poolSize = options?.poolSize ?? DEFAULT_POOL_SIZE;
-        this.poolIdleMaxAgeMs = options?.poolIdleMaxAgeMs ?? DEFAULT_POOL_IDLE_MAX_AGE_MS;
         this.poolEnabled = options?.poolEnabled ?? true;
     }
 
@@ -104,7 +97,6 @@ export class CopilotClientCache {
         logger.debug(LogCategory.AI, `[ClientCache] Pre-warming pool with ${this.poolSize} clients`);
 
         await this.replenish();
-        this.startRotationTimer();
     }
 
     /**
@@ -128,8 +120,7 @@ export class CopilotClientCache {
         logger.info(LogCategory.AI, `[ClientCache] Reconfigure: enabled=${this.poolEnabled} (was ${wasEnabled}), size=${this.poolSize} (was ${oldSize})`);
 
         if (!this.poolEnabled) {
-            // Drain all pool clients and stop the rotation timer
-            this.stopRotationTimer();
+            // Drain all pool clients
             const drained = this.pool.splice(0);
             await Promise.allSettled(drained.map(pe => pe.client.stop().catch(() => {})));
             logger.info(LogCategory.AI, `[ClientCache] Pool disabled — drained ${drained.length} clients`);
@@ -145,11 +136,6 @@ export class CopilotClientCache {
         } else if (this.pool.length < this.poolSize) {
             // Replenish to new size
             await this.replenish();
-        }
-
-        // Ensure rotation timer is running when pool is enabled
-        if (!wasEnabled) {
-            this.startRotationTimer();
         }
     }
 
@@ -268,8 +254,6 @@ export class CopilotClientCache {
         const logger = getLogger();
         logger.debug(LogCategory.AI, `[ClientCache] Disposing all clients (cached: ${this.cache.size}, pool: ${this.pool.length})`);
 
-        this.stopRotationTimer();
-
         // Collect all clients to stop
         const entries = [...this.cache.entries()];
         this.cache.clear();
@@ -377,62 +361,6 @@ export class CopilotClientCache {
             getLogger().debug(LogCategory.AI, '[ClientCache] Pool client warm-up failed (non-fatal)');
         }
         return client;
-    }
-
-    /**
-     * Remove pool entries older than `poolIdleMaxAgeMs` and replenish.
-     */
-    private async rotateStale(): Promise<void> {
-        if (!this.poolEnabled || this.pool.length === 0) return;
-
-        const now = Date.now();
-        const stale: PoolEntry[] = [];
-        const fresh: PoolEntry[] = [];
-
-        for (const entry of this.pool) {
-            if (now - entry.createdAt > this.poolIdleMaxAgeMs) {
-                stale.push(entry);
-            } else {
-                fresh.push(entry);
-            }
-        }
-
-        if (stale.length === 0) return;
-
-        const logger = getLogger();
-        logger.debug(LogCategory.AI, `[ClientCache] Rotating ${stale.length} stale pool clients`);
-
-        // Replace pool contents with fresh entries only
-        this.pool.length = 0;
-        this.pool.push(...fresh);
-
-        // Stop stale clients in parallel
-        await Promise.allSettled(
-            stale.map(async (pe) => {
-                try { await pe.client.stop(); } catch { /* non-fatal */ }
-            }),
-        );
-
-        // Replenish to fill back up
-        await this.replenish();
-    }
-
-    private startRotationTimer(): void {
-        if (this.rotationTimer) return;
-        this.rotationTimer = setInterval(() => {
-            this.rotateStale().catch(() => {});
-        }, ROTATION_INTERVAL_MS);
-        // Unref so it doesn't keep Node alive
-        if (this.rotationTimer && typeof this.rotationTimer === 'object' && 'unref' in this.rotationTimer) {
-            this.rotationTimer.unref();
-        }
-    }
-
-    private stopRotationTimer(): void {
-        if (this.rotationTimer) {
-            clearInterval(this.rotationTimer);
-            this.rotationTimer = null;
-        }
     }
 
     // ========================================================================
