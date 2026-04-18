@@ -45,6 +45,7 @@ import { registerDbBrowserRoutes } from '../db-browser-handler';
 import { registerHeapRoutes } from '../heap-monitor';
 import { registerSeenStateRoutes } from '../seen-state-handler';
 import { registerPinArchiveRoutes } from '../pin-archive-handler';
+import { registerTurnActionRoutes } from '../turn-actions-handler';
 import { registerProcessHistoryRoutes } from '../process-history-handler';
 import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
@@ -156,6 +157,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerPreferencesRoutes(routes, dataDir);
     registerSeenStateRoutes(routes, store as any);
     registerPinArchiveRoutes(routes, store as any);
+    registerTurnActionRoutes(routes, store as any);
     registerProcessHistoryRoutes(routes, store as any);
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);

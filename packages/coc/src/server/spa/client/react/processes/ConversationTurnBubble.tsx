@@ -109,6 +109,12 @@ interface ConversationTurnBubbleProps {
     turnIndex?: number;
     /** Called when user selects "Attach as context" from the right-click menu. */
     onAttachContext?: (turnIndex: number, role: 'user' | 'assistant', snippet: string) => void;
+    /** Called when user deletes a turn (soft-delete). */
+    onDeleteTurn?: (turnIndex: number) => void;
+    /** Called when user pins/unpins a turn. */
+    onPinTurn?: (turnIndex: number, pinned: boolean) => void;
+    /** Called when user archives/unarchives a turn. */
+    onArchiveTurn?: (turnIndex: number, archived: boolean) => void;
 }
 
 interface RenderToolCall {
@@ -596,7 +602,7 @@ function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === 'run-script';
     const assistantRender = !isUser ? buildAssistantRender(turn, wsId) : null;
@@ -648,8 +654,33 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                 } catch {}
             },
         });
+        // Per-message actions: Pin, Archive, Delete
+        if (turnIndex != null) {
+            items.push({ label: '', separator: true, onClick: () => {} });
+            if (onPinTurn) {
+                items.push({
+                    label: turn.pinnedAt ? 'Unpin' : 'Pin',
+                    icon: turn.pinnedAt ? '📌' : '📌',
+                    onClick: () => onPinTurn(turnIndex, !turn.pinnedAt),
+                });
+            }
+            if (onArchiveTurn) {
+                items.push({
+                    label: turn.archived ? 'Unarchive' : 'Archive',
+                    icon: turn.archived ? '📂' : '🗄️',
+                    onClick: () => onArchiveTurn(turnIndex, !turn.archived),
+                });
+            }
+            if (onDeleteTurn) {
+                items.push({
+                    label: 'Delete',
+                    icon: '🗑️',
+                    onClick: () => onDeleteTurn(turnIndex),
+                });
+            }
+        }
         return items;
-    }, [onAttachContext, turnIndex, turn, showRaw, wsId]);
+    }, [onAttachContext, turnIndex, turn, showRaw, wsId, onPinTurn, onArchiveTurn, onDeleteTurn]);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {
@@ -786,7 +817,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
             'flex', isUser ? 'justify-end' : 'justify-start',
             'chat-message', isUser ? 'user' : 'assistant',
             turn.streaming && 'streaming',
-            turn.isError && 'error'
+            turn.isError && 'error',
+            turn.archived && 'opacity-50',
+            turn.deletedAt && 'opacity-30 line-through'
         )}
             {...(wsId ? { 'data-ws-id': wsId } : {})}
             {...(turnIndex != null ? { 'data-turn-index': turnIndex } : {})}
@@ -806,10 +839,14 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                         ? 'bg-[#e8f3ff] dark:bg-[#0f2a42] border-[#b3d7ff] dark:border-[#2a4a66]'
                         : turn.isError
                             ? 'bg-[#fff5f5] dark:bg-[#2a1a1a] border-[#f14c4c] dark:border-[#8b2020]'
-                            : 'bg-[#f8f8f8] dark:bg-[#252526] border-[#e0e0e0] dark:border-[#3c3c3c]'
+                            : 'bg-[#f8f8f8] dark:bg-[#252526] border-[#e0e0e0] dark:border-[#3c3c3c]',
+                    turn.pinnedAt && 'ring-2 ring-amber-400/60 dark:ring-amber-500/40'
                 )}
             >
                 <div className="flex items-center gap-2 text-[11px] text-[#848484] mb-2">
+                    {turn.pinnedAt && (
+                        <span className="text-amber-500 dark:text-amber-400" title="Pinned">📌</span>
+                    )}
                     <span
                         className={cn(
                             'font-medium uppercase tracking-wide role-label',

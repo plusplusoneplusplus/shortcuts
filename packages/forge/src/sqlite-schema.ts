@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * Read the current schema version from the database.
@@ -81,6 +81,9 @@ export function initializeDatabase(db: Database.Database): void {
                 suggestions       TEXT,
                 token_usage       TEXT,
                 paste_externalized INTEGER DEFAULT 0,
+                deleted_at        TEXT,
+                pinned_at         TEXT,
+                archived          INTEGER DEFAULT 0,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -279,6 +282,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore >= 1 && versionBefore < 7) {
             migrateV6toV7(db);
         }
+        if (versionBefore >= 1 && versionBefore < 8) {
+            migrateV7toV8(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -346,4 +352,21 @@ function migrateV5toV6(db: Database.Database): void {
  */
 function migrateV6toV7(db: Database.Database): void {
     db.exec('DROP TABLE IF EXISTS note_chat_bindings');
+}
+
+/**
+ * V7 → V8: add `deleted_at TEXT`, `pinned_at TEXT`, `archived INTEGER DEFAULT 0`
+ * columns to `conversation_turns` for per-message delete, pin, archive.
+ */
+function migrateV7toV8(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'deleted_at')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN deleted_at TEXT');
+    }
+    if (!cols.some(c => c.name === 'pinned_at')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN pinned_at TEXT');
+    }
+    if (!cols.some(c => c.name === 'archived')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN archived INTEGER DEFAULT 0');
+    }
 }

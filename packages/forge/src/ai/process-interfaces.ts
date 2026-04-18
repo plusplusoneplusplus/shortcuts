@@ -158,6 +158,12 @@ export interface ConversationTurn {
     tokenUsage?: TokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
+    deletedAt?: Date;
+    /** ISO timestamp when this turn was pinned (undefined = not pinned) */
+    pinnedAt?: Date;
+    /** True when this turn is archived (collapsed/hidden by default) */
+    archived?: boolean;
 }
 
 /**
@@ -182,6 +188,12 @@ export interface SerializedConversationTurn {
     tokenUsage?: TokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
+    deletedAt?: string;
+    /** ISO timestamp when this turn was pinned (undefined = not pinned) */
+    pinnedAt?: string;
+    /** True when this turn is archived (collapsed/hidden by default) */
+    archived?: boolean;
 }
 
 /**
