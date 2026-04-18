@@ -66,7 +66,7 @@ export function NotesTreeItem({
         >
             {/* Chevron */}
             {folder ? (
-                <span className="flex-shrink-0 text-[10px] text-[#848484] w-3 inline-block" data-testid="chevron">
+                <span className="flex-shrink-0 text-xs text-[#848484] w-3.5 inline-block" data-testid="chevron">
                     {isExpanded ? '▾' : '▸'}
                 </span>
             ) : (
