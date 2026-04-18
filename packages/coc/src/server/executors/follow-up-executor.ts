@@ -41,7 +41,7 @@ import {
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
-
+import type { CopilotClientCache } from './copilot-client-cache';
 // ============================================================================
 // Types
 // ============================================================================
@@ -92,8 +92,8 @@ export class FollowUpExecutor extends BaseExecutor {
     private readonly _resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<SkillConfig>;
     private readonly onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
 
-    constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string) {
-        super(store, dataDir);
+    constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
+        super(store, dataDir, clientCache);
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService;
@@ -197,8 +197,19 @@ export class FollowUpExecutor extends BaseExecutor {
 
             const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
 
+            // Reuse a cached CopilotClient for this process when available.
+            let cachedClient: import('@github/copilot-sdk').CopilotClient | undefined;
+            if (this.clientCache) {
+                try {
+                    cachedClient = await this.clientCache.getOrCreate(processId, workingDirectory);
+                } catch {
+                    // Non-fatal: fall back to session-per-request (no cached client)
+                }
+            }
+
             const result = await this.aiService.sendMessage({
                 prompt: followUpMessage,
+                client: cachedClient,
                 sessionId: process.sdkSessionId,
                 mode: agentMode,
                 workingDirectory,

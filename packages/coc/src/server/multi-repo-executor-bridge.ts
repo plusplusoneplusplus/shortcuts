@@ -27,6 +27,7 @@ import {
     QueueExecutorBridge,
     createQueueExecutorBridge,
 } from './queue-executor-bridge';
+import { CopilotClientCache } from './executors/copilot-client-cache';
 
 // ============================================================================
 // Types
@@ -44,6 +45,8 @@ interface RepoBridge {
 export class MultiRepoQueueExecutorBridge extends EventEmitter {
     /** Exposed for StaleTaskDetector and SqliteQueuePersistence to access per-repo managers. */
     readonly registry: RepoQueueRegistry;
+    /** Shared CopilotClient cache — one client per active process across all repos. */
+    readonly clientCache: CopilotClientCache;
     private readonly store: ProcessStore;
     private defaultOptions: QueueExecutorBridgeOptions;
 
@@ -65,6 +68,11 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         this.registry = registry;
         this.store = store;
         this.defaultOptions = defaultOptions;
+
+        // Single shared client cache across all repos (keyed by processId, globally unique)
+        this.clientCache = new CopilotClientCache();
+        const aiService = defaultOptions.aiService ?? getCopilotSDKService();
+        this.clientCache.setAIService(aiService);
 
         // Forward queueChange events from the registry, augmenting with repoId
         this.registry.on('queueChange', (repoPath: string, event: QueueChangeEvent) => {
@@ -99,7 +107,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         const { executor, bridge } = createQueueExecutorBridge(
             queueManager,
             this.store,
-            { ...this.defaultOptions, workingDirectory: normalized },
+            { ...this.defaultOptions, workingDirectory: normalized, clientCache: this.clientCache },
         );
 
         this.bridges.set(normalized, { executor, bridge });
@@ -584,6 +592,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         this.repoIdToPath.clear();
         this.pathToRepoId.clear();
         this.registry.dispose();
+        this.clientCache.disposeAll().catch(() => {});
         this.removeAllListeners();
     }
 }

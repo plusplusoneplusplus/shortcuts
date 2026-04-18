@@ -67,6 +67,7 @@ interface CloseHandlerDeps {
     terminalSessionManager?: { destroyAll(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
+    clientCache?: { disposeAll(): Promise<void> };
 }
 
 function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) => Promise<{ drainOutcome?: 'completed' | 'timeout' }> {
@@ -96,6 +97,11 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         queuePersistence.dispose();
         if (!closeOptions?.drain) {
             bridge.dispose();
+        }
+
+        // Stop all cached CopilotClient child processes
+        if (deps.clientCache) {
+            await deps.clientCache.disposeAll();
         }
 
         deps.terminalSessionManager?.destroyAll();
@@ -239,6 +245,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             activeSockets, server,
+            clientCache: bridge.clientCache,
         }),
     };
 }

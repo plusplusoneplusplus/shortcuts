@@ -31,6 +31,7 @@ import {
 } from './prompt-builder';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
 // ChatExecutor
@@ -43,8 +44,8 @@ export interface ChatExecutorOptions extends ChatModeExecutorOptions {
 export class ChatExecutor extends ChatBaseExecutor {
     private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
 
-    constructor(store: ProcessStore, options: ChatExecutorOptions, dataDir?: string) {
-        super(store, options, dataDir);
+    constructor(store: ProcessStore, options: ChatExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
+        super(store, options, dataDir, clientCache);
         this.getWsServerFn = options.getWsServer;
     }
 

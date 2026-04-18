@@ -17,6 +17,7 @@
 import type { ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
 import { mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../output-file-manager';
+import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
 // Types
@@ -40,6 +41,7 @@ export interface ProcessSessionState {
 export abstract class BaseExecutor {
     protected readonly store: ProcessStore;
     protected readonly dataDir?: string;
+    protected readonly clientCache?: CopilotClientCache;
 
     /** Set of task IDs that have been cancelled. */
     protected readonly cancelledTasks: Set<string> = new Set();
@@ -53,9 +55,10 @@ export abstract class BaseExecutor {
     /** Count-based throttle: flush every N chunks. */
     protected static readonly THROTTLE_CHUNK_COUNT = 50;
 
-    constructor(store: ProcessStore, dataDir?: string) {
+    constructor(store: ProcessStore, dataDir?: string, clientCache?: CopilotClientCache) {
         this.store = store;
         this.dataDir = dataDir;
+        this.clientCache = clientCache;
     }
 
     // ========================================================================
@@ -80,6 +83,8 @@ export abstract class BaseExecutor {
     /** Delete all session state for a process in one atomic operation. */
     protected cleanupSession(processId: string): void {
         this.sessions.delete(processId);
+        // Release the cached CopilotClient (if any) so the child process is stopped
+        this.clientCache?.release(processId).catch(() => {});
     }
 
     // ========================================================================

@@ -46,6 +46,7 @@ import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from '
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
 import { prependSelectedSkillsDirective } from './prompt-builder';
+import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
 // Types
@@ -104,8 +105,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
 
-    constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
-        super(store, dataDir);
+    constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
+        super(store, dataDir, clientCache);
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService;
@@ -235,8 +236,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
             const toolEventHandler = this.buildToolEventHandler(processId, () => 1);
 
+            // Reuse a cached CopilotClient for this process when available.
+            let cachedClient: import('@github/copilot-sdk').CopilotClient | undefined;
+            if (this.clientCache) {
+                try {
+                    cachedClient = await this.clientCache.getOrCreate(processId, workingDirectory);
+                } catch {
+                    // Non-fatal: fall back to session-per-request (no cached client)
+                }
+            }
+
             const result = await this.aiService.sendMessage({
                 prompt: effectivePrompt,
+                client: cachedClient,
                 mode: agentMode,
                 model: task.config.model,
                 reasoningEffort: task.config.reasoningEffort ?? 'high',

@@ -248,3 +248,98 @@ describe('RequestRunner.transform()', () => {
         await expect(runner.transform('prompt')).rejects.toThrow('AI error');
     });
 });
+
+// ============================================================================
+// send() — external client (keepalive)
+// ============================================================================
+
+describe('RequestRunner.send() — external client (keepalive)', () => {
+    it('uses provided client instead of creating a new one', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
+        const externalClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn(),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const createClient = vi.fn();
+        const { runner } = makeRunner({ createClient });
+
+        const result = await runner.send({
+            prompt: 'test',
+            client: externalClient as any,
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('hello');
+        expect(createClient).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call client.stop() when client is externally provided', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
+        const externalClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner();
+
+        await runner.send({
+            prompt: 'test',
+            client: externalClient as any,
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(externalClient.stop).not.toHaveBeenCalled();
+    });
+
+    it('still calls session.destroy() even when client is externally provided', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
+        const externalClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner();
+
+        await runner.send({
+            prompt: 'test',
+            client: externalClient as any,
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(mockSession.destroy).toHaveBeenCalled();
+    });
+
+    it('DOES call client.stop() when client is internally created', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
+        const internalClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(internalClient) });
+
+        await runner.send({ prompt: 'test', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        expect(internalClient.stop).toHaveBeenCalled();
+    });
+
+    it('does not stop external client on error', async () => {
+        const externalClient = {
+            createSession: vi.fn().mockRejectedValue(new Error('session failed')),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner();
+
+        const result = await runner.send({
+            prompt: 'test',
+            client: externalClient as any,
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(result.success).toBe(false);
+        expect(externalClient.stop).not.toHaveBeenCalled();
+    });
+});

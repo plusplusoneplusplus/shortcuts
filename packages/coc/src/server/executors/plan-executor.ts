@@ -30,6 +30,7 @@ import {
 } from './prompt-builder';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
 // PlanExecutor
@@ -38,8 +39,8 @@ import { ChatBaseExecutor } from './chat-base-executor';
 export type PlanExecutorOptions = ChatModeExecutorOptions;
 
 export class PlanExecutor extends ChatBaseExecutor {
-    constructor(store: ProcessStore, options: PlanExecutorOptions, dataDir?: string) {
-        super(store, options, dataDir);
+    constructor(store: ProcessStore, options: PlanExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
+        super(store, options, dataDir, clientCache);
     }
 
     protected async buildModeOptions(

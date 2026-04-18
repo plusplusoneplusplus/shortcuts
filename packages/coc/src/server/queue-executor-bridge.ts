@@ -9,6 +9,7 @@ import { BaseExecutor } from './executors/base-executor';
 import { resolveSkillConfig } from './executors/skill-config-resolver';
 import { generateTitleIfNeeded as generateTitleIfNeededFn } from './executors/title-generator';
 import { ExecutorRegistry } from './executors/executor-registry';
+import type { CopilotClientCache } from './executors/copilot-client-cache';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -17,6 +18,8 @@ export interface CLITaskExecutorOptions {
     aiService?: CopilotSDKService; defaultTimeoutMs?: number;
     followUpSuggestions?: { enabled: boolean; count: number };
     getWsServer?: () => import('./websocket').ProcessWebSocketServer | undefined;
+    /** Shared CopilotClient cache (optional — when provided, AI calls reuse clients). */
+    clientCache?: CopilotClientCache;
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
@@ -76,6 +79,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
             getWsServer: options.getWsServer,
+            clientCache: options.clientCache,
         });
     }
 
