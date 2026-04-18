@@ -1310,6 +1310,66 @@ describe('Admin Handler', () => {
     });
 
     // ========================================================================
+    // PUT /api/admin/config — clientPool
+    // ========================================================================
+
+    describe('clientPool config', () => {
+        it('should accept clientPool.enabled=false', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'clientPool.enabled': false }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.clientPool.enabled).toBe(false);
+            expect(body.sources['clientPool.enabled']).toBe('file');
+        });
+
+        it('should accept clientPool.size=5', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'clientPool.size': 5 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.clientPool.size).toBe(5);
+            expect(body.sources['clientPool.size']).toBe('file');
+        });
+
+        it('should reject non-boolean clientPool.enabled', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'clientPool.enabled': 'yes' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('clientPool.enabled');
+        });
+
+        it('should reject clientPool.size > 10', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'clientPool.size': 20 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('clientPool.size');
+        });
+    });
+
+    // ========================================================================
     // GET /api/admin/import-token
     // ========================================================================
 

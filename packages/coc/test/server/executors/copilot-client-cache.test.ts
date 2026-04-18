@@ -759,5 +759,73 @@ describe('CopilotClientCache', () => {
                 await defaultCache.disposeAll();
             });
         });
+
+        describe('reconfigure', () => {
+            it('disabling pool drains all pooled clients', async () => {
+                const { service } = createMultiClientAIService();
+                const cache = new CopilotClientCache({ poolSize: 3, poolEnabled: true });
+                cache.setAIService(service as any);
+                await cache.initialize();
+                expect(cache.poolCurrentSize).toBe(3);
+
+                await cache.reconfigure({ enabled: false });
+                expect(cache.poolCurrentSize).toBe(0);
+
+                await cache.disposeAll();
+            });
+
+            it('enabling pool replenishes to configured size', async () => {
+                const { service } = createMultiClientAIService();
+                const cache = new CopilotClientCache({ poolSize: 0, poolEnabled: false });
+                cache.setAIService(service as any);
+                await cache.initialize();
+                expect(cache.poolCurrentSize).toBe(0);
+
+                await cache.reconfigure({ enabled: true, size: 2 });
+                expect(cache.poolCurrentSize).toBe(2);
+
+                await cache.disposeAll();
+            });
+
+            it('increasing size replenishes the difference', async () => {
+                const { service } = createMultiClientAIService();
+                const cache = new CopilotClientCache({ poolSize: 1, poolEnabled: true });
+                cache.setAIService(service as any);
+                await cache.initialize();
+                expect(cache.poolCurrentSize).toBe(1);
+
+                await cache.reconfigure({ size: 3 });
+                expect(cache.poolCurrentSize).toBe(3);
+
+                await cache.disposeAll();
+            });
+
+            it('decreasing size drains excess clients', async () => {
+                const { service } = createMultiClientAIService();
+                const cache = new CopilotClientCache({ poolSize: 3, poolEnabled: true });
+                cache.setAIService(service as any);
+                await cache.initialize();
+                expect(cache.poolCurrentSize).toBe(3);
+
+                await cache.reconfigure({ size: 1 });
+                expect(cache.poolCurrentSize).toBe(1);
+
+                await cache.disposeAll();
+            });
+
+            it('no-op when nothing changes', async () => {
+                const { service } = createMultiClientAIService();
+                const cache = new CopilotClientCache({ poolSize: 2, poolEnabled: true });
+                cache.setAIService(service as any);
+                await cache.initialize();
+                const callsBefore = service.createClient.mock.calls.length;
+
+                await cache.reconfigure({ enabled: true, size: 2 });
+                // No additional createClient calls
+                expect(service.createClient.mock.calls.length).toBe(callsBefore);
+
+                await cache.disposeAll();
+            });
+        });
     });
 });

@@ -66,9 +66,9 @@ export class CopilotClientCache {
 
     // Pool state
     private readonly pool: PoolEntry[] = [];
-    private readonly poolSize: number;
+    private poolSize: number;
     private readonly poolIdleMaxAgeMs: number;
-    private readonly poolEnabled: boolean;
+    private poolEnabled: boolean;
     private rotationTimer: ReturnType<typeof setInterval> | null = null;
     private replenishing = false;
 
@@ -97,6 +97,52 @@ export class CopilotClientCache {
 
         await this.replenish();
         this.startRotationTimer();
+    }
+
+    /**
+     * Reconfigure the pool at runtime (e.g. after a config change via the admin API).
+     *
+     * - If `enabled` transitions false→true, starts the rotation timer and replenishes.
+     * - If `enabled` transitions true→false, drains all pool clients and stops the timer.
+     * - If `size` changes while enabled, drains excess or replenishes to match.
+     */
+    async reconfigure(options: { enabled?: boolean; size?: number }): Promise<void> {
+        const logger = getLogger();
+        const wasEnabled = this.poolEnabled;
+        const oldSize = this.poolSize;
+
+        if (options.enabled !== undefined) this.poolEnabled = options.enabled;
+        if (options.size !== undefined) this.poolSize = options.size;
+
+        // No-op if nothing changed
+        if (this.poolEnabled === wasEnabled && this.poolSize === oldSize) return;
+
+        logger.debug(LogCategory.AI, `[ClientCache] Reconfigure: enabled=${this.poolEnabled} (was ${wasEnabled}), size=${this.poolSize} (was ${oldSize})`);
+
+        if (!this.poolEnabled) {
+            // Drain all pool clients and stop the rotation timer
+            this.stopRotationTimer();
+            const drained = this.pool.splice(0);
+            await Promise.allSettled(drained.map(pe => pe.client.stop().catch(() => {})));
+            logger.debug(LogCategory.AI, `[ClientCache] Pool disabled — drained ${drained.length} clients`);
+            return;
+        }
+
+        // Pool is enabled — adjust to new size
+        if (this.pool.length > this.poolSize) {
+            // Drain excess
+            const excess = this.pool.splice(this.poolSize);
+            await Promise.allSettled(excess.map(pe => pe.client.stop().catch(() => {})));
+            logger.debug(LogCategory.AI, `[ClientCache] Drained ${excess.length} excess pool clients`);
+        } else if (this.pool.length < this.poolSize) {
+            // Replenish to new size
+            await this.replenish();
+        }
+
+        // Ensure rotation timer is running when pool is enabled
+        if (!wasEnabled) {
+            this.startRotationTimer();
+        }
     }
 
     /**
