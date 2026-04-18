@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../../src/ai/types';
 import type { MemoryStore, MemoryLevel } from '../../src/memory/types';
 
-vi.mock('../../src/memory/memory-retriever');
+vi.mock('../../src/memory/memory-prompt-builder');
 vi.mock('../../src/memory/memory-tool');
 vi.mock('../../src/memory/memory-aggregator');
 const mockWarnFn = vi.fn();
@@ -14,7 +14,7 @@ vi.mock('../../src/ai-logger', () => ({
 }));
 
 import { withMemory, type WithMemoryOptions } from '../../src/memory/with-memory';
-import { MemoryRetriever } from '../../src/memory/memory-retriever';
+import { MemoryPromptBuilder } from '../../src/memory/memory-prompt-builder';
 import { createMemoryTool } from '../../src/memory/memory-tool';
 import { MemoryAggregator } from '../../src/memory/memory-aggregator';
 
@@ -39,12 +39,24 @@ function makeMockStore(): MemoryStore {
 
 const mockMemoryTool = { name: 'memory' } as any;
 
+function makeMockBoundedStore() {
+    return {
+        read: vi.fn().mockReturnValue([]),
+        getUsage: vi.fn().mockReturnValue({ current: 0, limit: 3000, percent: 0, entryCount: 0 }),
+        load: vi.fn(),
+        add: vi.fn(),
+        replace: vi.fn(),
+        remove: vi.fn(),
+        getSnapshot: vi.fn().mockReturnValue(null),
+    } as any;
+}
+
 describe('withMemory', () => {
     let mockInvoker: Mock<AIInvoker>;
     let mockStore: MemoryStore;
     let baseOpts: AIInvokerOptions;
     let memOpts: WithMemoryOptions;
-    let mockRetrieve: Mock;
+    let mockGetSystemPromptBlock: Mock;
     let mockAggregateIfNeeded: Mock;
 
     beforeEach(() => {
@@ -52,13 +64,22 @@ describe('withMemory', () => {
 
         mockInvoker = vi.fn<AIInvoker>().mockResolvedValue(makeResult());
         mockStore = makeMockStore();
+        const boundedRepoStore = makeMockBoundedStore();
+        const boundedSystemStore = makeMockBoundedStore();
         baseOpts = { model: 'test-model' };
-        memOpts = { store: mockStore, source: 'test-pipeline', boundedStores: { memory: {} as any, system: {} as any } };
+        memOpts = {
+            store: mockStore,
+            source: 'test-pipeline',
+            boundedStores: { memory: boundedRepoStore, system: boundedSystemStore },
+            boundedRepoStore,
+            boundedSystemStore,
+        };
 
-        // Setup MemoryRetriever mock
-        mockRetrieve = vi.fn().mockResolvedValue(null);
-        (MemoryRetriever as unknown as Mock).mockImplementation(() => ({
-            retrieve: mockRetrieve,
+        // Setup MemoryPromptBuilder mock
+        mockGetSystemPromptBlock = vi.fn().mockReturnValue(null);
+        (MemoryPromptBuilder as unknown as Mock).mockImplementation(() => ({
+            getSystemPromptBlock: mockGetSystemPromptBlock,
+            getGuidance: vi.fn().mockReturnValue('guidance'),
         }));
 
         // Setup createMemoryTool mock
@@ -74,29 +95,13 @@ describe('withMemory', () => {
         }));
     });
 
-    it('calls retriever before invoking AI', async () => {
-        const callOrder: string[] = [];
-        mockRetrieve.mockImplementation(async () => {
-            callOrder.push('retrieve');
-            return null;
-        });
-        mockInvoker.mockImplementation(async () => {
-            callOrder.push('invoke');
-            return makeResult();
-        });
-
-        await withMemory(mockInvoker, 'prompt', baseOpts, memOpts);
-
-        expect(callOrder).toEqual(['retrieve', 'invoke']);
-    });
-
-    it('prepends retrieved context to prompt', async () => {
-        mockRetrieve.mockResolvedValue('## Context from Memory\n\nSome facts');
+    it('prepends memory block to prompt when present', async () => {
+        mockGetSystemPromptBlock.mockReturnValue('══════\nMEMORY block\n══════\ncontent');
 
         await withMemory(mockInvoker, 'original prompt', baseOpts, memOpts);
 
         expect(mockInvoker).toHaveBeenCalledWith(
-            '## Context from Memory\n\nSome facts\n\noriginal prompt',
+            '══════\nMEMORY block\n══════\ncontent\n\noriginal prompt',
             expect.any(Object),
         );
     });
@@ -109,16 +114,15 @@ describe('withMemory', () => {
     });
 
     it('passes through when no memory exists', async () => {
-        mockRetrieve.mockResolvedValue(null);
+        mockGetSystemPromptBlock.mockReturnValue(null);
 
         await withMemory(mockInvoker, 'original prompt', baseOpts, memOpts);
 
         expect(mockInvoker).toHaveBeenCalledWith('original prompt', expect.any(Object));
     });
 
-    it('does not modify prompt when retriever returns null for empty', async () => {
-        // MemoryRetriever normalizes empty string to null internally
-        mockRetrieve.mockResolvedValue(null);
+    it('does not modify prompt when builder returns null', async () => {
+        mockGetSystemPromptBlock.mockReturnValue(null);
 
         await withMemory(mockInvoker, 'my prompt', baseOpts, memOpts);
 
@@ -143,8 +147,10 @@ describe('withMemory', () => {
         expect(result).toBe(expectedResult);
     });
 
-    it('handles retrieve failure gracefully', async () => {
-        mockRetrieve.mockRejectedValue(new Error('disk'));
+    it('handles prompt builder failure gracefully', async () => {
+        (MemoryPromptBuilder as unknown as Mock).mockImplementation(() => {
+            throw new Error('disk');
+        });
 
         const result = await withMemory(mockInvoker, 'original prompt', baseOpts, memOpts);
 
@@ -152,7 +158,7 @@ describe('withMemory', () => {
         expect(mockInvoker).toHaveBeenCalledWith('original prompt', expect.any(Object));
         expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
             expect.objectContaining({ err: expect.any(Error) }),
-            expect.stringContaining('retrieve failed'),
+            expect.stringContaining('prompt builder failed'),
         );
     });
 
@@ -188,7 +194,15 @@ describe('withMemory', () => {
         expect(calledOpts.tools ?? []).toEqual([]);
     });
 
-    it('full cycle with level: repo → retriever called at repo level', async () => {
+    it('skips prompt builder when boundedRepoStore is not provided', async () => {
+        const optsNoBounded: WithMemoryOptions = { store: mockStore, source: 'test-pipeline' };
+        await withMemory(mockInvoker, 'prompt', baseOpts, optsNoBounded);
+
+        expect(MemoryPromptBuilder).not.toHaveBeenCalled();
+        expect(mockInvoker).toHaveBeenCalledWith('prompt', expect.any(Object));
+    });
+
+    it('aggregation uses correct level and repoHash', async () => {
         const repoOpts: WithMemoryOptions = {
             ...memOpts,
             level: 'repo',
@@ -197,38 +211,21 @@ describe('withMemory', () => {
 
         await withMemory(mockInvoker, 'prompt', baseOpts, repoOpts);
 
-        expect(mockRetrieve).toHaveBeenCalledWith('repo', 'abc123');
         expect(mockAggregateIfNeeded).toHaveBeenCalledWith(mockInvoker, 'repo', 'abc123');
     });
 
-    it('full cycle with level: system → retriever called at system level', async () => {
+    it('full cycle with level: system → aggregation called at system level', async () => {
         const sysOpts: WithMemoryOptions = { ...memOpts, level: 'system' };
 
         await withMemory(mockInvoker, 'prompt', baseOpts, sysOpts);
 
-        expect(mockRetrieve).toHaveBeenCalledWith('system', undefined);
         expect(mockAggregateIfNeeded).toHaveBeenCalledWith(mockInvoker, 'system', undefined);
     });
 
-    it('full cycle with level: both (default) → retriever called with both', async () => {
-        // Default level is 'both'
+    it('full cycle with level: both (default) → aggregation called with both', async () => {
         await withMemory(mockInvoker, 'prompt', baseOpts, { ...memOpts, repoHash: 'xyz' });
 
-        expect(mockRetrieve).toHaveBeenCalledWith('both', 'xyz');
         expect(mockAggregateIfNeeded).toHaveBeenCalledWith(mockInvoker, 'both', 'xyz');
-    });
-
-    it('level: git-remote → retriever called at git-remote level', async () => {
-        const gitRemoteOpts: WithMemoryOptions = {
-            ...memOpts,
-            level: 'git-remote',
-            repoHash: 'remotehash1',
-        };
-
-        await withMemory(mockInvoker, 'prompt', baseOpts, gitRemoteOpts);
-
-        expect(mockRetrieve).toHaveBeenCalledWith('git-remote', 'remotehash1');
-        expect(mockAggregateIfNeeded).toHaveBeenCalledWith(mockInvoker, 'git-remote', 'remotehash1');
     });
 
     it('AI call fails → error propagated, not swallowed', async () => {

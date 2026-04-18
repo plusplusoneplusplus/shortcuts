@@ -210,7 +210,7 @@ Opt-in, two-level persistence layer that lets AI pipelines learn from past sessi
 | `MemoryStore` (interface) | Full CRUD contract |
 | `BoundedMemoryStore` | Hermes-style bounded file-backed store; add/replace/remove with substring matching, char limits, `§` delimiters, mkdir-based file locking |
 | `scanMemoryContent()` | Stateless security scanner for injection/exfiltration threats and invisible Unicode |
-| `MemoryRetriever` | Loads `consolidated.md` → formats markdown context block for prompt injection |
+| `MemoryPromptBuilder` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` at construction, renders immutable `═══`-separated block with usage header + `MEMORY_GUIDANCE` for system prompt injection |
 | `createWriteMemoryTool()` | Factory returning an AI-callable `write_memory` tool + `getWrittenFacts()` accessor |
 | `MemoryAggregator` | Batch-threshold check; triggers AI consolidation when `rawCount >= 5` |
 | `withMemory()` | One-liner orchestrator: retrieve → inject tool → invoke AI → aggregate |

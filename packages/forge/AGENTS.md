@@ -46,11 +46,11 @@ Persistent memory that lets AI interactions learn from past executions. Stores o
 | `bounded-memory-store.ts` | `BoundedMemoryStore` | Hermes-style bounded file-backed store with add/replace/remove, substring matching, char limits, `§` delimiters, mkdir-based file locking, atomic writes. Extends `BaseFileStore`. |
 | `memory-security-scanner.ts` | `scanMemoryContent` | Stateless security scanner detecting prompt injection, exfiltration, persistence threats, and invisible Unicode characters |
 | `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths (deprecated — prefer `repoDir` option) |
-| `memory-retriever.ts` | `MemoryRetriever` | Loads `consolidated.md` for a repo/system level, formats as a context block for prompt injection |
+| `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE`, `ENTRY_DELIMITER` | Frozen snapshot prompt builder: reads `BoundedMemoryStore` entries at construction, renders immutable `═══`-separated block with usage header + behavioral guidance for system prompt injection. Preserves LLM prefix cache stability. |
 | `memory-tool.ts` | `createMemoryTool` | Factory returning a `memory` tool with add/replace/remove actions against `BoundedMemoryStore`. Hermes-style: capacity-aware, duplicate-preventing, security scanning via store. Takes `MemoryToolStores` map (memory→repo store, system→global store). |
 | `memory-aggregator.ts` | `MemoryAggregator` | Checks batch threshold, consolidates raw observations into `consolidated.md` using an AI invoker |
 | `extraction-prompts.ts` | `EXTRACTION_SYSTEM_PROMPT`, `buildExtractionUserPrompt`, `parseExtractionResponse`, `ExtractedFact` | Prompts and JSON parser for offline fact extraction from conversation transcripts |
-| `with-memory.ts` | `withMemory` | Orchestrator: retrieve context → optionally inject `memory` tool (when `boundedStores` provided) → invoke AI → check aggregation threshold |
+| `with-memory.ts` | `withMemory` | Orchestrator: build frozen memory prompt → optionally inject `memory` tool (when `boundedStores` provided) → invoke AI → check aggregation threshold |
 
 ### Usage Patterns
 
@@ -66,13 +66,15 @@ const result = await withMemory(innerInvoker, prompt, {
 
 **Complex — direct service calls** (multi-step like pipeline map-reduce or wiki):
 ```typescript
-import { MemoryRetriever, createWriteMemoryTool, MemoryAggregator } from 'forge';
+import { MemoryPromptBuilder, BoundedMemoryStore, createMemoryTool, MemoryAggregator } from 'forge';
 
-const retriever = new MemoryRetriever(store);
-const context = await retriever.retrieve({ repoHash, level: 'repo' });
-// Inject context into prompt...
+const repoStore = new BoundedMemoryStore({ filePath: '~/.coc/repos/<id>/MEMORY.md' });
+await repoStore.load();
+const builder = new MemoryPromptBuilder({ store: repoStore });
+const block = builder.getSystemPromptBlock();
+// Inject block into system prompt...
 
-const { tool } = createWriteMemoryTool({ store, repoHash, pipeline: 'my-pipeline' });
+const { tool } = createMemoryTool({ memory: repoStore });
 // Pass tool to AI session's available tools...
 
 const aggregator = new MemoryAggregator(store, aiInvoker);

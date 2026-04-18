@@ -1,6 +1,7 @@
 import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../ai/types';
 import type { MemoryStore, MemoryLevel } from './types';
-import { MemoryRetriever } from './memory-retriever';
+import type { BoundedMemoryStore } from './bounded-memory-store';
+import { MemoryPromptBuilder } from './memory-prompt-builder';
 import { createMemoryTool, MemoryToolStores } from './memory-tool';
 import { MemoryAggregator } from './memory-aggregator';
 import { getAIServiceLogger } from '../ai-logger';
@@ -10,6 +11,10 @@ export interface WithMemoryOptions {
     /** Bounded stores for the memory tool. When provided, a `memory` tool is
      *  injected into the AI call. Map target names to store instances. */
     boundedStores?: MemoryToolStores;
+    /** Bounded store for repo-level memory prompt injection. */
+    boundedRepoStore?: BoundedMemoryStore;
+    /** Bounded store for system-level memory prompt injection. */
+    boundedSystemStore?: BoundedMemoryStore;
     source: string;
     repoHash?: string;
     /** Explicit repo-level directory, alternative to repoHash. */
@@ -28,16 +33,21 @@ export async function withMemory(
 ): Promise<AIInvokerResult> {
     const level = memoryOptions.level ?? 'both';
 
-    // 1. Retrieve existing memory context
+    // 1. Build frozen memory prompt block from bounded stores
     let enrichedPrompt = prompt;
     try {
-        const retriever = new MemoryRetriever(memoryOptions.store);
-        const context = await retriever.retrieve(level, memoryOptions.repoHash);
-        if (context) {
-            enrichedPrompt = context + '\n\n' + prompt;
+        if (memoryOptions.boundedRepoStore) {
+            const builder = new MemoryPromptBuilder({
+                store: memoryOptions.boundedRepoStore,
+                systemStore: memoryOptions.boundedSystemStore,
+            });
+            const block = builder.getSystemPromptBlock();
+            if (block) {
+                enrichedPrompt = block + '\n\n' + prompt;
+            }
         }
     } catch (err) {
-        getAIServiceLogger().warn({ err }, 'withMemory: retrieve failed, proceeding without context');
+        getAIServiceLogger().warn({ err }, 'withMemory: prompt builder failed, proceeding without context');
     }
 
     // 2. Create memory tool if bounded stores are provided
