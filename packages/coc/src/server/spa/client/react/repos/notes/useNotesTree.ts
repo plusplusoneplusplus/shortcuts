@@ -9,6 +9,7 @@ export interface UseNotesTreeResult {
     createNode: (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => Promise<void>;
     renameNode: (oldPath: string, newPath: string) => Promise<void>;
     deleteNode: (path: string) => Promise<void>;
+    reorderNodes: (parentPath: string, order: string[]) => Promise<void>;
 }
 
 export function useNotesTree(workspaceId: string): UseNotesTreeResult {
@@ -49,5 +50,10 @@ export function useNotesTree(workspaceId: string): UseNotesTreeResult {
         await fetchTree();
     }, [workspaceId, fetchTree]);
 
-    return { tree, loading, error, refresh: fetchTree, createNode, renameNode, deleteNode };
+    const reorderNodes = useCallback(async (parentPath: string, order: string[]) => {
+        await notesApi.reorder(workspaceId, parentPath, order);
+        await fetchTree();
+    }, [workspaceId, fetchTree]);
+
+    return { tree, loading, error, refresh: fetchTree, createNode, renameNode, deleteNode, reorderNodes };
 }

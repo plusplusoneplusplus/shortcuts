@@ -8,6 +8,7 @@ import { NotesTree } from './NotesTree';
 import { NotesDialogs } from './NotesDialogs';
 import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu, type NoteDialogAction } from './useNotesContextMenu';
+import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../../hooks/useNotesDragDrop';
 
 /** Compute ancestor folder paths that need to be expanded for a given note path. */
 function getAncestorPaths(notePath: string): string[] {
@@ -29,10 +30,11 @@ export interface NotesSidebarProps {
 }
 
 export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted }: NotesSidebarProps) {
-    const { tree, loading, error, createNode, renameNode, deleteNode } = useNotesTree(workspaceId);
+    const { tree, loading, error, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const deepLinkAppliedRef = useRef<string | null>(null);
+    const dragDrop = useNotesDragDrop();
 
     // Auto-expand tree when selectedPath changes (deep-link or selection)
     useEffect(() => {
@@ -95,6 +97,92 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         await deleteNode(path);
         onNoteDeleted?.(path);
     }, [deleteNode, onNoteDeleted]);
+
+    /**
+     * Handle a drop in the notes tree.
+     *
+     * - 'inside' → move the dragged item into the target folder
+     * - 'before' / 'after' → reorder siblings within the same parent
+     *
+     * For cross-parent moves we call renameNode (PATCH /notes/path).
+     * For same-parent reorder we call reorderNodes (PUT /notes/order).
+     */
+    const handleNoteDrop = useCallback(async (
+        dragged: NoteDragItem,
+        target: NoteDragItem,
+        position: DropPosition,
+    ) => {
+        if (!tree) return;
+
+        if (position === 'inside') {
+            // Move dragged item INTO target folder
+            const isTargetFolder = target.type !== 'page';
+            if (!isTargetFolder) return; // 'inside' only valid for folders
+
+            const newPath = `${target.path}/${dragged.name}`;
+            try {
+                await renameNode(dragged.path, newPath);
+                onNoteRenamed?.(dragged.path, newPath);
+            } catch {
+                // Rename failed — tree already refreshed by renameNode
+            }
+            return;
+        }
+
+        // Reorder or cross-parent move for 'before' / 'after'
+        const draggedParent = getNotesParentPath(dragged.path);
+        const targetParent = getNotesParentPath(target.path);
+
+        if (draggedParent === targetParent) {
+            // Same parent → reorder siblings
+            // Find sibling nodes at this level
+            let siblings: NoteTreeNode[];
+            if (draggedParent === '') {
+                siblings = tree;
+            } else {
+                // Walk the tree to find the parent node's children
+                const findChildren = (nodes: NoteTreeNode[], parentPath: string): NoteTreeNode[] | null => {
+                    for (const n of nodes) {
+                        if (n.path === parentPath) return n.children ?? [];
+                        if (n.children) {
+                            const found = findChildren(n.children, parentPath);
+                            if (found) return found;
+                        }
+                    }
+                    return null;
+                };
+                siblings = findChildren(tree, draggedParent) ?? [];
+            }
+
+            // Build the new order: remove dragged, insert relative to target
+            const names = siblings.map(s => s.name);
+            const draggedIdx = names.indexOf(dragged.name);
+            const targetIdx = names.indexOf(target.name);
+            if (draggedIdx === -1 || targetIdx === -1) return;
+
+            const newNames = [...names];
+            newNames.splice(draggedIdx, 1);
+            const insertIdx = position === 'before'
+                ? newNames.indexOf(target.name)
+                : newNames.indexOf(target.name) + 1;
+            newNames.splice(insertIdx, 0, dragged.name);
+
+            try {
+                await reorderNodes(draggedParent, newNames);
+            } catch {
+                // API error — tree already refreshed
+            }
+        } else {
+            // Cross-parent move: place dragged into target's parent directory
+            const newPath = targetParent ? `${targetParent}/${dragged.name}` : dragged.name;
+            try {
+                await renameNode(dragged.path, newPath);
+                onNoteRenamed?.(dragged.path, newPath);
+            } catch {
+                // Rename failed
+            }
+        }
+    }, [tree, renameNode, reorderNodes, onNoteRenamed]);
 
     const buildContextMenuItems = (): ContextMenuItem[] => {
         if (!ctxMenu) return [];
@@ -161,6 +249,17 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         onToggleExpand={handleToggleExpand}
                         onSelectPage={onSelectPage}
                         onContextMenu={handleContextMenu}
+                        dragDrop={{
+                            createDragStartHandler: dragDrop.createDragStartHandler,
+                            createDragEndHandler: dragDrop.createDragEndHandler,
+                            createDragOverHandler: dragDrop.createDragOverHandler,
+                            createDragEnterHandler: dragDrop.createDragEnterHandler,
+                            createDragLeaveHandler: dragDrop.createDragLeaveHandler,
+                            createDropHandler: dragDrop.createDropHandler,
+                            dropTargetPath: dragDrop.dropTargetPath,
+                            dropPosition: dragDrop.dropPosition,
+                            onDrop: handleNoteDrop,
+                        }}
                     />
                 )}
             </div>

@@ -18,6 +18,7 @@ import { resolveWorkspaceOrFail } from './shared/handler-utils';
 import type { Route } from './types';
 import { getRepoDataPath } from './paths';
 import type { ResolvedCLIConfig } from '../config';
+import { readOrderFile, applyOrder } from './notes-order';
 
 // ============================================================================
 // Types
@@ -55,6 +56,8 @@ async function ensureNotesRoot(notesRoot: string): Promise<void> {
 /**
  * Recursively scan the notes directory and build a tree.
  * Directories = notebooks (top-level) or sections (nested), .md files = pages.
+ * Custom order from `.order.json` is applied per-directory; unlisted items fall
+ * back to the default sort (directories first, then files, alphabetically within each group).
  */
 async function buildTree(dir: string, basePath: string): Promise<TreeNode[]> {
     let entries: fs.Dirent[];
@@ -64,25 +67,32 @@ async function buildTree(dir: string, basePath: string): Promise<TreeNode[]> {
         return [];
     }
 
-    // Sort: directories first, then files, alphabetically within each group
-    entries.sort((a, b) => {
-        const aDir = a.isDirectory() ? 0 : 1;
-        const bDir = b.isDirectory() ? 0 : 1;
-        if (aDir !== bDir) return aDir - bDir;
-        return a.name.localeCompare(b.name);
-    });
+    // Keep only non-hidden directories and .md files, with default dirs-first sort
+    const relevant = entries
+        .filter(e => {
+            if (e.isDirectory()) return !e.name.startsWith('.');
+            return e.name.endsWith('.md');
+        })
+        .sort((a, b) => {
+            const aDir = a.isDirectory() ? 0 : 1;
+            const bDir = b.isDirectory() ? 0 : 1;
+            if (aDir !== bDir) return aDir - bDir;
+            return a.name.localeCompare(b.name);
+        });
+
+    // Apply custom order when present; unlisted items keep their default sort position
+    const explicitOrder = await readOrderFile(dir);
+    const sorted = applyOrder(relevant, e => e.name, explicitOrder);
 
     const nodes: TreeNode[] = [];
-    for (const entry of entries) {
-        // Skip hidden directories (e.g. .attachments)
-        if (entry.isDirectory() && entry.name.startsWith('.')) continue;
+    for (const entry of sorted) {
         const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
             const children = await buildTree(path.join(dir, entry.name), entryPath);
             // Top-level dirs are notebooks, nested dirs are sections
             const type = basePath ? 'section' : 'notebook';
             nodes.push({ name: entry.name, path: entryPath, type, children });
-        } else if (entry.name.endsWith('.md')) {
+        } else {
             nodes.push({ name: entry.name, path: entryPath, type: 'page' });
         }
     }

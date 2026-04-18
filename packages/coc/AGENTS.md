@@ -138,6 +138,7 @@ src/
 │   ├── template-watcher.ts       # Watches .vscode/templates/ for file changes
 │   ├── templates-handler.ts      # Template CRUD API (list, read, create, update, delete)
 │   ├── notes-watcher.ts          # File watcher for notes directories — debounced, .md-only, broadcasts notes-changed WS events
+│   ├── notes-order.ts            # .order.json helpers — readOrderFile, writeOrderFile, removeFromOrder, updateOrderOnRename, applyOrder for per-directory custom sort order
 │   ├── wiki/                     # Wiki integration
 │   │   ├── index.ts              # Wiki module exports
 │   │   ├── types.ts              # Wiki types

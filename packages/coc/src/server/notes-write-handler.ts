@@ -17,6 +17,7 @@ import { sendJSON, sendError } from './api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
 import type { Route } from './types';
 import { getRepoDataPath } from './paths';
+import { readOrderFile, writeOrderFile, removeFromOrder, updateOrderOnRename } from './notes-order';
 
 // ============================================================================
 // Helpers
@@ -188,6 +189,18 @@ export function registerNotesWriteRoutes(
                     if (err.code !== 'ENOENT') throw err;
                 }
 
+                // Update .order.json in the parent directory when it's a same-parent rename
+                const oldParentDir = path.dirname(resolvedOld);
+                const newParentDir = path.dirname(resolvedNew);
+                if (oldParentDir === newParentDir) {
+                    const oldName = path.basename(resolvedOld);
+                    const newName = path.basename(resolvedNew);
+                    await updateOrderOnRename(oldParentDir, oldName, newName);
+                } else {
+                    // Cross-parent move: remove from old parent, the new parent order is untouched
+                    await removeFromOrder(oldParentDir, path.basename(resolvedOld));
+                }
+
                 sendJSON(res, 200, { oldPath, newPath });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to rename: ' + (err.message || 'Unknown error'));
@@ -238,10 +251,64 @@ export function registerNotesWriteRoutes(
                         if (err.code !== 'ENOENT') throw err;
                     }
                 }
+                // Remove the deleted entry from its parent's .order.json
+                await removeFromOrder(path.dirname(resolved), path.basename(resolved));
                 res.writeHead(204);
                 res.end();
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to delete: ' + (err.message || 'Unknown error'));
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // PUT /api/workspaces/:id/notes/order — Persist custom sibling order
+    // Body: { parentPath: string, order: string[] }
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/order$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const { parentPath, order } = body || {};
+
+            // parentPath can be '' (root) or a relative path
+            if (typeof parentPath !== 'string') {
+                return sendError(res, 400, 'Missing required field: parentPath');
+            }
+            if (!Array.isArray(order) || !order.every(n => typeof n === 'string')) {
+                return sendError(res, 400, 'Missing or invalid field: order (must be string[])');
+            }
+
+            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const targetDir = parentPath
+                ? path.resolve(notesRoot, parentPath)
+                : notesRoot;
+
+            if (!isWithinDirectory(targetDir, notesRoot) && targetDir !== notesRoot) {
+                return sendError(res, 403, 'Access denied: parentPath is outside notes directory');
+            }
+
+            // Verify the target directory exists
+            try {
+                const stat = await fs.promises.stat(targetDir);
+                if (!stat.isDirectory()) {
+                    return sendError(res, 400, 'parentPath must be a directory');
+                }
+            } catch {
+                return sendError(res, 404, 'parentPath directory not found');
+            }
+
+            try {
+                await writeOrderFile(targetDir, order);
+                sendJSON(res, 200, { parentPath, order });
+            } catch (err: any) {
+                return sendError(res, 500, 'Failed to write order: ' + (err.message || 'Unknown error'));
             }
         },
     });

@@ -94,6 +94,14 @@ export const notesApi = {
         });
     },
 
+    reorder(wsId: string, parentPath: string, order: string[]): Promise<{ parentPath: string; order: string[] }> {
+        return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/order`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parentPath, order }),
+        });
+    },
+
     search(wsId: string, query: string): Promise<NoteSearchResponse> {
         return fetchApi(`/workspaces/${encodeURIComponent(wsId)}/notes/search?q=${encodeURIComponent(query)}`);
     },
