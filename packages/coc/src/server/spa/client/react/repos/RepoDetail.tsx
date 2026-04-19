@@ -455,14 +455,15 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     <div className="h-full min-w-0 overflow-hidden">
                         <RepoChatTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />
                     </div>
-                ) : activeSubTab === 'activity' ? (
-                    <div className="h-full min-w-0 overflow-hidden">
-                        <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
-                    </div>
                 ) : (
-                    <div className={cn("h-full min-w-0", activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} uiLayoutMode={uiLayoutMode} onUiLayoutModeChange={setUiLayoutMode} />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
+                        {uiLayoutMode === 'classic' && (
+                            <div style={{ display: activeSubTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                                <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
+                            </div>
+                        )}
                         <div style={{ display: activeSubTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
                         </div>
