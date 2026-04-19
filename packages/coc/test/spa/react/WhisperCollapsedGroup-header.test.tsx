@@ -363,3 +363,136 @@ describe('WhisperCollapsedGroup — SkillHoverPopover', () => {
         vi.useRealTimers();
     });
 });
+
+// ── Memory count header tests ──────────────────────────────────────────────
+
+describe('WhisperCollapsedGroup — memory count in header', () => {
+    it('shows plural "3 memories" when memoryCount > 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 5,
+            messageCount: 1,
+            memoryCount: 3,
+            memoryActions: [
+                { action: 'add', target: 'memory', content: 'fact one' },
+                { action: 'replace', target: 'system', content: 'fact two' },
+                { action: 'remove', target: 'memory', content: 'old fact' },
+            ],
+        });
+        const text = getHeaderText(container);
+        expect(text).toContain('3 memories');
+    });
+
+    it('shows singular "1 memory" when memoryCount === 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 2,
+            messageCount: 0,
+            memoryCount: 1,
+            memoryActions: [{ action: 'add', target: 'memory', content: 'fact' }],
+        });
+        const text = getHeaderText(container);
+        expect(text).toContain('1 memory');
+        expect(text).not.toContain('1 memories');
+    });
+
+    it('omits memory segment when memoryCount is 0', () => {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 1,
+            memoryCount: 0,
+        });
+        const text = getHeaderText(container);
+        expect(text).not.toMatch(/\bmemor/);
+    });
+
+    it('omits memory segment when memoryCount is undefined', () => {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 1,
+        });
+        const text = getHeaderText(container);
+        expect(text).not.toMatch(/\bmemor/);
+    });
+
+    it('renders memory hover span with data-testid', () => {
+        const { container } = renderHeader({
+            toolCallCount: 1,
+            messageCount: 0,
+            memoryCount: 2,
+            memoryActions: [
+                { action: 'add', target: 'memory', content: 'fact one' },
+                { action: 'replace', target: 'system', content: 'fact two' },
+            ],
+        });
+        const span = container.querySelector('[data-testid="whisper-memory-hover"]');
+        expect(span).not.toBeNull();
+        expect(span?.textContent).toContain('2 memories');
+    });
+});
+
+// ── MemoryHoverPopover tests ───────────────────────────────────────────────
+
+describe('WhisperCollapsedGroup — MemoryHoverPopover', () => {
+    function renderAndHoverMemory(actions: Array<{ action: string; target: string; content?: string }>) {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 0,
+            memoryCount: actions.length,
+            memoryActions: actions,
+        });
+        const span = container.querySelector('[data-testid="whisper-memory-hover"]') as HTMLElement;
+        if (span) {
+            fireEvent.mouseEnter(span);
+        }
+        return container;
+    }
+
+    it('popover renders memory rows with action icon, target badge, and content', () => {
+        const container = renderAndHoverMemory([
+            { action: 'add', target: 'memory', content: 'fact one' },
+            { action: 'replace', target: 'system', content: 'fact two' },
+            { action: 'remove', target: 'memory', content: 'old fact' },
+        ]);
+        const popover = container.querySelector('[data-testid="memory-hover-popover"]');
+        expect(popover).not.toBeNull();
+        const rows = container.querySelectorAll('[data-testid="memory-popover-row"]');
+        expect(rows).toHaveLength(3);
+        expect(rows[0].textContent).toContain('➕');
+        expect(rows[0].textContent).toContain('memory');
+        expect(rows[0].textContent).toContain('fact one');
+        expect(rows[1].textContent).toContain('🔄');
+        expect(rows[1].textContent).toContain('system');
+        expect(rows[2].textContent).toContain('➖');
+    });
+
+    it('popover shows single memory correctly', () => {
+        const container = renderAndHoverMemory([
+            { action: 'add', target: 'system', content: 'important fact' },
+        ]);
+        const rows = container.querySelectorAll('[data-testid="memory-popover-row"]');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toContain('important fact');
+    });
+
+    it('popover truncates long content with ellipsis', () => {
+        const longContent = 'x'.repeat(80);
+        const container = renderAndHoverMemory([
+            { action: 'add', target: 'memory', content: longContent },
+        ]);
+        const rows = container.querySelectorAll('[data-testid="memory-popover-row"]');
+        expect(rows[0].textContent).toContain('x'.repeat(60) + '…');
+    });
+
+    it('popover disappears on mouse leave', () => {
+        vi.useFakeTimers();
+        const container = renderAndHoverMemory([
+            { action: 'add', target: 'memory', content: 'fact' },
+            { action: 'replace', target: 'system', content: 'fact two' },
+        ]);
+        expect(container.querySelector('[data-testid="memory-hover-popover"]')).not.toBeNull();
+        const span = container.querySelector('[data-testid="whisper-memory-hover"]') as HTMLElement;
+        fireEvent.mouseLeave(span);
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(container.querySelector('[data-testid="memory-hover-popover"]')).toBeNull();
+        vi.useRealTimers();
+    });
+});

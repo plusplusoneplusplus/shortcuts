@@ -329,6 +329,10 @@ export interface WhisperSummary {
     skillCount?: number;
     /** Names of unique skills invoked. */
     skillNames?: string[];
+    /** Number of memory tool invocations. */
+    memoryCount?: number;
+    /** Details of memory tool invocations. */
+    memoryActions?: Array<{ action: string; target: string; content?: string }>;
     /** Number of unique files edited or created. */
     fileEditCount?: number;
     /** Per-file edit/create statistics. */
@@ -469,6 +473,17 @@ export function filterWhisperChunks(
         }
     }
 
+    // Collect memory tool invocations
+    const memoryActions: Array<{ action: string; target: string; content?: string }> = [];
+    for (const tc of allToolCalls) {
+        if (tc.toolName === 'memory' && tc.args) {
+            const action = (tc.args.action || 'add') as string;
+            const target = (tc.args.target || 'memory') as string;
+            const content = (tc.args.content || tc.args.old_text || '') as string;
+            memoryActions.push({ action, target, content: content.slice(0, 80) });
+        }
+    }
+
     // Count file edits/creates
     const fileMap = new Map<string, { insertions: number; deletions: number; hasCreate: boolean; hasEdit: boolean }>();
     for (const tc of allToolCalls) {
@@ -504,6 +519,7 @@ export function filterWhisperChunks(
         ...(commitCount > 0 ? { commitCount, commits: regularCommits } : {}),
         ...(fixupCommitCount > 0 ? { fixupCommitCount, fixupCommits } : {}),
         ...(skillNameSet.size > 0 ? { skillCount: skillNameSet.size, skillNames: [...skillNameSet].sort() } : {}),
+        ...(memoryActions.length > 0 ? { memoryCount: memoryActions.length, memoryActions } : {}),
         ...(fileEdits.length > 0 ? { fileEditCount: fileEdits.length, fileEdits } : {}),
         startTime: startTimes.length ? Math.min(...startTimes) : undefined,
         endTime: allEnded && endTimes.length ? Math.max(...endTimes) : undefined,

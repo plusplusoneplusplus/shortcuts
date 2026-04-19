@@ -1294,6 +1294,116 @@ describe('filterWhisperChunks', () => {
         expect(wg.summary.skillNames).toEqual(['impl']);
     });
 
+    it('memoryCount counts memory tool invocations', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'memory', status: 'completed', args: { action: 'add', target: 'memory', content: 'fact one' } }],
+            ['t2', { toolName: 'memory', status: 'completed', args: { action: 'replace', target: 'system', content: 'fact two', old_text: 'old' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.memoryCount).toBe(2);
+        expect(wg.summary.memoryActions).toHaveLength(2);
+        expect(wg.summary.memoryActions![0]).toEqual({ action: 'add', target: 'memory', content: 'fact one' });
+        expect(wg.summary.memoryActions![1]).toEqual({ action: 'replace', target: 'system', content: 'fact two' });
+    });
+
+    it('memoryCount is omitted when no memory tool calls exist', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'view', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.memoryCount).toBeUndefined();
+        expect(wg.summary.memoryActions).toBeUndefined();
+    });
+
+    it('memoryActions captures action/target/content with truncation', () => {
+        const longContent = 'x'.repeat(100);
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'memory', status: 'completed', args: { action: 'add', target: 'memory', content: longContent } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.memoryActions![0].content).toBe('x'.repeat(80));
+    });
+
+    it('memoryActions uses old_text as fallback content for remove', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'memory', status: 'completed', args: { action: 'remove', target: 'memory', old_text: 'some old fact' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.memoryActions![0]).toEqual({ action: 'remove', target: 'memory', content: 'some old fact' });
+    });
+
+    it('memory inside tool-group chunks', () => {
+        const chunks = [
+            {
+                kind: 'tool-group', key: 'group-1', category: 'read',
+                toolIds: ['t1', 't2'],
+                contentItems: [], orderedItems: [],
+                startTime: 1000, endTime: 3000, allSucceeded: true,
+            },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'memory', status: 'completed', startTime: '2024-01-01T00:00:01Z', endTime: '2024-01-01T00:00:02Z', args: { action: 'add', target: 'memory', content: 'fact A' } }],
+            ['t2', { toolName: 'memory', status: 'completed', startTime: '2024-01-01T00:00:02Z', endTime: '2024-01-01T00:00:03Z', args: { action: 'add', target: 'system', content: 'fact B' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.memoryCount).toBe(2);
+        expect(wg.summary.memoryActions).toHaveLength(2);
+    });
+
+    it('combined: commits + skills + memories in one summary', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'tool', key: 'k-t3', toolId: 't3' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: auth"' },
+                result: '[main aaa1111] feat: auth\n 3 files changed, 20 insertions(+)',
+            }],
+            ['t2', { toolName: 'skill', status: 'completed', args: { skill: 'impl' } }],
+            ['t3', { toolName: 'memory', status: 'completed', args: { action: 'add', target: 'memory', content: 'learned something' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.commitCount).toBe(1);
+        expect(wg.summary.skillCount).toBe(1);
+        expect(wg.summary.memoryCount).toBe(1);
+        expect(wg.summary.memoryActions![0].content).toBe('learned something');
+    });
+
     it('commits array contains full DetectedCommit objects for regular commits', () => {
         const chunks = [
             { kind: 'tool', key: 'k-t1', toolId: 't1' },
