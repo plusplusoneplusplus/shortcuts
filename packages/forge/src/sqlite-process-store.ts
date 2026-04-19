@@ -551,6 +551,7 @@ export class SqliteProcessStore implements ProcessStore {
     private readonly getTurnsStmt: Statement;
     private readonly upsertStreamingStmt: Statement;
     private readonly maxTurnIndexStmt: Statement;
+    private readonly getProcessBySdkSessionIdStmt: Statement;
 
     onProcessChange?: ProcessChangeCallback;
 
@@ -607,6 +608,10 @@ export class SqliteProcessStore implements ProcessStore {
         this.maxTurnIndexStmt = this.db.prepare(
             'SELECT COALESCE(MAX(turn_index), -1) + 1 AS next_idx FROM conversation_turns WHERE process_id = ?'
         );
+
+        this.getProcessBySdkSessionIdStmt = this.db.prepare(
+            'SELECT * FROM processes WHERE sdk_session_id = ? LIMIT 1'
+        );
     }
 
     /**
@@ -643,9 +648,7 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     getProcessBySdkSessionId(sdkSessionId: string): AIProcess | undefined {
-        const row = this.db.prepare(
-            'SELECT * FROM processes WHERE sdk_session_id = ? LIMIT 1'
-        ).get(sdkSessionId) as ProcessRow | undefined;
+        const row = this.getProcessBySdkSessionIdStmt.get(sdkSessionId) as ProcessRow | undefined;
         if (!row) return undefined;
         const turnRows = this.getTurnsStmt.all(row.id) as TurnRow[];
         return rowToProcess(row, turnRows.map(rowToTurn));
@@ -695,6 +698,27 @@ export class SqliteProcessStore implements ProcessStore {
         const { sql, params } = this.buildProcessWhereClause(filter);
         const row = this.db.prepare(`SELECT COUNT(*) AS cnt FROM processes ${sql}`).get(...params) as CountRow;
         return row.cnt;
+    }
+
+    /**
+     * Fetch turn statistics (count + latest timestamp) for a batch of process IDs
+     * using a single aggregated query.  Used by the history endpoint to avoid N+1
+     * per-process turn queries.
+     */
+    getProcessTurnStats(ids: string[]): Map<string, { turnCount: number; lastTimestamp: string | null }> {
+        if (ids.length === 0) return new Map();
+        const placeholders = ids.map(() => '?').join(', ');
+        const rows = this.db.prepare(
+            `SELECT process_id, COUNT(*) AS turn_count, MAX(timestamp) AS last_ts
+             FROM conversation_turns
+             WHERE process_id IN (${placeholders})
+             GROUP BY process_id`
+        ).all(...ids) as Array<{ process_id: string; turn_count: number; last_ts: string | null }>;
+        const map = new Map<string, { turnCount: number; lastTimestamp: string | null }>();
+        for (const row of rows) {
+            map.set(row.process_id, { turnCount: row.turn_count, lastTimestamp: row.last_ts });
+        }
+        return map;
     }
 
     async getProcessSummaries(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }> {
@@ -831,10 +855,10 @@ export class SqliteProcessStore implements ProcessStore {
         const updateSql = `UPDATE processes SET ${setClauses.join(', ')} WHERE id = ?`;
         this.db.prepare(updateSql).run(...values);
 
-        // Re-read for event
-        const updated = await this.getProcess(id);
-        if (updated) {
-            this.onProcessChange?.({ type: 'process-updated', process: updated });
+        // Re-read process row only (no turns) — toProcessSummary only needs process-level fields.
+        const updatedRow = this.getProcessStmt.get(id) as ProcessRow | undefined;
+        if (updatedRow) {
+            this.onProcessChange?.({ type: 'process-updated', process: rowToProcess(updatedRow) });
         }
     }
 
@@ -1128,8 +1152,13 @@ export class SqliteProcessStore implements ProcessStore {
         appendTxn();
 
         if (appendResult) {
-            const updated = await this.getProcess(processId);
-            this.onProcessChange?.({ type: 'process-updated', process: updated ?? undefined });
+            // Reuse the turns already read inside the transaction; only re-read the
+            // process row (cheap) to pick up last_event_at and any additionalUpdates.
+            const processRow = this.getProcessStmt.get(processId) as ProcessRow | undefined;
+            const updated = processRow
+                ? rowToProcess(processRow, appendResult.allTurns)
+                : undefined;
+            this.onProcessChange?.({ type: 'process-updated', process: updated });
         }
 
         return appendResult;

@@ -46,15 +46,27 @@ export interface ProcessHistoryItem {
 export function toProcessHistoryItem(
     proc: AIProcess,
     seenAt?: string,
+    turnStats?: { turnCount: number; lastTimestamp: string | null },
 ): ProcessHistoryItem {
     const startTime = new Date(proc.startTime).getTime();
     const endTime = proc.endTime ? new Date(proc.endTime).getTime() : undefined;
 
-    const turns = proc.conversationTurns ?? [];
-    const lastTurn = turns[turns.length - 1];
-    const lastActivityAt = lastTurn?.timestamp
-        ? new Date(lastTurn.timestamp).getTime()
-        : endTime;
+    let turnCount: number;
+    let lastActivityAt: number | undefined;
+
+    if (turnStats) {
+        turnCount = turnStats.turnCount;
+        lastActivityAt = turnStats.lastTimestamp
+            ? new Date(turnStats.lastTimestamp).getTime()
+            : endTime;
+    } else {
+        const turns = proc.conversationTurns ?? [];
+        const lastTurn = turns[turns.length - 1];
+        turnCount = turns.length;
+        lastActivityAt = lastTurn?.timestamp
+            ? new Date(lastTurn.timestamp).getTime()
+            : endTime;
+    }
 
     return {
         id: proc.id,
@@ -70,7 +82,7 @@ export function toProcessHistoryItem(
         workspaceId: (proc.metadata?.workspaceId as string) ?? '',
         planFilePath: proc.metadata?.planFilePath as string | undefined,
         workItemId: proc.metadata?.workItemId as string | undefined,
-        turnCount: turns.length,
+        turnCount,
         lastActivityAt,
         seenAt,
         pinnedAt: proc.pinnedAt,

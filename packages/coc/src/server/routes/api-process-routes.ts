@@ -295,20 +295,28 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
             const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : proc;
 
-            // Embed children using the same logic the deleted /children route used
-            const childFilter: ProcessFilter = {
-                ...filter,
-                parentProcessId: proc.id,
-            };
-            if (!childFilter.exclude) {
-                childFilter.exclude = ['conversation'];
-            }
-            const children = await store.getAllProcesses(childFilter);
-            const responseChildren = childFilter.exclude
-                ? children.map(p => stripExcludedFields(p, childFilter.exclude))
-                : children;
+            // Guard children fetch: skip the full query when there are no children.
+            // This avoids an unnecessary getAllProcesses scan on the common case.
+            const hasChildren = 'getProcessCount' in store
+                ? await (store as any).getProcessCount({ parentProcessId: proc.id }) > 0
+                : true; // conservative: always fetch for stores that lack getProcessCount
 
-            sendJSON(res, 200, { process: result, children: responseChildren, total: children.length });
+            let responseChildren: AIProcess[] = [];
+            if (hasChildren) {
+                const childFilter: ProcessFilter = {
+                    ...filter,
+                    parentProcessId: proc.id,
+                };
+                if (!childFilter.exclude) {
+                    childFilter.exclude = ['conversation'];
+                }
+                const children = await store.getAllProcesses(childFilter);
+                responseChildren = childFilter.exclude
+                    ? children.map(p => stripExcludedFields(p, childFilter.exclude))
+                    : children;
+            }
+
+            sendJSON(res, 200, { process: result, children: responseChildren, total: responseChildren.length });
         },
     });
 

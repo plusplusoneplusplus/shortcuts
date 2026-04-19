@@ -43,6 +43,7 @@ describe('sqlite-schema', () => {
 
         const expected = [
             'idx_processes_workspace_id',
+            'idx_processes_workspace_last_event',
             'idx_processes_status',
             'idx_processes_type',
             'idx_processes_start_time',
@@ -91,7 +92,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(10);
+        expect(SCHEMA_VERSION).toBe(11);
     });
 
     it('is idempotent — calling initializeDatabase twice does not throw', () => {

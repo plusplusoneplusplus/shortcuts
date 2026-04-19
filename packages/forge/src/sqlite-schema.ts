@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * Read the current schema version from the database.
@@ -296,6 +296,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 10) {
             migrateV9toV10(db);
         }
+        if (versionBefore < 11) {
+            migrateV10toV11(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -414,4 +417,18 @@ function migrateV9toV10(db: Database.Database): void {
     if (!colNames.has('model')) {
         db.exec('ALTER TABLE conversation_turns ADD COLUMN model TEXT');
     }
+}
+
+/**
+ * V10 → V11: add composite index for workspace_id + last_event_at to
+ * support efficient ORDER BY COALESCE(last_event_at, start_time) DESC queries
+ * scoped to a workspace.
+ * The CREATE INDEX IF NOT EXISTS above handles fresh databases;
+ * this migration ensures the index is created on existing databases.
+ */
+function migrateV10toV11(db: Database.Database): void {
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_processes_workspace_last_event
+            ON processes(workspace_id, last_event_at DESC)
+    `);
 }

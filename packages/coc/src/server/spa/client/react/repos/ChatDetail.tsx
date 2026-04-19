@@ -423,7 +423,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     // the derived bare taskId.
                 }
 
-                // Queue fetch path — taskId may be bare or a processId that fell through
+                // Queue fetch path — taskId may be bare or a processId that fell through.
                 const queueData = await fetchApi(`/queue/${encodeURIComponent(bareTaskId)}`);
                 if (loadCounterRef.current !== loadId) return;
                 const loadedTask = queueData?.task ?? null;
@@ -440,7 +440,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     return;
                 }
 
-                const pid = loadedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
+                const derivedPid = toQueueProcessId(bareTaskId);
+                const pid = loadedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : derivedPid);
 
                 // Check shared conversation cache
                 const cached = appState.conversationCache[taskId];

@@ -1,10 +1,3 @@
-/**
- * Process History REST API Handler
- *
- * GET /api/workspaces/:id/history — paginated list of completed/failed/cancelled
- * processes mapped to the canonical ProcessHistoryItem shape.
- */
-
 import { URL } from 'url';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON } from './api-handler';
@@ -16,7 +9,10 @@ const MAX_LIMIT = 200;
 
 export function registerProcessHistoryRoutes(
     routes: Route[],
-    store: ProcessStore & { getSeenMap?: (workspaceId: string) => Record<string, string> },
+    store: ProcessStore & {
+        getSeenMap?: (workspaceId: string) => Record<string, string>;
+        getProcessTurnStats?: (ids: string[]) => Map<string, { turnCount: number; lastTimestamp: string | null }>;
+    },
 ): void {
     routes.push({
         method: 'GET',
@@ -48,7 +44,7 @@ export function registerProcessHistoryRoutes(
             const processes = await store.getAllProcesses({
                 workspaceId,
                 status: ['completed', 'failed', 'cancelled'],
-                exclude: ['toolCalls'],
+                exclude: ['toolCalls', 'conversation'],
                 type: typeFilter as any,
                 limit: limit + 1,
                 offset: parsedOffset,
@@ -57,8 +53,15 @@ export function registerProcessHistoryRoutes(
             const hasMore = processes.length > limit;
             const page = processes.slice(0, limit);
 
+            // Fetch turn stats in one aggregated query instead of N per-process queries
+            const turnStatsMap = store.getProcessTurnStats?.(page.map(p => p.id));
+
             const seenMap = store.getSeenMap?.(workspaceId) ?? {};
-            const history = page.map(proc => toProcessHistoryItem(proc, seenMap[proc.id]));
+            const history = page.map(proc => toProcessHistoryItem(
+                proc,
+                seenMap[proc.id],
+                turnStatsMap?.get(proc.id),
+            ));
 
             sendJSON(res, 200, { history, hasMore, offset: parsedOffset, limit });
         },

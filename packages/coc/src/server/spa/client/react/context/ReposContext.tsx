@@ -100,7 +100,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             // Fetch workspaces and all process summaries in parallel
             const [wsRes, processRes] = await Promise.all([
                 fetchApi('/workspaces'),
-                fetchApi('/processes/summaries?limit=5000').catch(() => null),
+                fetchApi('/processes/summaries?limit=200').catch(() => null),
             ]);
             const workspaces = wsRes?.workspaces || wsRes || [];
             if (!Array.isArray(workspaces)) {
