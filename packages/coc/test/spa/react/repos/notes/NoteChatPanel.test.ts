@@ -38,8 +38,8 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('useNotesChat({ workspaceId, notePath, noteTitle })');
         });
 
-        it('destructures taskId, createChat, resetChat', () => {
-            expect(source).toContain('{ taskId, createChat, resetChat }');
+        it('destructures taskId, chatNoteContext, createChat, resetChat', () => {
+            expect(source).toContain('{ taskId, chatNoteContext, createChat, resetChat }');
         });
 
         it('does not use loading or error states', () => {
@@ -107,6 +107,26 @@ describe('NoteChatPanel', () => {
         it('has New Chat button', () => {
             expect(source).toContain('note-chat-new-btn');
             expect(source).toContain('New Chat');
+        });
+    });
+
+    describe('note context banner', () => {
+        it('imports NoteContextBanner', () => {
+            expect(source).toContain("from './NoteContextBanner'");
+        });
+
+        it('renders NoteContextBanner in active chat', () => {
+            expect(source).toContain('<NoteContextBanner');
+        });
+
+        it('passes chatNoteContext to banner', () => {
+            expect(source).toContain('chatNoteContext?.notePath');
+            expect(source).toContain('chatNoteContext?.noteTitle');
+            expect(source).toContain('chatNoteContext?.contentStatus');
+        });
+
+        it('passes currentNotePath to banner for anchoring detection', () => {
+            expect(source).toContain('currentNotePath={notePath}');
         });
     });
 

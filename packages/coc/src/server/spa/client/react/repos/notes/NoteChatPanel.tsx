@@ -4,6 +4,7 @@ import { ChatDetail } from '../ChatDetail';
 import { ChatPreferencesProvider } from '../../context/ChatPreferencesContext';
 import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
+import { NoteContextBanner } from './NoteContextBanner';
 
 export interface NoteChatPanelProps {
     workspaceId: string;
@@ -16,7 +17,7 @@ export interface NoteChatPanelProps {
 }
 
 export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend }: NoteChatPanelProps) {
-    const { taskId, createChat, resetChat } = useNotesChat({ workspaceId, notePath, noteTitle });
+    const { taskId, chatNoteContext, createChat, resetChat } = useNotesChat({ workspaceId, notePath, noteTitle });
     const [input, setInput] = useState('');
     const richTextRef = useRef<RichTextInputHandle>(null);
 
@@ -94,6 +95,12 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                             🔄 New Chat
                         </button>
                     </div>
+                    <NoteContextBanner
+                        chatNotePath={chatNoteContext?.notePath}
+                        chatNoteTitle={chatNoteContext?.noteTitle}
+                        currentNotePath={notePath}
+                        contentStatus={chatNoteContext?.contentStatus ?? null}
+                    />
                     <ChatDetail
                         taskId={taskId}
                         workspaceId={workspaceId}

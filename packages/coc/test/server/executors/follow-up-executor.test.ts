@@ -69,6 +69,11 @@ const mockBuildNoteContextBlock = vi.fn().mockImplementation((notePath: string, 
 vi.mock('../../../src/server/executors/note-chat-executor', () => ({
     readNoteContent: (...args: any[]) => mockReadNoteContent(...args),
     buildNoteContextBlock: (...args: any[]) => mockBuildNoteContextBlock(...args),
+    resolveNoteContentStatus: (content: string | undefined) => ({
+        status: content === undefined ? 'not-found' : content.length === 0 ? 'empty' : content.length > 8000 ? 'truncated' : 'attached',
+        charLimit: 8000,
+        originalLength: content?.length,
+    }),
 }));
 
 // ============================================================================

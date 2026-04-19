@@ -39,7 +39,7 @@ import {
     buildFollowUpSuggestionsAddon,
     prependSelectedSkillsDirective,
 } from './prompt-builder';
-import { buildNoteContextBlock, readNoteContent } from './note-chat-executor';
+import { buildNoteContextBlock, readNoteContent, resolveNoteContentStatus } from './note-chat-executor';
 import { emitMessageSteering } from '../sse-handler';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
@@ -209,12 +209,21 @@ export class FollowUpExecutor extends BaseExecutor {
         if (notePath && wsId) {
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
             const noteContent = await readNoteContent(effectiveDataDir, wsId, notePath);
+            const noteContentStatus = resolveNoteContentStatus(noteContent);
+
             if (noteContent !== undefined && systemMessage) {
                 systemMessage = {
                     ...systemMessage,
                     content: (systemMessage.content ?? '') + buildNoteContextBlock(notePath, noteTitle ?? notePath, noteContent),
                 };
             }
+
+            // Best-effort update of note content status in process metadata
+            try {
+                await this.store.updateProcess(process.id, {
+                    metadata: { ...(process.metadata ?? {}), noteContentStatus } as any,
+                });
+            } catch { /* best-effort */ }
         }
 
         const { skillDirectories, disabledSkills } = await this._resolveSkillConfig(wsId, workingDirectory);

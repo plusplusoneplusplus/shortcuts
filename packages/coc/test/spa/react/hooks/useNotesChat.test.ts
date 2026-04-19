@@ -2,7 +2,8 @@
  * Tests for useNotesChat hook — single-chat-per-workspace model.
  *
  * Validates localStorage persistence, createChat task creation,
- * resetChat clearing, and context injection with current note.
+ * resetChat clearing, context injection with current note, and
+ * note context transparency (chatNoteContext with metadata fetch).
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -28,6 +29,10 @@ describe('useNotesChat', () => {
         expect(source).toContain('export interface UseNotesChatReturn');
     });
 
+    it('exports ChatNoteContext interface', () => {
+        expect(source).toContain('export interface ChatNoteContext');
+    });
+
     it('exports useNotesChat function', () => {
         expect(source).toContain('export function useNotesChat');
     });
@@ -50,20 +55,31 @@ describe('useNotesChat', () => {
         });
     });
 
-    describe('single-chat model', () => {
-        it('does not fetch any API on mount', () => {
-            // No fetchApi call in useEffect — only in createChat
-            const hookBody = source.substring(
-                source.indexOf('export function useNotesChat'),
-                source.lastIndexOf('}')
-            );
-            // No useEffect that calls fetchApi
-            expect(hookBody).not.toContain('fetchApi(`/workspaces/');
+    describe('note context persistence', () => {
+        it('stores chat note context in a separate localStorage key', () => {
+            expect(source).toContain('`coc-notes-chat-ctx-${workspaceId}`');
         });
 
-        it('does not have loading or error states', () => {
-            expect(source).not.toContain('setLoading');
-            expect(source).not.toContain('setError');
+        it('saves context to localStorage on change', () => {
+            expect(source).toContain('saveContext(workspaceId, chatNoteContext)');
+        });
+
+        it('loads context from localStorage on init', () => {
+            expect(source).toContain('loadContext(workspaceId)');
+        });
+    });
+
+    describe('metadata fetch on restore', () => {
+        it('fetches process metadata when taskId is restored', () => {
+            expect(source).toContain('fetchApi(`/processes/');
+        });
+
+        it('extracts noteContentStatus from process metadata', () => {
+            expect(source).toContain('meta.noteContentStatus');
+        });
+
+        it('skips fetch when contentStatus already exists', () => {
+            expect(source).toContain('chatNoteContext?.contentStatus');
         });
     });
 
@@ -88,6 +104,14 @@ describe('useNotesChat', () => {
             expect(source).toContain('notePath ? { notePath, noteTitle } : undefined');
         });
 
+        it('stores chat note context at creation time', () => {
+            expect(source).toContain('setChatNoteContext({ notePath, noteTitle:');
+        });
+
+        it('clears chat note context when no notePath', () => {
+            expect(source).toContain('setChatNoteContext(null)');
+        });
+
         it('extracts taskId from response', () => {
             expect(source).toContain('res.task?.id ?? res.id');
         });
@@ -107,17 +131,17 @@ describe('useNotesChat', () => {
             expect(source).toContain('setTaskId(null)');
         });
 
-        it('does not make any API call', () => {
-            // resetChat is a simple state clear — no server call
+        it('clears chat note context', () => {
+            // resetChat clears both taskId and context
             const resetBlock = source.substring(
                 source.indexOf('const resetChat'),
                 source.indexOf('return { taskId')
             );
-            expect(resetBlock).not.toContain('fetchApi');
+            expect(resetBlock).toContain('setChatNoteContext(null)');
         });
     });
 
-    it('returns taskId, createChat, and resetChat', () => {
-        expect(source).toContain('return { taskId, createChat, resetChat }');
+    it('returns taskId, chatNoteContext, createChat, and resetChat', () => {
+        expect(source).toContain('return { taskId, chatNoteContext, createChat, resetChat }');
     });
 });
