@@ -5,17 +5,9 @@
  * and security scanner.
  */
 export type {
-    RawObservation,
-    RawObservationMetadata,
-    ConsolidatedMemory,
-    MemoryIndex,
     RepoInfo,
     GitRemoteInfo,
     MemoryLevel,
-    MemoryConfig,
-    MemoryStoreOptions,
-    MemoryStats,
-    MemoryStore,
 } from './types';
 
 export { computeRepoHash } from './repo-hash';
@@ -30,16 +22,6 @@ export { MemoryPromptBuilder, MEMORY_GUIDANCE } from './memory-prompt-builder';
 export type { MemoryPromptBuilderOptions } from './memory-prompt-builder';
 export { createMemoryTool, MEMORY_SCHEMA } from './memory-tool';
 export type { MemoryToolOptions, MemoryToolArgs, MemoryToolStores } from './memory-tool';
-export { MemoryAggregator, MEMORY_CONSOLIDATION_INSTRUCTIONS } from './memory-aggregator';
-export type { AggregatorOptions } from './memory-aggregator';
-export { withMemory } from './with-memory';
-export type { WithMemoryOptions } from './with-memory';
-export {
-    EXTRACTION_SYSTEM_PROMPT,
-    buildExtractionUserPrompt,
-    parseExtractionResponse,
-} from './extraction-prompts';
-export type { ExtractedFact } from './extraction-prompts';
 
 // Tool call cache
 export type {
