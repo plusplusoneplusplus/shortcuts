@@ -56,6 +56,13 @@ export type {
     ZodSchema,
 } from './types';
 
+// User input types (locally defined — not publicly exported by @github/copilot-sdk)
+export type {
+    UserInputRequest,
+    UserInputResponse,
+    UserInputHandler,
+} from './types';
+
 export { defineTool, approveAll } from './types';
 
 // Model Registry

@@ -125,6 +125,7 @@ export class RequestRunner {
             if (options.excludedTools) sessionOptions.excludedTools = options.excludedTools;
             if (options.skillDirectories?.length) sessionOptions.skillDirectories = options.skillDirectories;
             if (options.disabledSkills?.length) sessionOptions.disabledSkills = options.disabledSkills;
+            if (options.onUserInputRequest) sessionOptions.onUserInputRequest = options.onUserInputRequest;
 
             // Load and merge MCP server configurations
             const shouldLoadDefaultMcp = options.loadDefaultMcpConfig !== false;

@@ -203,6 +203,50 @@ describe('RequestRunner.send() — error handling', () => {
 });
 
 // ============================================================================
+// send() — onUserInputRequest threading
+// ============================================================================
+
+describe('RequestRunner.send() — onUserInputRequest', () => {
+    it('threads onUserInputRequest into session config when provided', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'ok' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const handler = vi.fn().mockResolvedValue({ answer: 'yes', wasFreeform: false });
+        await runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+            onUserInputRequest: handler,
+        });
+
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.onUserInputRequest).toBe(handler);
+    });
+
+    it('omits onUserInputRequest from session config when not provided', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'ok' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+        });
+
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.onUserInputRequest).toBeUndefined();
+    });
+});
+
+// ============================================================================
 // transform()
 // ============================================================================
 

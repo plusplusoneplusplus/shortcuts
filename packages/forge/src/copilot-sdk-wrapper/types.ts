@@ -190,6 +190,47 @@ export interface ExtendedSdkRequest {
 }
 
 // ============================================================================
+// User Input Types
+//
+// These mirror the SDK's UserInputRequest / UserInputResponse / UserInputHandler
+// which are defined in `@github/copilot-sdk/dist/types.d.ts` but NOT publicly
+// exported from the package index. Re-defined locally to avoid deep-path imports.
+// ============================================================================
+
+/**
+ * Request for user input from the agent (enables SDK built-in ask_user tool).
+ */
+export interface UserInputRequest {
+    /** The question to ask the user */
+    question: string;
+    /** Optional choices for multiple-choice questions */
+    choices?: string[];
+    /**
+     * Whether to allow freeform text input in addition to choices.
+     * @default true
+     */
+    allowFreeform?: boolean;
+}
+
+/**
+ * Response to a user input request.
+ */
+export interface UserInputResponse {
+    /** The user's answer */
+    answer: string;
+    /** Whether the answer was freeform (not from choices) */
+    wasFreeform: boolean;
+}
+
+/**
+ * Handler for user input requests from the agent.
+ */
+export type UserInputHandler = (
+    request: UserInputRequest,
+    invocation: { sessionId: string },
+) => Promise<UserInputResponse> | UserInputResponse;
+
+// ============================================================================
 // Token Usage
 // ============================================================================
 
@@ -343,6 +384,16 @@ export interface SendMessageOptions {
      * Without a handler, all permission requests are denied by default.
      */
     onPermissionRequest?: import('@github/copilot-sdk').PermissionHandler;
+
+    /**
+     * Handler for user input requests from the agent.
+     * When provided, the SDK enables its built-in `ask_user` tool so the model
+     * can ask the user a question and receive an answer.
+     *
+     * NOTE: Do not provide this alongside a custom `ask_user` tool in the
+     * `tools` array — only one ask-user authority should be active per session.
+     */
+    onUserInputRequest?: UserInputHandler;
 
     /**
      * Callback invoked immediately after the SDK session is created.
