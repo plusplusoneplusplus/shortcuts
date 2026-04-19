@@ -84,7 +84,7 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest",
-    "test:run": "vitest run",
+    "test:run": "vitest run --reporter=verbose",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
