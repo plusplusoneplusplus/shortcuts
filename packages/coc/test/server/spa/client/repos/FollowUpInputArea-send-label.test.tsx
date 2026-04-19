@@ -33,12 +33,8 @@ vi.mock('../../../../../src/server/spa/client/react/shared', () => ({
     },
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/shared/ImagePreviews', () => ({
-    ImagePreviews: () => null,
-}));
-
-vi.mock('../../../../../src/server/spa/client/react/shared/PastePreview', () => ({
-    PastePreview: () => null,
+vi.mock('../../../../../src/server/spa/client/react/shared/AttachmentPreviews', () => ({
+    AttachmentPreviews: () => null,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/shared/cn', () => ({
@@ -88,10 +84,11 @@ function defaultProps(overrides: Partial<Parameters<typeof FollowUpInputArea>[0]
         onSend: vi.fn().mockResolvedValue(undefined),
         onRetry: vi.fn(),
         skills: [],
-        images: [],
-        onImagePaste: vi.fn(),
-        onImageRemove: vi.fn(),
-        pastePreview: null,
+        attachments: [],
+        onAttachmentPaste: vi.fn(),
+        onAttachmentRemove: vi.fn(),
+        onAttachmentFiles: vi.fn(),
+        attachmentError: null,
         task: null,
         slashCommands: {
             handleInputChange: vi.fn(),
@@ -125,9 +122,10 @@ describe('FollowUpInputArea – single send button', () => {
         expect(getSendButton().textContent).toBe('Send');
     });
 
-    it('shows "Send" even when sending=true (no split button)', () => {
+    it('shows Stop button when sending=true (no split button)', () => {
         render(<FollowUpInputArea {...defaultProps({ sending: true })} />);
-        expect(getSendButton().textContent).toBe('Send');
+        expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
+        expect(screen.queryByTestId('activity-chat-send-btn')).toBeNull();
         expect(screen.queryByTestId('split-send-group')).toBeNull();
     });
 
@@ -137,10 +135,11 @@ describe('FollowUpInputArea – single send button', () => {
         expect(getSendButton().textContent).toBe('⚡ Steer');
     });
 
-    it('shows "⚡ Steer" when Ctrl is held even while sending', () => {
+    it('shows Stop button when Ctrl is held and sending=true', () => {
         mockModHeld = true;
         render(<FollowUpInputArea {...defaultProps({ sending: true })} />);
-        expect(getSendButton().textContent).toBe('⚡ Steer');
+        expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
+        expect(screen.queryByTestId('activity-chat-send-btn')).toBeNull();
         expect(screen.queryByTestId('split-send-group')).toBeNull();
     });
 

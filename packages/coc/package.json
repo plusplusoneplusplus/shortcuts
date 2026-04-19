@@ -17,6 +17,8 @@
     "build": "npm run prebuild && npm run build:client && tsc && npm run build:copy-client && node -e \"require('fs').copyFileSync('src/server/openapi.yaml','dist/server/openapi.yaml')\" && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
     "test": "vitest",
     "test:run": "vitest run",
+    "coverage": "vitest run --coverage",
+    "coverage:diff": "bash ../../scripts/coverage-diff.sh",
     "test:e2e": "npx playwright test --config test/e2e/playwright.config.ts",
     "lint": "eslint src"
   },
@@ -70,6 +72,7 @@
     "@types/react-dom": "^18.3.1",
     "@types/turndown": "^5.0.6",
     "@types/ws": "^8.5.0",
+    "@vitest/coverage-v8": "^1.6.1",
     "autoprefixer": "^10.4.0",
     "esbuild": "^0.21.5",
     "fast-check": "^4.6.0",

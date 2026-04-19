@@ -1,7 +1,7 @@
 /**
  * MobileTabBar — replaces the horizontal top tab strip on mobile.
- * Fixed bottom bar with pinned tabs (Plans, Activity, Git) + a "···" More button.
- * Tapping More opens a BottomSheet listing the remaining tabs.
+ * Renders in normal document flow (not fixed) with pinned tabs (Plans, Activity, Git)
+ * + a "···" More button. Tapping More opens a BottomSheet listing the remaining tabs.
  */
 
 import { useState } from 'react';
@@ -9,7 +9,13 @@ import { BottomSheet } from '../shared/BottomSheet';
 import { cn } from '../shared';
 import type { RepoSubTab } from '../types/dashboard';
 
-const DEFAULT_PINNED: RepoSubTab[] = ['activity', 'git', 'tasks'];
+const DEFAULT_PINNED: RepoSubTab[] = ['chats', 'work-items', 'git'];
+
+export interface MobileTabBarAction {
+    label: string;
+    icon?: string;
+    onClick: () => void;
+}
 
 export interface MobileTabBarProps {
     activeTab: RepoSubTab;
@@ -18,7 +24,9 @@ export interface MobileTabBarProps {
     pinnedTabs?: RepoSubTab[];
     taskCount?: number;
     activityCount?: number;
+    workItemCount?: number;
     gitPendingCount?: number;
+    actions?: MobileTabBarAction[];
 }
 
 export function MobileTabBar({
@@ -28,7 +36,9 @@ export function MobileTabBar({
     pinnedTabs = DEFAULT_PINNED,
     taskCount = 0,
     activityCount = 0,
+    workItemCount = 0,
     gitPendingCount = 0,
+    actions = [],
 }: MobileTabBarProps){
     const [moreOpen, setMoreOpen] = useState(false);
 
@@ -38,7 +48,8 @@ export function MobileTabBar({
 
     const getBadgeCount = (key: RepoSubTab): number => {
         if (key === 'tasks') return taskCount;
-        if (key === 'activity') return activityCount;
+        if (key === 'chats') return activityCount;
+        if (key === 'work-items') return workItemCount;
         if (key === 'git') return gitPendingCount;
         return 0;
     };
@@ -51,8 +62,7 @@ export function MobileTabBar({
     return (
         <>
             <nav
-                className="fixed bottom-0 left-0 right-0 z-[8000] h-12 flex items-stretch border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
-                style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+                className="h-12 flex items-stretch border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
                 aria-label="Repo tab navigation"
                 data-testid="mobile-tab-bar"
             >
@@ -102,6 +112,22 @@ export function MobileTabBar({
 
             <BottomSheet isOpen={moreOpen} onClose={() => setMoreOpen(false)} title="More">
                 <div data-testid="mobile-tab-more-sheet">
+                    {actions.length > 0 && (
+                        <>
+                            {actions.map((action, i) => (
+                                <button
+                                    key={i}
+                                    className="w-full text-left px-4 min-h-[44px] flex items-center text-sm text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10"
+                                    onClick={() => { setMoreOpen(false); action.onClick(); }}
+                                    data-testid={`mobile-tab-action-${i}`}
+                                >
+                                    {action.icon && <span className="mr-2">{action.icon}</span>}
+                                    {action.label}
+                                </button>
+                            ))}
+                            <div className="h-px bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-4 my-1" />
+                        </>
+                    )}
                     {moreTabItems.map(t => {
                         const active = activeTab === t.key;
                         return (
@@ -109,7 +135,7 @@ export function MobileTabBar({
                                 key={t.key}
                                 data-tab={t.key}
                                 className={cn(
-                                    'w-full text-left px-4 py-2 text-sm',
+                                    'w-full text-left px-4 py-2 text-sm min-h-[44px] flex items-center',
                                     active
                                         ? 'text-[#0078d4] font-medium'
                                         : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10'

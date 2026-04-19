@@ -94,7 +94,7 @@ describe('MarkdownReviewMinimizedChip', () => {
         expect(chip.className).toContain('right-4');
     });
 
-    it('chip is positioned at bottom-16 on mobile viewport', () => {
+    it('chip is positioned at bottom-4 on mobile viewport (nav is at top)', () => {
         // Simulate mobile by setting window.matchMedia to return isMobile=true
         const original = window.matchMedia;
         window.matchMedia = (query: string) => ({
@@ -116,7 +116,7 @@ describe('MarkdownReviewMinimizedChip', () => {
             />
         );
         const chip = document.querySelector('[data-testid="minimized-chip"]') as HTMLElement;
-        expect(chip.className).toContain('bottom-16');
+        expect(chip.className).toContain('bottom-4');
 
         window.matchMedia = original;
     });

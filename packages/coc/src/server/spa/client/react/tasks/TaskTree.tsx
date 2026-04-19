@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTaskPanel } from '../context/TaskContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
-import { useQueueActivity } from '../hooks/useQueueActivity';
+import { useQueueChat } from '../hooks/useQueueChat';
 import type { TaskFolder, TaskNode, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder, isTaskDocument, isTaskDocumentGroup, getTaskNodePath, getTaskNodeTaskRootPath } from '../hooks/useTaskTree';
 import { useTaskDragDrop } from '../hooks/useTaskDragDrop';
@@ -68,7 +68,7 @@ export function TaskTree({
     onActiveFolderChange,
 }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, setSelectedFiles, clearSelection, showContextFiles, setSelectedFolderPath } = useTaskPanel();
-    const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId, tasksFolder);
+    const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueChat(wsId, tasksFolder);
     const { isMobile } = useBreakpoint();
     const dnd = useTaskDragDrop();
     const [columns, setColumns] = useState<TaskNode[][]>([]);

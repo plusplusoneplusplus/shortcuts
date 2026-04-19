@@ -9,7 +9,6 @@
 
 import { createContext, useContext, useCallback, useMemo, useRef, useState, useEffect, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
-import { useBreakpoint } from '../hooks/useBreakpoint';
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -129,11 +128,10 @@ export function useMinimizedDialog(entry: MinimizedDialogEntry | null): void {
 
 export function MinimizedDialogsTray() {
     const { entries } = useContext(MinimizedDialogsContext);
-    const { isMobile } = useBreakpoint();
 
     if (entries.length === 0) return null;
 
-    const bottomBase = isMobile ? 64 : 16; // bottom-16 (64px) for mobile, bottom-4 (16px) for desktop
+    const bottomBase = 16; // bottom-4 (16px) — mobile nav is at top, no bottom clearance needed
 
     return ReactDOM.createPortal(
         <div

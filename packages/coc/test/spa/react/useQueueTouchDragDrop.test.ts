@@ -254,9 +254,9 @@ describe('useQueueTouchDragDrop', () => {
     });
 });
 
-// ── ActivityListPane touch integration (data-queue-index) ──────────────
+// ── ChatListPane touch integration (data-queue-index) ──────────────
 
-describe('ActivityListPane touch drag integration', () => {
+describe('ChatListPane touch drag integration', () => {
     it('computeDropIndex matches desktop HTML5 drop logic for all cases', () => {
         // Verify parity with the HTML5 drag handler's index calculation
         // (see useQueueDragDrop.ts createDropHandler)

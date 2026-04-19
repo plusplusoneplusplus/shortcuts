@@ -1,5 +1,5 @@
 /**
- * Regression tests: mobile horizontal overflow fixes for ConversationArea and ActivityChatDetail.
+ * Regression tests: mobile horizontal overflow fixes for ConversationArea and ChatDetail.
  * Ensures overflow-x and min-w-0 constraints are in place to prevent content bleeding
  * beyond the viewport on small screens.
  */
@@ -16,7 +16,7 @@ const CSS_PATH = path.join(
 );
 
 const CONVERSATION_AREA_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ConversationArea.tsx'), 'utf-8');
-const ACTIVITY_CHAT_DETAIL_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityChatDetail.tsx'), 'utf-8');
+const ACTIVITY_CHAT_DETAIL_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ChatDetail.tsx'), 'utf-8');
 const CSS_SOURCE = fs.readFileSync(CSS_PATH, 'utf-8');
 
 // ── ConversationArea ──────────────────────────────────────────────────────────
@@ -37,9 +37,9 @@ describe('ConversationArea: mobile overflow', () => {
     });
 });
 
-// ── ActivityChatDetail ────────────────────────────────────────────────────────
+// ── ChatDetail ────────────────────────────────────────────────────────
 
-describe('ActivityChatDetail: mobile overflow', () => {
+describe('ChatDetail: mobile overflow', () => {
     it('conversation wrapper flex container has overflow-x-hidden', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toMatch(/relative flex-1 min-h-0 flex[^"]*overflow-x-hidden/);
     });

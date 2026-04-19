@@ -9,6 +9,7 @@ import { BaseExecutor } from './executors/base-executor';
 import { resolveSkillConfig } from './executors/skill-config-resolver';
 import { generateTitleIfNeeded as generateTitleIfNeededFn } from './executors/title-generator';
 import { ExecutorRegistry } from './executors/executor-registry';
+import type { CopilotClientCache } from './executors/copilot-client-cache';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -18,6 +19,10 @@ export interface CLITaskExecutorOptions {
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
     getWsServer?: () => import('./websocket').ProcessWebSocketServer | undefined;
+    /** Shared CopilotClient cache (optional — when provided, AI calls reuse clients). */
+    clientCache?: CopilotClientCache;
+    /** Client pool configuration from resolved config. */
+    clientPool?: { enabled: boolean; size: number };
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
@@ -82,6 +87,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
             getWsServer: options.getWsServer,
+            clientCache: options.clientCache,
         });
     }
 
@@ -229,6 +235,18 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 }
 
+/**
+ * Determines whether a task should use the exclusive (serial) limiter or the shared (concurrent) limiter.
+ *
+ * Concurrency model:
+ * - `run-workflow` tasks (including work items) → **exclusive** — serialized 1-at-a-time per repo queue.
+ *   Work items must never run concurrently within the same workspace.
+ * - `chat` tasks with `ask` or `plan` mode (e.g. coc-chat sessions) → **shared** — up to
+ *   `sharedConcurrency` (default 5) run concurrently. Multiple background-agent chat sessions
+ *   are fully supported and process in parallel.
+ * - `chat` tasks with `autopilot` mode → **exclusive** — treated as long-running autonomous
+ *   agents that must not interleave with other exclusive tasks in the same repo queue.
+ */
 export function defaultIsExclusive(task: QueuedTask): boolean {
     if (task.type === 'run-workflow' || task.type === 'run-script' || task.type === 'memory-aggregate') return true;
     if (isChatPayload(task.payload)) { const mode = (task.payload as any).mode; return mode === 'autopilot'; }

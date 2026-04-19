@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useCommitChatBinding } from '../hooks/useCommitChatBinding';
-import { ActivityChatDetail } from './ActivityChatDetail';
+import { ChatDetail } from './ChatDetail';
 import { ChatPreferencesProvider } from '../context/ChatPreferencesContext';
 import { RichTextInput } from '../shared/RichTextInput';
 import type { RichTextInputHandle } from '../shared/RichTextInput';
@@ -29,7 +29,7 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
         <div className="flex flex-col bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden h-full w-full"
              data-testid="commit-chat-panel">
 
-            {/* Header — only shown in empty/loading state. ActivityChatDetail has its own header. */}
+            {/* Header — only shown in empty/loading state. ChatDetail has its own header. */}
             {!taskId && (
                 <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <div className="flex items-center gap-2">
@@ -90,10 +90,10 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
                 </>
             )}
 
-            {/* Active chat — delegate entirely to ActivityChatDetail */}
+            {/* Active chat — delegate entirely to ChatDetail */}
             {taskId && !loading && (
                 <ChatPreferencesProvider workspaceId={workspaceId}>
-                    <ActivityChatDetail
+                    <ChatDetail
                         taskId={taskId}
                         workspaceId={workspaceId}
                         variant="floating"

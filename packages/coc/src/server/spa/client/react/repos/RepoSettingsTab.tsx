@@ -25,6 +25,8 @@ import { RepoPreferencesSection } from './RepoPreferencesSection';
 interface RepoSettingsTabProps {
     workspaceId: string;
     repo: RepoData;
+    uiLayoutMode?: import('../types/dashboard').UiLayoutMode;
+    onUiLayoutModeChange?: (mode: import('../types/dashboard').UiLayoutMode) => void;
 }
 
 type ActiveSection = SettingsSection;
@@ -58,7 +60,7 @@ function MetaRow({ label, value, mono, children, valueClass }: { label: string; 
     );
 }
 
-export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
+export function RepoSettingsTab({ workspaceId, repo, uiLayoutMode, onUiLayoutModeChange }: RepoSettingsTabProps) {
     const { addToast } = useGlobalToast();
     const { state, dispatch } = useApp();
     const { repos: allRepos } = useRepos();
@@ -486,7 +488,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                     </div>
                 )}
                 {activeSection === 'preferences' && (
-                    <RepoPreferencesSection workspaceId={workspaceId} />
+                    <RepoPreferencesSection workspaceId={workspaceId} uiLayoutMode={uiLayoutMode} onUiLayoutModeChange={onUiLayoutModeChange} />
                 )}
                 {activeSection === 'mcp' && (
                     <McpServersPanel

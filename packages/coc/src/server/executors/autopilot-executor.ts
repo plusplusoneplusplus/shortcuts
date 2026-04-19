@@ -26,6 +26,7 @@ import {
 import type { ChatPayload } from '../task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
 // AutopilotExecutor
@@ -34,8 +35,8 @@ import { ChatBaseExecutor } from './chat-base-executor';
 export type AutopilotExecutorOptions = ChatModeExecutorOptions;
 
 export class AutopilotExecutor extends ChatBaseExecutor {
-    constructor(store: ProcessStore, options: AutopilotExecutorOptions, dataDir?: string) {
-        super(store, options, dataDir);
+    constructor(store: ProcessStore, options: AutopilotExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
+        super(store, options, dataDir, clientCache);
     }
 
     protected async buildModeOptions(

@@ -27,6 +27,7 @@ import {
     QueueExecutorBridge,
     createQueueExecutorBridge,
 } from './queue-executor-bridge';
+import { CopilotClientCache } from './executors/copilot-client-cache';
 
 // ============================================================================
 // Types
@@ -44,6 +45,8 @@ interface RepoBridge {
 export class MultiRepoQueueExecutorBridge extends EventEmitter {
     /** Exposed for StaleTaskDetector and SqliteQueuePersistence to access per-repo managers. */
     readonly registry: RepoQueueRegistry;
+    /** Shared CopilotClient cache — one client per active process across all repos. */
+    readonly clientCache: CopilotClientCache;
     private readonly store: ProcessStore;
     private defaultOptions: QueueExecutorBridgeOptions;
 
@@ -65,6 +68,15 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         this.registry = registry;
         this.store = store;
         this.defaultOptions = defaultOptions;
+
+        // Single shared client cache across all repos (keyed by processId, globally unique)
+        const poolOpts = defaultOptions.clientPool;
+        this.clientCache = new CopilotClientCache(poolOpts ? {
+            poolEnabled: poolOpts.enabled,
+            poolSize: poolOpts.size,
+        } : undefined);
+        const aiService = defaultOptions.aiService ?? getCopilotSDKService();
+        this.clientCache.setAIService(aiService);
 
         // Forward queueChange events from the registry, augmenting with repoId
         this.registry.on('queueChange', (repoPath: string, event: QueueChangeEvent) => {
@@ -99,7 +111,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         const { executor, bridge } = createQueueExecutorBridge(
             queueManager,
             this.store,
-            { ...this.defaultOptions, workingDirectory: normalized },
+            { ...this.defaultOptions, workingDirectory: normalized, clientCache: this.clientCache },
         );
 
         this.bridges.set(normalized, { executor, bridge });
@@ -308,13 +320,35 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
 
     /**
      * Enqueue a task into the correct per-repo queue.
-     * Routes based on payload.workingDirectory. Falls back to process.cwd().
-     * Implements the optional enqueue() method of QueueExecutorBridge so that
-     * api-handler.ts can route follow-ups through the queue instead of firing
-     * them directly.
+     *
+     * Routing priority:
+     * 1. `payload.workingDirectory` — used directly if present.
+     * 2. `payload.workspaceId` — resolved to a rootPath via the process store
+     *    (same logic as `resolveRootPath` in queue-shared.ts). The resolved path
+     *    is also written back to `payload.workingDirectory` for downstream use.
+     * 3. Falls back to `process.cwd()` when neither is available.
+     *
+     * This ensures work-item tasks (which carry `workspaceId` but no
+     * `workingDirectory`) are routed to their workspace-specific queue and
+     * therefore serialized per workspace (exclusiveConcurrency = 1).
      */
     async enqueue(input: CreateTaskInput): Promise<string> {
-        const rootPath = (input.payload as any)?.workingDirectory || process.cwd();
+        let rootPath = (input.payload as any)?.workingDirectory as string | undefined;
+
+        if (!rootPath) {
+            const workspaceId = (input.payload as any)?.workspaceId as string | undefined;
+            if (workspaceId) {
+                const workspaces = await this.store.getWorkspaces();
+                const ws = workspaces.find((w: any) => w.id === workspaceId);
+                if (ws?.rootPath) {
+                    rootPath = path.resolve(ws.rootPath);
+                    (input.payload as any).workingDirectory = rootPath;
+                }
+            }
+        }
+
+        if (!rootPath) rootPath = process.cwd();
+
         this.getOrCreateBridge(rootPath);
         if (!input.repoId) {
             input.repoId = this.getRepoIdForPath(rootPath);
@@ -578,6 +612,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         this.repoIdToPath.clear();
         this.pathToRepoId.clear();
         this.registry.dispose();
+        this.clientCache.disposeAll().catch(() => {});
         this.removeAllListeners();
     }
 }

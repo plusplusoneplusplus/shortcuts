@@ -1,5 +1,5 @@
 /**
- * Tests for PendingTaskInfoPanel rendered inside ActivityChatDetail
+ * Tests for PendingTaskInfoPanel rendered inside ChatDetail
  * with QueueProvider + AppProvider.
  * Verifies metadata fields, action buttons, task-type-specific payload sections,
  * and the /queue/<id> API call on mount.
@@ -11,7 +11,7 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { ActivityChatDetail } from '../../../src/server/spa/client/react/repos/ActivityChatDetail';
+import { ChatDetail } from '../../../src/server/spa/client/react/repos/ChatDetail';
 
 // Mock useChatPrefs to avoid ChatPreferencesProvider requirement
 vi.mock('../../../src/server/spa/client/react/context/ChatPreferencesContext', () => ({
@@ -57,15 +57,15 @@ function Wrap({ children }: { children: ReactNode }) {
 
 /**
  * Seeds a pending (queued) task into queue state and selects it,
- * so ActivityChatDetail renders the PendingTaskInfoPanel.
+ * so ChatDetail renders the PendingTaskInfoPanel.
  */
-function SeededActivityChatDetail({ task }: { task: any }) {
+function SeededChatDetail({ task }: { task: any }) {
     const { dispatch: queueDispatch } = useQueue();
     useEffect(() => {
         queueDispatch({ type: 'QUEUE_UPDATED', queue: { queued: [task], running: [], stats: {} } });
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
     }, []);
-    return <ActivityChatDetail taskId={task.id} />;
+    return <ChatDetail taskId={task.id} />;
 }
 
 function makePendingTask(overrides?: Partial<any>): any {
@@ -118,7 +118,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -140,7 +140,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -164,7 +164,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -187,7 +187,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -218,7 +218,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -250,7 +250,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -266,7 +266,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -285,11 +285,11 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
-        // ActivityChatDetail fetches from the API, so a never-resolving fetch shows loading state
+        // ChatDetail fetches from the API, so a never-resolving fetch shows loading state
         await waitFor(() => {
             expect(screen.getByText('Loading conversation...')).toBeTruthy();
         });
@@ -301,7 +301,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -324,7 +324,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -350,7 +350,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -375,7 +375,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -400,7 +400,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 
@@ -428,7 +428,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededActivityChatDetail task={task} />
+                <SeededChatDetail task={task} />
             </Wrap>
         );
 

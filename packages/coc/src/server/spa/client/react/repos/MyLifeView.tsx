@@ -3,12 +3,12 @@
  *
  * Renders a single-row header with title, tab buttons, and action buttons,
  * matching the RepoDetail layout pattern.
- * Activity reuses RepoActivityTab; Notes reuses NotesView.
+ * Activity reuses RepoChatTab; Notes reuses NotesView.
  */
 
 import { useState, useCallback } from 'react';
 import { NotesView } from './NotesView';
-import { RepoActivityTab } from './RepoActivityTab';
+import { RepoChatTab } from './RepoChatTab';
 import { fetchApi } from '../hooks/useApi';
 import { useApp } from '../context/AppContext';
 import { cn } from '../shared';
@@ -139,7 +139,7 @@ export function MyLifeView() {
             {/* Tab content */}
             <div className="flex-1 min-h-0 overflow-hidden">
                 <div style={{ display: activeTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                    <RepoActivityTab workspaceId={MY_LIFE_WORKSPACE_ID} />
+                    <RepoChatTab workspaceId={MY_LIFE_WORKSPACE_ID} />
                 </div>
                 <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                     <NotesView

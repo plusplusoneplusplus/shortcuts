@@ -60,6 +60,16 @@ vi.mock('../../src/server/llm-tools/update-task-status-tool', () => ({
     createUpdateTaskStatusTool: () => mockCreateUpdateTaskStatusTool(),
 }));
 
+const mockCreateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_work_item' } }));
+vi.mock('../../src/server/create-work-item-tool', () => ({
+    createWorkItemTool: (...args: any[]) => mockCreateWorkItemTool(...args),
+}));
+
+const mockCreateBugTool = vi.fn(() => ({ tool: { name: 'create_bug' } }));
+vi.mock('../../src/server/create-bug-tool', () => ({
+    createBugTool: (...args: any[]) => mockCreateBugTool(...args),
+}));
+
 import {
     buildModeSystemMessage,
     appendAutoFolderBlock,
@@ -72,6 +82,7 @@ import {
     buildFollowUpSuggestionsAddon,
     buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
+    buildCreateWorkItemAddon,
 } from '../../src/server/executors/prompt-builder';
 
 // ============================================================================
@@ -498,5 +509,53 @@ describe('buildSearchConversationsAddon', () => {
         const store = { searchConversations: vi.fn() } as any;
         const result = buildSearchConversationsAddon(store);
         expect(result.suffix).toContain('conversation history');
+    });
+});
+
+// ============================================================================
+// buildCreateWorkItemAddon
+// ============================================================================
+
+describe('buildCreateWorkItemAddon', () => {
+    beforeEach(() => {
+        mockCreateWorkItemTool.mockReset();
+        mockCreateBugTool.mockReset();
+        mockCreateWorkItemTool.mockReturnValue({ tool: { name: 'create_work_item' } });
+        mockCreateBugTool.mockReturnValue({ tool: { name: 'create_bug' } });
+    });
+
+    it('returns empty tools when dataDir is undefined', () => {
+        const result = buildCreateWorkItemAddon(undefined, 'repo-1');
+        expect(result.tools).toEqual([]);
+        expect(result.suffix).toBe('');
+    });
+
+    it('returns empty tools when repoId is undefined', () => {
+        const result = buildCreateWorkItemAddon('/data', undefined);
+        expect(result.tools).toEqual([]);
+        expect(result.suffix).toBe('');
+    });
+
+    it('returns both create_work_item and create_bug tools', () => {
+        const result = buildCreateWorkItemAddon('/data', 'repo-1');
+        expect(result.tools).toHaveLength(2);
+        expect(result.tools[0].name).toBe('create_work_item');
+        expect(result.tools[1].name).toBe('create_bug');
+    });
+
+    it('passes dataDir, repoId, and broadcastFn to factories', () => {
+        const broadcast = vi.fn();
+        buildCreateWorkItemAddon('/data', 'repo-1', broadcast);
+        expect(mockCreateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
+        expect(mockCreateBugTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
+    });
+
+    it('suffix describes draft-refine-create workflow', () => {
+        const result = buildCreateWorkItemAddon('/data', 'repo-1');
+        expect(result.suffix).toContain('create_work_item');
+        expect(result.suffix).toContain('create_bug');
+        expect(result.suffix).toContain('Draft');
+        expect(result.suffix).toContain('Refine');
+        expect(result.suffix).toContain('Create');
     });
 });

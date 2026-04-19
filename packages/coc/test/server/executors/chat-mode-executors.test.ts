@@ -20,6 +20,7 @@ import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { PlanExecutor } from '../../../src/server/executors/plan-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
+import { CopilotClientCache } from '../../../src/server/executors/copilot-client-cache';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 
@@ -435,5 +436,99 @@ describe('ChatBaseExecutor selected skills', () => {
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.prompt).toContain('The user explicitly selected these skills: skill-a, skill-b.');
         expect(call.prompt).not.toContain('<skill name=');
+    });
+});
+
+// ============================================================================
+// Retry-on-client-death tests
+// ============================================================================
+
+describe('ChatBaseExecutor retry on cached client failure', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    function createMockClientCache() {
+        const mockClient = { stop: vi.fn().mockResolvedValue([]) };
+        const cache = new CopilotClientCache({ poolEnabled: false });
+        const mockService = { createClient: vi.fn().mockResolvedValue(mockClient) };
+        cache.setAIService(mockService as any);
+        return { cache, mockClient, mockService };
+    }
+
+    it('retries with fresh client when cached client fails mid-request', async () => {
+        const { cache, mockService } = createMockClientCache();
+        const freshClient = { stop: vi.fn().mockResolvedValue([]) };
+        // First acquire returns the original, release cleans it up, second acquire returns fresh
+        mockService.createClient
+            .mockResolvedValueOnce({ stop: vi.fn().mockResolvedValue([]) }) // initial
+            .mockResolvedValueOnce(freshClient); // fresh on retry
+
+        let callCount = 0;
+        sdkMocks.mockSendMessage.mockImplementation(async () => {
+            callCount++;
+            if (callCount === 1) throw new Error('client process exited');
+            return { success: true, response: 'retry worked', sessionId: 'sess-retry', toolCalls: [] };
+        });
+
+        const executor = new ChatExecutor(store, makeOptions(store), undefined, cache);
+        const task = makeChatTask('ask');
+        const result = await executor.execute(task, 'Hello') as any;
+
+        expect(result.response).toBe('retry worked');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry when no cached client was used', async () => {
+        // No clientCache passed — sendMessage failure should propagate directly
+        sdkMocks.mockSendMessage.mockRejectedValue(new Error('network error'));
+
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task = makeChatTask('ask');
+
+        await expect(executor.execute(task, 'Hello')).rejects.toThrow('network error');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('propagates error when retry also fails', async () => {
+        const { cache } = createMockClientCache();
+
+        sdkMocks.mockSendMessage.mockRejectedValue(new Error('persistent failure'));
+
+        const executor = new ChatExecutor(store, makeOptions(store), undefined, cache);
+        const task = makeChatTask('ask');
+
+        await expect(executor.execute(task, 'Hello')).rejects.toThrow('persistent failure');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('resets streaming state before retry', async () => {
+        const { cache } = createMockClientCache();
+
+        let callCount = 0;
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            callCount++;
+            if (callCount === 1) {
+                // Simulate partial streaming before failure
+                opts.onStreamingChunk?.('partial-');
+                throw new Error('client died');
+            }
+            // On retry, stream clean output
+            opts.onStreamingChunk?.('clean output');
+            return { success: true, response: 'retried', sessionId: 'sess-2', toolCalls: [] };
+        });
+
+        const executor = new ChatExecutor(store, makeOptions(store), undefined, cache);
+        const task = makeChatTask('ask');
+        await executor.execute(task, 'Hello');
+
+        // The emitted output should include clean output from retry
+        const outputCalls = (store.emitProcessOutput as ReturnType<typeof vi.fn>).mock.calls;
+        const allOutput = outputCalls.map((c: any[]) => c[1]).join('');
+        expect(allOutput).toContain('clean output');
     });
 });

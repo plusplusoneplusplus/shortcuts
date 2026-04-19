@@ -54,8 +54,8 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue({ running: [], queued: [], history: [], stats: {} }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/repos/ActivityListPane', () => ({
-    ActivityListPane: (props: any) => (
+vi.mock('../../../src/server/spa/client/react/repos/ChatListPane', () => ({
+    ChatListPane: (props: any) => (
         <div
             data-testid="activity-list-pane"
             data-workspace-id={props.workspaceId ?? ''}
@@ -64,16 +64,16 @@ vi.mock('../../../src/server/spa/client/react/repos/ActivityListPane', () => ({
             data-history-count={String(props.history?.length ?? 0)}
         >
             <button data-testid="select-task-a" onClick={() => props.onSelectTask?.('task-A')}>select</button>
-            ActivityListPane
+            ChatListPane
         </div>
     ),
 }));
 
-vi.mock('../../../src/server/spa/client/react/repos/ActivityDetailPane', () => ({
-    ActivityDetailPane: (props: any) => (
+vi.mock('../../../src/server/spa/client/react/repos/ChatDetailPane', () => ({
+    ChatDetailPane: (props: any) => (
         <div data-testid="activity-detail-pane" data-selected-task-id={props.selectedTaskId ?? ''}>
             {props.onBack && <button data-testid="detail-back-btn" onClick={props.onBack}>back</button>}
-            ActivityDetailPane
+            ChatDetailPane
         </div>
     ),
 }));
@@ -121,8 +121,8 @@ describe('ProcessesView', () => {
         await act(async () => { vi.advanceTimersByTime(350); });
     }
 
-    // Test 1: Desktop — two-pane layout with ActivityListPane + ActivityDetailPane
-    it('Desktop: renders two-pane layout with ActivityListPane and ActivityDetailPane', async () => {
+    // Test 1: Desktop — two-pane layout with ChatListPane + ChatDetailPane
+    it('Desktop: renders two-pane layout with ChatListPane and ChatDetailPane', async () => {
         await renderView();
 
         const panel = screen.getByTestId('activity-split-panel');
@@ -132,8 +132,8 @@ describe('ProcessesView', () => {
         expect(screen.getByTestId('activity-detail-pane')).toBeDefined();
     });
 
-    // Test 2: Desktop — ActivityListPane has no workspaceId (global queue)
-    it('Desktop: ActivityListPane has no workspaceId for global queue', async () => {
+    // Test 2: Desktop — ChatListPane has no workspaceId (global queue)
+    it('Desktop: ChatListPane has no workspaceId for global queue', async () => {
         await renderView();
 
         const listPane = screen.getByTestId('activity-list-pane');
@@ -169,7 +169,7 @@ describe('ProcessesView', () => {
     });
 
     // Test 6: Tablet — uses narrower left panel
-    it('Tablet: renders two-pane layout with ActivityListPane', async () => {
+    it('Tablet: renders two-pane layout with ChatListPane', async () => {
         setBreakpoint('tablet');
         await renderView();
 

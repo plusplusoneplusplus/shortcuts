@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 10;
 
 /**
  * Read the current schema version from the database.
@@ -81,6 +81,9 @@ export function initializeDatabase(db: Database.Database): void {
                 suggestions       TEXT,
                 token_usage       TEXT,
                 paste_externalized INTEGER DEFAULT 0,
+                deleted_at        TEXT,
+                pinned_at         TEXT,
+                archived          INTEGER DEFAULT 0,
                 model             TEXT,
                 UNIQUE(process_id, turn_index)
             )
@@ -262,26 +265,36 @@ export function initializeDatabase(db: Database.Database): void {
         `);
 
         // ── incremental migrations for existing databases ───────────
-        if (versionBefore >= 1 && versionBefore < 2) {
+        // Guards use only `versionBefore < N` (not `>= 1`) so that
+        // databases at version 0 with pre-existing tables still get
+        // columns added by later migrations.  Every migration is
+        // idempotent (checks column/table existence before ALTER).
+        if (versionBefore < 2) {
             migrateV1toV2(db);
         }
-        if (versionBefore >= 1 && versionBefore < 3) {
+        if (versionBefore < 3) {
             migrateV2toV3(db);
         }
-        if (versionBefore >= 1 && versionBefore < 4) {
+        if (versionBefore < 4) {
             migrateV3toV4(db);
         }
-        if (versionBefore >= 1 && versionBefore < 5) {
+        if (versionBefore < 5) {
             migrateV4toV5(db);
         }
-        if (versionBefore >= 1 && versionBefore < 6) {
+        if (versionBefore < 6) {
             migrateV5toV6(db);
         }
-        if (versionBefore >= 1 && versionBefore < 7) {
+        if (versionBefore < 7) {
             migrateV6toV7(db);
         }
-        if (versionBefore >= 1 && versionBefore < 8) {
+        if (versionBefore < 8) {
             migrateV7toV8(db);
+        }
+        if (versionBefore < 9) {
+            migrateV8toV9(db);
+        }
+        if (versionBefore < 10) {
+            migrateV9toV10(db);
         }
 
         // Stamp the schema version
@@ -353,11 +366,52 @@ function migrateV6toV7(db: Database.Database): void {
 }
 
 /**
- * V7 → V8: add `model TEXT` column to `conversation_turns` for model-change tracking.
+ * V7 → V8: add `deleted_at TEXT`, `pinned_at TEXT`, `archived INTEGER DEFAULT 0`
+ * columns to `conversation_turns` for per-message delete, pin, archive.
  */
 function migrateV7toV8(db: Database.Database): void {
     const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'deleted_at')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN deleted_at TEXT');
+    }
+    if (!cols.some(c => c.name === 'pinned_at')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN pinned_at TEXT');
+    }
+    if (!cols.some(c => c.name === 'archived')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN archived INTEGER DEFAULT 0');
+    }
+}
+
+/**
+ * V8 → V9: add `model TEXT` column to `conversation_turns` for model-change tracking.
+ */
+function migrateV8toV9(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'model')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN model TEXT');
+    }
+}
+
+/**
+ * V9 → V10: ensure all columns from both branches exist on `conversation_turns`.
+ *
+ * Databases may have been created at v8 or v9 from different code branches
+ * that each added a subset of columns.  This migration idempotently adds
+ * any that are still missing.
+ */
+function migrateV9toV10(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+    const colNames = new Set(cols.map(c => c.name));
+    if (!colNames.has('deleted_at')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN deleted_at TEXT');
+    }
+    if (!colNames.has('pinned_at')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN pinned_at TEXT');
+    }
+    if (!colNames.has('archived')) {
+        db.exec('ALTER TABLE conversation_turns ADD COLUMN archived INTEGER DEFAULT 0');
+    }
+    if (!colNames.has('model')) {
         db.exec('ALTER TABLE conversation_turns ADD COLUMN model TEXT');
     }
 }

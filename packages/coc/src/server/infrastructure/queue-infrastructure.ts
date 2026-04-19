@@ -59,6 +59,7 @@ export function createQueueInfrastructure(
     followUpSuggestions: { enabled: boolean; count: number } | undefined,
     askUser: { enabled: boolean } | undefined,
     getWsServer: () => ProcessWebSocketServer,
+    clientPool?: { enabled: boolean; size: number },
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -86,6 +87,7 @@ export function createQueueInfrastructure(
         askUser,
         getWsServer,
         initialDelayMs: options.queue?.restartPickupDelayMs,
+        clientPool,
     });
 
     const queuePersistence = new SqliteQueuePersistence(bridge, db, {

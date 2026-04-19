@@ -124,7 +124,14 @@ export type ServerMessage =
     | { type: 'schedule-triggered'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
     | { type: 'schedule-run-complete'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
     | { type: 'git-changed'; workspaceId: string; trigger: string; timestamp: number }
-    | { type: 'diff-comment-updated'; workspaceId: string; action: 'added' | 'updated' | 'deleted'; storageKey: string; comment?: any; commentId?: string };
+    | { type: 'diff-comment-updated'; workspaceId: string; action: 'added' | 'updated' | 'deleted'; storageKey: string; comment?: any; commentId?: string }
+    | { type: 'work-item-added'; workspaceId: string; item: any }
+    | { type: 'work-item-updated'; workspaceId: string; item: any }
+    | { type: 'work-item-removed'; workspaceId: string; itemId: string }
+    | { type: 'work-item-pr-created'; workspaceId: string; workItemId: string; prUrl: string; prNumber: number; iteration: number }
+    | { type: 'turn-deleted'; processId: string; turnIndex: number; deletedAt: string | null }
+    | { type: 'turn-pinned'; processId: string; turnIndex: number; pinnedAt: string | null }
+    | { type: 'turn-archived'; processId: string; turnIndex: number; archived: boolean };
 
 /** Client → Server message types */
 export type ClientMessage =
@@ -426,7 +433,10 @@ export class ProcessWebSocketServer {
             message.type === 'templates-changed' ||
             message.type === 'notes-changed' ||
             message.type === 'git-changed' ||
-            message.type === 'diff-comment-updated'
+            message.type === 'diff-comment-updated' ||
+            message.type === 'work-item-added' ||
+            message.type === 'work-item-updated' ||
+            message.type === 'work-item-removed'
         ) {
             return message.workspaceId;
         }

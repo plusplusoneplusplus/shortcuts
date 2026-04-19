@@ -23,7 +23,7 @@ test.describe('Desktop Regression', () => {
 
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
-        // ActivityListPane (left panel) should be visible
+        // ChatListPane (left panel) should be visible
         const listPane = page.locator('[data-testid="activity-split-panel"]');
         await expect(listPane).toBeVisible();
 

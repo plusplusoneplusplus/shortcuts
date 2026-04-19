@@ -1,0 +1,534 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
+import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import {
+    executeWorkItem,
+    handleWorkItemTaskComplete,
+    buildExecutionPrompt,
+    resolveWorkItemComments,
+    isResolveSessionCategory,
+} from '../../../src/server/work-items/work-item-executor';
+import type { WorkItem } from '../../../src/server/work-items/types';
+
+let tmpDir: string;
+let store: FileWorkItemStore;
+
+function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
+    return {
+        id: `wi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        repoId: 'test-repo',
+        title: 'Test work item',
+        description: 'A test description',
+        status: 'created',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        source: 'manual',
+        ...overrides,
+    };
+}
+
+beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-exec-'));
+    store = new FileWorkItemStore({ dataDir: tmpDir });
+});
+
+afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+describe('buildExecutionPrompt', () => {
+    it('includes title, description, and plan', () => {
+        const item = makeWorkItem({
+            title: 'Refactor auth',
+            description: 'Refactor the authentication module',
+            plan: { version: 1, content: '1. Extract token logic\n2. Add tests', updatedAt: '' },
+        });
+
+        const prompt = buildExecutionPrompt(item);
+        expect(prompt).toContain('Refactor auth');
+        expect(prompt).toContain('Refactor the authentication module');
+        expect(prompt).toContain('Extract token logic');
+        expect(prompt).toContain('Execute the plan above');
+    });
+
+    it('works without plan', () => {
+        const item = makeWorkItem({ title: 'Simple task', description: 'Do it' });
+        const prompt = buildExecutionPrompt(item);
+        expect(prompt).toContain('Simple task');
+        expect(prompt).toContain('Do it');
+    });
+});
+
+describe('executeWorkItem', () => {
+    it('enqueues a task and transitions to executing', async () => {
+        const item = makeWorkItem({
+            id: 'wi-exec-1',
+            status: 'readyToExecute',
+            plan: { version: 1, content: 'Plan content', updatedAt: '' },
+            priority: 'high',
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-123');
+
+        const result = await executeWorkItem('wi-exec-1', store, enqueue);
+
+        expect(result.taskId).toBe('task-123');
+        expect(enqueue).toHaveBeenCalledOnce();
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.type).toBe('run-workflow');
+        expect(call.priority).toBe('high');
+        expect(call.payload.kind).toBe('chat');
+        expect(call.payload.mode).toBe('autopilot');
+        expect(call.payload.prompt).toContain('Plan content');
+        expect(call.payload.workItemId).toBe('wi-exec-1');
+        expect(call.displayName).toBe('Run #1: Code Implement');
+
+        // Verify status transitioned
+        const updated = await store.getWorkItem('wi-exec-1', 'test-repo');
+        expect(updated!.status).toBe('executing');
+        expect(updated!.executionHistory).toHaveLength(1);
+        expect(updated!.executionHistory![0].taskId).toBe('task-123');
+        expect(updated!.executionHistory![0].status).toBe('running');
+    });
+
+    it('throws for non-ready work items', async () => {
+        const item = makeWorkItem({ id: 'wi-not-ready', status: 'created' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn();
+        await expect(executeWorkItem('wi-not-ready', store, enqueue)).rejects.toThrow(
+            /Cannot execute.*created/
+        );
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('throws for non-existent work items', async () => {
+        const enqueue = vi.fn();
+        await expect(executeWorkItem('nonexistent', store, enqueue)).rejects.toThrow('not found');
+    });
+
+    it('respects model override', async () => {
+        const item = makeWorkItem({ id: 'wi-model', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-456');
+        await executeWorkItem('wi-model', store, enqueue, { model: 'gpt-4' });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.config.model).toBe('gpt-4');
+    });
+});
+
+describe('handleWorkItemTaskComplete', () => {
+    it('marks work item done on completion', async () => {
+        const item = makeWorkItem({ id: 'wi-done', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-done', {
+            taskId: 'task-1',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+        });
+
+        await handleWorkItemTaskComplete('wi-done', 'task-1', {
+            status: 'completed',
+            processId: 'proc-1',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-done', 'test-repo');
+        expect(updated!.status).toBe('aiDone');
+        expect(updated!.processId).toBe('proc-1');
+        expect(updated!.executionHistory![0].status).toBe('completed');
+    });
+
+    it('marks work item aiFailed on failure', async () => {
+        const item = makeWorkItem({ id: 'wi-fail', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-fail', {
+            taskId: 'task-2',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+        });
+
+        await handleWorkItemTaskComplete('wi-fail', 'task-2', {
+            status: 'failed',
+            error: 'Timeout exceeded',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-fail', 'test-repo');
+        expect(updated!.status).toBe('aiFailed');
+        expect(updated!.completedAt).toBeDefined();
+        expect(updated!.executionHistory![0].status).toBe('failed');
+        expect(updated!.executionHistory![0].error).toBe('Timeout exceeded');
+    });
+
+    it('transitions to readyToExecute on cancellation', async () => {
+        const item = makeWorkItem({ id: 'wi-cancel', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-cancel', {
+            taskId: 'task-cancel',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+        });
+
+        await handleWorkItemTaskComplete('wi-cancel', 'task-cancel', {
+            status: 'cancelled',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-cancel', 'test-repo');
+        expect(updated!.status).toBe('readyToExecute');
+        expect(updated!.completedAt).toBeUndefined();
+        expect(updated!.executionHistory![0].status).toBe('cancelled');
+    });
+
+    it('does not set completedAt when transitioning to aiDone', async () => {
+        const item = makeWorkItem({ id: 'wi-aidone', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-aidone', {
+            taskId: 'task-3',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+        });
+
+        await handleWorkItemTaskComplete('wi-aidone', 'task-3', {
+            status: 'completed',
+            processId: 'proc-2',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-aidone', 'test-repo');
+        expect(updated!.status).toBe('aiDone');
+        expect(updated!.completedAt).toBeUndefined();
+    });
+});
+
+describe('executeWorkItem sessionCategory', () => {
+    it('sets sessionCategory to generating-code in the enqueue payload', async () => {
+        const item = makeWorkItem({ id: 'wi-cat-payload', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-cat-1');
+        await executeWorkItem('wi-cat-payload', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.sessionCategory).toBe('generating-code');
+    });
+
+    it('sets sessionCategory to generating-code in the execution history record', async () => {
+        const item = makeWorkItem({ id: 'wi-cat-exec', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-cat-2');
+        await executeWorkItem('wi-cat-exec', store, enqueue);
+
+        const updated = await store.getWorkItem('wi-cat-exec', 'test-repo');
+        expect(updated!.executionHistory).toHaveLength(1);
+        expect(updated!.executionHistory![0].sessionCategory).toBe('generating-code');
+    });
+});
+
+describe('executeWorkItem title', () => {
+    it('sets title to "Code Implement" on the execution entry', async () => {
+        const item = makeWorkItem({ id: 'wi-title-1', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-title-1');
+        await executeWorkItem('wi-title-1', store, enqueue);
+
+        const updated = await store.getWorkItem('wi-title-1', 'test-repo');
+        expect(updated!.executionHistory![0].title).toBe('Code Implement');
+    });
+
+    it('sets displayName to "Run #1: Code Implement" for the first execution', async () => {
+        const item = makeWorkItem({ id: 'wi-dn-1', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-dn-1');
+        await executeWorkItem('wi-dn-1', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.displayName).toBe('Run #1: Code Implement');
+    });
+
+    it('increments run number based on existing execution history', async () => {
+        const item = makeWorkItem({
+            id: 'wi-dn-2',
+            status: 'readyToExecute',
+            executionHistory: [
+                { taskId: 'prev-1', startedAt: '2026-01-01T00:00:00Z', status: 'completed', title: 'Code Implement' },
+                { taskId: 'prev-2', startedAt: '2026-01-01T01:00:00Z', status: 'completed', title: 'Resolve comments for Run #1' },
+            ],
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-dn-3');
+        await executeWorkItem('wi-dn-2', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.displayName).toBe('Run #3: Code Implement');
+    });
+
+    it('preserves title "Code Implement" on auto-re-executed runs', async () => {
+        const item = makeWorkItem({ id: 'wi-auto-title', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-auto-title');
+        await executeWorkItem('wi-auto-title', store, enqueue, { autoReExecuted: true });
+
+        const updated = await store.getWorkItem('wi-auto-title', 'test-repo');
+        expect(updated!.executionHistory![0].title).toBe('Code Implement');
+        expect(updated!.executionHistory![0].autoReExecuted).toBe(true);
+    });
+});
+
+describe('executeWorkItem taskFilePath (live task visibility)', () => {
+    it('includes taskFilePath in context.files when provided', async () => {
+        const item = makeWorkItem({ id: 'wi-taskfile-1', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-tf-1');
+        const taskFilePath = '/data/repos/ws-abc/tasks/work-items/wi-taskfile-1.impl.md';
+        await executeWorkItem('wi-taskfile-1', store, enqueue, { taskFilePath });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.context).toEqual({ files: [taskFilePath] });
+    });
+
+    it('omits context.files when taskFilePath is not provided', async () => {
+        const item = makeWorkItem({ id: 'wi-taskfile-2', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-tf-2');
+        await executeWorkItem('wi-taskfile-2', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.context).toBeUndefined();
+    });
+
+    it('includes taskFilePath alongside other payload fields', async () => {
+        const item = makeWorkItem({
+            id: 'wi-taskfile-3',
+            status: 'readyToExecute',
+            plan: { version: 1, content: 'Do stuff', updatedAt: '' },
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-tf-3');
+        const taskFilePath = '/data/repos/ws-xyz/tasks/work-items/wi-taskfile-3.impl.md';
+        await executeWorkItem('wi-taskfile-3', store, enqueue, { taskFilePath, model: 'gpt-4' });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.workItemId).toBe('wi-taskfile-3');
+        expect(call.payload.workspaceId).toBe('test-repo');
+        expect(call.payload.context).toEqual({ files: [taskFilePath] });
+        expect(call.config.model).toBe('gpt-4');
+    });
+});
+
+describe('resolveWorkItemComments', () => {
+    it('creates a plan comment resolve Run# session', async () => {
+        const item = makeWorkItem({ id: 'wi-plan-resolve', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-1');
+        const result = await resolveWorkItemComments('wi-plan-resolve', store, enqueue, {
+            type: 'plan',
+            prompt: 'Resolve these plan comments...',
+            resolveContext: { files: ['__wi-plan__/wi-plan-resolve'] },
+        });
+
+        expect(result.taskId).toBe('task-resolve-1');
+        expect(enqueue).toHaveBeenCalledOnce();
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.type).toBe('run-workflow');
+        expect(call.payload.kind).toBe('chat');
+        expect(call.payload.mode).toBe('ask');
+        expect(call.payload.sessionCategory).toBe('resolve-plan-comments');
+        expect(call.payload.workItemId).toBe('wi-plan-resolve');
+        expect(call.payload.tools).toEqual(['resolve-comments']);
+        expect(call.displayName).toBe('Run #1: Comment Resolve');
+
+        const updated = await store.getWorkItem('wi-plan-resolve', 'test-repo');
+        expect(updated!.executionHistory).toHaveLength(1);
+        expect(updated!.executionHistory![0].taskId).toBe('task-resolve-1');
+        expect(updated!.executionHistory![0].status).toBe('running');
+        expect(updated!.executionHistory![0].sessionCategory).toBe('resolve-plan-comments');
+        expect(updated!.executionHistory![0].title).toBe('Comment Resolve');
+
+        // Should NOT change the work item status
+        expect(updated!.status).toBe('readyToExecute');
+    });
+
+    it('creates a commit comment resolve Run# session with SHA in title', async () => {
+        const item = makeWorkItem({ id: 'wi-commit-resolve', status: 'aiDone' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-2');
+        await resolveWorkItemComments('wi-commit-resolve', store, enqueue, {
+            type: 'commit',
+            commitSha: 'abc1234567890',
+            prompt: 'Resolve commit diff comments...',
+            resolveContext: { files: ['/repo/src/file.ts'] },
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.mode).toBe('autopilot');
+        expect(call.payload.sessionCategory).toBe('resolve-commit-comments');
+        expect(call.displayName).toBe('Run #1: Code Comment Resolve (abc1234)');
+
+        const updated = await store.getWorkItem('wi-commit-resolve', 'test-repo');
+        expect(updated!.executionHistory![0].title).toBe('Code Comment Resolve (abc1234)');
+        expect(updated!.executionHistory![0].sessionCategory).toBe('resolve-commit-comments');
+    });
+
+    it('increments run number based on existing execution history', async () => {
+        const item = makeWorkItem({
+            id: 'wi-resolve-num',
+            status: 'aiDone',
+            executionHistory: [
+                { taskId: 'prev-1', startedAt: '2026-01-01T00:00:00Z', status: 'completed', title: 'Code Implement' },
+            ],
+        });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-num');
+        await resolveWorkItemComments('wi-resolve-num', store, enqueue, {
+            type: 'plan',
+            prompt: 'Resolve...',
+            resolveContext: {},
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.displayName).toBe('Run #2: Comment Resolve');
+    });
+
+    it('throws for non-existent work items', async () => {
+        const enqueue = vi.fn();
+        await expect(
+            resolveWorkItemComments('nonexistent', store, enqueue, {
+                type: 'plan',
+                prompt: 'test',
+                resolveContext: {},
+            }),
+        ).rejects.toThrow('not found');
+    });
+
+    it('respects model override', async () => {
+        const item = makeWorkItem({ id: 'wi-resolve-model', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-model');
+        await resolveWorkItemComments('wi-resolve-model', store, enqueue, {
+            type: 'plan',
+            model: 'claude-sonnet',
+            prompt: 'Resolve...',
+            resolveContext: {},
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.config.model).toBe('claude-sonnet');
+    });
+
+    it('respects mode override', async () => {
+        const item = makeWorkItem({ id: 'wi-resolve-mode', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-resolve-mode');
+        await resolveWorkItemComments('wi-resolve-mode', store, enqueue, {
+            type: 'commit',
+            commitSha: 'abc123',
+            mode: 'ask',
+            prompt: 'Resolve...',
+            resolveContext: {},
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.mode).toBe('ask');
+    });
+});
+
+describe('isResolveSessionCategory', () => {
+    it('returns true for resolve-plan-comments', () => {
+        expect(isResolveSessionCategory('resolve-plan-comments')).toBe(true);
+    });
+
+    it('returns true for resolve-commit-comments', () => {
+        expect(isResolveSessionCategory('resolve-commit-comments')).toBe(true);
+    });
+
+    it('returns false for generating-code', () => {
+        expect(isResolveSessionCategory('generating-code')).toBe(false);
+    });
+
+    it('returns false for undefined', () => {
+        expect(isResolveSessionCategory(undefined)).toBe(false);
+    });
+});
+
+describe('handleWorkItemTaskComplete — comment-resolve sessions', () => {
+    it('skips status transition for plan comment resolve sessions', async () => {
+        const item = makeWorkItem({ id: 'wi-plan-done', status: 'aiDone' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-plan-done', {
+            taskId: 'task-plan-resolve',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+            sessionCategory: 'resolve-plan-comments',
+        });
+
+        await handleWorkItemTaskComplete('wi-plan-done', 'task-plan-resolve', {
+            status: 'completed',
+            processId: 'proc-plan',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-plan-done', 'test-repo');
+        // Status should NOT change from aiDone
+        expect(updated!.status).toBe('aiDone');
+        // Execution entry should be updated
+        expect(updated!.executionHistory![0].status).toBe('completed');
+        expect(updated!.executionHistory![0].processId).toBe('proc-plan');
+    });
+
+    it('skips status transition for commit comment resolve sessions', async () => {
+        const item = makeWorkItem({ id: 'wi-commit-done', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-commit-done', {
+            taskId: 'task-commit-resolve',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+            sessionCategory: 'resolve-commit-comments',
+        });
+
+        await handleWorkItemTaskComplete('wi-commit-done', 'task-commit-resolve', {
+            status: 'completed',
+            processId: 'proc-commit',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-commit-done', 'test-repo');
+        // Status should NOT change
+        expect(updated!.status).toBe('executing');
+        expect(updated!.executionHistory![0].status).toBe('completed');
+    });
+
+    it('still transitions status for regular executions', async () => {
+        const item = makeWorkItem({ id: 'wi-regular-done', status: 'executing' });
+        await store.addWorkItem(item);
+        await store.addExecution('wi-regular-done', {
+            taskId: 'task-regular',
+            startedAt: '2026-01-01T12:00:00.000Z',
+            status: 'running',
+            sessionCategory: 'generating-code',
+        });
+
+        await handleWorkItemTaskComplete('wi-regular-done', 'task-regular', {
+            status: 'completed',
+            processId: 'proc-regular',
+        }, store);
+
+        const updated = await store.getWorkItem('wi-regular-done', 'test-repo');
+        expect(updated!.status).toBe('aiDone');
+    });
+});

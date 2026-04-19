@@ -7,7 +7,7 @@
  * - The session filter chip appears in the Logs view
  *
  * Note: The `view-logs-btn` in ProcessDetail.tsx is dead code (component is never
- * imported/rendered). Queue tasks use ActivityChatDetail → ChatHeader which renders
+ * imported/rendered). Queue tasks use ChatDetail → ChatHeader which renders
  * ConversationMetadataPopover but has no standalone logs button.
  */
 

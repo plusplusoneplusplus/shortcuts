@@ -16,7 +16,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         activeTab: 'repos',
         workspaces: [],
         selectedRepoId: null,
-        activeRepoSubTab: 'settings',
+        activeRepoSubTab: 'chats',
         reposSidebarCollapsed: false,
         selectedWikiId: null,
         selectedWikiComponentId: null,
@@ -326,12 +326,12 @@ describe('AppContext reducer', () => {
     // ── Per-repo tab state persistence ─────────────────────────────
     describe('per-repo tab state', () => {
         it('restores last active sub-tab when switching back to a repo', () => {
-            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'settings' });
+            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'chats' });
             // Switch to activity on repo-a
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-            // Switch to repo-b — saves repo-a's tab, defaults to settings for repo-b
+            // Switch to repo-b — saves repo-a's tab, defaults to chats for repo-b
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
-            expect(state.activeRepoSubTab).toBe('settings');
+            expect(state.activeRepoSubTab).toBe('chats');
             // Switch to wiki on repo-b
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
             // Switch back to repo-a — should restore activity
@@ -342,10 +342,10 @@ describe('AppContext reducer', () => {
             expect(state.activeRepoSubTab).toBe('wiki');
         });
 
-        it('defaults to settings when visiting a repo for the first time', () => {
+        it('defaults to chats when visiting a repo for the first time', () => {
             const state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'activity' });
             const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-new' });
-            expect(result.activeRepoSubTab).toBe('settings');
+            expect(result.activeRepoSubTab).toBe('chats');
         });
 
         it('SET_REPO_SUB_TAB records tab in repoTabState for the current repo', () => {
@@ -370,7 +370,7 @@ describe('AppContext reducer', () => {
         });
 
         it('explicit SET_REPO_SUB_TAB after SET_SELECTED_REPO overrides the restored tab', () => {
-            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'settings' });
+            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'chats' });
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
             // Router dispatches explicit sub-tab from deep-link

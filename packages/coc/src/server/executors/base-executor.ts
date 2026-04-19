@@ -17,6 +17,7 @@
 import type { ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
 import { mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../output-file-manager';
+import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
 // Types
@@ -47,6 +48,7 @@ export interface ProcessSessionState {
 export abstract class BaseExecutor {
     protected readonly store: ProcessStore;
     protected readonly dataDir?: string;
+    protected readonly clientCache?: CopilotClientCache;
 
     /** Set of task IDs that have been cancelled. */
     protected readonly cancelledTasks: Set<string> = new Set();
@@ -60,9 +62,10 @@ export abstract class BaseExecutor {
     /** Count-based throttle: flush every N chunks. */
     protected static readonly THROTTLE_CHUNK_COUNT = 50;
 
-    constructor(store: ProcessStore, dataDir?: string) {
+    constructor(store: ProcessStore, dataDir?: string, clientCache?: CopilotClientCache) {
         this.store = store;
         this.dataDir = dataDir;
+        this.clientCache = clientCache;
     }
 
     // ========================================================================
@@ -87,6 +90,23 @@ export abstract class BaseExecutor {
     /** Delete all session state for a process in one atomic operation. */
     protected cleanupSession(processId: string): void {
         this.sessions.delete(processId);
+        // Mark the cached client as idle — starts the idle timer so follow-ups
+        // can reuse the same child process without re-spawning.
+        this.clientCache?.markIdle(processId);
+    }
+
+    /**
+     * Reset streaming state for a process so a retry starts with a clean slate.
+     * Clears the output buffer, timeline, suggestions, and throttle counters
+     * without deleting the session entry itself.
+     */
+    protected resetSessionStreamingState(processId: string): void {
+        const session = this.getOrCreateSession(processId);
+        session.outputBuffer = '';
+        session.timelineBuffer.length = 0;
+        session.pendingSuggestions = undefined;
+        session.throttleState.chunksSinceLastFlush = 0;
+        session.throttleState.lastFlushTime = 0;
     }
 
     /** Look up the pending ask-user handles for a process (if any). */

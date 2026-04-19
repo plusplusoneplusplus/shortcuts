@@ -603,4 +603,70 @@ describe('migrateProcessHistoryIfNeeded', () => {
         expect(fs.existsSync(path.join(reposDir, wsId, 'queues.json'))).toBe(true);
         expect(fs.existsSync(path.join(reposDir, wsId, 'tasks', 'task.md'))).toBe(true);
     });
+
+    // ========================================================================
+    // Work-item enrichment during migration
+    // ========================================================================
+
+    it('enriches work-item processes with correct type and workItemId from work-item store', async () => {
+        const reposDir = path.join(dataDir, 'repos');
+        const wsId = 'ws-enrichment';
+        await store.registerWorkspace({ id: wsId, name: 'Enrichment', rootPath: '/tmp' });
+
+        // Create processes — all with type: 'chat' (legacy behavior)
+        const chatProc = makeProcess('proc-chat', wsId);
+        const wiProc = makeProcess('proc-wi-1', wsId);
+        writeJSON(path.join(reposDir, wsId, 'processes', 'index.json'), [chatProc.index, wiProc.index]);
+        writeJSON(path.join(reposDir, wsId, 'processes', 'proc-chat.json'), chatProc.stored);
+        writeJSON(path.join(reposDir, wsId, 'processes', 'proc-wi-1.json'), wiProc.stored);
+
+        // Create work-item store with execution history linking proc-wi-1 to a work item
+        const workItemId = 'wi-abc-123';
+        writeJSON(path.join(reposDir, wsId, 'work-items', `${workItemId}.json`), {
+            id: workItemId,
+            title: 'Test Work Item',
+            executionHistory: [
+                { taskId: 'task-1', processId: 'proc-wi-1', status: 'completed' },
+            ],
+        });
+
+        const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        const result = await migrateProcessHistoryIfNeeded(dataDir, store);
+        stderrSpy.mockRestore();
+
+        expect(result.processCount).toBe(2);
+
+        // Verify: proc-wi-1 should be enriched with type='run-workflow' and workItemId in metadata
+        const db = new Database(path.join(dataDir, 'processes.db'));
+        const wiRow = db.prepare('SELECT type, metadata FROM processes WHERE id = ?').get('proc-wi-1') as Record<string, string>;
+        expect(wiRow.type).toBe('run-workflow');
+        const wiMeta = JSON.parse(wiRow.metadata);
+        expect(wiMeta.workItemId).toBe(workItemId);
+
+        // Verify: proc-chat should remain unchanged
+        const chatRow = db.prepare('SELECT type, metadata FROM processes WHERE id = ?').get('proc-chat') as Record<string, string>;
+        expect(chatRow.type).toBe('clarification'); // original type from makeProcess
+        const chatMeta = JSON.parse(chatRow.metadata);
+        expect(chatMeta.workItemId).toBeUndefined();
+
+        db.close();
+    });
+
+    it('handles missing work-items directory gracefully during enrichment', async () => {
+        const reposDir = path.join(dataDir, 'repos');
+        const wsId = 'ws-no-wi';
+        await store.registerWorkspace({ id: wsId, name: 'No WI', rootPath: '/tmp' });
+
+        const p1 = makeProcess('proc-1', wsId);
+        writeJSON(path.join(reposDir, wsId, 'processes', 'index.json'), [p1.index]);
+        writeJSON(path.join(reposDir, wsId, 'processes', 'proc-1.json'), p1.stored);
+        // No work-items directory — should not crash
+
+        const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        const result = await migrateProcessHistoryIfNeeded(dataDir, store);
+        stderrSpy.mockRestore();
+
+        expect(result.processCount).toBe(1);
+        expect(result.errors).toHaveLength(0);
+    });
 });

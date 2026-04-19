@@ -16,14 +16,14 @@ const loggingLevelEnum = z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fat
 const loggingStoreSchema = z.object({
     level: loggingLevelEnum.optional(),
     file: z.boolean().optional(),
-}).strict();
+}).passthrough();
 
 const loggingConfigSchema = z.object({
     level: loggingLevelEnum.optional(),
     dir: z.string().optional(),
     pretty: z.union([z.literal('auto'), z.boolean()]).optional(),
     stores: z.record(z.string(), loggingStoreSchema.optional()).optional(),
-}).strict();
+}).passthrough();
 
 /**
  * Zod schema for CLI configuration file
@@ -48,54 +48,58 @@ export const CLIConfigSchema = z.object({
         followUpSuggestions: z.object({
             enabled: z.boolean().optional(),
             count: z.number().int().min(1).max(5).optional(),
-        }).strict().optional(),
+        }).passthrough().optional(),
         askUser: z.object({
             enabled: z.boolean().optional(),
-        }).strict().optional(),
-    }).strict().optional(),
+        }).passthrough().optional(),
+    }).passthrough().optional(),
     serve: z.object({
         port: z.number().int().positive().max(65535).optional(),
         host: z.string().optional(),
         dataDir: z.string().optional(),
         theme: z.enum(['auto', 'light', 'dark']).optional(),
         serverName: z.string().optional(),
-    }).strict().optional(),
+    }).passthrough().optional(),
     queue: z.object({
         historyLimit: z.number().int().positive().optional(),
         restartPolicy: z.enum(['fail', 'requeue', 'requeue-if-retriable']).optional(),
         restartPickupDelayMs: z.number().int().min(0).optional(),
-    }).strict().optional(),
+    }).passthrough().optional(),
     models: z.object({
         enabled: z.array(z.string()).optional(),
-    }).strict().optional(),
+    }).passthrough().optional(),
     logging: loggingConfigSchema.optional(),
     terminal: z.object({
         enabled: z.boolean().optional(),
-    }).strict().optional(),
+    }).passthrough().optional(),
     notes: z.object({
         enabled: z.boolean().optional(),
-    }).strict().optional(),
+    }).passthrough().optional(),
     myWork: z.object({
         enabled: z.boolean().optional(),
-    }).strict().optional(),
+    }).passthrough().optional(),
     myLife: z.object({
         enabled: z.boolean().optional(),
-    }).strict().optional(),
+    }).passthrough().optional(),
     store: z.object({
         backend: z.enum(['file', 'sqlite']).optional(),
-    }).strict().optional(),
+    }).passthrough().optional(),
     monitoring: z.object({
         heapCheck: z.object({
             enabled: z.boolean().optional(),
             intervalMs: z.number().int().positive().optional(),
             warnThreshold: z.number().min(0).max(100).optional(),
             criticalThreshold: z.number().min(0).max(100).optional(),
-        }).strict().optional(),
-    }).strict().optional(),
+        }).passthrough().optional(),
+    }).passthrough().optional(),
     skills: z.object({
         autoUpdate: z.boolean().optional(),
-    }).strict().optional(),
-}).strict();
+    }).passthrough().optional(),
+    clientPool: z.object({
+        enabled: z.boolean().optional(),
+        size: z.number().int().min(0).max(10).optional(),
+    }).passthrough().optional(),
+}).passthrough();
 
 /**
  * Inferred type from schema (should match CLIConfig)

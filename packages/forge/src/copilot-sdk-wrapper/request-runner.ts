@@ -67,8 +67,12 @@ export class RequestRunner {
         let client: CopilotClient | null = null;
         let result: SDKInvocationResult | null = null;
 
+        // When the caller provides a pre-created client we reuse it and must
+        // NOT stop it in the finally block — the caller owns its lifecycle.
+        const clientOwned = !options.client;
+
         try {
-            client = await this.createClient(options.workingDirectory);
+            client = options.client ?? await this.createClient(options.workingDirectory);
             const preparedAttachments = this.prepareAttachments(options.attachments, options.workingDirectory);
 
             // Build session options — start with the required permission handler
@@ -225,7 +229,7 @@ export class RequestRunner {
                 aiLog.error({ durationMs, err: error instanceof Error ? error : undefined }, 'Request failed (no session)');
             }
 
-            if (isStreamDestroyedError(errorMessage) && client) {
+            if (isStreamDestroyedError(errorMessage) && client && clientOwned) {
                 aiLog.debug('Stream destroyed — invalidating client');
                 client.stop().catch(() => {});
                 client = null;
@@ -244,10 +248,10 @@ export class RequestRunner {
                 } catch (destroyError) {
                     finalSessionLog.debug({ err: destroyError }, 'Warning: Error destroying session');
                 }
-                if (client) {
+                if (client && clientOwned) {
                     try { await client.stop(); } catch { /* ignore */ }
                 }
-            } else if (client) {
+            } else if (client && clientOwned) {
                 try { await client.stop(); } catch { /* ignore */ }
             }
         }

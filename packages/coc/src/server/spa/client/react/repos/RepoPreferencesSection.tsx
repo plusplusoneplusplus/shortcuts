@@ -15,6 +15,8 @@ import { fetchApi } from '../hooks/useApi';
 
 interface RepoPreferencesSectionProps {
     workspaceId: string;
+    uiLayoutMode?: import('../types/dashboard').UiLayoutMode;
+    onUiLayoutModeChange?: (mode: import('../types/dashboard').UiLayoutMode) => void;
 }
 
 const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
@@ -22,7 +24,7 @@ const selectClass = 'flex-1 px-2 py-0.5 text-sm rounded border border-[#e0e0e0] 
 const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
 const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
 
-export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionProps) {
+export function RepoPreferencesSection({ workspaceId, uiLayoutMode, onUiLayoutModeChange }: RepoPreferencesSectionProps) {
     const { addToast } = useGlobalToast();
     const prefs = usePreferences(workspaceId);
     const { models: availableModels, loading: modelsLoading } = useModels();
@@ -135,6 +137,28 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     return (
         <div id="repo-preferences-section" data-testid="repo-preferences-section">
             <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-3">Preferences</h3>
+
+            {/* ── Layout ── */}
+            {onUiLayoutModeChange && (
+                <>
+                    <div className={sectionHeadClass} data-testid="section-layout">Layout</div>
+                    <div className="flex flex-col gap-2 mb-1">
+                        <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                            <label className={labelClass}>UI Mode</label>
+                            <select
+                                className={selectClass}
+                                value={uiLayoutMode ?? 'dev-workflow'}
+                                onChange={e => onUiLayoutModeChange(e.target.value as 'classic' | 'dev-workflow')}
+                                data-testid="pref-ui-layout-mode"
+                            >
+                                <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
+                                <option value="classic">Classic (Activity)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className={dividerClass} />
+                </>
+            )}
 
             {/* ── Models ── */}
             <div className={sectionHeadClass} data-testid="section-models">Models</div>

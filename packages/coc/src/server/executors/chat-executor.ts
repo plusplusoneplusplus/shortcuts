@@ -17,6 +17,7 @@ import type {
     ProcessStore,
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
+import type { ProcessWebSocketServer } from '../websocket';
 import type { ChatPayload } from '../task-types';
 import {
     buildModeSystemMessage,
@@ -27,20 +28,27 @@ import {
     buildUpdateTaskStatusAddon,
     buildSearchConversationsAddon,
     buildAskUserAddon,
+    buildCreateWorkItemAddon,
 } from './prompt-builder';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
 // ChatExecutor
 // ============================================================================
 
-export type ChatExecutorOptions = ChatModeExecutorOptions;
+export interface ChatExecutorOptions extends ChatModeExecutorOptions {
+    getWsServer?: () => ProcessWebSocketServer | undefined;
+}
 
 export class ChatExecutor extends ChatBaseExecutor {
-    constructor(store: ProcessStore, options: ChatExecutorOptions, dataDir?: string) {
-        super(store, options, dataDir);
+    private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
+
+    constructor(store: ProcessStore, options: ChatExecutorOptions, dataDir?: string, clientCache?: CopilotClientCache) {
+        super(store, options, dataDir, clientCache);
+        this.getWsServerFn = options.getWsServer;
     }
 
     protected async buildModeOptions(
@@ -78,6 +86,13 @@ export class ChatExecutor extends ChatBaseExecutor {
         );
         const updateStatus = buildUpdateTaskStatusAddon(hasPlanFile);
         const searchConversations = buildSearchConversationsAddon(this.store, payload.workspaceId);
+        const createWorkItem = buildCreateWorkItemAddon(
+            this.dataDir,
+            payload.workspaceId,
+            this.getWsServerFn
+                ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
+                : undefined,
+        );
 
         const processId = toQueueProcessId(task.id);
         const askUser = buildAskUserAddon(this.askUser.enabled, {
@@ -101,8 +116,8 @@ export class ChatExecutor extends ChatBaseExecutor {
         return {
             agentMode: 'interactive' as AgentMode,
             systemMessage,
-            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...askUser.tools],
-            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + askUser.suffix,
+            tools: [...followUp.tools, ...updateStatus.tools, ...searchConversations.tools, ...askUser.tools, ...createWorkItem.tools],
+            effectivePrompt: prompt + followUp.suffix + updateStatus.suffix + searchConversations.suffix + askUser.suffix + createWorkItem.suffix,
         };
     }
 }

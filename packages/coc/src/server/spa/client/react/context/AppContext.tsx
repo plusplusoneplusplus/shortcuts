@@ -107,7 +107,7 @@ const initialState: AppContextState = {
     activeTab: 'repos',
     workspaces: [],
     selectedRepoId: null,
-    activeRepoSubTab: 'settings',
+    activeRepoSubTab: 'chats',
     reposSidebarCollapsed: getInitialSidebarCollapsed(),
     selectedWikiId: null,
     selectedWikiComponentId: null,
@@ -296,7 +296,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             const savedTabState = state.selectedRepoId
                 ? { ...state.repoTabState, [state.selectedRepoId]: state.activeRepoSubTab }
                 : state.repoTabState;
-            const restoredTab = action.id ? (savedTabState[action.id] ?? 'settings') : state.activeRepoSubTab;
+            const restoredTab = action.id ? (savedTabState[action.id] ?? 'chats') : state.activeRepoSubTab;
             // Save + restore note path per workspace
             const savedNoteState = state.selectedRepoId
                 ? { ...state.notePathState, [state.selectedRepoId]: state.selectedNotePath }

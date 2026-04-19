@@ -13,6 +13,7 @@ class MockEventSource {
     listeners: Record<string, ((e: Event) => void)[]> = {};
     closed = false;
     onerror: (() => void) | null = null;
+    onopen: (() => void) | null = null;
 
     static instances: MockEventSource[] = [];
 
@@ -42,6 +43,9 @@ class MockEventSource {
 
     /** Test helper: trigger the onerror handler. */
     triggerError() { this.onerror?.(); }
+
+    /** Test helper: trigger the onopen handler. */
+    triggerOpen() { this.onopen?.(); }
 
     static latest(): MockEventSource {
         return MockEventSource.instances[MockEventSource.instances.length - 1];
@@ -133,14 +137,46 @@ describe('useChatSSE', () => {
         expect(refreshConversation).toHaveBeenCalledWith('proc-1');
     });
 
-    it('closes EventSource and calls refreshConversation on error', async () => {
+    it('does not close EventSource on a single error (allows native auto-reconnect)', async () => {
         const refreshConversation = vi.fn().mockResolvedValue(undefined);
         const setIsStreaming = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ refreshConversation, setIsStreaming })));
         const es = MockEventSource.latest();
         act(() => { es.triggerError(); });
+        // Single error should NOT close — EventSource auto-reconnects
+        expect(es.closed).toBe(false);
+        expect(refreshConversation).not.toHaveBeenCalled();
+    });
+
+    it('closes EventSource after MAX_SSE_ERRORS consecutive errors', async () => {
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        const setIsStreaming = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ refreshConversation, setIsStreaming })));
+        const es = MockEventSource.latest();
+        for (let i = 0; i < 5; i++) {
+            act(() => { es.triggerError(); });
+        }
         expect(es.closed).toBe(true);
         expect(refreshConversation).toHaveBeenCalledWith('proc-1');
+    });
+
+    it('resets error counter on successful reconnection (onopen)', async () => {
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        renderHook(() => useChatSSE(makeOptions({ refreshConversation })));
+        const es = MockEventSource.latest();
+        // Fire 4 errors (just under the limit)
+        for (let i = 0; i < 4; i++) {
+            act(() => { es.triggerError(); });
+        }
+        expect(es.closed).toBe(false);
+        // Reconnect succeeds — reset counter
+        act(() => { es.triggerOpen(); });
+        // Fire 4 more errors — should still not close (counter was reset)
+        for (let i = 0; i < 4; i++) {
+            act(() => { es.triggerError(); });
+        }
+        expect(es.closed).toBe(false);
+        expect(refreshConversation).not.toHaveBeenCalled();
     });
 
     it('stopStreaming() closes the EventSource and sets isStreaming false', () => {

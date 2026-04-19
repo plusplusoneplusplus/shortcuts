@@ -29,6 +29,7 @@ export interface ProcessHistoryItem {
     model?: string;
     workspaceId: string;
     planFilePath?: string;
+    workItemId?: string;
 
     // Conversation summary
     turnCount: number;
@@ -68,6 +69,7 @@ export function toProcessHistoryItem(
         model: proc.metadata?.model as string | undefined,
         workspaceId: (proc.metadata?.workspaceId as string) ?? '',
         planFilePath: proc.metadata?.planFilePath as string | undefined,
+        workItemId: proc.metadata?.workItemId as string | undefined,
         turnCount: turns.length,
         lastActivityAt,
         seenAt,

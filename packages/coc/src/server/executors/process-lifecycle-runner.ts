@@ -48,6 +48,7 @@ import {
     isChatPayload,
     isRunWorkflowPayload,
 } from '../task-types';
+import type { CopilotClientCache } from './copilot-client-cache';
 import { recordUserMessage } from '../memory/conversation-recorder';
 import { BaseExecutor } from './base-executor';
 
@@ -65,7 +66,7 @@ const CREATE_TOOL_NAMES = new Set(['create', 'write_file', 'create_file', 'apply
 
 /**
  * Scan conversation turns for a created `.plan.md` file.
- * Mirrors the client-side detection in ActivityChatDetail.tsx.
+ * Mirrors the client-side detection in ChatDetail.tsx.
  */
 export function scanTurnsForPlanFile(turns: ConversationTurn[]): string | undefined {
     for (const turn of turns) {
@@ -137,8 +138,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
+        clientCache?: CopilotClientCache,
     ) {
-        super(store, dataDir);
+        super(store, dataDir, clientCache);
         this.onGenerateTitle = onGenerateTitle;
     }
 
@@ -239,6 +241,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 planFilePath: isChatPayload(task.payload)
                     ? task.payload.context?.files?.[0]
                     : undefined,
+                workItemId: (task.payload as any)?.workItemId,
             },
         };
 

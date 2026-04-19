@@ -351,7 +351,7 @@ export function ProcessesSidebar() {
                             >
                                 <div className="flex items-center justify-between gap-2 mb-1">
                                     <Badge status={p.status}>
-                                        {statusIcon(p.status)} {statusLabel(p.status)}
+                                        {statusIcon(p.status)} {statusLabel(p.status, p.type)}
                                     </Badge>
                                     {duration && (
                                         <span className="text-[11px] text-[#848484] whitespace-nowrap">{duration}</span>
@@ -495,7 +495,7 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
         <Card
             onClick={onClick}
             className={cn('process-item', compact ? 'px-2 py-1.5' : 'p-2', selected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]', task.frozen && 'task-frozen')}
-            aria-label={`Task ${statusLabel(task.status).toLowerCase()}: ${preview}`}
+            aria-label={`Task ${statusLabel(task.status, task.type).toLowerCase()}: ${preview}`}
         >
             {compact ? (
                 <div className="flex items-center gap-1.5 min-w-0 text-[11px] leading-5">
@@ -514,7 +514,7 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
                 <>
                     <div className="flex items-center justify-between gap-2 mb-0.5">
                         <Badge status={task.frozen ? 'cancelled' : task.status}>
-                            {task.frozen ? '❄️' : statusIcon(task.status)} {task.frozen ? 'Frozen' : statusLabel(task.status)}
+                            {task.frozen ? '❄️' : statusIcon(task.status)} {task.frozen ? 'Frozen' : statusLabel(task.status, task.type)}
                         </Badge>
                         <span className="text-[10px] text-[#848484]">
                             {typeLabel(task.type)}
@@ -624,7 +624,7 @@ function SearchResultsView({ results, loading, onSelectProcess, selectedId }: {
                         >
                             <div className="flex items-center justify-between gap-2 mb-1">
                                 <Badge status={group.processStatus}>
-                                    {statusIcon(group.processStatus)} {statusLabel(group.processStatus)}
+                                    {statusIcon(group.processStatus)} {statusLabel(group.processStatus, group.processType)}
                                 </Badge>
                             </div>
                             <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc] line-clamp-1 break-words mb-1.5">

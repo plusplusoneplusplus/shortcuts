@@ -15,10 +15,9 @@ interface BranchCommitStripProps {
     onAllCommentsClick?: () => void;
     commentCount?: number;
     onAskAI?: () => void;
-    onQueueTask?: () => void;
 }
 
-export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick, commentCount, onAskAI, onQueueTask }: BranchCommitStripProps) {
+export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick, commentCount, onAskAI }: BranchCommitStripProps) {
     const branchLabel = branchRangeData.branchName || branchRangeData.headRef;
     const baseShort = branchRangeData.baseRef.replace(/^origin\//, '');
 
@@ -45,16 +44,6 @@ export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick
                             data-testid="branch-range-ask-ai-btn"
                         >
                             🤖
-                        </button>
-                    )}
-                    {onQueueTask && (
-                        <button
-                            onClick={onQueueTask}
-                            title="Queue task for branch changes"
-                            className="text-xs px-1.5 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08] flex-shrink-0"
-                            data-testid="branch-range-queue-task-btn"
-                        >
-                            📋
                         </button>
                     )}
                     {onAllCommentsClick && (

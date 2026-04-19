@@ -158,17 +158,17 @@ describe('CLIConfigSchema', () => {
     });
 
     // ========================================================================
-    // Unknown fields (strict mode)
+    // Unknown fields (passthrough mode — silently ignored)
     // ========================================================================
 
-    it('rejects unknown top-level fields', () => {
-        expect(() => CLIConfigSchema.parse({ unknownField: true }))
-            .toThrow();
+    it('accepts unknown top-level fields', () => {
+        const result = CLIConfigSchema.parse({ unknownField: true });
+        expect(result).toHaveProperty('unknownField', true);
     });
 
-    it('rejects unknown nested fields in serve', () => {
-        expect(() => CLIConfigSchema.parse({ serve: { unknownPort: 8080 } }))
-            .toThrow();
+    it('accepts unknown nested fields in serve', () => {
+        const result = CLIConfigSchema.parse({ serve: { unknownPort: 8080 } });
+        expect((result.serve as Record<string, unknown>)?.unknownPort).toBe(8080);
     });
 
     // ========================================================================
@@ -275,14 +275,14 @@ describe('CLIConfigSchema', () => {
             .toThrow();
     });
 
-    it('rejects unknown keys inside chat.followUpSuggestions (strict mode)', () => {
-        expect(() => CLIConfigSchema.parse({ chat: { followUpSuggestions: { unknown: true } } }))
-            .toThrow();
+    it('accepts unknown keys inside chat.followUpSuggestions (passthrough)', () => {
+        const result = CLIConfigSchema.parse({ chat: { followUpSuggestions: { unknown: true } } });
+        expect((result.chat?.followUpSuggestions as Record<string, unknown>)?.unknown).toBe(true);
     });
 
-    it('rejects unknown keys inside chat (strict mode)', () => {
-        expect(() => CLIConfigSchema.parse({ chat: { unknown: true } }))
-            .toThrow();
+    it('accepts unknown keys inside chat (passthrough)', () => {
+        const result = CLIConfigSchema.parse({ chat: { unknown: true } });
+        expect((result.chat as Record<string, unknown>)?.unknown).toBe(true);
     });
 
     // ========================================================================
@@ -299,8 +299,9 @@ describe('CLIConfigSchema', () => {
         it('rejects terminal.enabled string', () => {
             expect(() => CLIConfigSchema.parse({ terminal: { enabled: 'yes' } })).toThrow();
         });
-        it('rejects unknown terminal sub-field', () => {
-            expect(() => CLIConfigSchema.parse({ terminal: { enabled: true, foo: 1 } })).toThrow();
+        it('accepts unknown terminal sub-field (passthrough)', () => {
+            const result = CLIConfigSchema.parse({ terminal: { enabled: true, foo: 1 } });
+            expect((result.terminal as Record<string, unknown>)?.foo).toBe(1);
         });
     });
 });
@@ -425,12 +426,14 @@ describe('logging schema validation', () => {
         expect(() => CLIConfigSchema.parse({ logging: { pretty: 'always' } })).toThrow();
     });
 
-    it('rejects unknown fields inside logging (strict mode)', () => {
-        expect(() => CLIConfigSchema.parse({ logging: { unknownField: true } })).toThrow();
+    it('accepts unknown fields inside logging (passthrough)', () => {
+        const result = CLIConfigSchema.parse({ logging: { unknownField: true } });
+        expect((result.logging as Record<string, unknown>)?.unknownField).toBe(true);
     });
 
-    it('rejects unknown fields inside logging.stores[name] (strict mode)', () => {
-        expect(() => CLIConfigSchema.parse({ logging: { stores: { 'ai-service': { unknownField: true } } } })).toThrow();
+    it('accepts unknown fields inside logging.stores[name] (passthrough)', () => {
+        const result = CLIConfigSchema.parse({ logging: { stores: { 'ai-service': { unknownField: true } } } });
+        expect((result.logging?.stores?.['ai-service'] as Record<string, unknown>)?.unknownField).toBe(true);
     });
 
     it('accepts stores with undefined values', () => {
@@ -521,13 +524,13 @@ describe('monitoring.heapCheck schema validation', () => {
             .toThrow();
     });
 
-    it('rejects unknown keys inside monitoring (strict mode)', () => {
-        expect(() => CLIConfigSchema.parse({ monitoring: { unknown: true } }))
-            .toThrow();
+    it('accepts unknown keys inside monitoring (passthrough)', () => {
+        const result = CLIConfigSchema.parse({ monitoring: { unknown: true } });
+        expect((result.monitoring as Record<string, unknown>)?.unknown).toBe(true);
     });
 
-    it('rejects unknown keys inside monitoring.heapCheck (strict mode)', () => {
-        expect(() => CLIConfigSchema.parse({ monitoring: { heapCheck: { unknown: true } } }))
-            .toThrow();
+    it('accepts unknown keys inside monitoring.heapCheck (passthrough)', () => {
+        const result = CLIConfigSchema.parse({ monitoring: { heapCheck: { unknown: true } } });
+        expect((result.monitoring?.heapCheck as Record<string, unknown>)?.unknown).toBe(true);
     });
 });

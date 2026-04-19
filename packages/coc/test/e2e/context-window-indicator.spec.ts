@@ -1,7 +1,7 @@
 /**
  * ContextWindowIndicator E2E Tests
  *
- * Tests the ContextWindowIndicator component inside ActivityChatDetail:
+ * Tests the ContextWindowIndicator component inside ChatDetail:
  *   - Indicator is hidden by default (no token data)
  *   - Indicator appears when SSE delivers token-usage events
  *   - Bar width reflects token percentage usage
@@ -30,7 +30,7 @@ import type { Page, Route } from '@playwright/test';
 
 /**
  * Build a synthetic SSE response body with a token-usage event.
- * The EventSource in ActivityChatDetail listens for 'token-usage' events.
+ * The EventSource in ChatDetail listens for 'token-usage' events.
  */
 function buildSseWithTokens(sessionTokenLimit: number, sessionCurrentTokens: number): string {
     const tokenData = JSON.stringify({

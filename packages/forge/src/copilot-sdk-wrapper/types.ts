@@ -265,6 +265,16 @@ export interface Attachment {
 export interface SendMessageOptions {
     /** The prompt to send */
     prompt: string;
+    /**
+     * Pre-created CopilotClient to reuse for this request.
+     * When provided, `RequestRunner` will use this client instead of spawning
+     * a new child process, and will **not** call `client.stop()` in the finally
+     * block (the caller owns the client's lifecycle).
+     *
+     * Session `destroy()` is still called per-request to release in-memory
+     * resources, but the underlying CLI process stays alive for future calls.
+     */
+    client?: import('@github/copilot-sdk').CopilotClient;
     /** Optional model override (e.g., 'gpt-5', 'claude-sonnet-4.6') */
     model?: string;
     /**
