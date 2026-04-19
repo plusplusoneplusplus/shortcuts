@@ -957,8 +957,11 @@ export function ChatListPane({
                                                             'p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500',
                                                             isSelected(task.id) && 'ring-2 ring-[#0078d4]'
                                                         )}
-                                                        onClick={() => onSelectTask(task.id, task)}
+                                                        onClick={() => { if (historyLongPress.didLongPress()) return; onSelectTask(task.id, task); }}
                                                         onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
+                                                        onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                                                        onTouchEnd={historyLongPress.onTouchEnd}
+                                                        onTouchMove={historyLongPress.onTouchMove}
                                                         data-task-id={task.id}
                                                         data-pinned="true"
                                                     >
@@ -996,8 +999,11 @@ export function ChatListPane({
                                                             'p-2 cursor-pointer',
                                                             isSelected(task.id) && 'ring-2 ring-[#0078d4]'
                                                         )}
-                                                        onClick={() => onSelectTask(task.id, task)}
+                                                        onClick={() => { if (historyLongPress.didLongPress()) return; onSelectTask(task.id, task); }}
                                                         onContextMenu={e => handleTaskContextMenu(e, task.id, isRunning ? 'running' : 'completed')}
+                                                        onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                                                        onTouchEnd={historyLongPress.onTouchEnd}
+                                                        onTouchMove={historyLongPress.onTouchMove}
                                                         data-task-id={task.id}
                                                     >
                                                         <div className="flex items-center justify-between gap-1.5 text-xs">
@@ -1041,8 +1047,11 @@ export function ChatListPane({
                                                     <SwipeableHistoryItem key={task.id} isMobile={isMobile} onUnarchive={() => onUnarchiveChat(task.id)} isArchived>
                                                     <Card
                                                         className={cn('p-2 cursor-pointer opacity-60', isSelected(task.id) && 'ring-2 ring-[#0078d4]')}
-                                                        onClick={() => onSelectTask(task.id, task)}
+                                                        onClick={() => { if (historyLongPress.didLongPress()) return; onSelectTask(task.id, task); }}
                                                         onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                                                        onTouchStart={e => { historyLongPressTaskRef.current = task.id; historyLongPress.onTouchStart(e); }}
+                                                        onTouchEnd={historyLongPress.onTouchEnd}
+                                                        onTouchMove={historyLongPress.onTouchMove}
                                                         data-task-id={task.id}
                                                         data-archived="true"
                                                     >

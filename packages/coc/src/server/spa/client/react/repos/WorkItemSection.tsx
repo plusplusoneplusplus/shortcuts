@@ -19,6 +19,7 @@ import { useWorkItemSearch } from '../hooks/useWorkItemSearch';
 import { formatRelativeTime } from '../utils/format';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../tasks/comments/ContextMenu';
+import { useLongPress } from '../hooks/useLongPress';
 
 const PAGE_SIZE = 20;
 
@@ -99,6 +100,12 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: WorkItemSummary } | null>(null);
+
+    // Long-press for mobile context menu
+    const wiLongPressRef = useRef<WorkItemSummary | null>(null);
+    const wiLongPress = useLongPress((x, y) => {
+        if (wiLongPressRef.current) setContextMenu({ x, y, item: wiLongPressRef.current });
+    });
 
     // Show/hide archived items toggle
     const [showArchived, setShowArchived] = useState(false);
@@ -384,8 +391,11 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                                 selectedWorkItemId === item.id && 'ring-2 ring-[#0078d4]',
                                                 item.archivedAt && 'opacity-50',
                                             )}
-                                            onClick={() => onSelectWorkItem(item.id)}
+                                            onClick={() => { if (wiLongPress.didLongPress()) return; onSelectWorkItem(item.id); }}
                                             onContextMenu={(e) => handleContextMenu(e, item)}
+                                            onTouchStart={e => { wiLongPressRef.current = item; wiLongPress.onTouchStart(e); }}
+                                            onTouchEnd={wiLongPress.onTouchEnd}
+                                            onTouchMove={wiLongPress.onTouchMove}
                                             data-testid={`work-item-card-${item.id}`}
                                         >
                                             <div className="flex items-center gap-1 min-w-0 text-xs">
