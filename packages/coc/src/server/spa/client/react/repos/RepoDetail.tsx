@@ -47,11 +47,11 @@ interface RepoDetailProps {
 
 export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
     { key: 'chats', label: 'Chats', shortcut: 'Alt+A' },
+    { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
-    { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'tasks', label: 'Tasks', shortcut: 'Alt+T' },
     { key: 'terminal', label: 'Terminal' },
