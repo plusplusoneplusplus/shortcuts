@@ -10,6 +10,7 @@ npm run test:run     # Run tests (Vitest)
 ```
 
 Git commit file clicks in the repo dashboard use `RepoGitTab` split-view routing: full commits render `CommitDetail` diffs, while single commit files render `CommitFileContent` with full-file markdown/source content in the right panel.
+Repo Settings → Memory exposes a per-repo **Enable Memory for this Repo** switch backed by `boundedMemory.enabled` in `/api/workspaces/:id/preferences`; disabling it preserves `MEMORY.md` content but stops future bounded-memory injection.
 
 ## Usage
 

@@ -5,21 +5,28 @@
  * capacity bar and inline editor.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useContext } from 'react';
 import { memoryApi } from './memoryApi';
 import { CapacityBar } from '../../shared/CapacityBar';
+import { ToastContext } from '../../context/ToastContext';
+import { getWorkspacePreferences, patchWorkspacePreferences, type PerRepoPrefsClient } from '../../hooks/preferencesApi';
 
 interface BoundedMemoryTabProps {
     repoId: string;
 }
 
 export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
+    const toastCtx = useContext(ToastContext);
     const [content, setContent] = useState<string>('');
     const [charCount, setCharCount] = useState(0);
     const [charLimit, setCharLimit] = useState(0);
     const [lastModified, setLastModified] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [enabled, setEnabled] = useState(false);
+    const [prefCharLimit, setPrefCharLimit] = useState<number | undefined>(undefined);
+    const [toggleSaving, setToggleSaving] = useState(false);
+    const [toggleError, setToggleError] = useState<string | null>(null);
 
     // Edit state
     const [editing, setEditing] = useState(false);
@@ -31,12 +38,22 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
     const fetchContent = useCallback(async () => {
         setLoading(true);
         setError(null);
+        setToggleError(null);
         try {
-            const data = await memoryApi.getBounded(repoId);
+            const [data, prefs] = await Promise.all([
+                memoryApi.getBounded(repoId),
+                getWorkspacePreferences(repoId).catch((): PerRepoPrefsClient => ({})),
+            ]);
             setContent(data.content);
             setCharCount(data.charCount);
             setCharLimit(data.charLimit);
             setLastModified(data.lastModified);
+            setEnabled(prefs.boundedMemory?.enabled === true);
+            setPrefCharLimit(
+                typeof prefs.boundedMemory?.charLimit === 'number' && prefs.boundedMemory.charLimit > 0
+                    ? prefs.boundedMemory.charLimit
+                    : undefined
+            );
         } catch (e: any) {
             setError(e?.message ?? 'Failed to load memory');
         } finally {
@@ -46,7 +63,42 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
 
     useEffect(() => { fetchContent(); }, [fetchContent]);
 
+    const handleToggleEnabled = async () => {
+        const nextEnabled = !enabled;
+        const prevEnabled = enabled;
+
+        setEnabled(nextEnabled);
+        setToggleSaving(true);
+        setToggleError(null);
+
+        if (!nextEnabled) {
+            setEditing(false);
+            setSaveError(null);
+        }
+
+        try {
+            await patchWorkspacePreferences(repoId, {
+                boundedMemory: {
+                    enabled: nextEnabled,
+                    ...(typeof prefCharLimit === 'number' ? { charLimit: prefCharLimit } : {}),
+                },
+            });
+            toastCtx?.addToast(
+                nextEnabled ? 'Memory enabled for this repo' : 'Memory disabled for this repo',
+                'success'
+            );
+        } catch (e: any) {
+            const message = e?.message ?? 'Failed to save memory setting';
+            setEnabled(prevEnabled);
+            setToggleError(message);
+            toastCtx?.addToast(message, 'error');
+        } finally {
+            setToggleSaving(false);
+        }
+    };
+
     const handleStartEdit = () => {
+        if (!enabled) return;
         setEditing(true);
         setEditContent(content);
         setSaveError(null);
@@ -89,6 +141,58 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
 
     return (
         <div data-testid="bounded-memory-tab" className="pt-3">
+            <div
+                className="mb-3 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] p-3"
+                data-testid="bounded-memory-toggle-card"
+            >
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <h4 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                            Enable Memory for this Repo
+                        </h4>
+                        <p className="mt-1 text-xs text-[#616161] dark:text-[#999]">
+                            Let CoC store and reuse important repo facts in future chats.
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={enabled}
+                        onClick={handleToggleEnabled}
+                        disabled={toggleSaving}
+                        className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
+                            enabled
+                                ? 'border-[#0078d4] bg-[#0078d4]/10 text-[#0078d4]'
+                                : 'border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#616161] dark:text-[#999]'
+                        }`}
+                        data-testid="memory-enabled-toggle"
+                    >
+                        <span>{enabled ? 'On' : 'Off'}</span>
+                        <span
+                            className={`h-2.5 w-2.5 rounded-full ${enabled ? 'bg-[#0078d4]' : 'bg-[#999]'}`}
+                            aria-hidden="true"
+                        />
+                    </button>
+                </div>
+
+                {!enabled && (
+                    <p
+                        className="mt-2 text-xs text-[#616161] dark:text-[#b3b3b3]"
+                        data-testid="memory-disabled-message"
+                    >
+                        Memory is off for this repo. Stored content stays here, but it will not be injected into
+                        future chats until you turn it back on.
+                    </p>
+                )}
+
+                {toggleError && (
+                    <p className="mt-2 text-xs text-red-500" data-testid="memory-toggle-error">
+                        {toggleError}
+                    </p>
+                )}
+            </div>
+
             {/* Toolbar */}
             <div className="flex items-center gap-2 mb-3 flex-wrap" data-testid="bounded-toolbar">
                 <span className="text-xs text-[#848484] flex-1">
@@ -113,7 +217,8 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                 {!editing ? (
                     <button
                         onClick={handleStartEdit}
-                        className="text-xs px-2.5 py-1 rounded border border-[#0078d4] text-[#0078d4] hover:bg-[#0078d4]/10 transition-colors"
+                        disabled={!enabled}
+                        className="text-xs px-2.5 py-1 rounded border border-[#0078d4] text-[#0078d4] hover:bg-[#0078d4]/10 transition-colors disabled:opacity-50 disabled:hover:bg-transparent"
                         data-testid="bounded-edit-btn"
                     >
                         Edit
@@ -174,7 +279,9 @@ export function BoundedMemoryTab({ repoId }: BoundedMemoryTabProps) {
                     </div>
                 ) : !content ? (
                     <div className="text-xs text-[#848484] py-8 text-center" data-testid="bounded-empty">
-                        No memory entries yet. The AI will populate this during conversations.
+                        {enabled
+                            ? 'No memory entries yet. The AI will populate this during conversations.'
+                            : 'Memory is off for this repo. Turn it on to let CoC capture and reuse repo facts.'}
                     </div>
                 ) : (
                     <pre

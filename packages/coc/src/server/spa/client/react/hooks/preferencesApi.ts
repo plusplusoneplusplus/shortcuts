@@ -8,6 +8,11 @@ import { getApiBase } from '../utils/config';
 export interface PerRepoPrefsClient {
   /** Preferred file-list display mode across all git views. */
   filesViewMode?: 'flat' | 'tree';
+  /** Repo-scoped bounded memory controls used by the Memory settings panel. */
+  boundedMemory?: {
+    enabled?: boolean;
+    charLimit?: number;
+  };
 }
 
 /**
