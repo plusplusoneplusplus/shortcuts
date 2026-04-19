@@ -45,7 +45,7 @@ import type { ChatPayload } from '../task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { resolveTaskRoot } from '../task-root-resolver';
 import { BaseExecutor } from './base-executor';
-import { prependSelectedSkillsDirective } from './prompt-builder';
+import { assertNoAskUserConflict, prependSelectedSkillsDirective } from './prompt-builder';
 import type { CopilotClientCache } from './copilot-client-cache';
 
 // ============================================================================
@@ -256,6 +256,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 }
             }
 
+            const sendTools = tools.length > 0 ? tools : undefined;
+            // Guard: CoC uses its custom ask_user tool (SSE/widget flow).
+            // The SDK's native onUserInputRequest must NOT be set at the same time.
+            assertNoAskUserConflict({ tools: sendTools });
+
             const sendOptions = {
                 prompt: effectivePrompt,
                 client: cachedClient,
@@ -265,7 +270,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 workingDirectory,
                 timeoutMs,
                 attachments,
-                tools: tools.length > 0 ? tools : undefined,
+                tools: sendTools,
                 systemMessage,
                 skillDirectories,
                 disabledSkills,

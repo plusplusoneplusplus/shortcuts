@@ -13,6 +13,7 @@ import type {
     ConversationTurn,
     ProcessStore,
     QueuedTask,
+    SendMessageOptions,
     SystemMessageConfig,
     Tool,
 } from '@plusplusoneplusplus/forge';
@@ -464,4 +465,29 @@ export function buildCreateWorkItemAddon(
         'proactively suggest creating a work item to track the work.';
 
     return { tools: [workItemTool, bugTool], suffix };
+}
+
+/**
+ * Validates that a session does not enable both the custom CoC `ask_user` tool
+ * and the SDK's native `onUserInputRequest` callback simultaneously.
+ *
+ * CoC uses its own custom `ask_user` tool (with structured question types,
+ * SSE-driven SPA widget, and pending-question lifecycle). The SDK also has a
+ * simpler built-in `ask_user` capability gated by `onUserInputRequest`.
+ * Enabling both creates ambiguous ownership of user prompts.
+ *
+ * Call this before sending options to the SDK to catch configuration mistakes.
+ *
+ * @throws Error if both paths are active.
+ */
+export function assertNoAskUserConflict(options: Pick<SendMessageOptions, 'tools' | 'onUserInputRequest'>): void {
+    if (!options.onUserInputRequest) return;
+    const hasCustomAskUser = options.tools?.some(t => t.name === 'ask_user') ?? false;
+    if (hasCustomAskUser) {
+        throw new Error(
+            'Configuration conflict: both a custom ask_user tool and native ' +
+            'onUserInputRequest are enabled. Only one ask-user authority should ' +
+            'be active per session.',
+        );
+    }
 }
